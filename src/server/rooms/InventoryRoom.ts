@@ -33,7 +33,7 @@ import type { PcInvData, PcInvWeapon } from "#shared/net/messages";
 import { FEEDBACK_COOLDOWN_MS, FEEDBACK_TEXT_MAX, isFeedbackKind, isFeedbackMark, type FeedbackKind } from "#shared/feedback";
 import { feedback, store } from "../store";
 import { invHub, type InvActKind } from "../invHub";
-import { isAdminNick, respecCostFor, RESPEC_ENABLED } from "#shared/constants";
+import { isAdminNick, NICK_MAX, respecCostFor, RESPEC_ENABLED } from "#shared/constants";
 
 interface InventoryJoinOptions {
   /** Ник из адреса `/inv?ник`. */
@@ -174,7 +174,7 @@ export class InventoryRoom extends colyseus.Room {
 }
 
 function normNick(n: string): string {
-  return decodeURIComponent(n).trim().replace(/^@/, "").toLowerCase().slice(0, 24);
+  return decodeURIComponent(n).trim().replace(/^@/, "").toLowerCase().slice(0, NICK_MAX);
 }
 
 /** Когда последний раз писали в «Помощь» (по нику) — пауза между отправками. */

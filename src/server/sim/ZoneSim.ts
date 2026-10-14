@@ -863,6 +863,14 @@ export class Mob {
   markT = 0;
   markMul = 1;
   markBy = "";
+  /** «Уязвимость» (молот): секунд осталось и множитель урона от молота. */
+  vulnT = 0;
+  vulnMul = 1;
+  vuln(sec: number, mul: number): void {
+    if (this.dead) return;
+    this.vulnT = sec;
+    this.vulnMul = mul;
+  }
   mark(by: string, sec: number, mul: number): void {
     if (this.dead) return;
     this.markT = sec;
@@ -990,6 +998,10 @@ export class Mob {
         this.markT -= dt;
         if (this.markT <= 0) this.markMul = 1;
       }
+      if (this.vulnT > 0) {
+        this.vulnT -= dt;
+        if (this.vulnT <= 0) this.vulnMul = 1;
+      }
       if (this.slowT > 0) {
         this.slowT -= dt;
         if (this.slowT <= 0) this.slowMul = 1;
@@ -1003,6 +1015,10 @@ export class Mob {
     if (this.markT > 0) {
       this.markT -= dt;
       if (this.markT <= 0) this.markMul = 1;
+    }
+    if (this.vulnT > 0) {
+      this.vulnT -= dt;
+      if (this.vulnT <= 0) this.vulnMul = 1;
     }
     if (this.slowT > 0) {
       this.slowT -= dt;
@@ -2602,6 +2618,8 @@ export class ZoneSim {
    * остаток падает на землю. Не задано, босс и катакомбы — всё падает на землю, как раньше.
    */
   lootSink: ((owner: string, loot: { id: ItemId; count: number; instance?: WeaponInstance; armor?: ArmorInstance }) => number) | null = null;
+  /** Бьёт ли владелец молотом (для уязвимости «Цепной молнии»). */
+  hammerHit: ((owner: string) => boolean) | null = null;
   /** Текущая сессия урона по пугалу: кто бьёт, когда начал/последний удар, сумма, самый сильный удар. */
   private readonly scares = new Map<string, { by: string; start: number; last: number; total: number; max: number }>();
   /** Табло пугала: кто бьёт, урон в секунду, самый сильный удар (null — давно никто не бил). */
@@ -3107,6 +3125,7 @@ export class ZoneSim {
     if (magic && m.magicVulnMul !== 1) dmg *= m.magicVulnMul;
     if (crit && m.critVulnMul !== 1) dmg *= m.critVulnMul;
     if (m.markT > 0) dmg *= m.markMul; // «Метка»: +25% урона от всех атакующих
+    if (m.vulnT > 0 && attacker && this.hammerHit?.(attacker)) dmg *= m.vulnMul; // «Цепная молния»: по молоту — больше
     // Вклад считаем по ФАКТИЧЕСКИ снятому HP: оверкилл сверх остатка не должен раздувать долю.
     const hpBefore = m.hp;
     const killed = m.applyHit(dmg, dx, dz, dot);
@@ -3251,6 +3270,10 @@ export class ZoneSim {
     this.mobs.get(id)?.taunt(by, sec);
   }
   /** «Метка»: моб `sec` секунд получает урон × `mul`. */
+  vulnMob(id: string, sec: number, mul: number): void {
+    this.mobs.get(id)?.vuln(sec, mul);
+  }
+
   markMob(id: string, by: string, sec: number, mul: number): void {
     this.mobs.get(id)?.mark(by, sec, mul);
   }

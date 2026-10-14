@@ -1,5 +1,5 @@
 import type { NetClient } from "../net/NetClient";
-import { isAdminNick } from "#shared/constants";
+import { isAdminNick, NICK_MAX } from "#shared/constants";
 
 const NICK_KEY = "lastNick";
 
@@ -45,7 +45,7 @@ export function runLogin(
     <div class="login-box">
       <div class="login-title">ZEP GAME</div>
       <div class="login-tag">VR / PC / Mobile</div>
-      <input id="login-nick" maxlength="16" placeholder="${
+      <input id="login-nick" maxlength="${NICK_MAX}" placeholder="${
         stream ? "Твой ник в Twitch" : "Твой ник"
       }" autocomplete="off" spellcheck="false" />
       <input id="login-pass" type="password" placeholder="Пароль администратора" autocomplete="off" style="display:none" />

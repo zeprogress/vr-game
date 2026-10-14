@@ -76,7 +76,7 @@ import {
   type PcInvData,
   type AutoGoMsg,
 } from "#shared/net/messages";
-import { ADMIN_NICK, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL } from "#shared/constants";
+import { ADMIN_NICK, NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL } from "#shared/constants";
 import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE } from "#shared/mobs";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
 import { skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
@@ -194,7 +194,7 @@ import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand }
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
 import { leashCut } from "../sim/leash";
 import { ATTR2 } from "#shared/attrs2";
-import { ABYSS, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, DUAL, isDualPair, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { ABYSS, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, DUAL, isDualPair, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC, ULT_PULL_PULSES, ULT_PULL_POWER } from "#shared/ultimates";
 import {
   MAGIC,
@@ -695,7 +695,7 @@ const CHAT_WINDOW_MS = 60 * 60 * 1000;
 
 /** Нормализация ника для сравнения/ключей. */
 function normNick(n: string): string {
-  return n.trim().toLowerCase().slice(0, 24);
+  return n.trim().toLowerCase().slice(0, NICK_MAX);
 }
 
 /**
@@ -1418,6 +1418,11 @@ export class ZoneRoom extends Room<ZoneState> {
     this.sim.getAttackerLevel = (id) => this.state.players.get(id)?.level ?? 1;
     // Добыча обычного моба — сразу в инвентарь убийцы-игрока (остаток упадёт на землю, см. collectMobLoot).
     this.sim.lootSink = (owner, loot) => this.collectMobLoot(owner, loot);
+    // Уязвимость от «Цепной молнии» — только к удару молотом: владелец с молотом в руке.
+    this.sim.hammerHit = (owner) => {
+      const hp = this.state.players.get(owner);
+      return !!hp && (hp.leftCls === "hammer" || hp.rightCls === "hammer");
+    };
     // Рейд-босса ранят только с арены; из разрыва орбиты — полный урон, вне — доля (raidFight.hitMul).
     this.sim.raidDmgMul = (id) => {
       const p = this.state.players.get(id);
@@ -6121,7 +6126,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const rec = store.get(token);
 
     const p = new PlayerState();
-    p.nick = nick.trim().slice(0, 16) || rec?.nick || "зритель";
+    p.nick = nick.trim().slice(0, NICK_MAX) || rec?.nick || "зритель";
     p.mode = "flat";
     if (rec) {
       p.level = rec.level;
@@ -8582,6 +8587,8 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Печати на земле: лечат/защищают союзников, замедляют (и у боевого мага жгут) врагов. */
   private readonly seals: {
     x: number; z: number; r: number; until: number; owner: string; burn: number; tickT: number;
+    /** Молот: оглушение каждой молнии, с (0 — обычная печать, с замедлением). */
+    stun: number;
     /** Лечит союзников (маг поддержки). */
     heal: boolean;
     /** Доля урона, которую гасит союзникам в круге. */
@@ -9248,15 +9255,16 @@ export class ZoneRoom extends Room<ZoneState> {
           for (const m of around(cx, cz, sk.radius)) {
             const [dx, dz] = dirTo(m, cx, cz);
             this.sim.hitMob(m.id, sk.dmgMult * pow.dmg, dx, dz, ownerId, false, false, pow.magic);
-            if (cls === "battlemage") this.sim.slowMob(m.id, 3, 0.55);
+            if (cls === "battlemage") this.sim.slowMob(m.id, STORM_CRUSH.slowSec, STORM_CRUSH.slowMul);
             else this.sim.stunMob(m.id, 1);
           }
           if (cls === "battlemage") {
             // Отхил бури: сам герой и союзники в круге волны.
             act({ k: "healAura", x: cx, y: cy, z: cz, d: 1.5, r: sk.radius });
-            this.state.players.forEach((ally, aid) => {
-              if (ally.dead || Math.hypot(ally.head.x - cx, ally.head.z - cz) > sk.radius + 1) return;
-              const frac = aid === ownerId ? STORM_CRUSH.selfHeal : STORM_CRUSH.allyHeal;
+            // Лечение растёт с мудростью кастера; союзники — в большом радиусе, тем же числом.
+            const frac = STORM_CRUSH.healBase + Math.max(0, attrOf(pp, "wis") - ATTR2.start) * STORM_CRUSH.healPerWis;
+            this.state.players.forEach((ally) => {
+              if (ally.dead || Math.hypot(ally.head.x - cx, ally.head.z - cz) > STORM_CRUSH.allyRadius) return;
               ally.hp = Math.min(ally.maxHp, ally.hp + ally.maxHp * frac);
             });
           }
@@ -9317,12 +9325,13 @@ export class ZoneRoom extends Room<ZoneState> {
               if (spear) this.sim.shoveMob(m.id, dx, dz, 4);
               if (cls === "assassin") this.sim.slowMob(m.id, ASSASSIN_WHIRL_SLOW.sec, ASSASSIN_WHIRL_SLOW.mul);
             }
-            if (cls === "battlemage") {
-              // Каждый оборот — молния по соседу снаружи круга.
-              const out = around(pp.head.x, pp.head.z, 7).find((m) => !near.includes(m));
+            if (cls === "battlemage" && i === hits - 1) {
+              // Последний удар вихря — молния соседу снаружи круга; множитель растёт с интеллектом.
+              const out = around(pp.head.x, pp.head.z, THUNDER_SPIN.range).find((m) => !near.includes(m));
               if (out) {
+                const boltMul = THUNDER_SPIN.minMul + (THUNDER_SPIN.maxMul - THUNDER_SPIN.minMul) * Math.min(1, Math.max(0, attrOf(pp, "int") - ATTR2.start) / THUNDER_SPIN.intFull);
                 act({ k: "chainHit", x: pp.head.x, y: pp.head.y, z: pp.head.z, x2: out.x, z2: out.z, d: out.y + MOB.bodyRadius * out.scale, r: 1 });
-                this.sim.hitMob(out.id, mult * pow.dmg, 0, 0, ownerId, false, false, true);
+                this.sim.hitMob(out.id, boltMul * pow.dmg, 0, 0, ownerId, false, false, true);
               }
             }
           }, step * (i + 0.5) * 1000);
@@ -9376,7 +9385,8 @@ export class ZoneRoom extends Room<ZoneState> {
           return false;
         }
         const archer = cls === "archer";
-        const hits = archer ? 3 : sk.hits;
+        const hammer = cls === "battlemage";
+        const hits = archer ? 3 : hammer ? CHAIN_HAMMER.hops : sk.hits;
         const hitSet = new Set<string>();
         let fromX = p.head.x;
         let fromY = p.head.y - 0.3;
@@ -9392,7 +9402,8 @@ export class ZoneRoom extends Room<ZoneState> {
           const dz = m.z - fromZ;
           this.clock.setTimeout(() => {
             this.sim.hitMob(m.id, dd, dx, dz, ownerId, false, false, true);
-            if (!archer) this.sim.stunMob(m.id, 0.5);
+            if (hammer) this.sim.vulnMob(m.id, CHAIN_HAMMER.vulnSec, CHAIN_HAMMER.vulnMul);
+            else if (!archer) this.sim.stunMob(m.id, 0.5);
           }, i * 90);
           dmg *= archer && i === 0 ? 0.35 : CHAIN.falloff;
           fromX = m.x;
@@ -9413,13 +9424,16 @@ export class ZoneRoom extends Room<ZoneState> {
         return true;
       }
       case "seal": {
-        const burn = cls === "battlemage" ? SEAL.burnPerSec * pow.dmg : 0;
+        const hammer = cls === "battlemage";
+        const dur = hammer ? HAMMER_FIELD.duration : SEAL.duration;
+        const rad = hammer ? HAMMER_FIELD.radius : sk.radius;
+        const burn = hammer ? HAMMER_FIELD.boltMul * pow.dmg : 0;
         const guard = cls === "warrior";
         this.seals.push({
-          x: p.head.x, z: p.head.z, r: sk.radius, until: this.elapsed + SEAL.duration, owner: ownerId, burn, tickT: 0,
+          x: p.head.x, z: p.head.z, r: rad, until: this.elapsed + dur, owner: ownerId, burn, tickT: 0, stun: hammer ? HAMMER_FIELD.stunSec : 0,
           heal: cls === "support", shield: guard ? GUARD_SEAL.shield : cls === "support" ? SEAL.shield : 0, taunt: guard,
         });
-        act({ k: "seal", x: p.head.x, y: feetY, z: p.head.z, d: SEAL.duration, r: sk.radius });
+        act({ k: "seal", x: p.head.x, y: feetY, z: p.head.z, d: dur, r: rad });
         return true;
       }
       case "plague": {
@@ -9684,9 +9698,10 @@ export class ZoneRoom extends Room<ZoneState> {
         const dz = m.z - s.z;
         const d = Math.hypot(dx, dz);
         if (d - this.sim.targetRadius("mob", m.id) > s.r) continue;
-        this.sim.slowMob(m.id, 0.8, 1 - SEAL.slow);
+        if (s.stun > 0) this.sim.stunMob(m.id, s.stun);
+        else this.sim.slowMob(m.id, 0.8, 1 - SEAL.slow);
         if (s.taunt) this.sim.tauntMob(m.id, s.owner, 1);
-        if (s.burn > 0) this.sim.hitMob(m.id, s.burn * 0.5, dx / (d || 1), dz / (d || 1), s.owner, false, true, true);
+        if (s.burn > 0) this.sim.hitMob(m.id, s.burn, dx / (d || 1), dz / (d || 1), s.owner, false, true, true);
       }
     }
   }
@@ -10805,7 +10820,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const rec = token ? store.get(token) : undefined;
 
     const p = new PlayerState();
-    p.nick = (options?.nick ?? "").trim().slice(0, 16) || rec?.nick || "гость";
+    p.nick = (options?.nick ?? "").trim().slice(0, NICK_MAX) || rec?.nick || "гость";
     if (rec) {
       p.head.x = rec.x;
       p.head.y = rec.y;

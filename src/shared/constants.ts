@@ -453,6 +453,12 @@ export const ADMIN_NICK = "zep";
 /** Все ники с правами админа (панель настройки, перевод времени, !-команды). */
 export const ADMIN_NICKS = ["zep", "zeprogress", "bearmood_tv"] as const;
 
+/**
+ * Длина ника — одна на всех: вход, отображение и ключ записи героя (`nick:<норм.>`). Twitch допускает до 25 символов;
+ * раньше вход и отображение резали до 16, а ключ — до 24, и один герой получал две записи. Не менять без миграции.
+ */
+export const NICK_MAX = 25;
+
 /** true — у этого ника есть права админа (регистр и пробелы не важны). */
 export function isAdminNick(nick: string): boolean {
   return (ADMIN_NICKS as readonly string[]).includes(nick.trim().toLowerCase());

@@ -2,6 +2,7 @@
 import colyseus from "colyseus";
 import http from "node:http";
 
+import { NICK_MAX } from "#shared/constants";
 import { ZoneRoom } from "./rooms/ZoneRoom";
 import { TowerRoom } from "./rooms/TowerRoom";
 import { InventoryRoom } from "./rooms/InventoryRoom";
@@ -34,7 +35,7 @@ const httpServer = http.createServer((req, res) => {
   // Локальный стенд: сообщение «из чата» без Twitch (см. devChat.ts).
   if (process.env.STAGING === "1" && req.method === "GET" && req.url?.startsWith("/api/devchat")) {
     const q = new URL(req.url, "http://x").searchParams;
-    const ok = devChat.send((q.get("nick") ?? "").slice(0, 24), (q.get("text") ?? "").slice(0, 300));
+    const ok = devChat.send((q.get("nick") ?? "").slice(0, NICK_MAX), (q.get("text") ?? "").slice(0, 300));
     res.writeHead(ok ? 200 : 409, { "content-type": "application/json; charset=utf-8" });
     res.end(JSON.stringify(ok ? { ok } : { ok, error: "мир ещё не создан — зайди в игру или открой спектатор" }));
     return;

@@ -407,7 +407,19 @@ export interface SkillDef {
  * «Сокрушение бури»: лечение героя и союзников рядом (доли максимума HP).
  * 2026-10-06: было 0.3 / 0.15 — боевой маг был сам себе лекарем и танком (три молота в катакомбах не умирали).
  */
-export const STORM_CRUSH = { selfHeal: 0.15, allyHeal: 0.08 } as const;
+export const STORM_CRUSH = {
+  /** Лечение — доля макс. HP: база + за каждое очко мудрости сверх старта. Союзники — то же, в allyRadius. */
+  healBase: 0.06, healPerWis: 0.003, allyRadius: 12,
+  /** Замедление мобов в волне: секунд и множитель скорости (0.5 — вдвое медленнее). */
+  slowSec: 5, slowMul: 0.5,
+} as const;
+
+/** «Грозовое поле» молота: круг на duration с радиусом radius; каждые 0.5 с молния бьёт магией ×boltMul и оглушает на stunSec. */
+export const HAMMER_FIELD = { duration: 4, radius: 8, boltMul: 0.5, stunSec: 0.2 } as const;
+/** «Громовой вихрь» молота: последний удар вихря бьёт молнией соседа в range м; множитель ×minMul → ×maxMul от интеллекта (полная шкала — intFull очков сверх старта). */
+export const THUNDER_SPIN = { range: 7, minMul: 3, maxMul: 4, intFull: 30 } as const;
+/** «Цепная молния» молота: hops скачков; задетые получают +vulnMul% урона от молота на vulnSec. */
+export const CHAIN_HAMMER = { hops: 5, vulnMul: 1.2, vulnSec: 5 } as const;
 
 export const SKILLS2: Record<SkillId, SkillDef> = {
   stunBash: {
@@ -444,7 +456,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     name: "Сокрушение", icon: glyph("s.crush"), desc: "Прыжок и удар о землю: волна по кругу, мобы оглушены на 1 с",
     cooldown: 14, castTime: 0.6, radius: 5, dmgMult: 2.2, hits: 1,
     variants: {
-      battlemage: { name: "Сокрушение бури", desc: `Прыжок и магический удар: волна по кругу, мобы замедлены на 3 с; лечит тебя на ${Math.round(STORM_CRUSH.selfHeal * 100)}% здоровья, союзников рядом — на ${Math.round(STORM_CRUSH.allyHeal * 100)}%` },
+      battlemage: { name: "Сокрушение бури", desc: `Прыжок и магический удар: волна по кругу, мобы замедлены на ${STORM_CRUSH.slowSec} с на ${Math.round((1 - STORM_CRUSH.slowMul) * 100)}%; лечит тебя на ${Math.round(STORM_CRUSH.healBase * 100)}% здоровья + ${(STORM_CRUSH.healPerWis * 100).toFixed(1)}% за очко мудрости, союзников в ${STORM_CRUSH.allyRadius} м — так же` },
     },
   },
   seal: {
@@ -452,7 +464,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     cooldown: 18, castTime: 0.4, radius: 5, dmgMult: 0, hits: 1,
     variants: {
       warrior: { name: "Печать стража", desc: "Круг на 6 с: союзникам −40% урона, мобы в круге бросаются на воина" },
-      battlemage: { name: "Грозовое поле", desc: "Круг на 6 с: молнии каждые 0.5 с бьют врагов внутри магией и замедляют" },
+      battlemage: { name: "Грозовое поле", desc: `Круг ${HAMMER_FIELD.radius} м на ${HAMMER_FIELD.duration} с: каждые 0.5 с молния бьёт врагов внутри магией и оглушает на ${HAMMER_FIELD.stunSec} с` },
     },
   },
   whirlwind: {
@@ -460,7 +472,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     cooldown: 14, castTime: 0, radius: 3.2, dmgMult: 0.9, hits: 5, // 0.7 → 0.9 (2026-10-05)
     variants: {
       spearman: { name: "Град выпадов", desc: "Серия из 8 быстрых выпадов копьём вперёд (длинный конус 6 м): каждый колет всех в секторе" },
-      battlemage: { name: "Громовой вихрь", desc: "Молот по кругу: 5 магических ударов, каждый ещё бьёт молнией соседа в 7 м" },
+      battlemage: { name: "Громовой вихрь", desc: `Молот по кругу: 5 магических ударов; последний бьёт молнией соседа в ${THUNDER_SPIN.range} м — ×${THUNDER_SPIN.minMul}, до ×${THUNDER_SPIN.maxMul} от интеллекта` },
       assassin: { name: "Танец клинков", desc: "Вихрь-рывок: 2 с неуязвимости, проносишься вперёд на 6 м, 5 ударов по всем вокруг (с шансом крита), задетые замедлены на 30%" },
     },
   },
@@ -517,6 +529,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     cooldown: 11, castTime: 0.3, radius: 14, dmgMult: 1.6, hits: 4,
     variants: {
       archer: { name: "Грозовая стрела", desc: "Стрела-молния: ×2 по первой цели, затем 2 слабых скачка" },
+      battlemage: { name: "Цепная молния", desc: `Разряд скачет по ${CHAIN_HAMMER.hops} врагам (каждый скачок слабее на 20%); задетые на ${CHAIN_HAMMER.vulnSec} с получают +${Math.round((CHAIN_HAMMER.vulnMul - 1) * 100)}% урона от молота` },
     },
   },
 };
