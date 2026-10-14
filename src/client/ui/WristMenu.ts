@@ -385,7 +385,9 @@ export class WristMenu {
     for (const id of def.skills) {
       const sk = SKILLS2[id];
       const name = skillName(id, cls);
-      const dmg = sk.dmgMult > 0 && strike !== undefined ? `. Урон ×${sk.dmgMult} от силы удара ${strike}` : "";
+      const dmg = sk.dmgMult > 0 && strike !== undefined
+        ? cls === "battlemage" ? `. Урон ×${sk.dmgMult} от интеллекта (сила удара ${strike})` : `. Урон ×${sk.dmgMult} от силы удара ${strike}`
+        : "";
       const desc = `${skillDesc(id, cls, live)}${dmg}`;
       const on = this.skillChosen.includes(id);
       const wd = this.add({

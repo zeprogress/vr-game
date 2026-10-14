@@ -638,11 +638,11 @@ export class Mob {
    */
   private walkDir(chasing: boolean, dist: number, dx: number, dz: number): [number, number] {
     if (chasing) {
-      // Прыгун перед прыжком стоит на его дистанции (LEAP.minDist..maxDist), пока не готов прыжок.
       // Прыгун перед прыжком стоит на дистанции LEAP (дальше minDist, ближе maxDist), иначе прыжка не будет:
-      // ближе — отходит, дальше — подходит.
-      if (this.leaper && this.leapCd < 1.5) {
-        if (dist < LEAP.minDist + 1) return [-dx, -dz];
+      // дальше — подходит, ближе minDist+1 — идёт к удару (не пятится).
+      if (this.leaper && this.leapCd < 1.5 && dist >= LEAP.minDist + 1) {
+        // Жнец не пятится: ближе минимальной дистанции прыжка он не отходит, а подходит к удару (см. ниже),
+        // прыжок ждёт, пока герой сам отойдёт дальше minDist.
         return this.meleeStep(dx, dz, dist, LEAP_WAIT_RING + 2.5);
       }
       return this.meleeStep(dx, dz, dist, this.standDist());

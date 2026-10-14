@@ -1,4 +1,4 @@
-import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, skillCooldownFor, skillDesc, skillName, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
+import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, HAMMER_SKILL, skillCooldownFor, skillDesc, skillName, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
 import { armorIconKey, glyph, skillIcon, weaponIcon } from "#shared/icons";
 import { ARMOR_PART_NAME, ARMOR_PARTS, type ArmorPart } from "#shared/armor";
 import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
@@ -1691,7 +1691,7 @@ export class PcInventory {
         nm,
         div("pcinv-small", skillDesc(id, cls, live)),
         // Урон умения — множитель от силы удара героя; особые формулы — в описании.
-        ...(sk.dmgMult > 0 ? [div("pcinv-small dim", `Урон ×${sk.dmgMult} от силы удара${sk.hits > 1 ? ` за удар · ударов за применение: ${sk.hits}` : ""}`)] : []),
+        ...(sk.dmgMult > 0 ? [div("pcinv-small dim", `Урон ×${sk.dmgMult} ${cls === "battlemage" ? `от интеллекта (+${Math.round(HAMMER_SKILL.intPer * 1000) / 10}% за очко)` : "от силы удара"}${sk.hits > 1 ? ` за удар · ударов за применение: ${sk.hits}` : ""}`)] : []),
       );
       const b = document.createElement("button");
       b.className = "pcinv-abtn";

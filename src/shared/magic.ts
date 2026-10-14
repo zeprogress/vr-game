@@ -107,8 +107,12 @@ export function burnHpFracFor(a: Pick<MagicAttrs, "int">): number {
  * огнешара, магических умений и объём лечения.
  */
 export function magicPowerFor(level: number, a: MagicAttrs): number {
-  const lvl = 1 + levelGain(level, PROGRESSION.perLevel.magicDmg);
-  return lvl * (1 + invested(attrOf(a, "int")) * ATTR2.int.magic);
+  return magicLevelFor(level) * (1 + invested(attrOf(a, "int")) * ATTR2.int.magic);
+}
+
+/** Часть «силы магии» от уровня (без интеллекта) — умения молота считают интеллект сами (HAMMER_SKILL). */
+export function magicLevelFor(level: number): number {
+  return 1 + levelGain(level, PROGRESSION.perLevel.magicDmg);
 }
 
 /** Потолок маны (мана пока выключена): уровень × ИНТ. */

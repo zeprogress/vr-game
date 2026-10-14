@@ -1,6 +1,7 @@
-import { staffMagicTier, type Attr, type AttrsIn, type ClassId } from "./classes2";
+import { HAMMER_SKILL, staffMagicTier, type Attr, type AttrsIn, type ClassId } from "./classes2";
 import { weaponDamage } from "./combat";
-import { fireboltDamage, magicPowerFor } from "./magic";
+import { fireboltDamage, magicLevelFor } from "./magic";
+import { attrOf, invested } from "./attrs2";
 import type { WeaponClass } from "./items";
 
 /** Все шесть атрибутов героя и прибавка от колец и камней (PlayerState.gb). */
@@ -35,7 +36,8 @@ export function skillStrike(cls: ClassId, level: number, a: StrikeAttrs, hand: S
     case "support":
       return { dmg: fireboltDamage(level, a, 0.7) * staffMagicTier(hand.tier) * hand.roll * 0.5, magic: true };
     case "battlemage":
-      return { dmg: 1.9 * magicPowerFor(level, a) * hand.mult * hand.roll, magic: true };
+      // Умения молота: урон от ИНТЕЛЛЕКТА (HAMMER_SKILL.intPer за очко сверх старта), уровень — как у магии.
+      return { dmg: 1.9 * magicLevelFor(level) * (1 + invested(attrOf(a, "int")) * HAMMER_SKILL.intPer) * hand.mult * hand.roll, magic: true };
     case "archer":
       return { dmg: weaponDamage("arrow", level, a, hand.mult * hand.roll), magic: false };
     default:

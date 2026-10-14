@@ -414,6 +414,9 @@ export const STORM_CRUSH = {
   slowSec: 5, slowMul: 0.5,
 } as const;
 
+/** Умения молота: урон растёт от интеллекта на intPer за очко сверх старта (у магии — ATTR2.int.magic, 2.6%). */
+export const HAMMER_SKILL = { intPer: 0.06 } as const;
+
 /** «Грозовое поле» молота: круг на duration с радиусом radius; каждые 0.5 с молния бьёт магией ×boltMul и оглушает на stunSec. */
 export const HAMMER_FIELD = { duration: 4, radius: 8, boltMul: 0.5, stunSec: 0.2 } as const;
 /** «Громовой вихрь» молота: последний удар вихря бьёт молнией соседа в range м; множитель ×minMul → ×maxMul от интеллекта (полная шкала — intFull очков сверх старта). */
