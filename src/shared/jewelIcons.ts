@@ -72,10 +72,11 @@ export function gemHtml(k: GemKey): string {
  */
 const RING_SOCKETS: Record<RingTier, readonly { x: number; y: number; s: number }[]> = {
   base: [],
-  gold: [{ x: 0.55, y: 0.49, s: 0.22 }],
+  // Вдвое крупнее прежних; центры — по измеренным отверстиям картинок (тёмные области гнёзд).
+  gold: [{ x: 0.452, y: 0.414, s: 0.44 }],
   legendary: [
-    { x: 0.45, y: 0.62, s: 0.2 },
-    { x: 0.68, y: 0.48, s: 0.2 },
+    { x: 0.356, y: 0.481, s: 0.4 },
+    { x: 0.616, y: 0.356, s: 0.4 },
   ],
 };
 
