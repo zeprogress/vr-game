@@ -5597,17 +5597,33 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     if (act === "scrapAll") {
       // Разобрать всё, кроме избранного ★, надетого и рубинового (кнопка внизу сумки).
-      // id — вкладка сумки: "weapon" — только оружие, "armor" — только броня, иначе — оружие и броня.
-      const kinds = id === "weapon" ? { w: true, a: false } : id === "armor" ? { w: false, a: true } : { w: true, a: true };
+      // id — вкладка сумки: "weapon" — только оружие, "armor" — только броня, "all" — оружие, броня и кольца, иначе — оружие и броня.
+      const kinds = id === "weapon" ? { w: true, a: false, r: false } : id === "armor" ? { w: false, a: true, r: false } : { w: true, a: true, r: id === "all" };
       const none = { ok: false, text: "Разбирать нечего — всё в избранном или надето." };
+      // Кольца (вкладка «Все»): как «Разобрать все кольца» — надетые и ★ остаются, камни возвращаются в сумку.
+      // Кольца живут в записи героя (rings/ringOn/gems), поэтому пишем их в запись до оружия и брони.
+      const rtoken = t?.rt.token ?? `nick:${norm}`;
+      let ringGot = 0;
+      let ringCount = 0;
+      if (kinds.r && store.get(rtoken)) {
+        const js = jewelsOf(store.get(rtoken)!);
+        const before = js.rings.length;
+        const jr = applyJewelOp(js, { op: "ringScrapAll" }, 0);
+        if (jr.ok && jr.scrap) {
+          ringGot = jr.scrap;
+          ringCount = before - js.rings.length;
+          store.put(rtoken, { rings: js.rings, ringOn: js.ringOn, gems: js.gems });
+          if (t) this.applyJewels(t.id);
+        }
+      }
       if (t) {
         const held = this.liveHeldIds(t.p, t.rt);
         // Рубиновые массовой разборкой не трогаем — только поштучно.
         const ws = kinds.w ? t.rt.weapons.filter((w) => !w.fav && w.tier !== "ruby" && !held.has(w.id)) : [];
         const worn = new Set(Object.values(t.rt.armorWorn));
         const as = kinds.a ? t.rt.armor.filter((x) => !x.fav && !worn.has(x.id)) : [];
-        if (!ws.length && !as.length) return none;
-        let got = 0;
+        if (!ws.length && !as.length && !ringCount) return none;
+        let got = ringGot;
         for (const w of ws) got += this.scrapOne(t, w);
         for (const x of as) got += armorScrap(x);
         if (as.length) t.rt.armor = t.rt.armor.filter((x) => !as.includes(x));
@@ -5615,10 +5631,9 @@ export class ZoneRoom extends Room<ZoneState> {
         addToBag(bag, "scrap", got);
         writeBag(t.p, bag);
         this.persistNick(norm);
-        return { ok: true, text: `Разобрано ${ws.length + as.length} — лом +${got}` };
+        return { ok: true, text: `Разобрано ${ws.length + as.length + ringCount} — лом +${got}${ringCount ? ` (колец ${ringCount})` : ""}` };
       }
-      const token = `nick:${norm}`;
-      const rec = store.get(token);
+      const rec = store.get(`nick:${norm}`);
       if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
       const weapons = rec.weapons ?? [];
       const held = recHeldIds(rec);
@@ -5626,14 +5641,14 @@ export class ZoneRoom extends Room<ZoneState> {
       const { armor, armorWorn } = armorFromRec(rec);
       const worn = new Set(Object.values(armorWorn));
       const as = kinds.a ? armor.filter((x) => !x.fav && !worn.has(x.id)) : [];
-      if (!ws.length && !as.length) return none;
+      if (!ws.length && !as.length && !ringCount) return none;
       const bag = restoreBag(rec.bag);
-      let got = 0;
+      let got = ringGot;
       for (const w of ws) got += scrapValue(w);
       for (const x of as) got += armorScrap(x);
       addToBag(bag, "scrap", got);
-      store.put(token, { weapons: weapons.filter((w) => !ws.includes(w)), armor: armor.filter((x) => !as.includes(x)), armorWorn, bag });
-      return { ok: true, text: `Разобрано ${ws.length + as.length} — лом +${got}` };
+      store.put(`nick:${norm}`, { weapons: weapons.filter((w) => !ws.includes(w)), armor: armor.filter((x) => !as.includes(x)), armorWorn, bag });
+      return { ok: true, text: `Разобрано ${ws.length + as.length + ringCount} — лом +${got}${ringCount ? ` (колец ${ringCount})` : ""}` };
     }
     if (act === "sharpen") {
       if (t) {

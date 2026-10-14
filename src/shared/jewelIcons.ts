@@ -66,10 +66,22 @@ export function gemHtml(k: GemKey): string {
 }
 
 /** Где на значке кольца рисовать камень гнезда i из n (доли размера: x, y, размер). */
-export function socketSpot(i: number, n: number): { x: number; y: number; s: number } {
-  const s = 0.52;
-  // Сверху (2026-10-08): одно гнездо — по центру, два — в верхних углах.
-  return n === 1 ? { x: (1 - s) / 2, y: -0.04, s } : { x: i === 0 ? -0.02 : 1.02 - s, y: -0.04, s };
+/**
+ * Гнёзда на картинке кольца (доли картинки: левый верх и размер). Своё у каждого вида — отверстия нарисованы
+ * на картинке каталога колец («Каталог фантазийных колец по уровням»), камень должен лечь в отверстие.
+ */
+const RING_SOCKETS: Record<RingTier, readonly { x: number; y: number; s: number }[]> = {
+  base: [],
+  gold: [{ x: 0.55, y: 0.49, s: 0.22 }],
+  legendary: [
+    { x: 0.45, y: 0.62, s: 0.2 },
+    { x: 0.68, y: 0.48, s: 0.2 },
+  ],
+};
+
+/** Место i-го гнезда кольца вида tier. */
+export function socketSpot(tier: RingTier, i: number): { x: number; y: number; s: number } {
+  return RING_SOCKETS[tier][i] ?? { x: 0, y: 0, s: 0.2 };
 }
 
 /** HTML-значок кольца с камнями гнёзд сверху. */
@@ -77,7 +89,7 @@ export function ringHtml(tier: RingTier, gems: readonly (GemKey | null)[] = []):
   const a = ringArt(tier, gems);
   let h = `<span style="position:relative;display:block;width:100%;height:100%"><img src="${a.src}" alt="" draggable="false" style="${LAYER}">`;
   a.sockets.forEach((k, i) => {
-    const p = socketSpot(i, a.sockets.length);
+    const p = socketSpot(tier, i);
     // Квадрат по соотношению сторон (aspect-ratio), а не по процентам высоты: иначе гнездо — овал, если контейнер не квадратный.
     const box = `position:absolute;left:${p.x * 100}%;top:${p.y * 100}%;width:${p.s * 100}%;aspect-ratio:1;pointer-events:none`;
     const g = gemArt(k ?? "");

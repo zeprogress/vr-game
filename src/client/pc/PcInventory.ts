@@ -1083,12 +1083,14 @@ export class PcInventory {
       // Вкладка «Оружие» — только оружие, «Броня» — только броня, «Все» — и то и другое.
       const ws = f === "armor" ? [] : bagW.filter((w) => w.tier !== "ruby");
       const as = f === "weapon" || !this.hooks.armorAct ? [] : bag.flatMap((e) => ("a" in e && !e.a.fav ? [e.a] : []));
-      const n = ws.length + as.length;
-      const scrapSum = ws.reduce((k, w) => k + w.scrap, 0) + as.reduce((k, x) => k + x.scrap, 0);
-      const what = f === "weapon" ? "оружие" : f === "armor" ? "броню" : "оружие и броню";
+      // Вкладка «Все» — и кольца тоже (как «Разобрать все кольца»: надетые и ★ остаются).
+      const rs = f === "all" ? bagR : [];
+      const n = ws.length + as.length + rs.length;
+      const scrapSum = ws.reduce((k, w) => k + w.scrap, 0) + as.reduce((k, x) => k + x.scrap, 0) + rs.reduce((k, r) => k + r.scrap, 0);
+      const what = f === "weapon" ? "оружие" : f === "armor" ? "броню" : "оружие, броню и кольца";
       const all = button(f === "all" ? `Разобрать всё, кроме ${glyph("ui.fav")}` : `Разобрать ${what}, кроме ${glyph("ui.fav")}`, () =>
         this.askConfirm(
-          `Разобрать ${what} — ${n} шт. на ${scrapSum} лома? Избранное ${glyph("ui.fav")}, рубиновое и надетое останутся.`,
+          `Разобрать ${what} — ${n} шт. на ${scrapSum} лома? Избранное ${glyph("ui.fav")}, рубиновое и надетое останутся.${rs.length ? " Камни из колец вернутся в сумку." : ""}`,
           "Разобрать",
           () => this.hooks.act({ act: "scrapAll", id: f, idx: 0 }),
         ),

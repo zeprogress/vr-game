@@ -2033,7 +2033,7 @@ export class WristMenu {
     const a = ringArt(tier, gems);
     this.drawImgAt(ctx, a.src, x, y, s);
     a.sockets.forEach((k, i) => {
-      const p = socketSpot(i, a.sockets.length);
+      const p = socketSpot(tier, i);
       const g = k ? gemArt(k) : null;
       if (g) this.drawImgAt(ctx, g.src, x + p.x * s, y + p.y * s, p.s * s);
       else {
