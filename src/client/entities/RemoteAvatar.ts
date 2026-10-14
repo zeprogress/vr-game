@@ -75,8 +75,16 @@ const BOT_TAG_SCALE = 2.1;
  * около 30 см — для чужой модели незаметно).
  */
 const BOT_POS_TAU = 0.1;
-/** Скачок больше этого — телепорт (респавн), фильтр не тянем, ставим сразу. */
-const BOT_POS_SNAP = 5;
+/**
+ * Телепорт (респавн, рывок ассасина): скачок за один снапшот больше этого плюс то, что успеваем пройти
+ * за реальный промежуток между снапшотами (CATCH_SPEED). Ставим сразу, без догонки.
+ */
+const TELEPORT_DIST = 8;
+/**
+ * Догоняем позицию не быстрее этого, м/с (примерно вдвое быстрее бега). Пауза кадра у зрителя копит путь,
+ * и интерполяция отдаёт его сразу — метры за один кадр, бот «летит». Догоняем плавно, за несколько кадров.
+ */
+const CATCH_SPEED = 14;
 
 export type MakeWeapon = (cls: WeaponClass, tier: WeaponTier) => Mesh;
 
@@ -251,6 +259,8 @@ export class RemoteAvatar implements Hittable {
   private locoMove = false;
   private readonly _smoothPos = new Vector3();
   private smoothInit = false;
+  /** Пришёл телепорт (см. TELEPORT_DIST): позицию ставим сразу, без догонки. */
+  private teleported = false;
   private swingUntil = 0;
   /** Скорость клипа замаха, с которой его запустил триггер. */
   private swingRate = 1;
@@ -721,11 +731,15 @@ export class RemoteAvatar implements Hittable {
     ) {
       return;
     }
-    // Телепорт (респавн) — не тащим модель интерполяцией через всю карту.
-    if (last && (Math.abs(h.x - last.head[0]) > 8 || Math.abs(h.z - last.head[2]) > 8)) {
+    // Телепорт (респавн, рывок ассасина) — не тащим модель интерполяцией через всю карту. Скачок, который
+    // успеваем пройти за реальный промежуток между снапшотами, — не телепорт: это пауза кадра у зрителя,
+    // модель тогда догоняет плавно (см. smoothRootPos), а не одним кадром.
+    const gapS = this.lastPushRaw > 0 ? (now - this.lastPushRaw) / 1000 : 0;
+    if (last && Math.hypot(h.x - last.head[0], h.z - last.head[2]) > TELEPORT_DIST + CATCH_SPEED * gapS) {
       for (const old of this.buf) this.snapPool.push(old);
       this.buf.length = 0;
       last = undefined;
+      this.teleported = true;
     }
     // Снапшоты приходят ровным темпом на сервере, но НАБЛЮДАЕМ мы их на границах
     // кадров рендера (кэп 30 fps → интервал прыгает 33/66 мс). Если ставить метку
@@ -857,12 +871,13 @@ export class RemoteAvatar implements Hittable {
         this.freezeBotPose();
       } else {
         this.applyBodyAndHeadXf(a.head, b.head, s);
-        this.smoothBotPos(dt);
+        this.smoothRootPos(dt);
         if (this.botRig) this.stepBotLocomotion(now, dt);
         else this.animateSwing(now);
       }
     } else {
       this.applyXf(this.root, this.head.rotationQuaternion!, a.head, b.head, s, true);
+      this.smoothRootPos(dt);
       if (this.mode === "vr") {
         this.applyXf(this.handL!, this.handL!.rotationQuaternion!, a.handL, b.handL, s, false);
         this.applyXf(this.handR!, this.handR!.rotationQuaternion!, a.handR, b.handR, s, false);
@@ -1052,23 +1067,30 @@ export class RemoteAvatar implements Hittable {
     }
   }
 
-  /** Съедает ступеньки в позиции бота (см. BOT_POS_TAU). */
-  private smoothBotPos(dt: number): void {
+  /**
+   * Съедает ступеньки в позиции аватара (см. BOT_POS_TAU) и догоняет после паузы кадра не быстрее
+   * CATCH_SPEED. Телепорт (флаг из push) — ставим сразу.
+   */
+  private smoothRootPos(dt: number): void {
     const p = this.root.position;
-    if (!this.smoothInit) {
+    if (!this.smoothInit || this.teleported) {
       this._smoothPos.copyFrom(p);
       this.smoothInit = true;
-      return;
-    }
-    const jump = Math.hypot(p.x - this._smoothPos.x, p.z - this._smoothPos.z);
-    if (jump > BOT_POS_SNAP) {
-      this._smoothPos.copyFrom(p); // респавн — догонять нечего
+      this.teleported = false;
       return;
     }
     const k = 1 - Math.exp(-dt / BOT_POS_TAU);
-    this._smoothPos.x += (p.x - this._smoothPos.x) * k;
+    let dx = (p.x - this._smoothPos.x) * k;
+    let dz = (p.z - this._smoothPos.z) * k;
+    const cap = CATCH_SPEED * dt;
+    const len = Math.hypot(dx, dz);
+    if (len > cap) {
+      dx *= cap / len;
+      dz *= cap / len;
+    }
+    this._smoothPos.x += dx;
     this._smoothPos.y += (p.y - this._smoothPos.y) * k;
-    this._smoothPos.z += (p.z - this._smoothPos.z) * k;
+    this._smoothPos.z += dz;
     p.copyFrom(this._smoothPos);
   }
 
@@ -1118,6 +1140,8 @@ export class RemoteAvatar implements Hittable {
   /** Дальше этого от камеры (м) плашка героя не рисуется (гистерезис 6 м). Эфир — без предела; игра ставит своё. */
   static tagRange = Infinity;
   private tagFar = false;
+  /** Гистерезис анимации: встали за дальностью — оживаем только на эту величину ближе (м). */
+  private static readonly ANIM_BAND = 10;
   /** В VR анимируем и рисуем ботов только вблизи: далёкие — шум для draw call'ов. */
   private static readonly VR_ANIM_RANGE = 40;
   private static readonly VR_DRAW_RANGE = 75;
@@ -1143,16 +1167,21 @@ export class RemoteAvatar implements Hittable {
     }
     if (cp) {
       // С высотой камеры: сверху (общий план эфира, ~100 м) герои — точки, анимировать их незачем.
+      // Гистерезис: ушли за дальность — стоим, назад оживаем только на ANIM_BAND ближе. Иначе клипы
+      // щёлкают на границе при каждом повороте камеры, а каждый перезапуск с первого кадра читается рывком.
       const dx = p.x - cp.x;
       const dy = p.y - cp.y;
       const dz = p.z - cp.z;
-      if (dx * dx + dy * dy + dz * dz > RemoteAvatar.animRange * RemoteAvatar.animRange) return true;
+      const R = RemoteAvatar.animRange - (this.animFrozen ? RemoteAvatar.ANIM_BAND : 0);
+      if (dx * dx + dy * dy + dz * dz > R * R) return true;
     }
     const planes = this.root.getScene().frustumPlanes;
     if (!planes) return false;
     const y = p.y - 0.8; // корпус стоит на уровне глаз
+    // Край кадра — тот же гистерезис: за краем на 4 м стоим, в кадр возвращаемся только на 4 м внутри.
+    const edge = this.animFrozen ? 4 : -4;
     for (const pl of planes) {
-      if (pl.normal.x * p.x + pl.normal.y * y + pl.normal.z * p.z + pl.d < -4) return true;
+      if (pl.normal.x * p.x + pl.normal.y * y + pl.normal.z * p.z + pl.d < edge) return true;
     }
     return false;
   }

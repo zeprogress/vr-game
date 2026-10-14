@@ -476,6 +476,8 @@ export class Mob implements Hittable {
   /** Дальний LOD: модель выключена, вместо неё сфера-инстанс. */
   private lodSlots: { batch: LodBatch; slot: number }[] | null = null;
   private lodFar = false;
+  /** Клипы моба сейчас считаются (в кадре и не дальше ANIM_RANGE). Гистерезис — в animVisible. */
+  private animSeen = true;
   /** Дальний LOD включён (игровой клиент). У спектатора модели всегда полные — анимация вдали не режется. */
   farLodOn = false;
   /** Живая схема состояния этого моба (обновляется Colyseus на месте) — чтобы не искать её в Map каждый кадр. */
@@ -1365,6 +1367,8 @@ export class Mob implements Hittable {
 
   /** Дальше этого от камеры скелетную анимацию моба не крутим. */
   private static readonly ANIM_RANGE = 85;
+  /** Гистерезис дальности: встали — оживаем только на эту величину ближе (м). */
+  private static readonly ANIM_BAND = 10;
   /** В VR мобов дальше этого (м) не рисуем и не считаем. */
   private static readonly VR_CULL_RANGE = Number(new URLSearchParams(location.search).get("mobrange")) || 130; // ?mobrange=<м> — для подбора замером
   /** В VR скелетную анимацию считаем только ближе этого (м). */
@@ -1379,9 +1383,12 @@ export class Mob implements Hittable {
     const dz = pos.z - cam.z;
     const vr = !!(this.scene.activeCamera as { rigCameras?: unknown[] } | null)?.rigCameras?.length;
     const range = vr ? (this.heavy ? Mob.VR_ANIM_RANGE_HEAVY : Mob.VR_ANIM_RANGE) : Mob.ANIM_RANGE;
+    // Гистерезис (как у бота): ушёл за дальность или край кадра — клипы встают; назад — только когда
+    // ближе на ANIM_BAND и глубже в кадре. Иначе на границе клипы щёлкают при каждом повороте камеры.
     // С высотой камеры (общий план эфира сверху), в VR — по горизонтали, как было.
-    if (dx * dx + (vr ? 0 : dy * dy) + dz * dz > range * range) return false;
-    return this.inFrustum(pos, 2 + 2.5 * this.scale);
+    const R = this.animSeen ? range : range - Mob.ANIM_BAND;
+    if (dx * dx + (vr ? 0 : dy * dy) + dz * dz > R * R) return (this.animSeen = false);
+    return (this.animSeen = this.inFrustum(pos, this.animSeen ? 2 + 2.5 * this.scale : -6));
   }
 
   /**

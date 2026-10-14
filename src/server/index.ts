@@ -47,7 +47,13 @@ const httpServer = http.createServer((req, res) => {
 // VPN понг запаздывал, сервер рвал живого клиента, тот переподключался — и у
 // стрим-игроков персонаж мигал в бота и обратно. ~15–20 с + окно
 // allowReconnection в ZoneRoom.onLeave.
-const gameServer = new Server({ server: httpServer, pingInterval: 5000, pingMaxRetries: 3 });
+// maxPayload: по умолчанию Colyseus режет входящие кадры на 4 КБ. Голосовой оффер (SDP со всеми ICE-
+// кандидатами, у Mac с VPN их много) спектатор шлёт сразу при входе — кадр не пролезал, ws рвал его
+// («Max payload size exceeded») и голос игроков в эфире не поднимался. 64 КБ — с запасом, и без лимита
+// на весь ws (100 МБ), чтобы чужой клиент не забил память. Опции — переменной: Colyseus отдаёт их в
+// WebSocketTransport, а тип ServerOptions про maxPayload не знает (литерал дал бы ошибку типов).
+const wsOptions = { server: httpServer, pingInterval: 5000, pingMaxRetries: 3, maxPayload: 64 * 1024 };
+const gameServer = new Server(wsOptions);
 gameServer.define("zone", ZoneRoom);
 // Охотничья башня — приватная комната на одну попытку (см. TowerRunManager в
 // ZoneRoom, matchMaker.createRoom("tower_room", ...); клиент сюда напрямую не джойнит).
