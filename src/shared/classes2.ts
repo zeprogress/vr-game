@@ -410,6 +410,8 @@ export interface SkillDef {
 export const STORM_CRUSH = {
   /** Лечение — доля макс. HP: база + за каждое очко мудрости сверх старта. Союзники — то же, в allyRadius. */
   healBase: 0.06, healPerWis: 0.003, allyRadius: 12,
+  /** Урон волны — ещё +intDmgPer за очко интеллекта сверх старта (поверх общих +6% умений молота). */
+  intDmgPer: 0.04,
   /** Замедление мобов в волне: секунд и множитель скорости (0.5 — вдвое медленнее). */
   slowSec: 5, slowMul: 0.5,
 } as const;
@@ -459,7 +461,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     name: "Сокрушение", icon: glyph("s.crush"), desc: "Прыжок и удар о землю: волна по кругу, мобы оглушены на 1 с",
     cooldown: 14, castTime: 0.6, radius: 5, dmgMult: 2.2, hits: 1,
     variants: {
-      battlemage: { name: "Сокрушение бури", desc: `Прыжок и магический удар: волна по кругу, мобы замедлены на ${STORM_CRUSH.slowSec} с на ${Math.round((1 - STORM_CRUSH.slowMul) * 100)}%; лечит тебя на ${Math.round(STORM_CRUSH.healBase * 100)}% здоровья + ${(STORM_CRUSH.healPerWis * 100).toFixed(1)}% за очко мудрости, союзников в ${STORM_CRUSH.allyRadius} м — так же` },
+      battlemage: { name: "Сокрушение бури", desc: `Прыжок и магический удар: волна по кругу, мобы замедлены на ${STORM_CRUSH.slowSec} с на ${Math.round((1 - STORM_CRUSH.slowMul) * 100)}%; урон волны +${Math.round(STORM_CRUSH.intDmgPer * 100)}% за очко интеллекта; лечит тебя на ${Math.round(STORM_CRUSH.healBase * 100)}% здоровья + ${(STORM_CRUSH.healPerWis * 100).toFixed(1)}% за очко мудрости, союзников в ${STORM_CRUSH.allyRadius} м — так же` },
     },
   },
   seal: {

@@ -9253,9 +9253,11 @@ export class ZoneRoom extends Room<ZoneState> {
           // Бот приземляется в центр удара, но не внутрь моба — его выталкивает наружу.
           if (isBot) this.placeBotAt(pp, cx, cz);
           act({ k: "crushHit", x: cx, y: cy, z: cz, r: sk.radius });
+          // Сокрушение бури — волна сильнее растёт от интеллекта (STORM_CRUSH.intDmgPer).
+          const crushMul = cls === "battlemage" ? 1 + Math.max(0, attrOf(pp, "int") - ATTR2.start) * STORM_CRUSH.intDmgPer : 1;
           for (const m of around(cx, cz, sk.radius)) {
             const [dx, dz] = dirTo(m, cx, cz);
-            this.sim.hitMob(m.id, sk.dmgMult * pow.dmg, dx, dz, ownerId, false, false, pow.magic);
+            this.sim.hitMob(m.id, sk.dmgMult * pow.dmg * crushMul, dx, dz, ownerId, false, false, pow.magic);
             if (cls === "battlemage") this.sim.slowMob(m.id, STORM_CRUSH.slowSec, STORM_CRUSH.slowMul);
             else this.sim.stunMob(m.id, 1);
           }

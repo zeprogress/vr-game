@@ -40,7 +40,7 @@ export function skillDamageText(id: SkillId, cls: ClassId, strike: number, a: Sk
     case "crush":
       if (cls === "battlemage") {
         const heal = STORM_CRUSH.healBase + Math.max(0, attrOf(a, "wis") - ATTR2.start) * STORM_CRUSH.healPerWis;
-        return `Урон ${n(base)} в круге; лечение ${Math.round(heal * 1000) / 10}% здоровья`;
+        return `Урон ${n(base * (1 + int * STORM_CRUSH.intDmgPer))} в круге; лечение ${Math.round(heal * 1000) / 10}% здоровья`;
       }
       return `Урон ${n(base)} в круге`;
     case "seal":
