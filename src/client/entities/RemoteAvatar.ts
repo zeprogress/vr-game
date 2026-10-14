@@ -1140,8 +1140,6 @@ export class RemoteAvatar implements Hittable {
   /** Дальше этого от камеры (м) плашка героя не рисуется (гистерезис 6 м). Эфир — без предела; игра ставит своё. */
   static tagRange = Infinity;
   private tagFar = false;
-  /** Гистерезис анимации: встали за дальностью — оживаем только на эту величину ближе (м). */
-  private static readonly ANIM_BAND = 10;
   /** В VR анимируем и рисуем ботов только вблизи: далёкие — шум для draw call'ов. */
   private static readonly VR_ANIM_RANGE = 40;
   private static readonly VR_DRAW_RANGE = 75;
@@ -1167,21 +1165,16 @@ export class RemoteAvatar implements Hittable {
     }
     if (cp) {
       // С высотой камеры: сверху (общий план эфира, ~100 м) герои — точки, анимировать их незачем.
-      // Гистерезис: ушли за дальность — стоим, назад оживаем только на ANIM_BAND ближе. Иначе клипы
-      // щёлкают на границе при каждом повороте камеры, а каждый перезапуск с первого кадра читается рывком.
       const dx = p.x - cp.x;
       const dy = p.y - cp.y;
       const dz = p.z - cp.z;
-      const R = RemoteAvatar.animRange - (this.animFrozen ? RemoteAvatar.ANIM_BAND : 0);
-      if (dx * dx + dy * dy + dz * dz > R * R) return true;
+      if (dx * dx + dy * dy + dz * dz > RemoteAvatar.animRange * RemoteAvatar.animRange) return true;
     }
     const planes = this.root.getScene().frustumPlanes;
     if (!planes) return false;
     const y = p.y - 0.8; // корпус стоит на уровне глаз
-    // Край кадра — тот же гистерезис: за краем на 4 м стоим, в кадр возвращаемся только на 4 м внутри.
-    const edge = this.animFrozen ? 4 : -4;
     for (const pl of planes) {
-      if (pl.normal.x * p.x + pl.normal.y * y + pl.normal.z * p.z + pl.d < edge) return true;
+      if (pl.normal.x * p.x + pl.normal.y * y + pl.normal.z * p.z + pl.d < -4) return true;
     }
     return false;
   }
