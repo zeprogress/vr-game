@@ -210,7 +210,7 @@ export function createLake(scene: Scene): Lake {
   foam.freezeWorldMatrix();
 
   // Лёгкая дымка-брызги над пеной — несколько полупрозрачных сфер, как
-  // облака в Sky.ts (низкополигональные, один меш, без частиц).
+  // облака в Sky.ts (икосферы, один меш, днём непрозрачные, без частиц).
   const mistMat = new StandardMaterial("waterfallMistMat", scene);
   mistMat.diffuseColor = new Color3(1, 1, 1);
   mistMat.emissiveColor = new Color3(0.8, 0.86, 0.9);

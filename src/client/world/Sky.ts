@@ -6,6 +6,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
+import "@babylonjs/core/Meshes/Builders/icoSphereBuilder";
 
 import { WORLD } from "#shared/constants";
 import { dayState, type DayState } from "./DayTime";
@@ -182,68 +183,66 @@ function gradientMaterial(scene: Scene): {
   return { mat, paint };
 }
 
+/**
+ * Облака — максимально дёшево: ОДИН меш (склейка), куски — икосферы с 80 треугольниками
+ * (всего ~4 тыс. на всё небо). Освещения нет (только emissive), поэтому форма читается
+ * силуэтом. Днём материал НЕПРОЗРАЧНЫЙ (alpha 1, пишет глубину) — без смешивания и
+ * перерисовки одних и тех же пикселей; прозрачность — только на заре/закате, когда
+ * облака проявляются или гаснут. Ночью меш выключен.
+ */
 function createClouds(scene: Scene): { apply(d: DayState): void } {
   const mat = new StandardMaterial("cloudMat", scene);
-  mat.diffuseColor = new Color3(1, 1, 1);
-  mat.emissiveColor = new Color3(0.6, 0.63, 0.68);
+  mat.diffuseColor = new Color3(0, 0, 0);
+  mat.emissiveColor = new Color3(0.94, 0.96, 0.99);
   mat.specularColor = new Color3(0, 0, 0);
-  mat.alpha = 0.95;
   mat.disableLighting = true;
+  mat.alpha = 1;
 
-  mat.disableDepthWrite = true; // облака полупрозрачные и не должны спорить по глубине
-
-  // Все облака — ДВА меша (медленные и быстрые), а не 13: каждый меш — отдельная отрисовка и
-  // пересчёт матрицы каждый кадр. Дрейф общий на группу; чтобы край поля не «прыгал» при
-  // возврате, у группы вторая копия облаков сдвинута на −span (узор периодичен по span).
-  const groups: { mesh: Mesh; speed: number; off: number }[] = [];
+  // Дрейф общий на меш; чтобы край поля не «прыгал» при возврате, вторая копия
+  // облаков сдвинута на −span (узор периодичен по span).
   const span = WORLD.size * 1.6;
-
-  for (const speed of [0.6, 1.15]) {
-    const puffs: Mesh[] = [];
-    for (let i = 0; i < 7; i++) {
-      const cx = (Math.random() - 0.5) * span;
-      const cy = 50 + Math.random() * 25;
-      const cz = (Math.random() - 0.5) * span;
-      const n = 3 + Math.floor(Math.random() * 4);
-      for (let p = 0; p < n; p++) {
-        const lx = (Math.random() - 0.5) * 14;
-        const ly = (Math.random() - 0.5) * 3;
-        const lz = (Math.random() - 0.5) * 8;
-        const sc = 4 + Math.random() * 5;
-        for (const shift of [0, -span]) {
-          const puff = MeshBuilder.CreateSphere(`cloudPuff`, { diameter: 1, segments: 6 }, scene);
-          puff.position.set(cx + lx + shift, cy + ly, cz + lz);
-          puff.scaling.set(sc, sc * 0.55, sc);
-          puffs.push(puff);
-        }
+  const speed = 0.8; // м/с
+  const puffs: Mesh[] = [];
+  for (let i = 0; i < 9; i++) {
+    const cx = (Math.random() - 0.5) * span;
+    const cy = 50 + Math.random() * 25;
+    const cz = (Math.random() - 0.5) * span;
+    for (let p = 0; p < 3; p++) {
+      const lx = (p - 1) * 6 + (Math.random() - 0.5) * 3;
+      const lz = (Math.random() - 0.5) * 6;
+      const sc = (p === 1 ? 9 : 6) + Math.random() * 3; // средний кусок крупнее
+      for (const shift of [0, -span]) {
+        const puff = MeshBuilder.CreateIcoSphere("cloudPuff", { radius: 0.5, subdivisions: 1 }, scene);
+        puff.position.set(cx + lx + shift, cy, cz + lz);
+        puff.scaling.set(sc, sc * 0.5, sc);
+        puffs.push(puff);
       }
     }
-    const mesh = Mesh.MergeMeshes(puffs, true, true) as Mesh;
-    mesh.name = `cloud${groups.length}`;
-    mesh.material = mat;
-    mesh.isPickable = false;
-    mesh.applyFog = false;
-    groups.push({ mesh, speed, off: 0 });
   }
+  const mesh = Mesh.MergeMeshes(puffs, true, true) as Mesh;
+  mesh.name = "clouds";
+  mesh.material = mat;
+  mesh.isPickable = false;
+  mesh.applyFog = false;
 
+  let off = 0;
   scene.onBeforeRenderObservable.add(() => {
-    const dt = scene.getEngine().getDeltaTime() / 1000;
-    for (const g of groups) {
-      g.off = (g.off + g.speed * dt) % span;
-      g.mesh.position.x = g.off;
-    }
+    if (!mesh.isEnabled()) return;
+    off = (off + speed * (scene.getEngine().getDeltaTime() / 1000)) % span;
+    mesh.position.x = off;
   });
 
-  const FULL = 0.95; // непрозрачность облаков среди бела дня
   return {
     apply(d) {
       // Днём белые, на заре и закате малиновые — цвет берём из состояния часа.
       mat.emissiveColor.copyFrom(d.cloud);
-      mat.alpha = FULL * d.daylight;
-      const on = mat.alpha > 0.02;
-      for (const g of groups) {
-        if (g.mesh.isEnabled() !== on) g.mesh.setEnabled(on);
-      }
+      const a = d.daylight > 0.97 ? 1 : d.daylight;
+      if (mat.alpha !== a) mat.alpha = a;
+      // Глубину пишут только непрозрачные; флаг меняется лишь на переходе день/сумерки.
+      const fade = a < 1;
+      if (mat.disableDepthWrite !== fade) mat.disableDepthWrite = fade;
+      const on = a > 0.02;
+      if (mesh.isEnabled() !== on) mesh.setEnabled(on);
     },
   };
 }

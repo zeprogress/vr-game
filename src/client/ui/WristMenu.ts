@@ -774,9 +774,11 @@ export class WristMenu {
   // ---- рисование ----
 
   private hero(): HeroStats {
+    // С прибавкой от камней в кольцах — как считает сервер (attrOf читает gb).
     return {
       level: this.prog.level,
       ...this.prog.stats,
+      gb: this.bonus(),
     };
   }
 

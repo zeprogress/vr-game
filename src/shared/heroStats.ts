@@ -182,7 +182,8 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   // Удар — та же формула, что «Атака» у оружия (weaponHitDamage); без оружия — как меч базового тира.
   const dual = isDualPair(p.leftCls, p.rightCls) ? DUAL.dmg : 1;
   // Точка атаки за лом (уникальное и рубиновое): такая же прибавка к урону, как у роллов, — лучшая из двух рук.
-  const sharpMul = 1 + affixNum2("Точка атаки") / 100;
+  // affixNum уже в долях («Точка атаки +27.5%» → 0.275); раньше делили на 100 ещё раз — заточка в таблице почти не видна.
+  const sharpMul = 1 + affixNum2("Точка атаки");
   const hit = weaponHitDamage(cls || "sword", tier, p.level, p, dmgBonus) * dual * bm.dmg * sharpMul;
   rows.push({ label: "Урон", value: hit.toFixed(1) + (bm.dmg > 1 ? UP : "") });
   if (cls === "hammer") {

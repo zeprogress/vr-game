@@ -21,6 +21,8 @@ export interface HeroStats {
   con: number;
   luc: number;
   wis: number;
+  /** Прибавка от камней в кольцах (attrOf складывает её с атрибутом). */
+  gb?: Partial<Record<"str" | "agi" | "int" | "con" | "luc" | "wis", number>>;
 }
 
 const n1 = (v: number): string => (Math.round(v * 10) / 10).toFixed(1);
