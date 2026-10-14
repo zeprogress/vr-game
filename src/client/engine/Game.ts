@@ -2316,7 +2316,7 @@ export class Game {
             this.vrEnchResult,
             (idx) => {
               this.vrEnchResult = null;
-              this.net?.sendPcInvAct(isArmor ? { act: "armorEnchant", id, idx: 0 } : { act: "enchant", id, idx });
+              this.net?.sendPcInvAct({ act: isArmor ? "armorEnchant" : "enchant", id, idx });
             },
             () => {
               this.vrEnchResult = null;

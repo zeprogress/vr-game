@@ -1516,7 +1516,7 @@ export class PcInventory {
     const worn = d.armorWorn?.[a.part] === a.id;
     const ico = div(`pcinv-cell huge t-${a.tier}`);
     setIconEl(ico, armorIconKey(a.part, a.tier));
-    this.cardHead(head, ico, ARMOR_PART_NAME[a.part], `t-${a.tier}`, `Броня · оценка <b>${qualityStarsShort(a.pts, 1)}</b>`, worn ? "надета" : "", [div("pcinv-tipaff", a.label)]);
+    this.cardHead(head, ico, ARMOR_PART_NAME[a.part], `t-${a.tier}`, `Броня · оценка <b>${qualityStarsShort(a.pts, a.rolls)}</b>`, worn ? "надета" : "", [div("pcinv-tipaff", a.label)]);
     this.enchRows(body, a.id, a.ench, a.ench.map((r) => r.label), d.scrap);
     this.resultLine(body);
     body.append(div("pcinv-hint", "Чем ближе стат к максимуму — тем дороже и меньше шанс. При неудаче лом сгорает. Надетую броню можно точить на месте."));
@@ -1905,7 +1905,7 @@ export class PcInventory {
   private armorCell(a: PcInvArmor): HTMLDivElement {
     const c = div(`pcinv-cell t-${a.tier}${this.card?.kind === "armor" && this.card.id === a.id ? " sel" : ""}`);
     setIconEl(c, armorIconKey(a.part, a.tier));
-    c.append(div("pcinv-q", qualityStarsShort(a.pts, 1)));
+    c.append(div("pcinv-q", qualityStarsShort(a.pts, a.rolls)));
     // Как у оружия и колец: ★ видна у избранного; на телефоне пустую не показываем.
     if (!this.hooks.touch || a.fav) c.append(this.favStar(!!a.fav, () => this.toggleArmorFav(a.id)));
     if (!this.hooks.touch) c.addEventListener("click", () => this.openCard({ kind: "armor", id: a.id }));
@@ -1934,7 +1934,7 @@ export class PcInventory {
     const c = div(a ? `pcinv-cell big t-${a.tier}${this.card?.kind === "armor" && this.card.id === a.id ? " sel" : ""}` : "pcinv-cell big locked");
     setIconEl(c, armorIconKey(part, a?.tier));
     if (a) {
-      c.append(div("pcinv-q", qualityStarsShort(a.pts, 1)));
+      c.append(div("pcinv-q", qualityStarsShort(a.pts, a.rolls)));
       if (a.fav) c.append(div("pcinv-fav on", glyph("ui.fav")));
       c.addEventListener("mouseenter", () =>
         this.textTip(c, a.label, interactive ? `Надета: ${ARMOR_PART_NAME[part]}. Клик — карточка (заточка, снять)` : `Надета: ${ARMOR_PART_NAME[part]}`, a.tier),

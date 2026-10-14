@@ -1,6 +1,6 @@
 import colyseus from "colyseus";
 import { invHub, type InvActKind, type InvActResult } from "../invHub";
-import { armorBonusOf, armorEnchant, armorEnchantRow, armorLabel, armorPcView, armorQuality, armorScrap, sanitizeArmorList, wornArmorOf, ARMOR_PARTS, type ArmorInstance, type ArmorPart } from "#shared/armor";
+import { armorBonusOf, armorEnchant, armorEnchantRow, armorPcView, armorQuality, armorScrap, sanitizeArmorList, wornArmorOf, ARMOR_PARTS, type ArmorInstance, type ArmorPart } from "#shared/armor";
 import { devChat } from "../devChat";
 import type { Client } from "colyseus";
 
@@ -1094,23 +1094,24 @@ function sharpenTry(w: WeaponInstance, bag: Slot[]): InvActResult & { spent: boo
  * Одна попытка заточки брони: лом списывается в любом случае, как у оружия (шанс и цена — armorEnchantRow).
  * Удача — +1..3 очка к стату, не выше максимума. Мутирует a и bag.
  */
-function armorEnchantTry(a: ArmorInstance, bag: Slot[]): InvActResult {
-  const info = armorEnchantRow(a);
-  if (info.max) return { ok: false, text: "Эта броня уже на максимуме." };
+function armorEnchantTry(a: ArmorInstance, idx: number, bag: Slot[]): InvActResult {
+  const info = armorEnchantRow(a, idx);
+  if (!info) return { ok: false, text: "Такого свойства у брони нет." };
+  if (info.max) return { ok: false, text: "Это свойство уже на максимуме." };
   if (!takeFromBag(bag, "scrap", info.cost)) {
     return { ok: false, text: `Не хватает лома: нужно ${info.cost}, есть ${bagCount(bag, "scrap")}.` };
   }
   const up = Math.random() < info.chance;
-  const before = armorQuality(a);
+  const before = a.rolls[idx].pts;
   if (up) {
     const gain = ENCHANT.gainMin + Math.floor(Math.random() * (ENCHANT.gainMax - ENCHANT.gainMin + 1));
-    armorEnchant(a, gain);
+    armorEnchant(a, idx, gain);
   }
-  const label = armorLabel(a);
+  const label = armorEnchantRow(a, idx)!.label;
   return {
     ok: true,
     text: up ? `Заточка удалась: ${label}` : `Не вышло — лом сгорел (−${info.cost})`,
-    enchant: { id: a.id, idx: 0, up, gain: Math.round(armorQuality(a) - before), cost: info.cost, label },
+    enchant: { id: a.id, idx, up, gain: a.rolls[idx].pts - before, cost: info.cost, label },
   };
 }
 
@@ -5673,7 +5674,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const a = t.rt.armor.find((x) => x.id === id);
         if (!a) return { ok: false, text: "Этой брони уже нет в сумке." };
         const bag = readBag(t.p);
-        const r = armorEnchantTry(a, bag);
+        const r = armorEnchantTry(a, idx, bag);
         if (r.enchant) {
           writeBag(t.p, bag);
           this.applyArmor(t.id); // надетая часть — новый стат сразу в бонусах
@@ -5687,7 +5688,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const a = armor.find((x) => x.id === id);
       if (!rec || !a) return { ok: false, text: "Этой брони уже нет в сумке." };
       const bag = restoreBag(rec.bag);
-      const r = armorEnchantTry(a, bag);
+      const r = armorEnchantTry(a, idx, bag);
       if (r.enchant) store.put(token, { armor, bag });
       return r;
     }

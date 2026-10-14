@@ -146,20 +146,24 @@ export function rollArmor(part: ArmorPart, id: string, rnd: () => number = Math.
   return { id, part, tier, rolls };
 }
 
-/** Качество части — среднее очков её аффиксов (шкала 1..33): от него заточка, лом и значок «оценка». */
+/**
+ * Оценка части — СУММА очков её аффиксов, как у оружия (weaponQuality): у двух аффиксов — до 66.
+ * Любой новый тир брони — так же: каждый аффикс — свои очки, своя строка заточки (armorEnchantRows).
+ */
 export function armorQuality(a: ArmorInstance): number {
-  return a.rolls.reduce((s, r) => s + r.pts, 0) / a.rolls.length;
+  return a.rolls.reduce((s, r) => s + r.pts, 0);
 }
 
-/** Лом за разбор: 1 + округлённое качество / 11 — от 1 до 4 у обычной брони; у золотой ×ARMOR_GOLD.scrapMul. */
+/** Лом за разбор: 1 + среднее очков аффикса / 11 — от 1 до 4 у обычной брони; у золотой ×ARMOR_GOLD.scrapMul. */
 export function armorScrap(a: ArmorInstance): number {
-  const base = 1 + Math.round(armorQuality(a) / 11);
+  const base = 1 + Math.round(armorQuality(a) / a.rolls.length / 11);
   return a.tier === "gold" ? base * ARMOR_GOLD.scrapMul : base;
 }
 
-/** Заточка: удача поднимает очки каждого аффикса части на gain, не выше максимума. */
-export function armorEnchant(a: ArmorInstance, gain: number): void {
-  for (const r of a.rolls) r.pts = Math.min(ARMOR_POINTS_MAX, r.pts + gain);
+/** Заточка одного аффикса idx (как ролл оружия): удача поднимает его очки на gain, не выше максимума. */
+export function armorEnchant(a: ArmorInstance, idx: number, gain: number): void {
+  const r = a.rolls[idx];
+  if (r) r.pts = Math.min(ARMOR_POINTS_MAX, r.pts + gain);
 }
 
 /**
@@ -168,18 +172,28 @@ export function armorEnchant(a: ArmorInstance, gain: number): void {
  */
 export const ARMOR_ENCHANT_COST_MUL: Record<ArmorTier, number> = { base: 1 / 5, gold: 1 / 2 };
 
-/** Строка заточки брони (как строка ролла у оружия): шкала 1..33, та же кривая шанса; цена — по тиру; «качество» — среднее очков. */
-export function armorEnchantRow(a: ArmorInstance): EnchantInfo & { label: string } {
-  const q = armorQuality(a);
-  const { chance, cost } = enchantCurve(q, q / POINTS_MAX, ARMOR_ENCHANT_COST_MUL[a.tier]);
+/**
+ * Строка заточки аффикса idx — как строка ролла у оружия (enchantInfo): шанс по очкам ЭТОГО аффикса,
+ * цена — от них же и от общего качества части (сумма / (33 × число аффиксов)), множитель — по тиру.
+ */
+export function armorEnchantRow(a: ArmorInstance, idx: number): (EnchantInfo & { label: string }) | null {
+  const r = a.rolls[idx];
+  if (!r) return null;
+  const q = armorQuality(a) / (POINTS_MAX * a.rolls.length);
+  const { chance, cost } = enchantCurve(r.pts, q, ARMOR_ENCHANT_COST_MUL[a.tier]);
   return {
-    label: armorRollsText(a),
-    points: Math.round(q),
+    label: `${ARMOR_STAT_NAME[r.stat]} ${valueText(r.stat, armorRollValue(a, r))}`,
+    points: r.pts,
     of: POINTS_MAX,
-    max: a.rolls.every((r) => r.pts >= ARMOR_POINTS_MAX),
+    max: r.pts >= ARMOR_POINTS_MAX,
     chance,
     cost: Math.max(1, cost), // после кратного снижения низкие очки округлялись бы в ноль — заточка стала бы бесплатной
   };
+}
+
+/** Все строки заточки части — по одной на аффикс. */
+export function armorEnchantRows(a: ArmorInstance): (EnchantInfo & { label: string })[] {
+  return a.rolls.map((_, i) => armorEnchantRow(a, i)!);
 }
 
 /** Часть для окна сумки (PcInvArmor): подпись, лом и строка заточки — одинаково на сервере и на странице !inv. */
@@ -188,10 +202,11 @@ export function armorPcView(a: ArmorInstance): PcInvArmor {
     id: a.id,
     part: a.part,
     tier: a.tier,
-    pts: Math.round(armorQuality(a)),
+    pts: armorQuality(a),
+    rolls: a.rolls.length,
     scrap: armorScrap(a),
     label: armorLabel(a),
-    ench: [armorEnchantRow(a)],
+    ench: armorEnchantRows(a),
     fav: a.fav === true,
   };
 }
@@ -211,7 +226,8 @@ export function sanitizeArmorList(v: unknown): ArmorInstance[] {
     const tier: ArmorTier = a.tier === "gold" ? "gold" : "base";
     const raw = (Array.isArray(a.rolls) ? a.rolls : [{ stat: a.stat, pts: a.pts }]) as { stat?: unknown; pts?: unknown }[];
     const rolls: ArmorRoll[] = [];
-    for (const r of raw.slice(0, 2)) {
+    // Аффиксов — сколько угодно в пределах пула части (будущие тиры с 3+ аффиксами не обрезаются).
+    for (const r of raw.slice(0, ARMOR_POOL[part].length)) {
       if (typeof r?.stat !== "string" || !ARMOR_POOL[part].includes(r.stat as ArmorStat)) continue;
       if (rolls.some((x) => x.stat === r.stat)) continue;
       const pts = Number(r.pts);

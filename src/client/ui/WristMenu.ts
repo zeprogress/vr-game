@@ -1585,7 +1585,7 @@ export class WristMenu {
     // Оценка — в левом верхнем углу, как у оружия (числом).
     ctx.font = "bold 18px system-ui, sans-serif";
     ctx.fillStyle = "#f2c74b";
-    ctx.fillText(qualityStarsShort(a.pts, 1), x + 8, y + 18);
+    ctx.fillText(qualityStarsShort(a.pts, a.rolls), x + 8, y + 18);
     if (this.armorWorn[a.part] === a.id) {
       ctx.font = "16px system-ui, sans-serif";
       ctx.fillStyle = "#7ee081";
