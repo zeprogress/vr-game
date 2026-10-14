@@ -1515,7 +1515,7 @@ export class PcInventory {
     const worn = d.armorWorn?.[a.part] === a.id;
     const ico = div("pcinv-cell huge t-base");
     setIconEl(ico, armorIconKey(a.part));
-    this.cardHead(head, ico, ARMOR_PART_NAME[a.part], "t-base", `Броня · оценка <b>${qualityStarsShort(a.pts, 1)}</b>`, worn ? "надета" : "", [div("pcinv-tipaff", a.label)]);
+    this.cardHead(head, ico, ARMOR_PART_NAME[a.part], a.tier === "gold" ? "t-gold" : "t-base", `Броня · оценка <b>${qualityStarsShort(a.pts, 1)}</b>`, worn ? "надета" : "", [div("pcinv-tipaff", a.label)]);
     this.enchRows(body, a.id, a.ench, a.ench.map((r) => r.label), d.scrap);
     this.resultLine(body);
     body.append(div("pcinv-hint", "Чем ближе стат к максимуму — тем дороже и меньше шанс. При неудаче лом сгорает. Надетую броню можно точить на месте."));

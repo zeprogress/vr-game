@@ -252,7 +252,7 @@ export function tradeLog(e: { kind: "gift" | "trade"; from: { nick: string; toke
         : t.k === "ring"
           ? { k: t.k, id: t.r.id, tier: t.r.tier, gems: t.r.gems }
           : t.k === "armor"
-            ? { k: t.k, id: t.a.id, part: t.a.part, stat: t.a.stat, pts: t.a.pts }
+            ? { k: t.k, id: t.a.id, part: t.a.part, tier: t.a.tier, rolls: t.a.rolls }
             : t.k === "gem"
               ? { k: t.k, key: t.key, n: t.n }
               : { k: t.k, item: t.item, n: t.n },

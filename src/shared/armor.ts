@@ -1,7 +1,9 @@
 /**
- * Броня — этап 1: обычный тир, пять частей. Каждая часть даёт ОДИН стат, выпадающий случайно из пула
- * этой части. Лежит в общей сумке вместе с оружием и кольцами; заточка — та же кривая, что у оружия
- * (items.ts). Иконки — public/icons/armor (верхний ряд атласа «Атлас фэнтезийных доспехов»).
+ * Броня — два тира: обычный и золотой. У обычного каждая часть даёт ОДИН стат, выпадающий случайно из пула этой
+ * части. У золотого нагрудник и поножи — 1–2 стата, перчатки и сапоги — 1 стат, и каждый аффикс сильнее обычного
+ * (ARMOR_TIER_MUL). Статы в одной части не повторяются. Лежит в общей сумке вместе с оружием и кольцами; заточка —
+ * та же кривая, что у оружия (items.ts), её «качество» — среднее очков аффиксов части. Иконки — public/icons/armor
+ * (верхний ряд атласа «Атлас фэнтезийных доспехов»).
  *
  * Модуль без серверных и клиентских зависимостей: им пользуются и сервер (ролл, лом, бонусы, заточка),
  * и клиент (подписи, сумка). Из items.ts берутся только заточка и максимум очков.
@@ -34,7 +36,7 @@ export const ARMOR_STAT_NAME: Record<ArmorStat, string> = {
   dodge: "Уворот",
 };
 
-/** Пул стата по части: из него выпадает один — случайно. */
+/** Пул стата по части: из него выпадают аффиксы части — случайно, без повторов в одной части. */
 export const ARMOR_POOL: Record<ArmorPart, readonly ArmorStat[]> = {
   helm: ["hp", "magDef", "regen"],
   chest: ["hp", "physDef", "regen"],
@@ -56,85 +58,168 @@ export const ARMOR_RANGE: Record<ArmorStat, readonly [number, number]> = {
 export const ARMOR_POINTS_MAX = POINTS_MAX;
 
 /**
- * Шанс упасть одной части обычного тира за убийство: обычный и элитный моб, босс — отдельный шанс.
+ * Шанс упасть одной части ОБЫЧНОГО тира за убийство: обычный и элитный моб, босс — отдельный шанс.
  * Без угасания по уровню героя; в катакомбах падает так же.
  */
 export const ARMOR_DROP = { regular: 0.01, elite: 0.02, boss: 0.2 } as const;
+
+/** Тиры брони. */
+export type ArmorTier = "base" | "gold";
+
+export const ARMOR_TIER_NAME: Record<ArmorTier, string> = { base: "обычная", gold: "золотая" };
+
+/** Множитель значения КАЖДОГО аффикса по тиру. Золото — чуть сильнее обычного. */
+export const ARMOR_TIER_MUL: Record<ArmorTier, number> = { base: 1, gold: 1.2 };
+
+/**
+ * Золото. Аффиксов у нагрудника и поножей — 1 или 2 (два с шансом twoChance); у перчаток и сапог — всегда 1.
+ * dropDiv — во сколько раз золотая часть падает реже обычной (с обычного и элитного моба); у босса золото
+ * заменяет обычную часть — тот же шанс ARMOR_DROP.boss, выпадает золотая. scrapMul — лом с золотой части ×.
+ */
+export const ARMOR_GOLD = { twoChance: 0.3, dropDiv: 2, scrapMul: 2 } as const;
+const TWO_AFFIX_PARTS: readonly ArmorPart[] = ["chest", "legs"];
+
+/** Шанс золотой части за убийство: обычный и элитный моб — в dropDiv раз реже обычной; босс — ARMOR_DROP.boss (вместо обычной). */
+export function armorGoldDropChance(kind: "regular" | "elite" | "boss"): number {
+  return kind === "boss" ? ARMOR_DROP.boss : ARMOR_DROP[kind] / ARMOR_GOLD.dropDiv;
+}
+
+/** Один аффикс части: стат и очки ролла (1..33). */
+export interface ArmorRoll {
+  stat: ArmorStat;
+  pts: number;
+}
 
 /** Предмет брони: в сумке или надетый. */
 export interface ArmorInstance {
   id: string;
   part: ArmorPart;
-  /** Тир. Пока только обычный; золотой/уникальный/рубиновый/эпический — следующими этапами. */
-  tier: "base";
-  stat: ArmorStat;
-  /** Очки ролла, 1..33. */
-  pts: number;
+  tier: ArmorTier;
+  /** Аффиксы части: у обычного тира — один; у золотого — 1–2 (нагрудник, поножи) или 1. */
+  rolls: ArmorRoll[];
   /** ★ Избранное — как у оружия: не разбирается, не передаётся, в общем лимите ★ (FAV_MAX). */
   fav?: boolean;
 }
 
-/** Значение стата по очкам: линейно по диапазону. */
+/** Значение стата по очкам: линейно по диапазону (без учёта тира). */
 export function armorValue(stat: ArmorStat, pts: number): number {
   const [lo, hi] = ARMOR_RANGE[stat];
   const p = Math.max(1, Math.min(ARMOR_POINTS_MAX, pts));
   return lo + ((hi - lo) * (p - 1)) / (ARMOR_POINTS_MAX - 1);
 }
 
+/** Значение одного аффикса части с учётом её тира. */
+export function armorRollValue(a: { tier: ArmorTier }, r: ArmorRoll): number {
+  return armorValue(r.stat, r.pts) * ARMOR_TIER_MUL[a.tier];
+}
+
 /** Текст значения для игрока: «+2.3%», для регенерации — «+0.10%/с». */
-export function armorValueText(stat: ArmorStat, pts: number): string {
-  const v = armorValue(stat, pts) * 100;
+function valueText(stat: ArmorStat, value: number): string {
+  const v = value * 100;
   return stat === "regen" ? `+${v.toFixed(2)}%/с` : `+${v.toFixed(1)}%`;
 }
 
-/** Подпись предмета: «Шлем · Здоровье +2.3%». */
+/** Все аффиксы части для текста: «Здоровье +2.3% · Физ. защита +1.5%». */
+export function armorRollsText(a: ArmorInstance): string {
+  return a.rolls.map((r) => `${ARMOR_STAT_NAME[r.stat]} ${valueText(r.stat, armorRollValue(a, r))}`).join(" · ");
+}
+
+/** Подпись предмета: «Шлем · Здоровье +2.3%», у золотого — «Нагрудник (золото) · …». */
 export function armorLabel(a: ArmorInstance): string {
-  return `${ARMOR_PART_NAME[a.part]} · ${ARMOR_STAT_NAME[a.stat]} ${armorValueText(a.stat, a.pts)}`;
+  const head = `${ARMOR_PART_NAME[a.part]}${a.tier === "gold" ? " (золото)" : ""}`;
+  return `${head} · ${armorRollsText(a)}`;
 }
 
-/** Раскатать часть: случайный стат из её пула, случайные очки 1..33. */
-export function rollArmor(part: ArmorPart, id: string, rnd: () => number = Math.random): ArmorInstance {
-  const pool = ARMOR_POOL[part];
-  const stat = pool[Math.floor(rnd() * pool.length)];
-  const pts = 1 + Math.floor(rnd() * ARMOR_POINTS_MAX);
-  return { id, part, tier: "base", stat, pts };
+/**
+ * Раскатать часть. Обычный тир — один стат из пула части. Золото — нагрудник и поножи с шансом twoChance
+ * получают два стата (без повтора), остальные части — один. Очки каждого аффикса — случайно 1..33.
+ */
+export function rollArmor(part: ArmorPart, id: string, rnd: () => number = Math.random, tier: ArmorTier = "base"): ArmorInstance {
+  const pool = [...ARMOR_POOL[part]];
+  const count = tier === "gold" && TWO_AFFIX_PARTS.includes(part) && rnd() < ARMOR_GOLD.twoChance ? 2 : 1;
+  const rolls: ArmorRoll[] = [];
+  for (let i = 0; i < count; i++) {
+    const stat = pool.splice(Math.floor(rnd() * pool.length), 1)[0] as ArmorStat;
+    const pts = 1 + Math.floor(rnd() * ARMOR_POINTS_MAX);
+    rolls.push({ stat, pts });
+  }
+  return { id, part, tier, rolls };
 }
 
-/** Лом за разбор: 1 + округлённые очки / 11 — от 1 до 4 у обычной брони. */
+/** Качество части — среднее очков её аффиксов (шкала 1..33): от него заточка, лом и значок «оценка». */
+export function armorQuality(a: ArmorInstance): number {
+  return a.rolls.reduce((s, r) => s + r.pts, 0) / a.rolls.length;
+}
+
+/** Лом за разбор: 1 + округлённое качество / 11 — от 1 до 4 у обычной брони; у золотой ×ARMOR_GOLD.scrapMul. */
 export function armorScrap(a: ArmorInstance): number {
-  return 1 + Math.round(a.pts / 11);
+  const base = 1 + Math.round(armorQuality(a) / 11);
+  return a.tier === "gold" ? base * ARMOR_GOLD.scrapMul : base;
 }
 
-/** Строка заточки брони (как строка ролла у оружия): шкала 1..33, та же кривая шанса и цены; «качество» — очки части. */
+/** Заточка: удача поднимает очки каждого аффикса части на gain, не выше максимума. */
+export function armorEnchant(a: ArmorInstance, gain: number): void {
+  for (const r of a.rolls) r.pts = Math.min(ARMOR_POINTS_MAX, r.pts + gain);
+}
+
+/**
+ * Цена заточки по тиру — множитель к общей кривой (items.ts). Обычная броня — в 5 раз дешевле, золотая — в 2 раза
+ * дешевле обычной кривой. Шанс заточки не меняется.
+ */
+export const ARMOR_ENCHANT_COST_MUL: Record<ArmorTier, number> = { base: 1 / 5, gold: 1 / 2 };
+
+/** Строка заточки брони (как строка ролла у оружия): шкала 1..33, та же кривая шанса; цена — по тиру; «качество» — среднее очков. */
 export function armorEnchantRow(a: ArmorInstance): EnchantInfo & { label: string } {
-  const { chance, cost } = enchantCurve(a.pts, a.pts / POINTS_MAX);
+  const q = armorQuality(a);
+  const { chance, cost } = enchantCurve(q, q / POINTS_MAX, ARMOR_ENCHANT_COST_MUL[a.tier]);
   return {
-    label: `${ARMOR_STAT_NAME[a.stat]} ${armorValueText(a.stat, a.pts)}`,
-    points: a.pts,
+    label: armorRollsText(a),
+    points: Math.round(q),
     of: POINTS_MAX,
-    max: a.pts >= ARMOR_POINTS_MAX,
+    max: a.rolls.every((r) => r.pts >= ARMOR_POINTS_MAX),
     chance,
-    cost,
+    cost: Math.max(1, cost), // после кратного снижения низкие очки округлялись бы в ноль — заточка стала бы бесплатной
   };
 }
 
 /** Часть для окна сумки (PcInvArmor): подпись, лом и строка заточки — одинаково на сервере и на странице !inv. */
 export function armorPcView(a: ArmorInstance): PcInvArmor {
-  return { id: a.id, part: a.part, stat: a.stat, pts: a.pts, scrap: armorScrap(a), label: armorLabel(a), ench: [armorEnchantRow(a)], fav: a.fav === true };
+  return {
+    id: a.id,
+    part: a.part,
+    tier: a.tier,
+    pts: Math.round(armorQuality(a)),
+    scrap: armorScrap(a),
+    label: armorLabel(a),
+    ench: [armorEnchantRow(a)],
+    fav: a.fav === true,
+  };
 }
 
-/** Сохранённый список брони → только корректные предметы (старые/битые записи пропускаем). */
+/**
+ * Сохранённый список брони → только корректные предметы (старые/битые записи пропускаем).
+ * Старый формат (один стат и очки на часть) читается как один аффикс обычного тира.
+ */
 export function sanitizeArmorList(v: unknown): ArmorInstance[] {
   if (!Array.isArray(v)) return [];
   const out: ArmorInstance[] = [];
   for (const x of v) {
     if (!x || typeof x !== "object") continue;
-    const a = x as { id?: unknown; part?: unknown; stat?: unknown; pts?: unknown; fav?: unknown };
+    const a = x as { id?: unknown; part?: unknown; tier?: unknown; rolls?: unknown; stat?: unknown; pts?: unknown; fav?: unknown };
     if (typeof a.id !== "string" || !(ARMOR_PARTS as readonly unknown[]).includes(a.part)) continue;
-    if (typeof a.stat !== "string" || !(a.stat in ARMOR_RANGE)) continue;
-    const pts = Number(a.pts);
-    if (!Number.isFinite(pts)) continue;
-    const inst: ArmorInstance = { id: a.id, part: a.part as ArmorPart, tier: "base", stat: a.stat as ArmorStat, pts: Math.max(1, Math.min(ARMOR_POINTS_MAX, Math.round(pts))) };
+    const part = a.part as ArmorPart;
+    const tier: ArmorTier = a.tier === "gold" ? "gold" : "base";
+    const raw = (Array.isArray(a.rolls) ? a.rolls : [{ stat: a.stat, pts: a.pts }]) as { stat?: unknown; pts?: unknown }[];
+    const rolls: ArmorRoll[] = [];
+    for (const r of raw.slice(0, 2)) {
+      if (typeof r?.stat !== "string" || !ARMOR_POOL[part].includes(r.stat as ArmorStat)) continue;
+      if (rolls.some((x) => x.stat === r.stat)) continue;
+      const pts = Number(r.pts);
+      if (!Number.isFinite(pts)) continue;
+      rolls.push({ stat: r.stat as ArmorStat, pts: Math.max(1, Math.min(ARMOR_POINTS_MAX, Math.round(pts))) });
+    }
+    if (rolls.length === 0) continue;
+    const inst: ArmorInstance = { id: a.id, part, tier, rolls };
     if (a.fav === true) inst.fav = true;
     out.push(inst);
   }
@@ -156,7 +241,7 @@ export type ArmorBonus = Record<ArmorStat, number>;
 
 export function armorBonusOf(worn: readonly ArmorInstance[]): ArmorBonus {
   const b: ArmorBonus = { hp: 0, physDef: 0, magDef: 0, regen: 0, dodge: 0 };
-  for (const a of worn) b[a.stat] += armorValue(a.stat, a.pts);
+  for (const a of worn) for (const r of a.rolls) b[r.stat] += armorRollValue(a, r);
   return b;
 }
 

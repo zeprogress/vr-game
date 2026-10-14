@@ -5,7 +5,7 @@ import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { RAID } from "#shared/raid";
 import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, eliteXpAt, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
 import { DUN_MOB_CAMPS, dunProject, dunWorld, inDunRegion } from "#shared/dungeon";
-import { ARMOR_DROP, ARMOR_PARTS, rollArmor, type ArmorInstance } from "#shared/armor";
+import { ARMOR_DROP, ARMOR_PARTS, armorGoldDropChance, rollArmor, type ArmorInstance } from "#shared/armor";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
 import { PLAGUE } from "#shared/classes2";
 import { catProject, inCatRegion } from "#shared/catacombs";
@@ -2119,10 +2119,11 @@ class Drop {
     readonly armor?: ArmorInstance,
   ) {}
 
-  /** true — пора убрать. Оружие и броня лежат дольше обычного лута (BAG.weaponDropLife, 15 минут против 5). */
+  /** true — пора убрать. Оружие лежит 10 минут (BAG.weaponDropLife), броня 5 (BAG.armorDropLife), остальное — 3 (BAG.dropLife). */
   tick(dt: number): boolean {
     this.life += dt;
-    return this.life > (ITEMS[this.item].weapon || this.armor ? BAG.weaponDropLife : BAG.dropLife);
+    const max = this.armor ? BAG.armorDropLife : ITEMS[this.item].weapon ? BAG.weaponDropLife : BAG.dropLife;
+    return this.life > max;
   }
 }
 
@@ -2595,6 +2596,11 @@ export class ZoneSim {
   raidBossId = "";
   /** Доля урона атакующего по рейд-боссу (ставит ZoneRoom по бою raidFight): 0 — «MISS»; null — полный всегда. */
   raidDmgMul: ((attacker: string) => number) | null = null;
+  /**
+   * Добыча обычного моба — сразу в инвентарь убийцы (ставит ZoneRoom). Возвращает, сколько НЕ влезло:
+   * остаток падает на землю. Не задано, босс и катакомбы — всё падает на землю, как раньше.
+   */
+  lootSink: ((owner: string, loot: { id: ItemId; count: number; instance?: WeaponInstance; armor?: ArmorInstance }) => number) | null = null;
   /** Текущая сессия урона по пугалу: кто бьёт, когда начал/последний удар, сумма, самый сильный удар. */
   private readonly scares = new Map<string, { by: string; start: number; last: number; total: number; max: number }>();
   /** Табло пугала: кто бьёт, урон в секунду, самый сильный удар (null — давно никто не бил). */
@@ -3722,23 +3728,40 @@ export class ZoneSim {
         if (item) rolled.push({ id: item, count: 1 });
       }
     }
-    // Броня (обычный тир): одна случайная часть. Шанс не угасает с уровнем героя и не зависит от катакомб.
+    // Броня: обычная и золотая часть — отдельные шансы. Не угасают с уровнем героя и не зависят от катакомб.
     if (m.kind !== "shard") {
-      const base = m.kind === "boss" ? ARMOR_DROP.boss : m.eliteName !== "" ? ARMOR_DROP.elite : ARMOR_DROP.regular;
+      const kind = m.kind === "boss" ? "boss" : m.eliteName !== "" ? "elite" : "regular";
       const champMul = m.kind !== "boss" && m.champ ? QUEST.champ.dropMul : 1;
-      if (Math.random() < base * champMul) {
-        const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
-        rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid()) });
+      if (kind === "boss") {
+        // У босса золото заменяет обычную часть: тот же шанс, выпадает золотая.
+        if (Math.random() < armorGoldDropChance("boss")) {
+          const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
+          rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "gold") });
+        }
+      } else {
+        // Обычный и элитный моб: обычная и золотая часть — два независимых шанса; золото реже в ARMOR_GOLD.dropDiv раз.
+        if (Math.random() < ARMOR_DROP[kind] * champMul) {
+          const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
+          rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid()) });
+        }
+        if (Math.random() < armorGoldDropChance(kind) * champMul) {
+          const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
+          rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "gold") });
+        }
       }
     }
+    // Обычный моб убит игроком: добыча сразу в его инвентарь, на землю — только остаток (что не влезло).
+    const sink = attacker && m.kind !== "boss" && !inCatRegion(m.x, m.z) ? this.lootSink : null;
     for (const { id, count, aegis, armor } of rolled) {
+      const w = ITEMS[id].weapon;
+      const instance = w ? (aegis ? rollAegisInstance() : rollWeaponInstance(w.cls, w.tier)) : undefined;
+      const left = sink ? sink(attacker, { id, count, instance, armor }) : count;
+      if (left <= 0) continue;
       const a = Math.random() * Math.PI * 2;
       const r = Math.random() * BAG.dropSpread;
       const x = m.x + Math.cos(a) * r;
       const z = m.z + Math.sin(a) * r;
-      const w = ITEMS[id].weapon;
-      const instance = w ? (aegis ? rollAegisInstance() : rollWeaponInstance(w.cls, w.tier)) : undefined;
-      const d = new Drop(id, count, x, terrainHeight(x, z) + BAG.dropHeight, z, instance, armor);
+      const d = new Drop(id, left, x, terrainHeight(x, z) + BAG.dropHeight, z, instance, armor);
       // Бронь за добившим — иначе чужой бот-зритель рядом утащит трофей
       // быстрее, чем игрок успеет подойти (раздел 8 плана).
       if (attacker) {

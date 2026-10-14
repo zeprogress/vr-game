@@ -75,16 +75,8 @@ const BOT_TAG_SCALE = 2.1;
  * около 30 см — для чужой модели незаметно).
  */
 const BOT_POS_TAU = 0.1;
-/**
- * Телепорт (респавн, рывок ассасина): скачок за один снапшот больше этого плюс то, что успеваем пройти
- * за реальный промежуток между снапшотами (CATCH_SPEED). Ставим сразу, без догонки.
- */
-const TELEPORT_DIST = 8;
-/**
- * Догоняем позицию не быстрее этого, м/с (примерно вдвое быстрее бега). Пауза кадра у зрителя копит путь,
- * и интерполяция отдаёт его сразу — метры за один кадр, бот «летит». Догоняем плавно, за несколько кадров.
- */
-const CATCH_SPEED = 14;
+/** Скачок больше этого — телепорт (респавн), фильтр не тянем, ставим сразу. */
+const BOT_POS_SNAP = 5;
 
 export type MakeWeapon = (cls: WeaponClass, tier: WeaponTier) => Mesh;
 
@@ -259,8 +251,6 @@ export class RemoteAvatar implements Hittable {
   private locoMove = false;
   private readonly _smoothPos = new Vector3();
   private smoothInit = false;
-  /** Пришёл телепорт (см. TELEPORT_DIST): позицию ставим сразу, без догонки. */
-  private teleported = false;
   private swingUntil = 0;
   /** Скорость клипа замаха, с которой его запустил триггер. */
   private swingRate = 1;
@@ -731,15 +721,11 @@ export class RemoteAvatar implements Hittable {
     ) {
       return;
     }
-    // Телепорт (респавн, рывок ассасина) — не тащим модель интерполяцией через всю карту. Скачок, который
-    // успеваем пройти за реальный промежуток между снапшотами, — не телепорт: это пауза кадра у зрителя,
-    // модель тогда догоняет плавно (см. smoothRootPos), а не одним кадром.
-    const gapS = this.lastPushRaw > 0 ? (now - this.lastPushRaw) / 1000 : 0;
-    if (last && Math.hypot(h.x - last.head[0], h.z - last.head[2]) > TELEPORT_DIST + CATCH_SPEED * gapS) {
+    // Телепорт (респавн) — не тащим модель интерполяцией через всю карту.
+    if (last && (Math.abs(h.x - last.head[0]) > 8 || Math.abs(h.z - last.head[2]) > 8)) {
       for (const old of this.buf) this.snapPool.push(old);
       this.buf.length = 0;
       last = undefined;
-      this.teleported = true;
     }
     // Снапшоты приходят ровным темпом на сервере, но НАБЛЮДАЕМ мы их на границах
     // кадров рендера (кэп 30 fps → интервал прыгает 33/66 мс). Если ставить метку
@@ -871,13 +857,12 @@ export class RemoteAvatar implements Hittable {
         this.freezeBotPose();
       } else {
         this.applyBodyAndHeadXf(a.head, b.head, s);
-        this.smoothRootPos(dt);
+        this.smoothBotPos(dt);
         if (this.botRig) this.stepBotLocomotion(now, dt);
         else this.animateSwing(now);
       }
     } else {
       this.applyXf(this.root, this.head.rotationQuaternion!, a.head, b.head, s, true);
-      this.smoothRootPos(dt);
       if (this.mode === "vr") {
         this.applyXf(this.handL!, this.handL!.rotationQuaternion!, a.handL, b.handL, s, false);
         this.applyXf(this.handR!, this.handR!.rotationQuaternion!, a.handR, b.handR, s, false);
@@ -1067,30 +1052,23 @@ export class RemoteAvatar implements Hittable {
     }
   }
 
-  /**
-   * Съедает ступеньки в позиции аватара (см. BOT_POS_TAU) и догоняет после паузы кадра не быстрее
-   * CATCH_SPEED. Телепорт (флаг из push) — ставим сразу.
-   */
-  private smoothRootPos(dt: number): void {
+  /** Съедает ступеньки в позиции бота (см. BOT_POS_TAU). */
+  private smoothBotPos(dt: number): void {
     const p = this.root.position;
-    if (!this.smoothInit || this.teleported) {
+    if (!this.smoothInit) {
       this._smoothPos.copyFrom(p);
       this.smoothInit = true;
-      this.teleported = false;
+      return;
+    }
+    const jump = Math.hypot(p.x - this._smoothPos.x, p.z - this._smoothPos.z);
+    if (jump > BOT_POS_SNAP) {
+      this._smoothPos.copyFrom(p); // респавн — догонять нечего
       return;
     }
     const k = 1 - Math.exp(-dt / BOT_POS_TAU);
-    let dx = (p.x - this._smoothPos.x) * k;
-    let dz = (p.z - this._smoothPos.z) * k;
-    const cap = CATCH_SPEED * dt;
-    const len = Math.hypot(dx, dz);
-    if (len > cap) {
-      dx *= cap / len;
-      dz *= cap / len;
-    }
-    this._smoothPos.x += dx;
+    this._smoothPos.x += (p.x - this._smoothPos.x) * k;
     this._smoothPos.y += (p.y - this._smoothPos.y) * k;
-    this._smoothPos.z += dz;
+    this._smoothPos.z += (p.z - this._smoothPos.z) * k;
     p.copyFrom(this._smoothPos);
   }
 

@@ -1,6 +1,6 @@
 import colyseus from "colyseus";
 import { invHub, type InvActKind, type InvActResult } from "../invHub";
-import { armorBonusOf, armorEnchantRow, armorLabel, armorPcView, armorScrap, sanitizeArmorList, wornArmorOf, ARMOR_PARTS, ARMOR_POINTS_MAX, type ArmorInstance, type ArmorPart } from "#shared/armor";
+import { armorBonusOf, armorEnchant, armorEnchantRow, armorLabel, armorPcView, armorQuality, armorScrap, sanitizeArmorList, wornArmorOf, ARMOR_PARTS, type ArmorInstance, type ArmorPart } from "#shared/armor";
 import { devChat } from "../devChat";
 import type { Client } from "colyseus";
 
@@ -1096,16 +1096,16 @@ function armorEnchantTry(a: ArmorInstance, bag: Slot[]): InvActResult {
     return { ok: false, text: `Не хватает лома: нужно ${info.cost}, есть ${bagCount(bag, "scrap")}.` };
   }
   const up = Math.random() < info.chance;
-  const before = a.pts;
+  const before = armorQuality(a);
   if (up) {
     const gain = ENCHANT.gainMin + Math.floor(Math.random() * (ENCHANT.gainMax - ENCHANT.gainMin + 1));
-    a.pts = Math.min(ARMOR_POINTS_MAX, a.pts + gain);
+    armorEnchant(a, gain);
   }
   const label = armorLabel(a);
   return {
     ok: true,
     text: up ? `Заточка удалась: ${label}` : `Не вышло — лом сгорел (−${info.cost})`,
-    enchant: { id: a.id, idx: 0, up, gain: a.pts - before, cost: info.cost, label },
+    enchant: { id: a.id, idx: 0, up, gain: Math.round(armorQuality(a) - before), cost: info.cost, label },
   };
 }
 
@@ -1411,6 +1411,8 @@ export class ZoneRoom extends Room<ZoneState> {
     // работает и для живых игроков (sessionId), и для ботов ("bot:<ник>"):
     // и те, и другие лежат в state.players.
     this.sim.getAttackerLevel = (id) => this.state.players.get(id)?.level ?? 1;
+    // Добыча обычного моба — сразу в инвентарь убийцы-игрока (остаток упадёт на землю, см. collectMobLoot).
+    this.sim.lootSink = (owner, loot) => this.collectMobLoot(owner, loot);
     // Рейд-босса ранят только с арены; из разрыва орбиты — полный урон, вне — доля (raidFight.hitMul).
     this.sim.raidDmgMul = (id) => {
       const p = this.state.players.get(id);
@@ -4963,7 +4965,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const cur = rt.armorWorn[part];
       if (cur && rt.armor.some((x) => x.id === cur && x.part === part)) continue;
       let best: ArmorInstance | undefined;
-      for (const a of rt.armor) if (a.part === part && (!best || a.pts > best.pts)) best = a;
+      for (const a of rt.armor) if (a.part === part && (!best || armorQuality(a) > armorQuality(best))) best = a;
       if (best) rt.armorWorn[part] = best.id;
     }
   }
@@ -10575,6 +10577,41 @@ export class ZoneRoom extends Room<ZoneState> {
         }
       }
     });
+  }
+
+  /**
+   * Добыча обычного моба — сразу в инвентарь убийцы-игрока: расходники и сырьё в сумку, оружие и броня в склад
+   * (там без лимита). Возвращает то, что не влезло в сумку: его уронит ZoneSim на землю. Ботов не трогаем —
+   * лут им подбирает botTakeDrop.
+   */
+  private collectMobLoot(owner: string, loot: { id: ItemId; count: number; instance?: WeaponInstance; armor?: ArmorInstance }): number {
+    if (owner.startsWith("bot:")) return loot.count;
+    const p = this.state.players.get(owner);
+    const rt = this.rt.get(owner);
+    if (!p || !rt || p.dead) return loot.count;
+    const client = this.clientOf(owner);
+    if (loot.armor) {
+      rt.armor.push(loot.armor);
+      client?.send(MSG.picked, { item: "armor", count: 1 });
+      return 0;
+    }
+    const w = ITEMS[loot.id].weapon;
+    if (w) {
+      if (!loot.instance) return loot.count;
+      rt.owned.add(weaponKey(w.cls, w.tier));
+      rt.weapons.push(loot.instance);
+      this.announcePickup(p.nick, w.cls, w.tier, loot.instance);
+      client?.send(MSG.picked, { item: loot.id, count: 1 });
+      return 0;
+    }
+    const bag = readBag(p);
+    const left = addToBag(bag, loot.id, loot.count);
+    const taken = loot.count - left;
+    if (taken > 0) {
+      writeBag(p, bag);
+      client?.send(MSG.picked, { item: loot.id, count: taken });
+    }
+    return left;
   }
 
   private respawn(id: string, p: PlayerState, rt: Runtime): void {
