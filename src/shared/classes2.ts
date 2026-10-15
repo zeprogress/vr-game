@@ -425,7 +425,7 @@ export const HAMMER_SKILL = { intPer: 0.06 } as const;
 /** «Грозовое поле» молота: круг на duration с радиусом radius; каждые 0.5 с молния бьёт магией ×boltMul и оглушает на stunSec. */
 export const HAMMER_FIELD = { duration: 4, radius: 8, boltMul: 0.5, stunSec: 0.2 } as const;
 /** «Громовой вихрь» молота: последний удар вихря бьёт молнией соседа в range м; множитель ×minMul → ×maxMul от интеллекта (полная шкала — intFull очков сверх старта). */
-export const THUNDER_SPIN = { range: 7, minMul: 3, maxMul: 4, intFull: 30 } as const;
+export const THUNDER_SPIN = { range: 7, minMul: 2, maxMul: 3, intFull: 30 } as const; // молния ×2 → ×3 (было ×3 → ×4, 2026-10-15)
 /** «Цепная молния» молота: hops скачков; задетые получают +vulnMul% урона от молота на vulnSec. */
 export const CHAIN_HAMMER = { hops: 5, vulnMul: 1.2, vulnSec: 5 } as const;
 
