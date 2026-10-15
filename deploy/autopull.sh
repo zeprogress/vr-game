@@ -8,6 +8,11 @@ set -euo pipefail
 APPDIR=/opt/vrgame
 cd "$APPDIR"
 
+# Общий замок с быстрым деплоем (deploy/fast.sh): пока он подменяет dist — ждём,
+# а потом видим .built == origin/main и выходим без сборки.
+exec 9>/run/vrgame-deploy.lock
+flock 9
+
 # 1 ядро / 1 ГБ: сборку чуть придерживаем по приоритету, чтобы игровой сервер
 # не голодал. НЕ idle-класс (на busy-боксе сборка могла зависнуть навсегда).
 LOW="nice -n 10"
@@ -30,7 +35,12 @@ fi
 echo "autopull: сборка $REMOTE (последняя успешная: $BUILT)"
 free -h | sed 's/^/autopull: /' # видно, если сборка потом упадёт по памяти
 sudo -u vrgame git merge --ff-only origin/main || sudo -u vrgame git reset --hard "$REMOTE"
-sudo -u vrgame $LOW npm ci
+# Зависимости — только если сменился package-lock (метка — в node_modules; так же в fast-remote.sh).
+LOCKH=$(sudo -u vrgame git rev-parse HEAD:package-lock.json)
+if [ "$(cat node_modules/.vrgame-lock 2>/dev/null)" != "$LOCKH" ]; then
+  sudo -u vrgame $LOW npm ci
+  sudo -u vrgame sh -c "echo $LOCKH > node_modules/.vrgame-lock"
+fi
 sudo -u vrgame rm -rf dist.new
 
 # Перед сборкой — сбросить кэш страниц (освободить RAM), и до 3 попыток подряд:
@@ -46,6 +56,8 @@ done
 
 if [ "$build_ok" = 1 ]; then
   sudo -u vrgame sh -c "echo $REMOTE > dist.new/.built"
+  # Кэш озвучки чата живёт в dist/tts — переносим в новую сборку.
+  if [ -d dist/tts ]; then sudo -u vrgame mv dist/tts dist.new/tts; fi
   sudo -u vrgame rm -rf dist.old
   [ -d dist ] && sudo -u vrgame mv dist dist.old
   sudo -u vrgame mv dist.new dist

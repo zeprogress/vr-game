@@ -128,8 +128,6 @@ export const ICONS = {
   "st.critx": { emoji: "✴", box: "0 0 20 20", svg: `<path d="M10 2l2 5 5.3.4-4 3.4 1.3 5.2L10 13.2 5.4 16l1.3-5.2-4-3.4L8 7z" fill="currentColor"/>` },
   "st.pdef": { emoji: "🛡", box: "0 0 20 20", svg: `<path d="M10 2l6.5 2.5v4.8c0 4.2-2.8 7.2-6.5 8.7-3.7-1.5-6.5-4.5-6.5-8.7V4.5z" fill="currentColor"/>` },
   "st.mdef": { emoji: "🔰", box: "0 0 20 20", svg: g(`fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"`, `<path d="M10 2l6.5 2.5v4.8c0 4.2-2.8 7.2-6.5 8.7-3.7-1.5-6.5-4.5-6.5-8.7V4.5z"/><path d="M10 6.5v7M6.8 10h6.4"/>`) },
-  // Броня моба от дальнего боя (стрелы, огнешары, град): щит со стрелой.
-  "st.rdef": { emoji: "🏹", box: "0 0 20 20", svg: g(`fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"`, `<path d="M10 2l6.5 2.5v4.8c0 4.2-2.8 7.2-6.5 8.7-3.7-1.5-6.5-4.5-6.5-8.7V4.5z"/><path d="M6.8 13.2l6.4-6.4M9.6 6.8h3.6v3.6"/>`) },
   "st.regen": { emoji: "💧", box: "0 0 20 20", svg: `<path d="M10 2.5c3.2 4.2 5.2 6.6 5.2 9.1a5.2 5.2 0 0 1-10.4 0c0-2.5 2-4.9 5.2-9.1z" fill="currentColor"/>` },
   "st.vamp": { emoji: "🩸", box: "0 0 20 20", svg: g(`fill="currentColor"`, `<path d="M6 3h8l-1.2 5.5L10 17l-2.8-8.5z"/>`) },
   "st.block": { emoji: "🛡", box: "0 0 20 20", svg: g(`fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"`, `<path d="M10 2l6.5 2.5v4.8c0 4.2-2.8 7.2-6.5 8.7-3.7-1.5-6.5-4.5-6.5-8.7V4.5z"/><path d="M6.5 10.5l2.5 2.5 4.5-5" stroke-linecap="round"/>`) },

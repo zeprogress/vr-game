@@ -678,12 +678,29 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   },
 };
 
-/** Защиты моба битами — MobState.armor; клиент рисует значки справа от уровня на плашке (MOB_ARMOR_LOOK). */
-export const MOB_ARMOR = { phys: 1, ranged: 2, magic: 4 } as const;
+/**
+ * Защиты моба битами — MobState.armor; клиент рисует значки справа от уровня на плашке (MOB_ARMOR_LOOK):
+ * броня (физ., от дальнего боя, маг.), уворот, отбивание ударов (теневая стойка), щит отражения.
+ */
+export const MOB_ARMOR = { phys: 1, ranged: 2, magic: 4, dodge: 8, parry: 16, reflect: 32 } as const;
 
-/** Биты защит по долям брони моба (physArmor / rangedArmor / magicArmor > 0). */
-export function mobArmorBits(m: { readonly physArmor: number; readonly rangedArmor: number; readonly magicArmor: number }): number {
-  return (m.physArmor > 0 ? MOB_ARMOR.phys : 0) | (m.rangedArmor > 0 ? MOB_ARMOR.ranged : 0) | (m.magicArmor > 0 ? MOB_ARMOR.magic : 0);
+/** Биты защит по свойствам моба (доли брони > 0, уворот > 0, отбивание, щит отражения). */
+export function mobArmorBits(m: {
+  readonly physArmor: number;
+  readonly rangedArmor: number;
+  readonly magicArmor: number;
+  readonly dodge: number;
+  readonly parrier: boolean;
+  readonly reflector: boolean;
+}): number {
+  return (
+    (m.physArmor > 0 ? MOB_ARMOR.phys : 0) |
+    (m.rangedArmor > 0 ? MOB_ARMOR.ranged : 0) |
+    (m.magicArmor > 0 ? MOB_ARMOR.magic : 0) |
+    (m.dodge > 0 ? MOB_ARMOR.dodge : 0) |
+    (m.parrier ? MOB_ARMOR.parry : 0) |
+    (m.reflector ? MOB_ARMOR.reflect : 0)
+  );
 }
 
 /** Адский демон: огненный таран (см. EliteMobDef.charger). */

@@ -9,8 +9,7 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Constants } from "@babylonjs/core/Engines/constants";
-import { MOB_ARMOR_LOOK } from "#shared/look";
-import { drawIcon } from "./icons";
+import { MOB_ARMOR_LOOK, MOB_DEF_SHIELD } from "#shared/look";
 
 /**
  * Плашки имён над мобами и героями — ОДНА общая текстура-атлас на много плашек (страница 2048×1024,
@@ -30,8 +29,8 @@ const ROWS = PAGE_H / SLOT_H;
 const M_PER_PX = 0.9 / 448;
 const NAME_PX = 56;
 const LVL_PX = 36;
-/** Значок защиты моба справа от уровня (кружок с рисунком), px ячейки. */
-const ICON_PX = 40;
+/** Значок защиты моба справа от уровня, px ячейки. */
+const ICON_PX = 42;
 const FONT_FAMILY = "system-ui, sans-serif";
 /** Метка бота зрителя перед ником — единственное отличие от живого игрока со стороны. */
 const BOT_MARK = "🤖 ";
@@ -348,7 +347,7 @@ export class NameTag {
       const head = this.title ? `${this.title} · ` : "";
       // Защиты моба — значки справа от уровня; строка «уровень + значки» стоит по центру.
       const defs = MOB_ARMOR_LOOK.filter((d) => (this.armor & d.bit) !== 0);
-      const iconsW = defs.length > 0 ? 8 + defs.length * (ICON_PX + 4) - 4 : 0;
+      const iconsW = defs.length > 0 ? 10 + defs.length * (ICON_PX + 6) - 6 : 0;
       let lp = LVL_PX;
       ctx.font = `600 ${lp}px ${FONT_FAMILY}`;
       let tw = ctx.measureText(head + lvlText).width;
@@ -362,21 +361,15 @@ export class NameTag {
       // Титул фиолетовым перед уровнем: «Царь башни · 34 ур.».
       if (head) outlined(head, lx, lvlY, "#c79bff", 6);
       outlined(lvlText, lx + ctx.measureText(head).width, lvlY, acc, 6);
+      let ix = lx + tw + 10;
+      for (const d of defs) {
+        drawDefIcon(ctx, d, ix, lvlY - ICON_PX / 2, ICON_PX);
+        ix += ICON_PX + 6;
+      }
       if (hasUnspent) {
         // Красный "!" сразу после уровня — не по центру плашки (иначе сдвигал бы текст уровня).
         ctx.font = `bold 40px ${FONT_FAMILY}`;
         outlined("!", lx + tw + 10, lvlY + 1, "#ff3b30", 6);
-      }
-      // Тёмный кружок под значком — рисунок читается на любом фоне (как значок платформы у ника).
-      let ix = lx + tw + 8;
-      for (const d of defs) {
-        ctx.fillStyle = "rgba(6,8,12,0.72)";
-        ctx.beginPath();
-        ctx.arc(ix + ICON_PX / 2, lvlY, ICON_PX / 2, 0, Math.PI * 2);
-        ctx.fill();
-        const pad = ICON_PX * 0.17;
-        drawIcon(ctx, d.icon, ix + pad, lvlY - ICON_PX / 2 + pad, ICON_PX - 2 * pad, d.color, () => this.repaint());
-        ix += ICON_PX + 4;
       }
     }
     ctx.restore();
@@ -507,6 +500,38 @@ export class NameTag {
   }
 }
 
+
+/** Контуры значков защит (Path2D из SVG-пути) — один раз на всю игру. */
+const defPaths = new Map<string, Path2D>();
+function defPath(d: string): Path2D {
+  let p = defPaths.get(d);
+  if (!p) defPaths.set(d, (p = new Path2D(d)));
+  return p;
+}
+
+/**
+ * Значок защиты моба в квадрат (x, y, s): щит цветом защиты с тёмной обводкой и тёмный
+ * символ внутри (MOB_ARMOR_LOOK, квадрат 20×20). Только векторные пути, без картинок.
+ */
+function drawDefIcon(ctx: CanvasRenderingContext2D, d: (typeof MOB_ARMOR_LOOK)[number], x: number, y: number, s: number): void {
+  const shield = defPath(MOB_DEF_SHIELD);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s / 20, s / 20);
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "rgba(6,8,12,0.9)";
+  ctx.lineWidth = 2.4;
+  ctx.stroke(shield);
+  ctx.fillStyle = d.color;
+  ctx.fill(shield);
+  if (d.sym) {
+    ctx.strokeStyle = "#15171d";
+    ctx.lineWidth = 2.3;
+    ctx.stroke(defPath(d.sym));
+  }
+  ctx.restore();
+}
 
 /**
  * Значок платформы в сером кружке (чтобы белый рисунок не сливался с белым ником):

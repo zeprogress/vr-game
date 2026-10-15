@@ -1,4 +1,3 @@
-import type { IconKey } from "./icons";
 import type { WeaponTier } from "./items";
 import { MOB_ARMOR } from "./mobs";
 
@@ -125,14 +124,28 @@ export type FxColor = keyof typeof FX_RGB;
 
 // ---------------------------------------------------------------- защиты мобов
 
+/** Контур щита значков защит моба (квадрат 20×20). */
+export const MOB_DEF_SHIELD = "M10 1.2l7.6 2.9v5.5c0 4.8-3.3 8.2-7.6 10.1-4.3-1.9-7.6-5.3-7.6-10.1V4.1z";
+
 /**
- * Защиты моба — значки справа от уровня на плашке, в порядке показа:
- * бит MobState.armor (MOB_ARMOR, shared/mobs.ts) → значок и его цвет.
+ * Защиты моба — значки справа от уровня на плашке, в порядке показа: бит MobState.armor
+ * (MOB_ARMOR, shared/mobs.ts) → щит своего цвета и тёмный символ внутри (`sym` — SVG-путь
+ * в том же квадрате 20×20, "" — пустой щит). Рисуются прямо на холсте через Path2D —
+ * без картинок и подгрузки.
  */
-export const MOB_ARMOR_LOOK: readonly { bit: number; icon: IconKey; color: string }[] = [
-  { bit: MOB_ARMOR.phys, icon: "st.pdef", color: "#d3dae4" },
-  { bit: MOB_ARMOR.ranged, icon: "st.rdef", color: "#9fd86e" },
-  { bit: MOB_ARMOR.magic, icon: "st.mdef", color: "#b98cff" },
+export const MOB_ARMOR_LOOK: readonly { bit: number; color: string; sym: string }[] = [
+  // Физическая защита — серый щит.
+  { bit: MOB_ARMOR.phys, color: "#cfd6df", sym: "" },
+  // Магическая защита — фиолетовый щит с крестом.
+  { bit: MOB_ARMOR.magic, color: "#b98cff", sym: "M10 5.2v9.6M5.4 9.8h9.2" },
+  // Защита от стрел — жёлтый щит со стрелой (наконечник и оперение).
+  { bit: MOB_ARMOR.ranged, color: "#ffd23f", sym: "M5.4 14.6L14.6 5.4M10.8 5.4h3.8v3.8M7.2 12.8L4.6 12.4M7.2 12.8l0.4 2.6M8.8 11.2L6.2 10.8M8.8 11.2l0.4 2.6" },
+  // Уворот — зелёный щит со стрелкой в сторону.
+  { bit: MOB_ARMOR.dodge, color: "#5fd884", sym: "M5.2 13.6c1.4-4.2 4.6-6.2 9-6.2M11.6 4.6l3 2.8-3 2.8" },
+  // Отражение — синий щит с галочкой-стрелкой (наконечник на конце).
+  { bit: MOB_ARMOR.reflect, color: "#5aa9ff", sym: "M5.2 10l3.3 3.6 6.2-7.4M11.4 6.3l3.3-0.1 0.1 3.3" },
+  // Отбивает удары — оранжевый щит со скрещёнными мечами.
+  { bit: MOB_ARMOR.parry, color: "#ff9a3d", sym: "M6 6l8 8M14 6l-8 8M5 12.2l2.8 2.8M15 12.2L12.2 15" },
 ];
 
 /** RGB 0..1 → «#rrggbb» (для HTML/CSS). */
