@@ -7711,6 +7711,24 @@ export class ZoneRoom extends Room<ZoneState> {
       mob = pickNearest(eventOnly) ?? (eventOnly ? pickNearest(false) : undefined);
       if (mob) bot.target = mob.id;
     }
+    // Цель далеко, а рядом (в ударе) другой моб — бьём ближнего. Иначе бот тянется к дальней цели
+    // сквозь толпу, не добирается и стоит, пока его окружают.
+    if (mob && !eventOnly && Math.hypot(mob.x - p.head.x, mob.z - p.head.z) > BOT.closeSwitchDist) {
+      let near: Mob | undefined;
+      let nd: number = BOT.closeSwitchDist;
+      for (const m of this.sim.mobs.values()) {
+        if (!okMob(m)) continue;
+        const d = Math.hypot(m.x - p.head.x, m.z - p.head.z);
+        if (d < nd) {
+          nd = d;
+          near = m;
+        }
+      }
+      if (near) {
+        mob = near;
+        bot.target = near.id;
+      }
+    }
     // Некого выбрать в зоне, но по боту бьёт моб рядом (вышел за радиус зоны —
     // например, погнался за героем от эпицентра события): отбиваемся, а не стоим.
     // По дороге на событие (!event) не отбиваемся — иначе стая вокруг не кончается и бот туда не доходит.
@@ -8174,10 +8192,13 @@ export class ZoneRoom extends Room<ZoneState> {
     const retreat =
       !escape && ((ranged && chasingMob && dist < shootKeep - 1) || (kiter && kiteRetreatAt > kiteBody && dist < kiteRetreatAt));
     const wantSpeed = escape
-      ? // Из опасной зоны — со всех ног, даже посреди замаха/эмоции.
-        dist > 0.3
-        ? botSpeed
-        : 0
+      ? // Мягкая метка (выпад жнеца) — бот не бежит, если цель уже в ударе: иначе он уходил из удара,
+        // потом возвращался — пауза в каждом выпаде. Жёсткая опасность — со всех ног, даже посреди замаха.
+        escape.soft && chasingMob && aimDist < attackReach
+        ? 0
+        : dist > 0.3
+          ? botSpeed
+          : 0
       : raidGapDist >= 0
         ? // Рейд: держимся в разрыве (он плывёт, арена несёт) — бежим и во время замаха.
           raidGapDist > 0.8
