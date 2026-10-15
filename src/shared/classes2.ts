@@ -233,7 +233,7 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   },
   // Молот: тяжёлый физический удар + магическая волна вокруг цели (HAMMER). Удар +12% урона (2026-10-15).
   hammer: {
-    name: WEAPON_NOUN.hammer.name, dmg: 2.8 * 1.12 * 1.2, interval: 1.1, tempoSoft: 1, reach: 2.6, pierce: 1,
+    name: WEAPON_NOUN.hammer.name, dmg: 2.8 * 1.12 * 1.2 * 0.9, interval: 1.1, tempoSoft: 1, reach: 2.6, pierce: 1,
     critBase: 0.05, critMult: 1.5, twoHanded: true, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Лук: стрела 1.75 (как сейчас), но масштаб — от СИЛ, темп — от ЛОВ.
@@ -423,7 +423,7 @@ export const STORM_CRUSH = {
 export const HAMMER_SKILL = { intPer: 0.06 } as const;
 
 /** «Грозовое поле» молота: круг на duration с радиусом radius; каждые 0.5 с молния бьёт магией ×boltMul и оглушает на stunSec. */
-export const HAMMER_FIELD = { duration: 5, radius: 8, boltMul: 0.325, stunSec: 0.2 } as const; // 2026-10-15: молния 0.325 (вдвое слабее, было 0.65), радиус 8 (было 10), длительность 5 с
+export const HAMMER_FIELD = { duration: 5, radius: 8, boltMul: 0.1625, stunSec: 0.2 } as const; // 2026-10-15: молния 0.1625 (вдвое слабее, было 0.325), радиус 8 (было 10), длительность 5 с
 /** «Громовой вихрь» молота: последний удар вихря бьёт молнией соседа в range м; множитель ×minMul → ×maxMul от интеллекта (полная шкала — intFull очков сверх старта). */
 export const THUNDER_SPIN = { range: 7, minMul: 2, maxMul: 3, intFull: 30 } as const; // молния ×2 → ×3 (было ×3 → ×4, 2026-10-15)
 /** «Цепная молния» молота: hops скачков; задетые получают +vulnMul% урона от молота на vulnSec. */
