@@ -1,7 +1,8 @@
 /**
- * Броня — два тира: обычный и золотой. У обычного каждая часть даёт ОДИН стат, выпадающий случайно из пула этой
- * части. У золотого нагрудник и поножи — 1–2 стата, перчатки и сапоги — 1 стат, и каждый аффикс сильнее обычного
- * (ARMOR_TIER_MUL). Статы в одной части не повторяются. Лежит в общей сумке вместе с оружием и кольцами; заточка —
+ * Броня — три тира: обычный, золотой и уникальный (фиолетовый, тир «legendary» как у оружия). У обычного каждая часть
+ * даёт ОДИН стат, выпадающий случайно из пула этой части. У золотого нагрудник и поножи — 1–2 стата, перчатки и сапоги —
+ * 1 стат. У уникального нагрудник и поножи — 2–3 стата, остальные части — 1, пул части шире (ARMOR_POOL_LEGENDARY);
+ * каждый аффикс сильнее обычного (ARMOR_TIER_MUL). Статы в одной части не повторяются. Лежит в общей сумке вместе с оружием и кольцами; заточка —
  * та же кривая, что у оружия (items.ts), её «качество» — среднее очков аффиксов части. Иконки — public/icons/armor
  * (верхний ряд атласа «Атлас фэнтезийных доспехов»).
  *
@@ -45,6 +46,20 @@ export const ARMOR_POOL: Record<ArmorPart, readonly ArmorStat[]> = {
   boots: ["dodge", "regen", "hp"],
 };
 
+/** Пул уникального тира — на один стат шире обычного: из него выпадают аффиксы уникальной части. */
+export const ARMOR_POOL_LEGENDARY: Record<ArmorPart, readonly ArmorStat[]> = {
+  helm: ["hp", "magDef", "regen", "physDef"],
+  chest: ["hp", "physDef", "regen", "magDef"],
+  gloves: ["physDef", "dodge", "magDef", "hp"],
+  legs: ["hp", "physDef", "magDef", "regen"],
+  boots: ["dodge", "regen", "hp", "physDef"],
+};
+
+/** Пул стата части для тира: уникальный шире, остальные — ARMOR_POOL. */
+export function armorPool(part: ArmorPart, tier: ArmorTier): readonly ArmorStat[] {
+  return tier === "legendary" ? ARMOR_POOL_LEGENDARY[part] : ARMOR_POOL[part];
+}
+
 /** Диапазон значения стата у обычного тира (от 1 до 33 очков — как у роллов оружия). */
 export const ARMOR_RANGE: Record<ArmorStat, readonly [number, number]> = {
   hp: [0.01, 0.03],
@@ -63,13 +78,13 @@ export const ARMOR_POINTS_MAX = POINTS_MAX;
  */
 export const ARMOR_DROP = { regular: 0.01, elite: 0.02, boss: 0.2 } as const;
 
-/** Тиры брони. */
-export type ArmorTier = "base" | "gold";
+/** Тиры брони: обычный, золотой, уникальный (фиолетовый). Имена — как у оружия (TIER_LOOK). */
+export type ArmorTier = "base" | "gold" | "legendary";
 
-export const ARMOR_TIER_NAME: Record<ArmorTier, string> = { base: "обычная", gold: "золотая" };
+export const ARMOR_TIER_NAME: Record<ArmorTier, string> = { base: "обычная", gold: "золотая", legendary: "уникальная" };
 
-/** Множитель значения КАЖДОГО аффикса по тиру. Золото — чуть сильнее обычного. */
-export const ARMOR_TIER_MUL: Record<ArmorTier, number> = { base: 1, gold: 1.2 };
+/** Множитель значения КАЖДОГО аффикса по тиру. Золото — чуть сильнее обычного, уникальное — ещё чуть сильнее. */
+export const ARMOR_TIER_MUL: Record<ArmorTier, number> = { base: 1, gold: 1.2, legendary: 1.3 };
 
 /**
  * Золото. Аффиксов у нагрудника и поножей — 1 или 2 (два с шансом twoChance); у перчаток и сапог — всегда 1.
@@ -77,11 +92,22 @@ export const ARMOR_TIER_MUL: Record<ArmorTier, number> = { base: 1, gold: 1.2 };
  * заменяет обычную часть — тот же шанс ARMOR_DROP.boss, выпадает золотая. scrapMul — лом с золотой части ×.
  */
 export const ARMOR_GOLD = { twoChance: 0.3, dropDiv: 2, scrapMul: 2 } as const;
+
+/**
+ * Уникальное. У нагрудника и поножей — 2 или 3 аффикса (3 с шансом threeChance); у остальных — 1. dropDiv — во сколько
+ * раз реже золотой (тот же шанс от золота, у босса — ARMOR_DROP.boss / dropDiv). scrapMul — лом ×, вдвое больше золота.
+ */
+export const ARMOR_LEGENDARY = { threeChance: 0.5, dropDiv: 2, scrapMul: 4 } as const;
 const TWO_AFFIX_PARTS: readonly ArmorPart[] = ["chest", "legs"];
 
 /** Шанс золотой части за убийство: обычный и элитный моб — в dropDiv раз реже обычной; босс — ARMOR_DROP.boss (вместо обычной). */
 export function armorGoldDropChance(kind: "regular" | "elite" | "boss"): number {
   return kind === "boss" ? ARMOR_DROP.boss : ARMOR_DROP[kind] / ARMOR_GOLD.dropDiv;
+}
+
+/** Шанс уникальной части за убийство: в ARMOR_LEGENDARY.dropDiv раз реже золотой на том же типе моба (босс — 10%). */
+export function armorLegendaryDropChance(kind: "regular" | "elite" | "boss"): number {
+  return armorGoldDropChance(kind) / ARMOR_LEGENDARY.dropDiv;
 }
 
 /** Один аффикс части: стат и очки ролла (1..33). */
@@ -126,7 +152,7 @@ export function armorRollsText(a: ArmorInstance): string {
 
 /** Подпись предмета: «Шлем · Здоровье +2.3%», у золотого — «Нагрудник (золото) · …». */
 export function armorLabel(a: ArmorInstance): string {
-  const head = `${ARMOR_PART_NAME[a.part]}${a.tier === "gold" ? " (золото)" : ""}`;
+  const head = `${ARMOR_PART_NAME[a.part]}${a.tier === "gold" ? " (золото)" : a.tier === "legendary" ? " (уникальное)" : ""}`;
   return `${head} · ${armorRollsText(a)}`;
 }
 
@@ -135,8 +161,12 @@ export function armorLabel(a: ArmorInstance): string {
  * получают два стата (без повтора), остальные части — один. Очки каждого аффикса — случайно 1..33.
  */
 export function rollArmor(part: ArmorPart, id: string, rnd: () => number = Math.random, tier: ArmorTier = "base"): ArmorInstance {
-  const pool = [...ARMOR_POOL[part]];
-  const count = tier === "gold" && TWO_AFFIX_PARTS.includes(part) && rnd() < ARMOR_GOLD.twoChance ? 2 : 1;
+  const pool = [...armorPool(part, tier)];
+  let count = 1;
+  if (TWO_AFFIX_PARTS.includes(part)) {
+    if (tier === "gold" && rnd() < ARMOR_GOLD.twoChance) count = 2;
+    if (tier === "legendary") count = rnd() < ARMOR_LEGENDARY.threeChance ? 3 : 2;
+  }
   const rolls: ArmorRoll[] = [];
   for (let i = 0; i < count; i++) {
     const stat = pool.splice(Math.floor(rnd() * pool.length), 1)[0] as ArmorStat;
@@ -157,7 +187,8 @@ export function armorQuality(a: ArmorInstance): number {
 /** Лом за разбор: 1 + среднее очков аффикса / 11 — от 1 до 4 у обычной брони; у золотой ×ARMOR_GOLD.scrapMul. */
 export function armorScrap(a: ArmorInstance): number {
   const base = 1 + Math.round(armorQuality(a) / a.rolls.length / 11);
-  return a.tier === "gold" ? base * ARMOR_GOLD.scrapMul : base;
+  const mul = a.tier === "legendary" ? ARMOR_LEGENDARY.scrapMul : a.tier === "gold" ? ARMOR_GOLD.scrapMul : 1;
+  return base * mul;
 }
 
 /** Заточка одного аффикса idx (как ролл оружия): удача поднимает его очки на gain, не выше максимума. */
@@ -170,7 +201,7 @@ export function armorEnchant(a: ArmorInstance, idx: number, gain: number): void 
  * Цена заточки по тиру — множитель к общей кривой (items.ts). Обычная броня — в 5 раз дешевле, золотая — в 2 раза
  * дешевле обычной кривой. Шанс заточки не меняется.
  */
-export const ARMOR_ENCHANT_COST_MUL: Record<ArmorTier, number> = { base: 1 / 5, gold: 1 / 2 };
+export const ARMOR_ENCHANT_COST_MUL: Record<ArmorTier, number> = { base: 1 / 5, gold: 1 / 2, legendary: 1 / 2 };
 
 /**
  * Строка заточки аффикса idx — как строка ролла у оружия (enchantInfo): шанс по очкам ЭТОГО аффикса,
@@ -223,12 +254,13 @@ export function sanitizeArmorList(v: unknown): ArmorInstance[] {
     const a = x as { id?: unknown; part?: unknown; tier?: unknown; rolls?: unknown; stat?: unknown; pts?: unknown; fav?: unknown };
     if (typeof a.id !== "string" || !(ARMOR_PARTS as readonly unknown[]).includes(a.part)) continue;
     const part = a.part as ArmorPart;
-    const tier: ArmorTier = a.tier === "gold" ? "gold" : "base";
+    const tier: ArmorTier = a.tier === "gold" || a.tier === "legendary" ? a.tier : "base";
+    const pool = armorPool(part, tier);
     const raw = (Array.isArray(a.rolls) ? a.rolls : [{ stat: a.stat, pts: a.pts }]) as { stat?: unknown; pts?: unknown }[];
     const rolls: ArmorRoll[] = [];
     // Аффиксов — сколько угодно в пределах пула части (будущие тиры с 3+ аффиксами не обрезаются).
-    for (const r of raw.slice(0, ARMOR_POOL[part].length)) {
-      if (typeof r?.stat !== "string" || !ARMOR_POOL[part].includes(r.stat as ArmorStat)) continue;
+    for (const r of raw.slice(0, pool.length)) {
+      if (typeof r?.stat !== "string" || !pool.includes(r.stat as ArmorStat)) continue;
       if (rolls.some((x) => x.stat === r.stat)) continue;
       const pts = Number(r.pts);
       if (!Number.isFinite(pts)) continue;

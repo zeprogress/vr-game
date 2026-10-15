@@ -45,7 +45,7 @@ export interface BagSortItem {
 export type BagPick =
   | { w: { cls: WeaponClass; tier: WeaponTier; quality: number; scrap?: number; fav?: boolean } }
   | { r: { tier: RingTier; scrap: number; fav?: boolean } }
-  | { a: { part: ArmorPart; tier?: "base" | "gold"; pts: number; scrap: number; fav?: boolean } };
+  | { a: { part: ArmorPart; tier?: "base" | "gold" | "legendary"; pts: number; scrap: number; fav?: boolean } };
 
 /** Что сортировке знать о предмете: из полей оружия, кольца или брони. */
 export function bagPickItem(e: BagPick): BagSortItem {

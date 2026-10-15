@@ -84,6 +84,12 @@ export const ICONS = {
   "a.gloves.gold": { emoji: "🧤", img: "armor/gloves_gold.png" },
   "a.legs.gold": { emoji: "👖", img: "armor/legs_gold.png" },
   "a.boots.gold": { emoji: "🥾", img: "armor/boots_gold.png" },
+  // Уникальный тир (фиолетовый): фиолетовый ряд того же атласа (public/icons/armor/*_legendary.png).
+  "a.helm.legendary": { emoji: "⛑️", img: "armor/helm_legendary.png" },
+  "a.chest.legendary": { emoji: "🦺", img: "armor/chest_legendary.png" },
+  "a.gloves.legendary": { emoji: "🧤", img: "armor/gloves_legendary.png" },
+  "a.legs.legendary": { emoji: "👖", img: "armor/legs_legendary.png" },
+  "a.boots.legendary": { emoji: "🥾", img: "armor/boots_legendary.png" },
   /** Лом — кусочки металла (шестерёнка путала). */
   "i.scrap": {
     emoji: "🔩",

@@ -5,7 +5,7 @@ import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { RAID } from "#shared/raid";
 import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, eliteXpAt, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
 import { DUN_MOB_CAMPS, dunProject, dunWorld, inDunRegion } from "#shared/dungeon";
-import { ARMOR_DROP, ARMOR_PARTS, armorGoldDropChance, rollArmor, type ArmorInstance } from "#shared/armor";
+import { ARMOR_DROP, ARMOR_PARTS, armorGoldDropChance, armorLegendaryDropChance, rollArmor, type ArmorInstance } from "#shared/armor";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
 import { PLAGUE } from "#shared/classes2";
 import { catProject, inCatRegion } from "#shared/catacombs";
@@ -3806,6 +3806,11 @@ export class ZoneSim {
           const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
           rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "gold") });
         }
+        // Уникальная часть — отдельный шанс (вдвое реже золотой), тоже вместо обычной.
+        if (Math.random() < armorLegendaryDropChance("boss")) {
+          const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
+          rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "legendary") });
+        }
       } else {
         // Обычный и элитный моб: обычная и золотая часть — два независимых шанса; золото реже в ARMOR_GOLD.dropDiv раз.
         if (Math.random() < ARMOR_DROP[kind] * champMul) {
@@ -3815,6 +3820,10 @@ export class ZoneSim {
         if (Math.random() < armorGoldDropChance(kind) * champMul) {
           const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
           rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "gold") });
+        }
+        if (Math.random() < armorLegendaryDropChance(kind) * champMul) {
+          const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
+          rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "legendary") });
         }
       }
     }
