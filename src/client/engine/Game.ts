@@ -3484,6 +3484,10 @@ export class Game {
     } else {
       this.combat.onMeleeSwing?.();
     }
+    // Герой поворачивается туда, куда кастует: на точку умения, без точки — по направлению взгляда (2026-10-15).
+    const aimX = Number.isFinite(msg.x) ? (msg.x as number) : p.x + fx;
+    const aimZ = Number.isFinite(msg.z) ? (msg.z as number) : p.z + fz;
+    if (Math.hypot(aimX - p.x, aimZ - p.z) > 0.05) this.player.faceInstant(aimX, aimZ);
     this.net.sendSkill(msg);
     if (this.player.inVR) this.sfx.bowRelease(1); // отклик жеста, как у массового хила
     this.skillReadyAt.set(id, performance.now() + this.skillCooldown(id) * 1000);
