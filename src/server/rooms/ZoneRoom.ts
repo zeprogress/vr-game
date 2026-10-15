@@ -9050,7 +9050,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const sk = SKILLS2[kind];
     // skillAt — срок следующего применения (−999 = готово; так же возвращают откат). Счёт, как у ударов:
     // лаг сети не режет умение, а средний откат не меняется.
-    const cd = sk.cooldown * this.skillCdMul(p);
+    const cd = sk.cooldown * this.skillCdMul(p) * (sk.variants?.[cls]?.cdMul ?? 1);
     const due = rt.skillAt[kind] ?? -999;
     if (this.elapsed < due - HIT_BUNCH) return false;
     rt.skillAt[kind] = Math.max(due, this.elapsed - HIT_BUNCH) + cd;

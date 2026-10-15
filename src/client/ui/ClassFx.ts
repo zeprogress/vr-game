@@ -286,12 +286,15 @@ export class ClassFx {
   stormZone(x: number, y: number, z: number, r: number, dur: number): void {
     for (let t = 0.2; t < dur; t += 0.5) {
       this.later(t, () => {
-        const a = Math.random() * Math.PI * 2;
-        const rr = Math.sqrt(Math.random()) * r * 0.9;
-        const px = x + Math.cos(a) * rr;
-        const pz = z + Math.sin(a) * rr;
-        // Синяя заметная молния с вспышкой на земле (SkillVfx.lightning).
-        this.vfx?.lightning(px + 0.6, y + 9, pz, px, y + 0.15, pz, y, 0.3);
+        // За каждый удар поля — три молнии в случайных точках круга (2026-10-15: было одна).
+        for (let k = 0; k < 3; k++) {
+          const a = Math.random() * Math.PI * 2;
+          const rr = Math.sqrt(Math.random()) * r * 0.9;
+          const px = x + Math.cos(a) * rr;
+          const pz = z + Math.sin(a) * rr;
+          // Синяя заметная молния с вспышкой на земле (SkillVfx.lightning).
+          this.vfx?.lightning(px + 0.6, y + 9, pz, px, y + 0.15, pz, y, 0.3);
+        }
       });
     }
   }

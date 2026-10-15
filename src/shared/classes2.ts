@@ -399,7 +399,7 @@ export interface SkillDef {
   /** Сколько раз бьёт за применение (град — 5 залпов, у лука 3). */
   hits: number;
   /** Своё имя/описание у отдельных классов (одно умение — разный вид). */
-  variants?: Partial<Record<ClassId, { name: string; desc: string }>>;
+  variants?: Partial<Record<ClassId, { name: string; desc: string; /** Множитель отката только у этого класса (2026-10-15). */ cdMul?: number }>>;
   /** 🧪 Тестовое умение — идёт отбор: имя с пометкой, может уйти на переделку. */
   test?: boolean;
   /** Атрибут, усиливающий само умение (сверх общих), и на сколько за вложенное очко. */
@@ -423,7 +423,7 @@ export const STORM_CRUSH = {
 export const HAMMER_SKILL = { intPer: 0.06 } as const;
 
 /** «Грозовое поле» молота: круг на duration с радиусом radius; каждые 0.5 с молния бьёт магией ×boltMul и оглушает на stunSec. */
-export const HAMMER_FIELD = { duration: 5, radius: 10, boltMul: 0.65, stunSec: 0.2 } as const; // 2026-10-15: было 4 с, радиус 8, молния 0.5
+export const HAMMER_FIELD = { duration: 5, radius: 8, boltMul: 0.325, stunSec: 0.2 } as const; // 2026-10-15: молния 0.325 (вдвое слабее, было 0.65), радиус 8 (было 10), длительность 5 с
 /** «Громовой вихрь» молота: последний удар вихря бьёт молнией соседа в range м; множитель ×minMul → ×maxMul от интеллекта (полная шкала — intFull очков сверх старта). */
 export const THUNDER_SPIN = { range: 7, minMul: 2, maxMul: 3, intFull: 30 } as const; // молния ×2 → ×3 (было ×3 → ×4, 2026-10-15)
 /** «Цепная молния» молота: hops скачков; задетые получают +vulnMul% урона от молота на vulnSec. */
@@ -472,7 +472,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     cooldown: 18, castTime: 0.4, radius: 5, dmgMult: 0, hits: 1,
     variants: {
       warrior: { name: "Печать стража", desc: "Круг на 6 с: союзникам −40% урона, мобы в круге бросаются на воина" },
-      battlemage: { name: "Грозовое поле", desc: `Круг ${HAMMER_FIELD.radius} м на ${HAMMER_FIELD.duration} с: каждые 0.5 с молния бьёт врагов внутри магией и оглушает на ${HAMMER_FIELD.stunSec} с` },
+      battlemage: { name: "Грозовое поле", cdMul: 2, desc: `Круг ${HAMMER_FIELD.radius} м на ${HAMMER_FIELD.duration} с: каждые 0.5 с молния бьёт врагов внутри магией и оглушает на ${HAMMER_FIELD.stunSec} с` },
     },
   },
   whirlwind: {
