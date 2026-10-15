@@ -1227,6 +1227,10 @@ const CHAT_CAM_MS = 180_000;
 const FOCUS_SHOW_MS = 10_000;
 const FOCUS_COOLDOWN_MS = 10 * 60_000;
 const FOCUS_COMMANDS = new Set(["!focus", "!фокус", "!покажи", "!показать", "!cam", "!камера", "!смотри"]);
+/** Служебная команда награды «Камера на себя» (баллы канала): только из TwitchRedeem, в чат не попадает. */
+const REDEEM_CAMERA_CMD = "@камеранасебя";
+/** Сколько секунд камера эфира на герое зрителя по награде. */
+const REDEEM_CAMERA_MS = 60_000;
 
 interface JoinOpts {
   nick?: string;
@@ -1526,8 +1530,11 @@ export class ZoneRoom extends Room<ZoneState> {
       tokenFile: REDEEM_TOKEN_FILE,
       rules: redeemRules.rules,
       onCommand: (login, command, reward) => {
+        // Служебная команда награды: камера на себя. true — выполнено, false — баллы вернутся.
+        if (command === REDEEM_CAMERA_CMD) return this.redeemCamera(login);
         this.reply(`🎁 @${login} — «${reward}»`);
         this.onChat(login, command);
+        return true;
       },
       onCooldown: (login, reward, secLeft) => this.reply(`@${login} «${reward}» ещё перезаряжается — ${secLeft} с.`),
     });
@@ -3813,6 +3820,33 @@ export class ZoneRoom extends Room<ZoneState> {
       this.focusTimer = null;
       this.broadcast(MSG.specCmd, { t: "cam", shot: "auto" } satisfies SpecCmd);
     }, FOCUS_SHOW_MS);
+  }
+
+  /**
+   * Награда «Камера на себя»: камера эфира на герое зрителя на REDEEM_CAMERA_MS, потом авто-режим.
+   * Нет героя в мире — false (баллы вернутся). Откат ставит сама награда (см. TwitchRedeem).
+   */
+  private redeemCamera(login: string): boolean {
+    const norm = normNick(login);
+    let id = "";
+    if (this.bots.has(norm)) id = `bot:${norm}`;
+    else {
+      for (const [sid, p] of this.state.players) {
+        if (!sid.startsWith("bot:") && normNick(p.nick) === norm) id = sid;
+      }
+    }
+    if (!id) {
+      this.reply(`@${login} героя нет в мире — баллы вернулись. Зайди !play и попробуй снова.`);
+      return false;
+    }
+    this.broadcast(MSG.specCmd, { t: "cam", shot: `orbitPlayer:${id}` } satisfies SpecCmd);
+    this.focusTimer?.clear();
+    this.focusTimer = this.clock.setTimeout(() => {
+      this.focusTimer = null;
+      this.broadcast(MSG.specCmd, { t: "cam", shot: "auto" } satisfies SpecCmd);
+    }, REDEEM_CAMERA_MS);
+    this.reply(`🎥 @${login} — камера на тебя на минуту`);
+    return true;
   }
 
   private setFollow(nick: string, norm: string, target: string | null): void {

@@ -9,6 +9,7 @@
     { "title": "Таблица лидеров", "command": "!top", "cooldownSec": 30 },
     { "title": "Моя статистика", "command": "!stats", "cooldownSec": 30 },
     { "title": "Катакомбы: агрессивно", "command": "!режим агрессивно", "cooldownSec": 60 },
-    { "title": "Катакомбы: осторожно", "command": "!режим осторожно", "cooldownSec": 60 }
+    { "title": "Катакомбы: осторожно", "command": "!режим осторожно", "cooldownSec": 60 },
+    { "title": "Камера на себя", "command": "@камеранасебя", "cooldownSec": 120, "refund": true }
   ]
 }

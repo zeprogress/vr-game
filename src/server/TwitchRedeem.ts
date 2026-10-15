@@ -17,6 +17,8 @@ const HELIX = "https://api.twitch.tv/helix";
 const ID_TWITCH = "https://id.twitch.tv/oauth2";
 /** Право токена стримера, без которого подписка на награды не создаётся. */
 const NEEDED_SCOPE = "channel:read:redemptions";
+/** Право для возврата баллов (отмена активации) и создания наград через API. */
+export const MANAGE_SCOPE = "channel:manage:redemptions";
 
 /** Команды, которые награда не запускает: удаляют героя, меняют атрибуты или админские. */
 export const REDEEM_FORBIDDEN = new Set<string>([
@@ -39,6 +41,8 @@ export interface RedeemRule {
   cooldownSec: number;
   /** id награды: если задан, сопоставляется по нему (переименование в Twitch не ломает). */
   id?: string;
+  /** Вернуть баллы зрителю, если команда не выполнилась (нужно право channel:manage:redemptions; награда — созданная этим приложением). */
+  refund?: boolean;
 }
 
 /** Разбор deploy/redeems.json. Плохие записи пропускаются с сообщением, сервер не падает. */
@@ -49,15 +53,16 @@ export function parseRedeemRules(raw: unknown): { rules: RedeemRule[]; errors: s
   if (!Array.isArray(list)) return { rules, errors: ["в redeems.json нет массива rewards"] };
   const titles = new Set<string>();
   for (let i = 0; i < list.length; i++) {
-    const e = (list[i] ?? {}) as { title?: unknown; command?: unknown; cooldownSec?: unknown; id?: unknown };
+    const e = (list[i] ?? {}) as { title?: unknown; command?: unknown; cooldownSec?: unknown; id?: unknown; refund?: unknown };
     const title = typeof e.title === "string" ? e.title.trim() : "";
     const command = typeof e.command === "string" ? e.command.trim() : "";
     if (!title) {
       errors.push(`запись #${i}: нет title`);
       continue;
     }
-    if (!command.startsWith("!")) {
-      errors.push(`«${title}»: команда должна начинаться с «!»`);
+    // «@…» — служебная команда, её выполняет только награда (в чате не работает).
+    if (!command.startsWith("!") && !command.startsWith("@")) {
+      errors.push(`«${title}»: команда должна начинаться с «!» или «@»`);
       continue;
     }
     const head = command.split(/\s+/)[0].toLowerCase();
@@ -77,6 +82,7 @@ export function parseRedeemRules(raw: unknown): { rules: RedeemRule[]; errors: s
       command,
       cooldownSec: Math.max(0, Math.min(3600, cd)),
       id: typeof e.id === "string" && e.id ? e.id : undefined,
+      refund: e.refund === true,
     });
   }
   return { rules, errors };
@@ -126,7 +132,7 @@ export interface RedeemOptions {
   tokenFile: string;
   rules: RedeemRule[];
   /** Выполнить команду от имени зрителя (как сообщение в чате). */
-  onCommand(login: string, command: string, reward: string): void;
+  onCommand(login: string, command: string, reward: string): boolean | void;
   /** Награда ещё на перезарядке: сообщить зрителю, сколько осталось. */
   onCooldown?(login: string, reward: string, secLeft: number): void;
 }
@@ -231,7 +237,7 @@ export class TwitchRedeem {
   }
 
   /** Активация награды: сопоставить с правилом, проверить кулдаун, выполнить команду. */
-  handle(login: string, rewardId: string, title: string): RedeemResult {
+  handle(login: string, rewardId: string, title: string, redemptionId = ""): RedeemResult {
     const rule = this.match(rewardId, title);
     if (!rule) {
       const key = rewardId || title;
@@ -247,16 +253,50 @@ export class TwitchRedeem {
     if (last !== undefined && now - last < cdMs) {
       const left = Math.ceil((cdMs - (now - last)) / 1000);
       this.opts.onCooldown?.(login, rule.title, left);
+      if (rule.refund) void this.refund(rewardId, redemptionId, `«${rule.title}» на перезарядке`);
       return "cooldown";
     }
-    this.lastUsed.set(rule.title, now);
     console.log(`[redeem] ${login}: «${rule.title}» → ${rule.command}`);
+    let done: boolean | void = false;
     try {
-      this.opts.onCommand(login, rule.command, rule.title);
+      done = this.opts.onCommand(login, rule.command, rule.title);
     } catch (e) {
       console.log(`[redeem] команда не выполнена: ${(e as Error).message}`);
     }
+    if (done === false && rule.refund) {
+      // Команда не сработала (например, героя нет в мире): откат не ставим, баллы — назад.
+      void this.refund(rewardId, redemptionId, `«${rule.title}»: ${login} — не выполнено`);
+      return "ok";
+    }
+    this.lastUsed.set(rule.title, now);
     return "ok";
+  }
+
+  /**
+   * Отмена активации награды → баллы возвращаются зрителю (статус CANCELED). Twitch разрешает это
+   * только для наград, созданных этим приложением, и при праве channel:manage:redemptions.
+   */
+  private async refund(rewardId: string, redemptionId: string, reason: string): Promise<void> {
+    if (!rewardId || !redemptionId) {
+      console.log(`[redeem] возврат не сделан — нет id награды или активации (${reason})`);
+      return;
+    }
+    const url =
+      `${HELIX}/channel_points/custom_rewards/redemptions?broadcaster_id=${encodeURIComponent(this.broadcasterId)}` +
+      `&reward_id=${encodeURIComponent(rewardId)}&id=${encodeURIComponent(redemptionId)}`;
+    const send = () =>
+      this.deps.fetch(url, {
+        method: "PATCH",
+        headers: { "Client-Id": this.opts.clientId, Authorization: `Bearer ${this.access}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "CANCELED" }),
+      });
+    let r = await send();
+    if (r.status === 401) {
+      if (!(await this.ensureAccess(true))) return;
+      r = await send();
+    }
+    if (r.ok) console.log(`[redeem] баллы возвращены: ${reason}`);
+    else console.log(`[redeem] возврат не прошёл (${r.status}): ${reason} — нужно право ${MANAGE_SCOPE} и награда, созданная этим приложением`);
   }
 
   private match(rewardId: string, title: string): RedeemRule | undefined {
@@ -435,7 +475,7 @@ export class TwitchRedeem {
       if (id && this.remember(id)) return; // повторная доставка того же события
       if (msg.metadata?.subscription_type === REDEEM_TYPE) {
         const ev = msg.payload?.event;
-        if (ev?.user_login) this.handle(ev.user_login.toLowerCase(), ev.reward?.id ?? "", ev.reward?.title ?? "");
+        if (ev?.user_login) this.handle(ev.user_login.toLowerCase(), ev.reward?.id ?? "", ev.reward?.title ?? "", ev.id ?? "");
       }
     }
   }
