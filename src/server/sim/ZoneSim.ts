@@ -354,6 +354,8 @@ export class Mob {
   readonly rangedArmor: number;
   /** Физическая броня (0..1): доля урона меча/стрел, магию не режет. */
   readonly physArmor: number;
+  /** Магическая броня (0..1): доля урона магии (огнешар, молнии, яд), которую съедает моб. */
+  readonly magicArmor: number;
   /** Множитель урона магии (>1 — уязвим). */
   readonly magicVulnMul: number;
   /** Множитель урона крита (>1 — уязвим). */
@@ -674,6 +676,7 @@ export class Mob {
       magicMelee?: boolean;
       rangedArmor?: number;
       physArmor?: number;
+      magicArmor?: number;
       magicVulnMul?: number;
       critVulnMul?: number;
       spellAoe?: boolean;
@@ -756,6 +759,7 @@ export class Mob {
     this.dmgMul = opts.dmgMul ?? 1;
     this.rangedArmor = Math.max(0, Math.min(0.95, opts.rangedArmor ?? 0));
     this.physArmor = Math.max(0, Math.min(0.95, opts.physArmor ?? 0));
+    this.magicArmor = Math.max(0, Math.min(0.95, opts.magicArmor ?? 0));
     this.magicVulnMul = Math.max(0, opts.magicVulnMul ?? 1);
     this.critVulnMul = Math.max(0, opts.critVulnMul ?? 1);
     this.spellAoe = opts.spellAoe ?? false;
@@ -2373,7 +2377,7 @@ class Bolt {
 export function eliteOpts(d: EliteMobDef): NonNullable<ConstructorParameters<typeof Mob>[3]> {
   return {
     model: d.model, name: d.name, level: d.level, hp: d.hp, dmgMul: d.dmgMul, scaleMul: d.scaleMul, xp: d.xp, ringMul: d.ringMul,
-    flying: d.flying, visLift: d.visLift, magicMelee: d.magicMelee, rangedArmor: d.rangedArmor, physArmor: d.physArmor,
+    flying: d.flying, visLift: d.visLift, magicMelee: d.magicMelee, rangedArmor: d.rangedArmor, physArmor: d.physArmor, magicArmor: d.magicArmor,
     magicVulnMul: d.magicVulnMul, critVulnMul: d.critVulnMul, spellAoe: d.spellAoe, novaCaster: d.novaCaster, enrageAt: d.enrageAt,
     splitAt: d.splitAt, splitCount: d.splitCount, splitScaleMul: d.splitScaleMul, splitHpFrac: d.splitHpFrac, splitDmgMul: d.splitDmgMul,
     splitSpeedMul: d.splitSpeedMul, splitReviveSec: d.splitReviveSec, splitXp: d.splitXp, splitChildXp: d.splitChildXp,
@@ -3118,7 +3122,7 @@ export class ZoneSim {
     rangedHit = false,
     /** true — тик горения: без кулдауна удара, без вздрагивания/звука. */
     dot = false,
-    /** true — урон магией (огнешар/АОЕ): physArmor не действует, magicVulnMul — действует. */
+    /** true — урон магией (огнешар/АОЕ): physArmor не действует, magicVulnMul и magicArmor — действуют. */
     magic = false,
     /** true — крит (сейчас только лук): учитываем critVulnMul. */
     crit = false,
@@ -3159,6 +3163,7 @@ export class ZoneSim {
     if (rangedHit && m.rangedArmor > 0) dmg *= 1 - m.rangedArmor;
     if (!magic && m.physArmor > 0) dmg *= 1 - m.physArmor;
     if (magic && m.magicVulnMul !== 1) dmg *= m.magicVulnMul;
+    if (magic && m.magicArmor > 0) dmg *= 1 - m.magicArmor;
     if (crit && m.critVulnMul !== 1) dmg *= m.critVulnMul;
     if (m.markT > 0) dmg *= m.markMul; // «Метка»: +25% урона от всех атакующих
     if (m.vulnT > 0 && attacker && this.hammerHit?.(attacker)) dmg *= m.vulnMul; // «Цепная молния»: по молоту — больше
@@ -3569,6 +3574,7 @@ export class ZoneSim {
         flying: m.flying,
         rangedArmor: m.rangedArmor,
         physArmor: m.physArmor,
+        magicArmor: m.magicArmor,
         magicVulnMul: m.magicVulnMul,
         critVulnMul: m.critVulnMul,
         splitAt: m.splitAt,
@@ -3607,6 +3613,7 @@ export class ZoneSim {
         flying: m.flying,
         rangedArmor: m.rangedArmor,
         physArmor: m.physArmor,
+        magicArmor: m.magicArmor,
         magicVulnMul: m.magicVulnMul,
         critVulnMul: m.critVulnMul,
       });

@@ -231,9 +231,9 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
     name: WEAPON_NOUN.spear.name, dmg: 1.75, interval: 0.8, tempoSoft: 1, reach: 5, pierce: 3, // было 5 целей (2026-10-02)
     critBase: 0.05, critMult: 1.5, twoHanded: true, dmgType: "phys", tiers: [1, 4, 4.5],
   },
-  // Молот: тяжёлый физический удар + магическая волна вокруг цели (HAMMER).
+  // Молот: тяжёлый физический удар + магическая волна вокруг цели (HAMMER). Удар +12% урона (2026-10-15).
   hammer: {
-    name: WEAPON_NOUN.hammer.name, dmg: 2.8, interval: 1.1, tempoSoft: 1, reach: 2.6, pierce: 1,
+    name: WEAPON_NOUN.hammer.name, dmg: 2.8 * 1.12, interval: 1.1, tempoSoft: 1, reach: 2.6, pierce: 1,
     critBase: 0.05, critMult: 1.5, twoHanded: true, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Лук: стрела 1.75 (как сейчас), но масштаб — от СИЛ, темп — от ЛОВ.

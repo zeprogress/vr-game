@@ -424,7 +424,7 @@ export async function build(ctx: LabCtx): Promise<void> {
       float(top, "MISS", "#aaa");
       return;
     }
-    let mul = type === "magic" ? (m.def.magicVulnMul ?? 1) : 1 - (m.def.physArmor ?? 0);
+    let mul = type === "magic" ? (m.def.magicVulnMul ?? 1) * (1 - (m.def.magicArmor ?? 0)) : 1 - (m.def.physArmor ?? 0);
     if (isRanged) mul *= 1 - (m.def.rangedArmor ?? 0);
     if (crit) mul *= m.def.critVulnMul ?? 1;
     const d = raw * mul * (sealT > 0 ? 1 : 1);

@@ -211,6 +211,11 @@ export interface EliteMobDef {
    * лучник — упираются. 0/не задано — брони нет.
    */
   physArmor?: number;
+  /**
+   * Магическая броня: доля 0..1 урона МАГИИ (огнешар, молнии, яд), которую съедает моб.
+   * Физический удар не режет. 0/не задано — брони нет.
+   */
+  magicArmor?: number;
   /** Множитель урона МАГИИ (огнешар/АОЕ): >1 — моб уязвим к магии. 1 — обычно. */
   magicVulnMul?: number;
   /** Множитель урона КРИТА (сейчас криты только у лука): >1 — уязвим к критам. */
@@ -663,9 +668,10 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // площади с оглушением). Модель: art/build/Skeleton_rig.blend → public/models/gen/SkeletonShield.glb
   // (клипы Idle/Walk/Run/Attack/HitReact/Death).
   skeletonReaver: {
-    model: "monSkeletonReaver", name: "Костяной жнец", blurb: "быстрый, сильные удары мечом, прикрывается щитом, прыжок-выпад с оглушением", level: 53, kind: "slime",
+    model: "monSkeletonReaver", name: "Костяной жнец", blurb: "быстрый, сильные удары мечом, прикрывается щитом, магия режется на 20%, прыжок-выпад с оглушением", level: 53, kind: "slime",
     hp: 32000, dmgMul: 26, xp: 10000000, scaleMul: 2.2, tint: [0.72, 0.86, 1.0], // HP ×2 (2026-10-13): было 16000; тон кости — без красно-жёлтого
     speedMul: 1.9, attackCooldown: 0.7, meleeReach: 2.7, critVulnMul: 1.2,
+    magicArmor: 0.2, // магия режется на 20% (2026-10-15)
     champScaleMul: 1.7, // вожак жнецов заметно крупнее обычного вожака (QUEST.champ — 1.3)
     leaper: true, leapCooldown: 20, walksOnly: true, gait: true, noSquash: true, legendaryChance: 0.05,
     ringMul: 10, // кольца: ×10 сверх элиты (2026-10-14)
