@@ -1,7 +1,6 @@
 import { showCatReport } from "../ui/CatReport";
 import { NetClient } from "../net/NetClient";
 import { Overlay, type OverlayCtx } from "./Overlay";
-import { CHANGELOG, CHANGELOG_SHOWN, CHANGELOG_HOLD_SEC } from "#shared/changelog";
 import type { OvlCam, SpecCmd } from "#shared/net/messages";
 
 /**
@@ -74,19 +73,6 @@ net.onReconnected = () => {
   ov.setShown(true);
 };
 
-let changelogIdx = 0;
-let changelogAt = 0;
-function changelogLine(now: number): string {
-  const items = CHANGELOG.slice(0, CHANGELOG_SHOWN);
-  if (items.length === 0) return "";
-  if (changelogAt === 0) changelogAt = now;
-  if (now - changelogAt > CHANGELOG_HOLD_SEC * 1000) {
-    changelogAt = now;
-    changelogIdx = (changelogIdx + 1) % items.length;
-  }
-  return items[changelogIdx % items.length];
-}
-
 function tick(): void {
   const now = performance.now();
   const st = net.room?.state ?? null;
@@ -113,7 +99,7 @@ function tick(): void {
   if (st?.eventKind === 1) ov.setTicker("Идёт ивент — нашествие мобов (!event)", "event");
   else if (st?.eventKind === 2) ov.setTicker("Идёт ивент — охота на элиту (!event)", "event");
   else if (st?.eventKind === 3) ov.setTicker("Идёт ивент — Охотничья башня (!event)", "event");
-  else ov.setTicker(changelogLine(now), "news");
+  else ov.setTicker("", "news");
 
   ov.update({
     watching: c?.w ?? null,

@@ -17,7 +17,6 @@ import type { Room } from "colyseus.js";
 import { BOT, EVENT, PLAYER, SKILL, daylightAt } from "#shared/constants";
 import { BLINK, BOSS, MOB, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, SPORE } from "#shared/mobs";
 import { TOWER, TOWER_HIDE } from "#shared/tower";
-import { CHANGELOG, CHANGELOG_SHOWN, CHANGELOG_HOLD_SEC, TELEGRAM } from "#shared/changelog";
 import type { ZoneState, PlayerState } from "#shared/net/schema";
 import type { ActKind, SpecCmd } from "#shared/net/messages";
 import { LOADOUT } from "../config/loadout";
@@ -1372,22 +1371,6 @@ export class Spectator {
     return parts.length ? parts.join(" · ") : "";
   }
 
-  private changelogIdx = 0;
-  private changelogAt = 0;
-
-  /** Свежие изменения игры — по одной короткой строке, перебором; между ними — реклама Telegram-канала. */
-  private changelogLine(): string {
-    const items = CHANGELOG.slice(0, CHANGELOG_SHOWN).flatMap((t, i) => (i % 2 === 1 ? [t, TELEGRAM.ticker] : [t]));
-    if (items.length === 0) return "";
-    const now = performance.now();
-    if (this.changelogAt === 0) this.changelogAt = now;
-    if (now - this.changelogAt > CHANGELOG_HOLD_SEC * 1000) {
-      this.changelogAt = now;
-      this.changelogIdx = (this.changelogIdx + 1) % items.length;
-    }
-    return items[this.changelogIdx % items.length];
-  }
-
   /** Чья модель сейчас спрятана (камера «из глаз» этого игрока) — чтобы вернуть при смене кадра. */
   private eyeHiddenId: string | null = null;
 
@@ -1518,7 +1501,7 @@ export class Spectator {
     } else if (st?.eventKind === 3) {
       this.overlay?.setTicker("Идёт ивент — Охотничья башня (!event)", "event");
     } else {
-      this.overlay?.setTicker(this.changelogLine(), "news");
+      this.overlay?.setTicker("", "news");
     }
 
     this.overlay?.update({
