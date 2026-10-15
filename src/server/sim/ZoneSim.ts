@@ -527,6 +527,8 @@ export class Mob {
   readonly eliteName: string;
   /** Множитель шанса колец (жнец ×10); см. ELITE_MOBS.ringMul. */
   readonly ringMul: number;
+  /** Множитель радиуса расталкивания толпы (separateMobs); см. ELITE_MOBS.sepMul. */
+  readonly sepMul: number;
   readonly eliteLevel: number;
   readonly campType: string;
   readonly champ: boolean;
@@ -710,6 +712,7 @@ export class Mob {
       leaper?: boolean;
       leapCooldown?: number;
       ringMul?: number;
+      sepMul?: number;
       walksOnly?: boolean;
       packFrenzy?: boolean;
       burrower?: boolean;
@@ -734,6 +737,7 @@ export class Mob {
     this.model = opts.model ?? "";
     this.eliteName = opts.name ?? "";
     this.ringMul = opts.ringMul ?? 1;
+    this.sepMul = opts.sepMul ?? 1;
     this.eliteLevel = opts.level ?? 0;
     this.flying = opts.flying ?? false;
     this.magicMelee = opts.magicMelee ?? false;
@@ -2376,7 +2380,7 @@ class Bolt {
 /** Опции моба по описанию ELITE_MOBS — ОДНО место для лагерей, событий и катакомб (раньше два списка расходились). */
 export function eliteOpts(d: EliteMobDef): NonNullable<ConstructorParameters<typeof Mob>[3]> {
   return {
-    model: d.model, name: d.name, level: d.level, hp: d.hp, dmgMul: d.dmgMul, scaleMul: d.scaleMul, xp: d.xp, ringMul: d.ringMul,
+    model: d.model, name: d.name, level: d.level, hp: d.hp, dmgMul: d.dmgMul, scaleMul: d.scaleMul, xp: d.xp, ringMul: d.ringMul, sepMul: d.sepMul,
     flying: d.flying, visLift: d.visLift, magicMelee: d.magicMelee, rangedArmor: d.rangedArmor, physArmor: d.physArmor, magicArmor: d.magicArmor,
     magicVulnMul: d.magicVulnMul, critVulnMul: d.critVulnMul, spellAoe: d.spellAoe, novaCaster: d.novaCaster, enrageAt: d.enrageAt,
     splitAt: d.splitAt, splitCount: d.splitCount, splitScaleMul: d.splitScaleMul, splitHpFrac: d.splitHpFrac, splitDmgMul: d.splitDmgMul,
@@ -2895,7 +2899,7 @@ export class ZoneSim {
     const list: Mob[] = [];
     for (const m of this.mobs.values()) if (!m.dead) list.push(m);
     const bodyR = (m: Mob): number =>
-      MOB.bodyRadius * m.scale * (m.kind === "boss" ? BOSS.bodyMult : 1);
+      MOB.bodyRadius * m.scale * m.sepMul * (m.kind === "boss" ? BOSS.bodyMult : 1);
     // Толпа не вдавливает моба в героя: герой — препятствие (см. Mob.tick), сдвиг глубже в него не делаем.
     const intoHero = (m: Mob, nx: number, nz: number): boolean => {
       const r = PLAYER.radius + bodyR(m);

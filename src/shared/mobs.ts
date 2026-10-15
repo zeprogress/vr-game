@@ -301,6 +301,8 @@ export interface EliteMobDef {
   leapCooldown?: number;
   /** Множитель шанса КОЛЕЦ (не камней) с моба сверх элитного множителя RING.eliteMul. */
   ringMul?: number;
+  /** Радиус расталкивания толпы (множитель к телу моба, только separateMobs; удар и контакт не меняются). */
+  sepMul?: number;
   /** Ходит по земле без пачек скачков (ноги всегда на земле). Прыжок leaper (LEAP) остаётся механикой: ходок прыгает с дистанции, когда прыжок готов. */
   walksOnly?: boolean;
   /** 40 ур. Скалолом: гибель сородича рядом — ярость стаи (см. PACK_FRENZY). */
@@ -675,6 +677,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     champScaleMul: 1.7, // вожак жнецов заметно крупнее обычного вожака (QUEST.champ — 1.3)
     leaper: true, leapCooldown: 20, walksOnly: true, gait: true, noSquash: true, legendaryChance: 0.05,
     ringMul: 10, // кольца: ×10 сверх элиты (2026-10-14)
+    sepMul: 0.5, // расталкивание: тело жнеца ≈0.6 м вместо ≈1.2 м (только толпа; удар не меняется)
   },
 };
 

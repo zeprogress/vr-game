@@ -350,6 +350,10 @@ export async function loadTrees(
 
   const bark = barkMaterial(scene);
   const leaf = leafMaterial(scene, containers[0].textures[0]);
+  // У игроков крона — с отсечением задней стороны карточек: задние стороны не рисуются, перерисовка меньше
+  // (у спектатора остаётся двусторонняя — на него завязаны полупрозрачные копии).
+  const leafCrown = noInstances ? leaf : leafMaterial(scene, containers[0].textures[0]);
+  if (!noInstances) leafCrown.backFaceCulling = true;
 
   (customList ?? treeList()).forEach((t, i) => {
     const c = containers[i % containers.length];
@@ -372,7 +376,7 @@ export async function loadTrees(
       // иначе у игроков (не noInstances) деревья оставались с оригинальным тяжёлым
       // PBR из glTF, а дешёвые лёгкие материалы получал только спектатор.
       const paint = mesh.isAnInstance ? (mesh as unknown as InstancedMesh).sourceMesh : mesh;
-      paint.material = isLeaf ? leaf : bark;
+      paint.material = isLeaf ? leafCrown : bark;
       (isLeaf ? leafMeshes : barkMeshes).push(mesh);
       // Ствол — тоньше (у модели раздутое основание), крона — чуть шире и ниже.
       if (isLeaf) mesh.scaling.set(1.15, 0.92, 1.15);
@@ -432,7 +436,7 @@ export async function loadTrees(
     );
   }
   baseBark = bark;
-  baseLeaf = leaf;
+  baseLeaf = leafCrown;
   barkDiffuseBase = bark.diffuseColor.clone();
   barkEmiBase = bark.emissiveColor.clone();
   leafDiffuseBase = leaf.diffuseColor.clone();
@@ -442,6 +446,7 @@ export async function loadTrees(
   if (noInstances) buildFadeMaterials(bark, leaf);
   bark.freeze();
   leaf.freeze();
+  if (leafCrown !== leaf) leafCrown.freeze();
 }
 
 /** Трава thin-инстансами. Возвращает тик ветра (dt, daylight). */
