@@ -433,6 +433,8 @@ interface Bot {
   progX?: number;
   progZ?: number;
   unstickUntil?: number;
+  /** Бегство от опасной зоны не выполнилось (толпа заперла): до этого времени бот не бежит, а бьёт. */
+  escapeOffUntil?: number;
   unstickX?: number;
   unstickZ?: number;
   /** !event: бот-игрока послан на активное событие мира — чистит там мобов,
@@ -7958,7 +7960,9 @@ export class ZoneRoom extends Room<ZoneState> {
           : undefined;
     // Катакомбы, режим «агрессивно»: зон умений мобов не обходит — стоит и бьёт (урон получает как обычно).
     const braveCat = bot.catMode === "brave" && this.cat.inRun(bot.id);
-    const escape = braveCat || ((raidBoss || onRaidArena) && this.raid.tideCasting) ? null : this.dangerEscape(p.head.x, p.head.z, escOk);
+    const escape = braveCat || ((raidBoss || onRaidArena) && this.raid.tideCasting) || (bot.escapeOffUntil ?? 0) > this.elapsed
+      ? null
+      : this.dangerEscape(p.head.x, p.head.z, escOk);
     // Мягкая метка выпада (подземелье) — цель остаётся: бот выходит из круга и продолжает бить.
     if (escape && !escape.soft) mob = undefined;
     // Подземелье: дом бота внутри (или он там, а дом снаружи) — сперва переход через портал.
@@ -8206,6 +8210,8 @@ export class ZoneRoom extends Room<ZoneState> {
       if (bot.progAt === undefined || this.elapsed - bot.progAt > 3) {
         const moved = bot.progAt === undefined ? 99 : Math.hypot(p.head.x - (bot.progX ?? 0), p.head.z - (bot.progZ ?? 0));
         if (moved < 0.8) {
+          // Бежит из зоны, а толпа его не пускает: стоять столбом нельзя — на 2.5 с бот бьёт, а не бежит.
+          if (escape) bot.escapeOffUntil = this.elapsed + 2.5;
           bot.nav = undefined;
           const side = Math.random() < 0.5 ? 1 : -1;
           const ux = -mdz * side - mdx * 0.5;
