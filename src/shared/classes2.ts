@@ -497,9 +497,9 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   plague: {
     name: "Чумной клинок", icon: glyph("s.plague"), test: true,
-    desc: "8 с отравленных клинков: удар вешает стак яда (до 5); на 5 стаках взрыв ×0.36 удара заражает соседей (+2 стака) — яд ползёт по толпе",
-    cooldown: 16, castTime: 0, radius: 5, dmgMult: 0.36, hits: 1, // взрыв −10% (2026-10-15): было 0.4
-    attr: { attr: "wis", per: 0.14, what: "сила яда" }, // 2026-10-07: было 2% → 4.5% → 8%; 2026-10-09: 14%
+    desc: "8 с отравленных клинков: удар вешает стак яда (до 5); на 5 стаках взрыв ×0.288 удара заражает соседей (+2 стака) — яд ползёт по толпе",
+    cooldown: 16, castTime: 0, radius: 5, dmgMult: 0.288, hits: 1, // взрыв −20% (2026-10-15): было 0.36
+    attr: { attr: "wis", per: 0.112, what: "сила яда" }, // 2026-10-07: было 2% → 4.5% → 8%; 2026-10-09: 14%; 2026-10-15: 11.2%
   },
   smoke: {
     name: "Пелена смерти", icon: glyph("s.smoke"), test: true,
@@ -628,7 +628,7 @@ export function skillAttrMul(id: SkillId, a: SkillAttrs): number {
 
 /** «Чумной клинок»: стак яда тикает stackSec, доля удара в секунду за стак; на maxStacks — взрыв. */
 export const PLAGUE = {
-  duration: 8, stackSec: 3, maxStacks: 5, tickFrac: 0.03, burstRadius: 5,
+  duration: 8, stackSec: 3, maxStacks: 5, tickFrac: 0.024, burstRadius: 5, // яд −20% (2026-10-15): было 0.03
   /** Взрыв на 5 стаках не сжигает их; следующий взрыв того же моба — не раньше чем через burstCd с. */
   burstCd: 3,
   /** Взрыв заражает соседей в burstRadius: +spread стаков (цепочкой — их взрывы заражают дальше). */

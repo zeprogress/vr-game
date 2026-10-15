@@ -811,7 +811,7 @@ export const EVENT = {
     /** Бафф всем участникам за зачистку: ×множитель опыта и урона на N минут. */
     buffMinutes: 20,
     buffXpMult: 2,
-    buffDmgMult: 1.5,
+    buffDmgMult: 1.2, // было 1.5 (2026-10-15)
     /** Шанс, что вдобавок выпадет УНИКАЛЬНОЕ оружие (было золотое). */
     rewardLegendaryChance: 0.5,
   },
