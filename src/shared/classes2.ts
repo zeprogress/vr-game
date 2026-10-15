@@ -279,7 +279,10 @@ export const DAGGER = {
 export const HAMMER = {
   /** Магическая волна при каждом ударе: доля силы магии, радиус. */
   waveMagic: 0.65,
-  waveRadius: 3,
+  /** Прибавка волны от интеллекта за очко сверх старта (2026-10-15: 5%). */
+  waveIntPer: 0.05,
+  /** Радиус волны, м (2026-10-15: было 3). */
+  waveRadius: 4,
 } as const;
 
 /** Огнешар: доля урона по соседям (сплэш) — как в игре. */
@@ -411,7 +414,7 @@ export const STORM_CRUSH = {
   /** Лечение — доля макс. HP: база + за каждое очко мудрости сверх старта. Союзники — то же, в allyRadius. */
   healBase: 0.09, healPerWis: 0.003, allyRadius: 12, // лечение база 6% → 9% (2026-10-15)
   /** Урон волны — ещё +intDmgPer за очко интеллекта сверх старта (поверх общих +6% умений молота). */
-  intDmgPer: 0.04,
+  intDmgPer: 0.025,
   /** Замедление мобов в волне: секунд и множитель скорости (0.5 — вдвое медленнее). */
   slowSec: 5, slowMul: 0.5,
 } as const;
@@ -788,7 +791,7 @@ export function summarize2(h: Hero2): Summary2 {
   let splash = 0;
   let splashType: "phys" | "magic" = "phys";
   if (h.cls === "battlemage") {
-    splash = HAMMER.waveMagic * magicPower2(h.level, a) * tierMul;
+    splash = HAMMER.waveMagic * magicPower2(h.level, a) * tierMul * (1 + Math.max(0, attrOf(a, "int") - ATTR2.start) * HAMMER.waveIntPer);
     splashType = "magic";
   } else if (h.cls === "support") {
     splash = hit * STAFF_SPLASH.frac;

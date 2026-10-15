@@ -2495,6 +2495,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const dmg =
       HAMMER.waveMagic *
       magicPowerFor(p.level, p) *
+      (1 + Math.max(0, attrOf(p, "int") - ATTR2.start) * HAMMER.waveIntPer) *
       multIn(p, hand) *
       rolledDmgMul(p, hand, rt) *
       this.buffMult(ownerId, "dmg");

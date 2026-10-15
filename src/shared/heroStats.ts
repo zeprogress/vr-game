@@ -187,7 +187,7 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const hit = weaponHitDamage(cls || "sword", tier, p.level, p, dmgBonus) * dual * bm.dmg * sharpMul;
   rows.push({ label: "Урон", value: hit.toFixed(1) + (bm.dmg > 1 ? UP : "") });
   if (cls === "hammer") {
-    rows.push({ label: "Волна молота (магия)", value: (HAMMER.waveMagic * magicPowerFor(p.level, p) * tierMul).toFixed(1) });
+    rows.push({ label: "Волна молота (магия)", value: (HAMMER.waveMagic * magicPowerFor(p.level, p) * tierMul * (1 + Math.max(0, attrOf(p, "int") - ATTR2.start) * HAMMER.waveIntPer)).toFixed(1) });
   }
   if (cls === "spear") rows.push({ label: "Удар конусом", value: `до ${WEAPONS2.spear.pierce} целей` });
 
