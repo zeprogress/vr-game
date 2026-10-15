@@ -1,4 +1,6 @@
+import type { IconKey } from "./icons";
 import type { WeaponTier } from "./items";
+import { MOB_ARMOR } from "./mobs";
 
 /**
  * Общий вид интерфейса — ОДНО место для цветов и подписей, которые повторяются
@@ -120,6 +122,18 @@ export const FX_RGB = {
 } as const satisfies Record<string, RGB>;
 
 export type FxColor = keyof typeof FX_RGB;
+
+// ---------------------------------------------------------------- защиты мобов
+
+/**
+ * Защиты моба — значки справа от уровня на плашке, в порядке показа:
+ * бит MobState.armor (MOB_ARMOR, shared/mobs.ts) → значок и его цвет.
+ */
+export const MOB_ARMOR_LOOK: readonly { bit: number; icon: IconKey; color: string }[] = [
+  { bit: MOB_ARMOR.phys, icon: "st.pdef", color: "#d3dae4" },
+  { bit: MOB_ARMOR.ranged, icon: "st.rdef", color: "#9fd86e" },
+  { bit: MOB_ARMOR.magic, icon: "st.mdef", color: "#b98cff" },
+];
 
 /** RGB 0..1 → «#rrggbb» (для HTML/CSS). */
 export function rgbHex(c: RGB): string {

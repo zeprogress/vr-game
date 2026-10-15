@@ -9,6 +9,8 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Constants } from "@babylonjs/core/Engines/constants";
+import { MOB_ARMOR_LOOK } from "#shared/look";
+import { drawIcon } from "./icons";
 
 /**
  * Плашки имён над мобами и героями — ОДНА общая текстура-атлас на много плашек (страница 2048×1024,
@@ -28,6 +30,8 @@ const ROWS = PAGE_H / SLOT_H;
 const M_PER_PX = 0.9 / 448;
 const NAME_PX = 56;
 const LVL_PX = 36;
+/** Значок защиты моба справа от уровня (кружок с рисунком), px ячейки. */
+const ICON_PX = 40;
 const FONT_FAMILY = "system-ui, sans-serif";
 /** Метка бота зрителя перед ником — единственное отличие от живого игрока со стороны. */
 const BOT_MARK = "🤖 ";
@@ -178,6 +182,9 @@ export class NameTag {
   private curName = "";
   private curLevel: number | null = null;
   private curUnspent = false;
+  /** Защиты моба битами (MobState.armor) — значки справа от уровня. */
+  private armor = 0;
+  private disposed = false;
   /** Платформа игрока: 0 — нет значка, 1 — ПК, 2 — смартфон, 3 — VR. */
   private platform = 0;
 
@@ -339,15 +346,18 @@ export class NameTag {
       const lvlY = 100;
       const lvlText = `${level} ур.`;
       const head = this.title ? `${this.title} · ` : "";
+      // Защиты моба — значки справа от уровня; строка «уровень + значки» стоит по центру.
+      const defs = MOB_ARMOR_LOOK.filter((d) => (this.armor & d.bit) !== 0);
+      const iconsW = defs.length > 0 ? 8 + defs.length * (ICON_PX + 4) - 4 : 0;
       let lp = LVL_PX;
       ctx.font = `600 ${lp}px ${FONT_FAMILY}`;
       let tw = ctx.measureText(head + lvlText).width;
-      if (tw > W - 40) {
-        lp = Math.max(18, Math.floor((lp * (W - 40)) / tw));
+      if (tw + iconsW > W - 40) {
+        lp = Math.max(18, Math.floor((lp * (W - 40 - iconsW)) / tw));
         ctx.font = `600 ${lp}px ${FONT_FAMILY}`;
         tw = ctx.measureText(head + lvlText).width;
       }
-      const lx = W / 2 - tw / 2;
+      const lx = W / 2 - (tw + iconsW) / 2;
       ctx.textAlign = "left";
       // Титул фиолетовым перед уровнем: «Царь башни · 34 ур.».
       if (head) outlined(head, lx, lvlY, "#c79bff", 6);
@@ -356,6 +366,17 @@ export class NameTag {
         // Красный "!" сразу после уровня — не по центру плашки (иначе сдвигал бы текст уровня).
         ctx.font = `bold 40px ${FONT_FAMILY}`;
         outlined("!", lx + tw + 10, lvlY + 1, "#ff3b30", 6);
+      }
+      // Тёмный кружок под значком — рисунок читается на любом фоне (как значок платформы у ника).
+      let ix = lx + tw + 8;
+      for (const d of defs) {
+        ctx.fillStyle = "rgba(6,8,12,0.72)";
+        ctx.beginPath();
+        ctx.arc(ix + ICON_PX / 2, lvlY, ICON_PX / 2, 0, Math.PI * 2);
+        ctx.fill();
+        const pad = ICON_PX * 0.17;
+        drawIcon(ctx, d.icon, ix + pad, lvlY - ICON_PX / 2 + pad, ICON_PX - 2 * pad, d.color, () => this.repaint());
+        ix += ICON_PX + 4;
       }
     }
     ctx.restore();
@@ -367,6 +388,18 @@ export class NameTag {
     if (title === this.title) return;
     this.title = title;
     this.paint(this.curName, this.curLevel, this.curUnspent);
+  }
+
+  /** Защиты моба битами (MobState.armor, MOB_ARMOR) — значки справа от уровня. */
+  setArmor(bits: number): void {
+    if (bits === this.armor) return;
+    this.armor = bits;
+    this.repaint();
+  }
+
+  /** Перерисовать с текущими данными (значок догрузился). Освобождённую ячейку не трогаем — её уже взяла другая плашка. */
+  private repaint(): void {
+    if (!this.disposed) this.paint(this.curName, this.curLevel, this.curUnspent);
   }
 
   /** Полоски над ником: геометрия и цвет в вершинах (без перерисовки текста). */
@@ -466,6 +499,7 @@ export class NameTag {
   }
 
   dispose(): void {
+    this.disposed = true;
     // Материал и текстура общие — уходит только меш, ячейка атласа освобождается.
     this.plane.dispose(false, false);
     this.atlas.release(this.page, this.slot);

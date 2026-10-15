@@ -1293,6 +1293,7 @@ export class Mob implements Hittable {
       const t = Math.min(1, Math.max(0, (md - 6) / (MOB.nameTagRange - 6)));
       const tag = this.getTag();
       tag.setScale((2 + t * 2) * this.uiScale);
+      tag.setArmor(s.armor);
       // ПК «как в WoW»: полоска здоровья всегда в плашке, уровень — цветом опасности.
       const pc = Mob.pcPlates;
       if (pc) {

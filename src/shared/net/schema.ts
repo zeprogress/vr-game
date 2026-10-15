@@ -184,6 +184,8 @@ export class MobState extends Schema {
   @type("uint8") marked = 0;
   /** Под землёй (Землерой) — модель не рисуем, видно только пыльный след. */
   @type("uint8") under = 0;
+  /** Защиты моба битами (MOB_ARMOR, shared/mobs.ts): 1 — физическая, 2 — от дальнего боя, 4 — магическая; значки у уровня. */
+  @type("uint8") armor = 0;
 }
 
 export class DummyState extends Schema {

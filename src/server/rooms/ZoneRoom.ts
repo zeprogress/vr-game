@@ -77,7 +77,7 @@ import {
   type AutoGoMsg,
 } from "#shared/net/messages";
 import { ADMIN_NICK, NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL } from "#shared/constants";
-import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE } from "#shared/mobs";
+import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, mobArmorBits } from "#shared/mobs";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
 import { skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
 import { RaidFight, type RaidHost } from "./raidFight";
@@ -9976,6 +9976,7 @@ export class ZoneRoom extends Room<ZoneState> {
       s.yaw = m.yaw;
       s.hp = Math.max(0, m.hp);
       s.maxHp = m.maxHp;
+      s.armor = mobArmorBits(m);
       s.dead = m.dead ? 1 : 0;
       s.grounded = m.grounded ? 1 : 0;
       s.hurtSeq = m.hurtSeq;
