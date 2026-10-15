@@ -1329,7 +1329,9 @@ export class Spectator {
   /** Таблица понятных характеристик игрока для панели «смотрим» (см. #shared/heroStats). */
   private static playerStatRows(p: PlayerState): HeroStatRow[] {
     // «Удар конусом» (прокол копья) зрителям не нужен — он есть в инвентаре игрока.
-    return heroStatRows(p).filter((r) => r.label !== "Удар конусом");
+    const rows = heroStatRows(p).filter((r) => r.label !== "Удар конусом");
+    rows.push({ label: "Убийств в минуту", value: String(p.kpm) });
+    return rows;
   }
 
   /** Баффы на герое — для плашек в «смотрим». */

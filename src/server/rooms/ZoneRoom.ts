@@ -268,6 +268,7 @@ import { TOWER, TOWER_HIDE, TOWER_PROP_POS } from "#shared/tower";
 import { randomUUID } from "node:crypto";
 import { attrOf } from "#shared/attrs2";
 import { giveItems, parseTradeItem, parseTradeList, takeItems, takenName, tradeLog, tradeViewOf, TRADE_ACTS, type InvSnap, type Taken, type TradeAct, type TradeItem, type TradeSession, type TradeSide } from "../trade";
+import { KillRates } from "../sim/killRate";
 import { applyJewelOp, gemName, JEWEL_ACTS, jewelBonus, jewelOpFrom, jewelsOf, pcInvJewels, RING_LOOK, ringName, rollJewelDrop, type JewelAct, type JewelSave } from "#shared/jewels";
 
 const { Room } = colyseus;
@@ -1270,6 +1271,8 @@ const CAT_CMDS: readonly string[] = ["!катакомбы", "!кт", "!catacombs
 export class ZoneRoom extends Room<ZoneState> {
   private sim!: ZoneSim;
   private readonly rt = new Map<string, Runtime>();
+  /** Убийств за минуту по героям (PlayerState.kpm) — только текущее окно, без истории. */
+  private readonly killRates = new KillRates();
   /** sessionId, которых мы сами выгнали (kickNick) — onLeave не должен ждать
    * для них 20с реконнекта, иначе они могут отбить место обратно у новой сессии. */
   private readonly kickedSessions = new Set<string>();
@@ -10121,9 +10124,11 @@ export class ZoneRoom extends Room<ZoneState> {
     // Добивания: счётчик kills добившему + кил-фид (кроме осколков и босса —
     // босса объявляем отдельно — ником того, кто нанёс последний удар).
     let bossKiller = "";
+    const nowSec = Date.now() / 1000;
     for (const k of this.sim.mobKills) {
       const krt = this.rt.get(k.owner);
       if (krt) krt.kills++;
+      this.killRates.add(k.owner, nowSec);
       if (k.jm > 0) this.jewelDrop(k.owner, k.jm, k.jr);
       this.chatQuestKill(k.owner, k.champ);
       if (k.campType) {
@@ -10141,6 +10146,10 @@ export class ZoneRoom extends Room<ZoneState> {
       this.broadcast(MSG.killFeed, { by: kp.nick, victim });
     }
     this.sim.mobKills.length = 0;
+    this.killRates.each(nowSec, (id, perMin) => {
+      const kp = this.state.players.get(id);
+      if (kp) kp.kpm = perMin;
+    });
     for (const owner of this.sim.dragonTop) this.bumpFeat(owner, "dragonTop", TITLE_GOALS.dragonTop, "Драконоборец");
     this.sim.dragonTop.length = 0;
     // Опыт с босса — гибридный делёж (поровну + за вклад, с потолком) считает

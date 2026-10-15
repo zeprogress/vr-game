@@ -126,6 +126,8 @@ export class PlayerState extends Schema {
   @type(GemBonusSync) gb = new GemBonusSync();
   /** Бонусы надетой брони (shared/armor.ts): синхронизируются, чтобы считать здоровье и защиту. */
   @type(ArmorBonusSync) ab = new ArmorBonusSync();
+  /** Убийств за последние 60 с (карточка «смотрим» у спектатора; считает server/sim/killRate.ts, не сохраняется). */
+  @type("uint16") kpm = 0;
 }
 
 export type MobKind = "slime" | "spitter" | "boss" | "shard";
