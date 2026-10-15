@@ -195,7 +195,7 @@ export const CAMPFIRE = {
   warmSec: 0,
   buffSec: 600,
   /** Бафф: доля входящего урона, которую гасит «Тепло костра» (0.2 = −20%). */
-  buffDef: 0.2,
+  buffDef: 0.1, // было 0.2 (2026-10-15)
 };
 
 export const PLAYER_HP = {

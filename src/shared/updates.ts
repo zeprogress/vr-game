@@ -12,6 +12,10 @@ export interface GameUpdate {
 
 export const UPDATES: readonly GameUpdate[] = [
   {
+    at: "2026-10-15 15:30",
+    items: ["Бафф «Тепло костра»: −10% входящего урона (было −20%)"],
+  },
+  {
     at: "2026-10-15 15:20",
     items: ["Костяные жнецы режут магический урон на 20% (было 30%)"],
   },
