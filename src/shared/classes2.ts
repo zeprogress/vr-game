@@ -211,7 +211,7 @@ export interface WeaponProfile {
 
 export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   sword: {
-    name: WEAPON_NOUN.sword.name, dmg: 1.8, interval: 0.7, tempoSoft: 1, reach: 2.2, pierce: 1, // 1 → 1.8 (2026-10-05: воин слабейший, темп ПК приведён к общему)
+    name: WEAPON_NOUN.sword.name, dmg: 1.8 * 1.2, interval: 0.7, tempoSoft: 1, reach: 2.2, pierce: 1, // 1 → 1.8 (2026-10-05: воин слабейший, темп ПК приведён к общему); ×1.2 (2026-10-15)
     critBase: 0.05, critMult: 1.5, twoHanded: false, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   shield: {
@@ -233,7 +233,7 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   },
   // Молот: тяжёлый физический удар + магическая волна вокруг цели (HAMMER). Удар +12% урона (2026-10-15).
   hammer: {
-    name: WEAPON_NOUN.hammer.name, dmg: 2.8 * 1.12, interval: 1.1, tempoSoft: 1, reach: 2.6, pierce: 1,
+    name: WEAPON_NOUN.hammer.name, dmg: 2.8 * 1.12 * 1.2, interval: 1.1, tempoSoft: 1, reach: 2.6, pierce: 1,
     critBase: 0.05, critMult: 1.5, twoHanded: true, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Лук: стрела 1.75 (как сейчас), но масштаб — от СИЛ, темп — от ЛОВ.
@@ -409,7 +409,7 @@ export interface SkillDef {
  */
 export const STORM_CRUSH = {
   /** Лечение — доля макс. HP: база + за каждое очко мудрости сверх старта. Союзники — то же, в allyRadius. */
-  healBase: 0.06, healPerWis: 0.003, allyRadius: 12,
+  healBase: 0.09, healPerWis: 0.003, allyRadius: 12, // лечение база 6% → 9% (2026-10-15)
   /** Урон волны — ещё +intDmgPer за очко интеллекта сверх старта (поверх общих +6% умений молота). */
   intDmgPer: 0.04,
   /** Замедление мобов в волне: секунд и множитель скорости (0.5 — вдвое медленнее). */
