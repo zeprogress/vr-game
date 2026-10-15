@@ -55,7 +55,7 @@ export interface CatHost {
   /** Итог победы: комната дополнит строки (ник, класс, урон, убийства) и разошлёт таблицу. */
   report(r: Omit<CatReportMsg, "rows">, heroes: { id: string; deaths: number; loot: LootItem[] }[]): void;
   /** Моб катакомб: тип (ключ ELITE_MOBS или slime/spitter), точка и множители. Возвращает id. */
-  spawn(type: string, x: number, z: number, o: { hpMul: number; dmgMul: number; scaleMul?: number; name?: string; partyLevel: number; affix?: CatAffix | null }): string;
+  spawn(type: string, x: number, z: number, o: { hpMul: number; dmgMul: number; scaleMul?: number; atkMul?: number; name?: string; partyLevel: number; affix?: CatAffix | null }): string;
   /** Темы залов на заход (для клиентов). */
   setThemes(s: string): void;
   /** Святилище в зале (k −1 — убрать). */
@@ -800,6 +800,7 @@ export class CatacombDirector {
       hpMul: b.hpMul * (b.final ? 1 : CATACOMBS.guardHpMul) * (1 + CATACOMBS.bossPerHero * (n - 1)) * this.threat("hp"),
       dmgMul: b.dmgMul * this.threat("dmg"),
       scaleMul: b.scale,
+      atkMul: b.attackMul,
       name: b.name,
       partyLevel: this.partyLevel,
     });

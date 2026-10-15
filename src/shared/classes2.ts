@@ -211,7 +211,7 @@ export interface WeaponProfile {
 
 export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   sword: {
-    name: WEAPON_NOUN.sword.name, dmg: 1.8 * 1.2, interval: 0.7, tempoSoft: 1, reach: 2.2, pierce: 1, // 1 → 1.8 (2026-10-05: воин слабейший, темп ПК приведён к общему); ×1.2 (2026-10-15)
+    name: WEAPON_NOUN.sword.name, dmg: 1.8 * 1.2 * 1.2, interval: 0.7, tempoSoft: 1, reach: 2.2, pierce: 1, // 1 → 1.8 (2026-10-05: воин слабейший, темп ПК приведён к общему); ×1.2 (2026-10-15); ×1.2 (2026-10-16)
     critBase: 0.05, critMult: 1.5, twoHanded: false, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   shield: {
@@ -500,7 +500,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   plague: {
     name: "Чумной клинок", icon: glyph("s.plague"), test: true,
-    desc: "8 с отравленных клинков: удар вешает стак яда (до 5); на 5 стаках взрыв ×0.288 удара заражает соседей (+1 стак) — яд ползёт по толпе",
+    desc: "8 с отравленных клинков: удар вешает стак яда (до 5); на 5 стаках взрыв заражает соседей (+1 стак) — яд ползёт по толпе. Сила яда — от мудрости, не от атаки",
     cooldown: 16, castTime: 0, radius: 5, dmgMult: 0.288, hits: 1, // взрыв −20% (2026-10-15): было 0.36
     attr: { attr: "wis", per: 0.1, what: "сила яда" }, // 2026-10-07: было 2% → 4.5% → 8%; 2026-10-09: 14%; 2026-10-15: 11.2%, затем 10%
   },
@@ -632,6 +632,8 @@ export function skillAttrMul(id: SkillId, a: SkillAttrs): number {
 /** «Чумной клинок»: стак яда тикает stackSec, доля удара в секунду за стак; на maxStacks — взрыв. */
 export const PLAGUE = {
   duration: 8, stackSec: 3, maxStacks: 5, tickFrac: 0.024, burstRadius: 4, // яд −20% (2026-10-15): было 0.03; радиус взрыва 4 м (было 5)
+  /** База яда — ПОСТОЯННАЯ, не удар героя: яд зависит только от МДР (skillAttrMul). ≈ удар ассасина на 33 ур. (как было там). */
+  baseDmg: 130,
   /** Взрыв на 5 стаках не сжигает их; следующий взрыв того же моба — не раньше чем через burstCd с. */
   burstCd: 3,
   /** Взрыв заражает соседей в burstRadius: +spread стаков (цепочкой — их взрывы заражают дальше). */

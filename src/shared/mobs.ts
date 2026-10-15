@@ -1007,6 +1007,8 @@ export interface CatBoss {
   mech?: CatMech[];
   /** Постоянная свита: каждые every с из ворот вылезают count (+perHero за героя). */
   adds?: { types: string[]; every: number; count: number; perHero: number };
+  /** Множитель перезарядки ближнего удара (меньше — чаще); сверх ELITE_MOBS.attackCooldown. */
+  attackMul?: number;
 }
 
 /** Общий пул приёмов: каждый заход страж получает 1–2 случайных сверх своих — бои каждый раз разные. */
@@ -1119,14 +1121,14 @@ export const CAT_CHAMPIONS: readonly (readonly CatChampion[])[] = [
 export const CAT_SUPERBOSSES: readonly CatBoss[] = [
   {
     key: "catDragon", name: "Владыка Бездны", title: "древний дракон катакомб",
-    hpMul: 0.34, dmgMul: 1.1, scale: 3, final: true,
+    hpMul: 0.68, dmgMul: 1.1, scale: 3, final: true, attackMul: 0.5,
     retinue: [{ type: "boneWraith", count: 2, perHero: 1 }],
     seal: { key: "boneChief", name: "Хранитель печати", fx: 1, sealTitle: "Печать Бездны", rageTitle: "Ярость Бездны", rageSub: "Владыка в огне — кольца пламени, отбегайте!" },
     adds: { types: ["boneWraith", "spikyBlob", "ruinMage"], every: 24, count: 2, perHero: 0.4 },
   },
   {
     key: "boneChief", name: "Мор'Гхаш, Костяной Император", title: "владыка склепов — армия мёртвых и гейзеры душ",
-    hpMul: 2.1, dmgMul: 1.3, scale: 2.4, final: true,
+    hpMul: 4.2, dmgMul: 1.3, scale: 2.4, final: true, attackMul: 0.5,
     retinue: [{ type: "boneWraith", count: 3, perHero: 1 }],
     seal: { key: "boneWraith", name: "Призрачный страж", fx: 2, sealTitle: "Костяной трон", rageTitle: "Гнев Императора", rageSub: "гейзеры душ кольцами — отбегайте!" },
     mech: [{ kind: "slam", name: "Длань мертвеца", every: 7, fx: 2, dmg: 0.3, r: 3.8 }],
@@ -1134,7 +1136,7 @@ export const CAT_SUPERBOSSES: readonly CatBoss[] = [
   },
   {
     key: "rockBreakerJump", name: "Гор'Таал, Древний Скалолом", title: "сердце горы — прыжки, камнепады, землетрясения",
-    hpMul: 1.45, dmgMul: 0.9, scale: 1.15, final: true,
+    hpMul: 2.9, dmgMul: 0.9, scale: 1.15, final: true, attackMul: 0.5,
     retinue: [{ type: "rockBreaker", count: 1, perHero: 0.4 }],
     seal: { key: "golem", name: "Каменный страж", fx: 0, sealTitle: "Каменная печать", rageTitle: "Землетрясение", rageSub: "земля рвётся кольцами — отбегайте!" },
     mech: [{ kind: "barrage", name: "Обвал горы", every: 8, fx: 0, dmg: 0.26, r: 3.2 }],

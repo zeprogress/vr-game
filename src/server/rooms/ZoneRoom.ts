@@ -2436,7 +2436,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (critM > 1) this.critFx(sx, sy, sz, heroId);
     // Опыт, счётчик убийств и кил-фид — через общий делёж (sim.mobXpShare / sim.mobKills).
     const killed = !!this.sim.hitMob(struck.id, dmg, dx, dz, heroId, weapon === "arrow", false, false, critM > 1);
-    if (weapon === "dagger") this.afterDaggerHit(heroId, p, rt, struck, dmg);
+    if (weapon === "dagger") this.afterDaggerHit(heroId, p, rt, struck);
     // Пронзание (ролл лука): стрела насквозь — моб позади цели получает долю урона.
     if (weapon === "arrow" && this.sim.rollPierce(heroId)) this.sim.pierceBehind(struck.id, sx, sz, dx, dz, dmg * BOW.pierceDmg, heroId);
     // Вампиризм (ролл на оружии ближнего боя) — часть нанесённого урона возвращается как HP.
@@ -2556,11 +2556,11 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** 🧪 После удара кинжалом: яд «Чумного клинка» (стаки, на 5 — взрыв вокруг цели). */
-  private afterDaggerHit(ownerId: string, p: PlayerState, rt: Runtime, mob: Mob, dmg: number, add = 1): void {
+  private afterDaggerHit(ownerId: string, p: PlayerState, rt: Runtime, mob: Mob, add = 1): void {
     if (rt.plagueUntil <= this.elapsed || mob.dead) return;
     // Стак яда; на 5 стаках сим сам взрывает яд и заражает соседей (ZoneSim.poisonBurstAt).
     const k = skillAttrMul("plague", p);
-    this.sim.poisonMob(mob.id, dmg * PLAGUE.tickFrac * k, dmg * SKILLS2.plague.dmgMult * k, ownerId, add);
+    this.sim.poisonMob(mob.id, PLAGUE.baseDmg * PLAGUE.tickFrac * k, PLAGUE.baseDmg * SKILLS2.plague.dmgMult * k, ownerId, add);
   }
 
   /** Множитель баффа победы над событием (×2 опыт/урон), пока активен. */
@@ -6930,7 +6930,7 @@ export class ZoneRoom extends Room<ZoneState> {
     type: string,
     x: number,
     z: number,
-    o: { hpMul: number; dmgMul: number; scaleMul?: number; name?: string; partyLevel: number; affix?: CatAffix | null },
+    o: { hpMul: number; dmgMul: number; scaleMul?: number; atkMul?: number; name?: string; partyLevel: number; affix?: CatAffix | null },
   ): string {
     const af = o.affix;
     this.catLevel = o.partyLevel;
@@ -6945,6 +6945,8 @@ export class ZoneRoom extends Room<ZoneState> {
       opts.hp = Math.round(def.hp * o.hpMul * k ** 1.4 * lv * (af?.hpMul ?? 1) * CATACOMBS.hpScale);
       opts.dmgMul = def.dmgMul * o.dmgMul * k ** 1.2 * lv * CATACOMBS.dmgScale;
       opts.scaleMul = (def.scaleMul ?? 1) * (o.scaleMul ?? 1) * (af?.scaleMul ?? 1);
+      // Супербоссы бьют в ближнем бою чаще: перезарядка удара × atkMul.
+      if (o.atkMul) opts.attackCooldown = (opts.attackCooldown ?? MOB.attackCooldown) * o.atkMul;
       // Аффикс волны: поверх врождённых свойств (берём сильнейшее).
       if (af?.speedMul) opts.speedMul = Math.max(opts.speedMul ?? 1, af.speedMul);
       if (af?.lifesteal) opts.lifesteal = Math.max(opts.lifesteal ?? 0, af.lifesteal);
