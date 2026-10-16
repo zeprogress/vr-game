@@ -66,7 +66,7 @@ precision highp float;
 varying vec2 vUV;
 uniform vec3 uColor;
 uniform float uT;      // прогресс 0..1 (волна) или время, с (зона/прицел)
-uniform float uMode;   // 0 — ударная волна, 1 — зона, 2 — прицел, 3 — волна сектором (ось +x), 4 — волна без трещин (молот)
+uniform float uMode;   // 0 — ударная волна, 1 — зона, 2 — прицел, 3 — волна сектором (ось +x), 4 — волна без трещин по секундам (яд), 5 — волна без трещин по прогрессу жизни (молот)
 uniform float uHalf;   // полуугол сектора, рад (режим 3)
 uniform float uAlpha;
 uniform float uSeed;
@@ -389,7 +389,7 @@ export class SkillVfx {
   /** Ударная волна по земле (mode 0), зона (1, life — длительность), прицел (2). */
   decal(
     x: number, y: number, z: number, radius: number, color: Color3, life: number,
-    mode: 0 | 1 | 2 | 3 | 4 = 0, alpha = 1, follow: { kind: "hero" | "mob"; id: string; dy: number } | null = null,
+    mode: 0 | 1 | 2 | 3 | 4 | 5 = 0, alpha = 1, follow: { kind: "hero" | "mob"; id: string; dy: number } | null = null,
   ): void {
     const d = this.decals[this.nD];
     this.nD = (this.nD + 1) % this.decals.length;
@@ -526,7 +526,7 @@ export class SkillVfx {
           d.life = Math.min(d.life, d.age + 0.3);
         }
       }
-      if (d.mode === 0 || d.mode === 3) d.mat.setFloat("uT", d.age / d.life);
+      if (d.mode === 0 || d.mode === 3 || d.mode === 5) d.mat.setFloat("uT", d.age / d.life);
       else {
         d.mat.setFloat("uT", d.age);
         const fade = Math.min(1, d.age / d.fadeIn) * Math.min(1, (d.life - d.age) / 0.4);
