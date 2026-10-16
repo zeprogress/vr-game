@@ -151,17 +151,20 @@ export const MOB_ARMOR_LOOK: readonly { bit: number; color: string; sym: string 
 /** Круг-подложка значка устройства (20×20), как щит у защит. */
 export const DEVICE_BADGE = "M18.8 10a8.8 8.8 0 1 1-17.6 0a8.8 8.8 0 1 1 17.6 0z";
 
+/** Одна нейтральная подложка на все значки устройств — без разных цветов. */
+const DEVICE_ICON_COLOR = "#d9dee7";
+
 /**
  * Значки устройства игрока у ника: 1 — ПК (монитор), 2 — телефон, 3 — VR-шлем, 4 — бот зрителя.
  * `dark` — тёмный силуэт на цветной подложке (`color`), `light` — светлые детали (глаза бота).
  * Квадрат 20×20, рисуется через Path2D как значки защит.
  */
 export const DEVICE_ICON_LOOK: Readonly<Record<number, { color: string; dark: string; light?: string }>> = {
-  1: { color: "#8fb8ff", dark: "M3.5 4.4h13v9.2h-13zM9 13.6h2v2.4h2.6v1.3H6.4V16H9z" },
-  2: { color: "#7fe0a0", dark: "M6.4 3.2h7.2a1 1 0 0 1 1 1v11.6a1 1 0 0 1-1 1H6.4a1 1 0 0 1-1-1V4.2a1 1 0 0 1 1-1z" },
-  3: { color: "#c59bff", dark: "M2.8 7.2h14.4c.9 0 1.6.7 1.6 1.6v3.6c0 .9-.7 1.6-1.6 1.6h-3.1l-1.5-1.8H8l-1.5 1.8H3.2c-.9 0-1.6-.7-1.6-1.6V8.8c0-.9.7-1.6 1.2-1.6z" },
+  1: { color: DEVICE_ICON_COLOR, dark: "M3.5 4.4h13v9.2h-13zM9 13.6h2v2.4h2.6v1.3H6.4V16H9z" },
+  2: { color: DEVICE_ICON_COLOR, dark: "M6.4 3.2h7.2a1 1 0 0 1 1 1v11.6a1 1 0 0 1-1 1H6.4a1 1 0 0 1-1-1V4.2a1 1 0 0 1 1-1z" },
+  3: { color: DEVICE_ICON_COLOR, dark: "M2.8 7.2h14.4c.9 0 1.6.7 1.6 1.6v3.6c0 .9-.7 1.6-1.6 1.6h-3.1l-1.5-1.8H8l-1.5 1.8H3.2c-.9 0-1.6-.7-1.6-1.6V8.8c0-.9.7-1.6 1.2-1.6z" },
   4: {
-    color: "#ffd23f",
+    color: DEVICE_ICON_COLOR,
     dark: "M10 1.6a1.2 1.2 0 1 1-.01 0zM9.3 2.8h1.4v2.1H9.3zM5 7.2h10a1.6 1.6 0 0 1 1.6 1.6v5.2a1.6 1.6 0 0 1-1.6 1.6H5a1.6 1.6 0 0 1-1.6-1.6V8.8A1.6 1.6 0 0 1 5 7.2z",
     light: "M6.6 9.8h2.4v2.2H6.6zM11 9.8h2.4v2.2H11z",
   },
