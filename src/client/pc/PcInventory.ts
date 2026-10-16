@@ -125,7 +125,7 @@ export class PcInventory {
   private xpFill: HTMLDivElement | null = null;
   private xpText: HTMLDivElement | null = null;
   private xpLv: HTMLDivElement | null = null;
-  private xpState = { level: 1, pct: 0, maxed: false };
+  private xpState = { level: 1, xp: 0, need: 0, pct: 0, maxed: false };
 
   constructor(private readonly hooks: PcInventoryHooks) {
     injectInvStyle();
@@ -394,12 +394,16 @@ export class PcInventory {
     return this.tab === "trade" && this.isOpen && this.win.contains(a) && (a instanceof HTMLInputElement || a instanceof HTMLSelectElement);
   }
 
-  /** Опыт героя (Game шлёт каждый кадр; перерисовка — только при изменении). */
-  setXp(level: number, frac: number, maxed: boolean): void {
-    const pct = maxed ? 100 : Math.floor(Math.max(0, Math.min(1, frac)) * 1000) / 10;
+  /** Опыт героя: сколько набрано и сколько нужно до следующего уровня (Game шлёт каждый кадр; перерисовка — только при изменении). */
+  setXp(level: number, xp: number, need: number, maxed: boolean): void {
+    const have = Math.max(0, Math.floor(xp));
+    const req = Number.isFinite(need) ? Math.max(1, Math.round(need)) : 0;
+    const pct = maxed || req <= 0 ? 100 : Math.floor(Math.min(1, have / req) * 1000) / 10;
     const x = this.xpState;
-    if (x.level === level && x.pct === pct && x.maxed === maxed) return;
+    if (x.level === level && x.xp === have && x.need === req && x.maxed === maxed) return;
     x.level = level;
+    x.xp = have;
+    x.need = req;
     x.pct = pct;
     x.maxed = maxed;
     this.paintXp();
@@ -409,7 +413,10 @@ export class PcInventory {
     if (!this.xpFill || !this.xpText) return;
     const x = this.xpState;
     this.xpFill.style.width = `${x.pct}%`;
-    this.xpText.textContent = x.maxed ? "максимум" : `${x.pct.toFixed(1)}% до ${x.level + 1}`;
+    // Набрано / нужно и доля, которая УЖЕ набрана (раньше подпись «N% до …» читалась как «осталось»).
+    const n = (v: number): string => v.toLocaleString("ru-RU");
+    this.xpText.textContent = x.maxed ? "максимум" : `${n(x.xp)} / ${n(x.need)} · ${x.pct.toFixed(1)}%`;
+    this.xpText.title = x.maxed ? "" : `Опыт: набрано ${n(x.xp)} из ${n(x.need)} — до ${x.level + 1} уровня осталось ${n(Math.max(0, x.need - x.xp))}`;
     if (this.xpLv) this.xpLv.textContent = `Уровень ${x.level}`;
   }
 
@@ -2322,7 +2329,7 @@ ${["gold", "legendary", "ruby"].map(tier).join("\n")}
 .pcinv-ci-title { align-self:flex-start; max-width:100%; }
 .pcinv-ci-lv { margin-top:2px; font-size:14px; color:#e5ecf4; }
 .pcinv-xprow { position:relative; display:flex; align-items:center; height:20px; }
-.pcinv-xp { position:relative; flex:1; height:6px; border-radius:4px; background:#0d1a2b; box-shadow:inset 0 1px 2px rgba(0,0,0,.6); margin-right:-10px; overflow:hidden; }
+.pcinv-xp { position:relative; flex:1; min-width:40px; height:6px; border-radius:4px; background:#0d1a2b; box-shadow:inset 0 1px 2px rgba(0,0,0,.6); margin-right:-10px; overflow:hidden; }
 .pcinv-xp-fill { position:absolute; left:0; top:0; bottom:0; width:0; border-radius:4px; background:linear-gradient(90deg,#1f7fe0,#47b3ff); box-shadow:0 0 8px rgba(60,160,255,.8); }
 .pcinv-xp-pill { position:relative; z-index:1; height:20px; padding:0 9px; border-radius:10px; background:#08121f; border:1px solid #2a3b52; display:flex; align-items:center;
   font-size:11.5px; color:#e5ecf4; font-variant-numeric:tabular-nums; white-space:nowrap; }

@@ -43,6 +43,9 @@ interface InvMsg {
   skin?: number;
   /** Опыт к следующему уровню, 0..1. */
   xpFrac?: number;
+  /** Опыт: набрано и сколько нужно до следующего уровня (0 — максимальный). */
+  xp?: number;
+  xpNeed?: number;
   /** Данные окна снаряжения (как в игре) и что в руках (вид/тир). */
   pc?: PcInvData;
   heldHands?: { left: { cls: string; tier: string } | null; right: { cls: string; tier: string } | null };
@@ -191,7 +194,7 @@ function renderInv(msg: InvMsg): void {
   heldHands = msg.heldHands ?? { left: null, right: null };
   inv.setHero(msg.nick ?? "", msg.skin ?? 0);
   inv.setData(msg.pc);
-  inv.setXp(msg.level ?? 1, msg.xpFrac ?? 0, (msg.xpFrac ?? 0) >= 1);
+  inv.setXp(msg.level ?? 1, msg.xp ?? 0, msg.xpNeed ?? 0, (msg.xpFrac ?? 0) >= 1);
   if (!inv.isOpen) inv.open("gear");
 }
 

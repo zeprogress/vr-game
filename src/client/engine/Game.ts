@@ -976,7 +976,7 @@ export class Game {
       else if (this.pcInv) {
         // Телефон: уровень и опыт в сведениях окна снаряжения (на ПК их передаёт updatePcHud).
         const prog = this.progression;
-        this.pcInv.setXp(prog.level, prog.xp / Math.max(1, prog.xpToNext()), prog.atMaxLevel);
+        this.pcInv.setXp(prog.level, prog.xp, prog.xpToNext(), prog.atMaxLevel);
       }
       if (this.questWin) {
         // Подошёл к доске заданий — подсказка; отошёл — окно закрывается.
@@ -2685,7 +2685,7 @@ export class Game {
     h.setUnspent(prog.unspent);
     h.setMana(this.manaMax > 0 ? this.combat.mana / this.manaMax : 0, MANA_ENABLED && this.combat.holdsStaff);
     h.setXp(prog.level, prog.xp / Math.max(1, prog.xpToNext()), prog.atMaxLevel);
-    this.pcInv?.setXp(prog.level, prog.xp / Math.max(1, prog.xpToNext()), prog.atMaxLevel);
+    this.pcInv?.setXp(prog.level, prog.xp, prog.xpToNext(), prog.atMaxLevel);
     h.setAutoAttack(!!this.pcTarget?.autoAttack);
     void kind;
     const cls = this.heroClass();

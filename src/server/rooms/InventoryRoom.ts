@@ -294,8 +294,10 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     authed,
     code: authed ? undefined : invHub.code(sid, norm),
     level: rec.level,
-    // Опыт к следующему уровню: доля 0..1 (на максимальном уровне — 1).
+    // Опыт к следующему уровню: доля 0..1 (на максимальном уровне — 1), набрано и сколько нужно.
     xpFrac: atMaxLevel(rec.level) ? 1 : Math.max(0, Math.min(1, (rec.xp ?? 0) / xpToNext(rec.level))),
+    xp: rec.xp ?? 0,
+    xpNeed: atMaxLevel(rec.level) ? 0 : xpToNext(rec.level),
   };
 }
 
