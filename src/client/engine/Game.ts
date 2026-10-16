@@ -138,6 +138,7 @@ import { type CatacombsFx, type CatView, catViewOf } from "../world/Catacombs";
 import { DungeonFx } from "../world/DungeonFx";
 import { type RaidArenaFx, raidViewOf } from "../world/RaidArena";
 import { RaidHud } from "../ui/RaidHud";
+import { CatBossHud, catBossViewOf } from "../ui/CatBossHud";
 import { RAID, raidCarry } from "#shared/raid";
 
 /**
@@ -2573,9 +2574,12 @@ export class Game {
     this.raidFx?.update(dt, rv);
     const pp = this.player.position;
     this.raidHud.update(rv, { x: pp.x, z: pp.z, yaw: this.player.cameraYaw, dead: this.player.dead });
+    this.catBossHud.update(st && inCatRegion(pp.x, pp.z) ? catBossViewOf(st) : null);
   }
   /** Панель боя с рейд-боссом (фаза, HP, «в разрыве», таймеры). */
   private readonly raidHud = new RaidHud();
+  /** Панель босса катакомб сверху: имя, HP, резисты. */
+  private readonly catBossHud = new CatBossHud();
   private catFx: CatacombsFx | null = null;
   private dunFx: DungeonFx | null = null;
   private raidFx: RaidArenaFx | null = null;

@@ -44,7 +44,6 @@ import {
 } from "#shared/catacombs";
 import { terrainHeight } from "#shared/terrain";
 import { makeFireMaterial } from "./FireShader";
-import { groundFxThrough } from "../ui/groundFx";
 
 /** Что о катакомбах знает клиент (из RoomState). */
 export interface CatView {
@@ -79,8 +78,6 @@ export function catViewOf(st: {
 
 /** Непрозрачность стен и потолка зала, когда камера за его контуром (видно сквозь). */
 const CAT_FADE_ALPHA = 0.22;
-/** Стены зала делятся на секторы по углу: прозрачными становятся только те, что между камерой и залом. */
-const CAT_WALL_SECTORS = 8;
 
 /** Залы рядом по графу (тот же или соединены коридором) — их держим включёнными. */
 function hallsNear(a: number, b: number): boolean {
@@ -447,10 +444,11 @@ export class CatacombsFx {
   private themeSig = "";
   /** Что перекрашивается темой: пол/стены, ниши (2 цвета), ореолы огня, огонь, декор темы. */
   private readonly hallFloorMats: StandardMaterial[] = [];
-  /** Стены каждого зала по секторам (CAT_WALL_SECTORS): у каждого сектора своя непрозрачность. */
-  private readonly hallWallMats: StandardMaterial[][] = [];
+  private readonly hallWallMats: StandardMaterial[] = [];
   /** Потолок каждого зала (своя копия материала — прозрачность зала не трогает соседей). */
   private readonly hallCeilMats: StandardMaterial[] = [];
+  /** Текущая непрозрачность стен и потолка каждого зала (1 — сплошной, CAT_FADE_ALPHA — снаружи). */
+  private hallFade: number[] = [];
   private readonly hallNicheMats: StandardMaterial[][] = [];
   private readonly hallGlowMats: StandardMaterial[] = [];
   private readonly themeDecor: Mesh[][][] = [];
@@ -516,25 +514,19 @@ export class CatacombsFx {
    * полупрозрачными, чтобы не закрывать вид на то, что внутри. Внутри зала — сплошные.
    */
   private fadeHalls(dt: number, cam: { x: number; z: number }): void {
+    if (this.hallFade.length !== CAT_HALLS.length) this.hallFade = CAT_HALLS.map(() => 1);
     const k = Math.min(1, dt / 0.3);
-    const fade = (m: StandardMaterial, target: number): void => {
-      const cur = m.alpha;
-      const next = cur + (target - cur) * k;
-      if (Math.abs(next - cur) < 1e-4 && cur === target) return;
-      m.alpha = next;
-    };
     CAT_HALLS.forEach((h, hi) => {
       const outside = Math.hypot(cam.x - h.x, cam.z - h.z) > h.r + 1;
-      // Потолок — целиком (камера над залом); стены — только сектора со стороны камеры (угол wall = atan2(sin, cos)).
-      const camA = Math.atan2(cam.x - h.x, cam.z - h.z);
-      this.hallWallMats[hi]?.forEach((wm, si) => {
-        const a = ((si + 0.5) / CAT_WALL_SECTORS) * Math.PI * 2;
-        let d = Math.abs(a - camA) % (Math.PI * 2);
-        if (d > Math.PI) d = Math.PI * 2 - d;
-        fade(wm, outside && d < Math.PI / 2 ? CAT_FADE_ALPHA : 1);
-      });
+      const target = outside ? CAT_FADE_ALPHA : 1;
+      const cur = this.hallFade[hi];
+      const next = cur + (target - cur) * k;
+      if (Math.abs(next - cur) < 1e-4 && cur === target) return;
+      this.hallFade[hi] = next;
+      const wm = this.hallWallMats[hi];
       const cm = this.hallCeilMats[hi];
-      if (cm) fade(cm, outside ? CAT_FADE_ALPHA : 1);
+      if (wm) wm.alpha = next;
+      if (cm) cm.alpha = next;
     });
   }
 
@@ -730,14 +722,10 @@ export class CatacombsFx {
     };
     CAT_HALLS.forEach((_, hi) => {
       this.hallFloorMats.push(hallStone(floorMat, `catFloorH${hi}`));
-      const wallSecs: StandardMaterial[] = [];
-      for (let si = 0; si < CAT_WALL_SECTORS; si++) {
-        const wallH = hallStone(wallMat, `catWallH${hi}s${si}`);
-        wallH.alphaMode = Constants.ALPHA_COMBINE;
-        wallH.needDepthPrePass = true;
-        wallSecs.push(wallH);
-      }
-      this.hallWallMats.push(wallSecs);
+      const wallH = hallStone(wallMat, `catWallH${hi}`);
+      wallH.alphaMode = Constants.ALPHA_COMBINE;
+      wallH.needDepthPrePass = true;
+      this.hallWallMats.push(wallH);
       const ceilH = hallStone(ceilMat, `catCeilH${hi}`);
       ceilH.alphaMode = Constants.ALPHA_COMBINE;
       ceilH.needDepthPrePass = true;
@@ -821,8 +809,8 @@ export class CatacombsFx {
     const y0 = CAT_FLOOR_Y;
     // Свои меши у каждого зала — чтобы его факелы светили только на него (includedOnlyMeshes).
     const hallMeshes: Mesh[][] = CAT_HALLS.map(() => []);
-    const lists = (): { floor: Mesh[]; wall: Mesh[]; wallSec: Mesh[][]; ceil: Mesh[]; pillar: Mesh[]; iron: Mesh[]; bone: Mesh[]; cloth: Mesh[]; urn: Mesh[] } => ({
-      floor: [], wall: [], wallSec: Array.from({ length: CAT_WALL_SECTORS }, () => []), ceil: [], pillar: [], iron: [], bone: [], cloth: [], urn: [],
+    const lists = (): { floor: Mesh[]; wall: Mesh[]; ceil: Mesh[]; pillar: Mesh[]; iron: Mesh[]; bone: Mesh[]; cloth: Mesh[]; urn: Mesh[] } => ({
+      floor: [], wall: [], ceil: [], pillar: [], iron: [], bone: [], cloth: [], urn: [],
     });
     let seed = 11;
     const rnd = (): number => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -966,13 +954,13 @@ export class CatacombsFx {
           const lin = MeshBuilder.CreateBox("catLintel", { width: w0, height: H * 0.32, depth: 1.4 }, scene);
           lin.position.set(wx, y0 + H * 0.84, wz);
           lin.rotation.y = a;
-          L.wallSec[Math.floor((a / (Math.PI * 2)) * CAT_WALL_SECTORS)].push(lin);
+          L.wall.push(lin);
           continue;
         }
         const w = MeshBuilder.CreateBox("catWallSeg", { width: w0, height: H, depth: 1.4 }, scene);
         w.position.set(wx, y0 + H / 2, wz);
         w.rotation.y = a;
-        L.wallSec[Math.floor((a / (Math.PI * 2)) * CAT_WALL_SECTORS)].push(w);
+        L.wall.push(w);
       }
       // Колонны по кругу, с капителями.
       const nCol = 10;
@@ -1159,7 +1147,7 @@ export class CatacombsFx {
         return mm;
       };
       merge(L.floor, "catFloor", this.hallFloorMats[hi]);
-      L.wallSec.forEach((list, si) => merge(list, "catWalls", this.hallWallMats[hi][si]));
+      merge(L.wall, "catWalls", this.hallWallMats[hi]);
       merge(L.ceil, "catCeil", this.hallCeilMats[hi]);
       merge(L.pillar, "catPillars", pillarMat);
       merge(L.iron, "catIron", ironMat);
@@ -1192,7 +1180,8 @@ export class CatacombsFx {
         m.rotation.y = yaw;
       };
       const f = MeshBuilder.CreateBox("catCorFloor", { width: CAT_CORRIDOR_HALF * 2 + 0.4, height: 0.1, depth: len }, scene);
-      put(f, mx, y0 - 0.03, mz);
+      // Верх — на 3 см ниже диска пола зала (y0 + 0.02): у решётки коридор заходит в зал, и вровень плоскости мерцали.
+      put(f, mx, y0 - 0.06, mz);
       L.floor.push(f);
       for (const side of [-1, 1]) {
         const w = MeshBuilder.CreateBox("catCorWall", { width: 1.2, height: H, depth: len }, scene);
@@ -1525,7 +1514,8 @@ export class CatacombsFx {
       lavaMat.alphaMode = Constants.ALPHA_ADD;
       lavaMat.disableDepthWrite = true;
       this.lavaMats.push(lavaMat);
-      const lava = MeshBuilder.CreateGround("catLavaCracks", { width: h.r * 2, height: h.r * 2 }, scene);
+      // Трещины-«молнии» от центра: на 20% меньше зала (2026-10-16, было во весь пол).
+      const lava = MeshBuilder.CreateGround("catLavaCracks", { width: h.r * 1.6, height: h.r * 1.6 }, scene);
       lava.position.set(h.x, y0 + 0.072, h.z);
       lava.rotation.y = rnd() * 6;
       lava.material = lavaMat;
@@ -1649,7 +1639,7 @@ export class CatacombsFx {
       const th = CAT_THEMES[t];
       const [r, g, b] = th.light;
       this.hallFloorMats[h]?.diffuseColor.set(th.floor[0], th.floor[1], th.floor[2]);
-      this.hallWallMats[h]?.forEach((wm) => wm.diffuseColor.set(th.floor[0] * 0.9, th.floor[1] * 0.88, th.floor[2] * 0.9));
+      this.hallWallMats[h]?.diffuseColor.set(th.floor[0] * 0.9, th.floor[1] * 0.88, th.floor[2] * 0.9);
       this.poolMats[h]?.emissiveColor.set(r, g, b);
       this.hallGlowMats[h]?.emissiveColor.set(Math.min(1, r * 0.85 + 0.2), Math.min(1, g * 0.85 + 0.18), Math.min(1, b * 0.85 + 0.12));
       const nm = this.hallNicheMats[h];
@@ -1743,7 +1733,6 @@ export class CatacombsFx {
     slab.position.y = 1.3;
     const ring = add(MeshBuilder.CreateGround("catShrineRing", { width: 7, height: 7 }, scene), glow("catShrineRingMat", ringTexture(scene), 0.95));
     ring.position.y = 0.09;
-    groundFxThrough(ring);
     this.shrineRing = ring;
     const beam = add(
       MeshBuilder.CreateCylinder("catShrineBeam", { height: 11, diameter: 1.5, tessellation: 16, cap: Mesh.NO_CAP }, scene),
@@ -1805,7 +1794,6 @@ export class CatacombsFx {
     ring.position.y = 0.12;
     ring.material = m;
     ring.parent = root;
-    groundFxThrough(ring);
     const glow = new StandardMaterial("catPortalGlow", scene);
     const gt = glowTexture(scene);
     glow.emissiveTexture = gt;
@@ -1820,7 +1808,6 @@ export class CatacombsFx {
     disc.position.y = 0.06;
     disc.material = glow;
     disc.parent = root;
-    groundFxThrough(disc);
     const pillar = MeshBuilder.CreateCylinder("catPortalBeam", { height: 7, diameterTop: 0.5, diameterBottom: 3.6, tessellation: 24 }, scene);
     pillar.position.y = 3.5;
     // Не clone (копия DynamicTexture не «готова» — столб не рисовался): свой материал с той же текстурой.

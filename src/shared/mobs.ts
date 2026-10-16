@@ -1009,6 +1009,18 @@ export interface CatBoss {
   adds?: { types: string[]; every: number; count: number; perHero: number };
   /** Множитель перезарядки ближнего удара (меньше — чаще); сверх ELITE_MOBS.attackCooldown. */
   attackMul?: number;
+  /** Защиты как у мобов (MOB_ARMOR) сверх врождённых у вида — берётся сильнейшее; значки на плашке и в панели босса. */
+  defense?: CatDefense;
+}
+
+/** Защиты босса катакомб: броня (доли 0..0.95) от физ./дальнего/магии, уворот, отбивание (PARRY), щит отражения (REFLECT). */
+export interface CatDefense {
+  phys?: number;
+  ranged?: number;
+  magic?: number;
+  dodge?: number;
+  parry?: boolean;
+  reflect?: boolean;
 }
 
 /** Общий пул приёмов: каждый заход страж получает 1–2 случайных сверх своих — бои каждый раз разные. */
@@ -1122,6 +1134,7 @@ export const CAT_SUPERBOSSES: readonly CatBoss[] = [
   {
     key: "catDragon", name: "Владыка Бездны", title: "древний дракон катакомб",
     hpMul: 0.68, dmgMul: 1.1, scale: 3, final: true, attackMul: 0.5,
+    defense: { ranged: 0.3, magic: 0.35, reflect: true }, // дракон: чешуя держит стрелы и магию, щит пламени отражает
     retinue: [{ type: "boneWraith", count: 2, perHero: 1 }],
     seal: { key: "boneChief", name: "Хранитель печати", fx: 1, sealTitle: "Печать Бездны", rageTitle: "Ярость Бездны", rageSub: "Владыка в огне — кольца пламени, отбегайте!" },
     adds: { types: ["boneWraith", "spikyBlob", "ruinMage"], every: 24, count: 2, perHero: 0.4 },
@@ -1129,6 +1142,7 @@ export const CAT_SUPERBOSSES: readonly CatBoss[] = [
   {
     key: "boneChief", name: "Мор'Гхаш, Костяной Император", title: "владыка склепов — армия мёртвых и гейзеры душ",
     hpMul: 4.2, dmgMul: 1.3, scale: 2.4, final: true, attackMul: 0.5,
+    defense: { phys: 0.35, parry: true }, // кости: клинки вязнут, в стойке отбивает удары
     retinue: [{ type: "boneWraith", count: 3, perHero: 1 }],
     seal: { key: "boneWraith", name: "Призрачный страж", fx: 2, sealTitle: "Костяной трон", rageTitle: "Гнев Императора", rageSub: "гейзеры душ кольцами — отбегайте!" },
     mech: [{ kind: "slam", name: "Длань мертвеца", every: 7, fx: 2, dmg: 0.3, r: 3.8 }],
@@ -1137,6 +1151,7 @@ export const CAT_SUPERBOSSES: readonly CatBoss[] = [
   {
     key: "rockBreakerJump", name: "Гор'Таал, Древний Скалолом", title: "сердце горы — прыжки, камнепады, землетрясения",
     hpMul: 2.9, dmgMul: 0.9, scale: 1.15, final: true, attackMul: 0.5,
+    defense: { phys: 0.4, ranged: 0.25 }, // камень: оружие и стрелы почти не берут
     retinue: [{ type: "rockBreaker", count: 1, perHero: 0.4 }],
     seal: { key: "golem", name: "Каменный страж", fx: 0, sealTitle: "Каменная печать", rageTitle: "Землетрясение", rageSub: "земля рвётся кольцами — отбегайте!" },
     mech: [{ kind: "barrage", name: "Обвал горы", every: 8, fx: 0, dmg: 0.26, r: 3.2 }],

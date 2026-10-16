@@ -884,11 +884,26 @@ export class Mob implements Hittable {
     const sy = Math.max(0.05, Math.abs(this.root.scaling.y));
     this.burnBaseY = Math.max(0, (bb.min.y - this.root.getAbsolutePosition().y) / sy);
     if (this.burnFx) this.burnFx.position.y = this.burnBaseY;
+    // Плашка и HP — над макушкой самой модели (у крупных боссов «тело слизня × масштаб» мимо головы).
+    this.modelTop = Math.max(0, (bb.max.y - this.root.getAbsolutePosition().y) / sy);
+    this.placeUi();
 
     // «Hop» проигрываем только в прыжке (см. applyState), в покое — статика.
   }
 
   private baseModelScale = 1;
+  /** Макушка модели над корнем, локальные единицы (0 — модели нет, высота по телу слизня). */
+  private modelTop = 0;
+
+  /**
+   * Высота плашки (uiAnchor масштабирован 1/scale, сама плашка — на bodyRadius·2 + 0.78 м выше якоря).
+   * Есть модель — над её макушкой; нет — на прибавку высоты тела от масштаба (не больше — иначе плашка улетает).
+   */
+  private placeUi(): void {
+    const sc = this.scale;
+    this.uiAnchor.position.y =
+      this.modelTop > 0 ? this.modelTop - (MOB.bodyRadius * 2) / sc : (MOB.bodyRadius * 2 * (sc - 1)) / sc + this.lift;
+  }
   /** Слизень/плевун на общих инстансах (см. slimeInstances.ts): прозрачность — через цвет инстанса. */
   private slimeInst: SlimeInstances | null = null;
   /** На сколько выше корня начинается модель (у летунов), локальные единицы — сюда поднимаем огонь. */
@@ -971,9 +986,7 @@ export class Mob implements Hittable {
       this.scale = s.scale;
       this.root.scaling.setAll(s.scale);
       this.uiAnchor.scaling.setAll(1 / s.scale);
-      // Поднимаем ровно на прибавку высоты от увеличения тела (в мировых
-      // единицах это position.y * scale), не больше — иначе плашка улетает.
-      this.uiAnchor.position.y = (MOB.bodyRadius * 2 * (s.scale - 1)) / s.scale + this.lift;
+      this.placeUi();
     }
 
     // толчок затухает

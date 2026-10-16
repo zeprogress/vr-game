@@ -814,7 +814,7 @@ export function playClassAct(
       vfx.burst(x, y + 0.2, z, ATK, { count: 24, speed: 7, life: 0.55, grav: 14, size: 0.2 });
       return true;
     case "hammerWave":
-      vfx.decal(x, y - 0.8, z, d ?? 2.5, ATK, 0.4, 0, 0.9);
+      vfx.decal(x, y - 0.8, z, d ?? 2.5, ATK, 0.4, 4, 0.45); // без трещин, вдвое прозрачнее
       vfx.burst(x, y - 0.4, z, ATK, { count: 10, speed: 4, life: 0.35, grav: 6, size: 0.16 });
       return true;
     case "spearPierce":
@@ -1130,7 +1130,7 @@ export function playClassAct(
       return true;
     }
     case "plagueBurst":
-      vfx.decal(x, y, z, r ?? 3, FXC.poison, 0.6, 0, 1.1);
+      vfx.decal(x, y, z, r ?? 3, FXC.poison, 0.6, 4, 1.1); // без трещин
       vfx.burst(x, y + 0.6, z, FXC.poison, { count: 26, speed: 6, life: 0.6, grav: 4, size: 0.24 });
       c.sound(at, "thud");
       return true;

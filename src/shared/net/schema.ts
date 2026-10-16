@@ -186,6 +186,11 @@ export class MobState extends Schema {
   @type("uint8") under = 0;
   /** Защиты моба битами (MOB_ARMOR, shared/mobs.ts): 1 — физическая, 2 — от дальнего боя, 4 — магическая; значки у уровня. */
   @type("uint8") armor = 0;
+  /** Резисты в процентах (0..95): физ., дальний бой, магия, уворот — для панели босса сверху. */
+  @type("uint8") resPhys = 0;
+  @type("uint8") resRanged = 0;
+  @type("uint8") resMagic = 0;
+  @type("uint8") resDodge = 0;
 }
 
 export class DummyState extends Schema {

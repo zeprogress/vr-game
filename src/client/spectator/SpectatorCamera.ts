@@ -175,8 +175,11 @@ const RAID_ORDER = ["raidWide", "raidHero", "raidBoss", "raidTop", "raidHero"] a
 /** Камера катакомб: высота (м над полом, + за размах боя), относ назад от высоты, «рядом с героями» для мобов. */
 /** Камера перехода между залами: на столько метров вглубь нового зала, высота, сдвиг вбок, куда смотрим. */
 /** Проход в новый зал: камера идёт за отрядом по оси коридора — отстаёт на back м, высота, куда смотрит вперёд. */
+/** Скачок героя кадра за один кадр, м, — телепорт: камера режется, не ползёт. */
+const CAM_TELEPORT_JUMP = 3;
 const CAT_GATE_CAM = { back: 7, height: 3.4, ahead: 14, lookY: 1.3, follow: 1.6 } as const;
-const CAT_CAM = { height: 5.2, heightPerSpread: 0.22, backPerHeight: 1.1, mobNear: 9 } as const;
+/** finalLift — на сколько метров выше камера, пока жив супербосс (крупная модель не закрывает бой). */
+const CAT_CAM = { height: 5.2, heightPerSpread: 0.22, backPerHeight: 1.1, mobNear: 9, finalLift: 4 } as const;
 
 const CENTER = new Vector3(0, 0, 0);
 /** Обычный вертикальный угол обзора камеры спектатора, рад. */
@@ -263,6 +266,9 @@ export class SpectatorCamera {
   /** Где была камера на прошлом кадре: мир / катакомбы / подземелье — переход между ними монтируется cut-ом. */
   private lastRegion = "";
   private shotJustSwitched = false;
+  /** Герой кадра на прошлом кадре — для детекта телепорта (см. followJumped). */
+  private followId = "";
+  private readonly followPos = new Vector3();
   private readonly curTgt = new Vector3(0, 2, 0);
   private readonly _p = new Vector3();
   private readonly _t = new Vector3();
@@ -442,10 +448,18 @@ export class SpectatorCamera {
     }
 
     this.frameDt = dt;
+    // Герой прыгнул (телепорт, портал): кадр режем, а не ползём за ним по сглаженной позе.
+    const jumped = this.followJumped(ctx);
     // Обновляем фильтр позы для кадров «из глаз».
-    this.trackEye(dt, ctx);
+    this.trackEye(dt, ctx, jumped);
 
     this.evalShot(this.shot, ctx, this.toPos, this.toTgt);
+    if (jumped) {
+      this.fromPos.copyFrom(this.toPos);
+      this.fromTgt.copyFrom(this.toTgt);
+      // Блендом не доигрываем: от точки реза сразу к живой цели.
+      this.curBlend = Math.max(1e-3, this.sinceSwitch);
+    }
     // Переезд в катакомбы или подземелье (и обратно) — без плавного blend через всю карту: cut.
     const region = regionOf(this.toPos.x, this.toPos.z);
     if (this.shotJustSwitched) {
@@ -526,6 +540,8 @@ export class SpectatorCamera {
   private catFov = DEFAULT_FOV;
   private readonly catTopC = new Vector3();
   private catTopH = 6;
+  /** Подъём камеры над боем, пока жив супербосс (сглажен; CAT_CAM.finalLift). */
+  private catTopLift = 0;
   private catTopInit = false;
   /** Проводка через ворота: какой переход и где камера на оси коридора. */
   private catGateKey = "";
@@ -744,9 +760,36 @@ export class SpectatorCamera {
     return null;
   }
 
-  private trackEye(dt: number, ctx: DirectorCtx): void {
+  /**
+   * Герой кадра за один кадр сместился дальше TELEPORT_JUMP — телепорт, не бег.
+   * Ведём по последней позе героя; смена героя тоже не считается скачком.
+   */
+  private followJumped(ctx: DirectorCtx): boolean {
+    const s = this.shot;
+    if (!isPlayerShotKind(s.kind)) {
+      this.followId = "";
+      return false;
+    }
+    const p = ctx.players.find((x) => x.id === (s as { id: string }).id);
+    if (!p) return false;
+    const same = this.followId === p.id;
+    const jumped = same && Vector3.DistanceSquared(p.pos, this.followPos) > CAM_TELEPORT_JUMP * CAM_TELEPORT_JUMP;
+    this.followId = p.id;
+    this.followPos.copyFrom(p.pos);
+    return jumped;
+  }
+
+  private trackEye(dt: number, ctx: DirectorCtx, jumped = false): void {
     const live = this.liveEye(this.shot, ctx);
     if (!live) return;
+    if (jumped) {
+      this.eyePos.copyFrom(live.eye);
+      this.eyeFwd.copyFrom(live.forward);
+      this.botPos.copyFrom(live.eye);
+      this.botFwd.copyFrom(live.forward);
+      this.botYaw = Math.atan2(live.forward.x, live.forward.z);
+      return;
+    }
     const k = this.raw ? 1 : 1 - Math.exp(-dt * SPECTATE.eyeSmooth);
     lerpV(this.eyePos, live.eye, k, this.eyePos);
     lerpV(this.eyeFwd, live.forward, k, this.eyeFwd);
@@ -821,12 +864,13 @@ export class SpectatorCamera {
           this.catTopC.x += (cx - this.catTopC.x) * k;
           this.catTopC.z += (cz - this.catTopC.z) * k;
           this.catTopH += (spread - this.catTopH) * k;
+          this.catTopLift += ((c.final && c.bossId ? CAT_CAM.finalLift : 0) - this.catTopLift) * k;
           // Центр кадра — всегда внутри зала: камера не смотрит в стену и в проём коридора.
           [this.catTopC.x, this.catTopC.z] = catProject(this.catTopC.x, this.catTopC.z, [c.to], 3);
           const gy = ctx.groundY(this.catTopC.x, this.catTopC.z);
           // Как в изометрических ARPG: камера на середине высоты зала, под ~50° сверху-сбоку;
           // бой шире — чуть выше и дальше (но не выше свода).
-          const height = Math.min(CAT_CEIL - 2, CAT_CAM.height + this.catTopH * CAT_CAM.heightPerSpread);
+          const height = Math.min(CAT_CEIL - 2, CAT_CAM.height + this.catTopH * CAT_CAM.heightPerSpread + this.catTopLift);
           const back = Math.min(c.r * 0.9, height * CAT_CAM.backPerHeight + this.catTopH * 0.3);
           // Медленно подкручивается влево-вправо (±35° за ~50 с) — объём и живость, без рывков.
           const sway = Math.sin(this.orbitClock * 0.125) * 0.6;

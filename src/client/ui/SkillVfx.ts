@@ -66,7 +66,7 @@ precision highp float;
 varying vec2 vUV;
 uniform vec3 uColor;
 uniform float uT;      // прогресс 0..1 (волна) или время, с (зона/прицел)
-uniform float uMode;   // 0 — ударная волна, 1 — зона, 2 — прицел, 3 — волна сектором (ось +x)
+uniform float uMode;   // 0 — ударная волна, 1 — зона, 2 — прицел, 3 — волна сектором (ось +x), 4 — волна без трещин (молот)
 uniform float uHalf;   // полуугол сектора, рад (режим 3)
 uniform float uAlpha;
 uniform float uSeed;
@@ -77,13 +77,13 @@ void main() {
   if (r > 1.0) discard;
   float a = atan(p.y, p.x);
   float al = 0.0;
-  if (uMode < 0.5) {
-    // Ударная волна: яркий фронт, за ним гаснущие радиальные трещины.
+  if (uMode < 0.5 || uMode > 3.5) {
+    // Ударная волна: яркий фронт, за ним гаснущие радиальные трещины (режим 4 — без трещин).
     float front = 0.12 + 0.88 * sqrt(uT);
     float band = exp(-pow((r - front) / 0.07, 2.0));
     float sector = floor((a + 3.14159) / 6.28318 * 11.0);
     float crackA = abs(fract((a + 3.14159) / 6.28318 * 11.0) - 0.5 + (hash(sector) - 0.5) * 0.5);
-    float crack = smoothstep(0.06, 0.0, crackA) * step(r, front) * smoothstep(0.1, 0.35, r);
+    float crack = smoothstep(0.06, 0.0, crackA) * step(r, front) * smoothstep(0.1, 0.35, r) * step(uMode, 0.5);
     float fill = step(r, front) * 0.18 * (1.0 - r);
     al = (band * 1.2 + crack * 0.9 + fill) * (1.0 - uT * uT);
   } else if (uMode < 1.5) {
@@ -389,7 +389,7 @@ export class SkillVfx {
   /** Ударная волна по земле (mode 0), зона (1, life — длительность), прицел (2). */
   decal(
     x: number, y: number, z: number, radius: number, color: Color3, life: number,
-    mode: 0 | 1 | 2 | 3 = 0, alpha = 1, follow: { kind: "hero" | "mob"; id: string; dy: number } | null = null,
+    mode: 0 | 1 | 2 | 3 | 4 = 0, alpha = 1, follow: { kind: "hero" | "mob"; id: string; dy: number } | null = null,
   ): void {
     const d = this.decals[this.nD];
     this.nD = (this.nD + 1) % this.decals.length;

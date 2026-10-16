@@ -77,7 +77,7 @@ import {
   type AutoGoMsg,
 } from "#shared/net/messages";
 import { ADMIN_NICK, NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL } from "#shared/constants";
-import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, mobArmorBits } from "#shared/mobs";
+import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, mobArmorBits, type CatDefense } from "#shared/mobs";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
 import { skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
 import { RaidFight, type RaidHost } from "./raidFight";
@@ -6935,7 +6935,7 @@ export class ZoneRoom extends Room<ZoneState> {
     type: string,
     x: number,
     z: number,
-    o: { hpMul: number; dmgMul: number; scaleMul?: number; atkMul?: number; name?: string; partyLevel: number; affix?: CatAffix | null },
+    o: { hpMul: number; dmgMul: number; scaleMul?: number; atkMul?: number; def?: CatDefense; name?: string; partyLevel: number; affix?: CatAffix | null },
   ): string {
     const af = o.affix;
     this.catLevel = o.partyLevel;
@@ -6952,6 +6952,14 @@ export class ZoneRoom extends Room<ZoneState> {
       opts.scaleMul = (def.scaleMul ?? 1) * (o.scaleMul ?? 1) * (af?.scaleMul ?? 1);
       // Супербоссы бьют в ближнем бою чаще: перезарядка удара × atkMul.
       if (o.atkMul) opts.attackCooldown = (opts.attackCooldown ?? MOB.attackCooldown) * o.atkMul;
+      // Защиты босса (как у мобов): сильнейшее из врождённых у вида и заданных боссу.
+      const df = o.def;
+      if (df?.phys) opts.physArmor = Math.max(opts.physArmor ?? 0, df.phys);
+      if (df?.ranged) opts.rangedArmor = Math.max(opts.rangedArmor ?? 0, df.ranged);
+      if (df?.magic) opts.magicArmor = Math.max(opts.magicArmor ?? 0, df.magic);
+      if (df?.dodge) opts.dodge = Math.max(opts.dodge ?? 0, df.dodge);
+      if (df?.parry) opts.parry = true;
+      if (df?.reflect) opts.reflector = true;
       // Аффикс волны: поверх врождённых свойств (берём сильнейшее).
       if (af?.speedMul) opts.speedMul = Math.max(opts.speedMul ?? 1, af.speedMul);
       if (af?.lifesteal) opts.lifesteal = Math.max(opts.lifesteal ?? 0, af.lifesteal);
@@ -10051,6 +10059,10 @@ export class ZoneRoom extends Room<ZoneState> {
       s.hp = Math.max(0, m.hp);
       s.maxHp = m.maxHp;
       s.armor = mobArmorBits(m);
+      s.resPhys = Math.round(m.physArmor * 100);
+      s.resRanged = Math.round(m.rangedArmor * 100);
+      s.resMagic = Math.round(m.magicArmor * 100);
+      s.resDodge = Math.round(m.dodge * 100);
       s.dead = m.dead ? 1 : 0;
       s.grounded = m.grounded ? 1 : 0;
       s.hurtSeq = m.hurtSeq;

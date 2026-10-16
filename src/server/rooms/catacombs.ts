@@ -26,7 +26,7 @@ import {
   type CatWave,
   type CatChampion,
 } from "#shared/catacombs";
-import { CAT_CHAMPIONS, CAT_MECH_POOL, MOB_SWING } from "#shared/mobs";
+import { CAT_CHAMPIONS, CAT_MECH_POOL, MOB_SWING, type CatDefense } from "#shared/mobs";
 import type { CatacombMsg, CatReportMsg, LootItem } from "#shared/net/messages";
 
 /**
@@ -55,7 +55,7 @@ export interface CatHost {
   /** Итог победы: комната дополнит строки (ник, класс, урон, убийства) и разошлёт таблицу. */
   report(r: Omit<CatReportMsg, "rows">, heroes: { id: string; deaths: number; loot: LootItem[] }[]): void;
   /** Моб катакомб: тип (ключ ELITE_MOBS или slime/spitter), точка и множители. Возвращает id. */
-  spawn(type: string, x: number, z: number, o: { hpMul: number; dmgMul: number; scaleMul?: number; atkMul?: number; name?: string; partyLevel: number; affix?: CatAffix | null }): string;
+  spawn(type: string, x: number, z: number, o: { hpMul: number; dmgMul: number; scaleMul?: number; atkMul?: number; def?: CatDefense; name?: string; partyLevel: number; affix?: CatAffix | null }): string;
   /** Темы залов на заход (для клиентов). */
   setThemes(s: string): void;
   /** Святилище в зале (k −1 — убрать). */
@@ -801,6 +801,7 @@ export class CatacombDirector {
       dmgMul: b.dmgMul * this.threat("dmg"),
       scaleMul: b.scale,
       atkMul: b.attackMul,
+      def: b.defense,
       name: b.name,
       partyLevel: this.partyLevel,
     });
