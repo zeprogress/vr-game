@@ -3644,6 +3644,8 @@ export class Game {
   // ---- сеть: чужие игроки ----
 
   private saveTimer: number | null = null;
+  /** Сердцебиение пакетов в свёрнутой вкладке — см. heartbeat(). */
+  private heartbeatTimer: number | null = null;
   private saveDebounce: number | null = null;
   private unsubProgress: (() => void) | null = null;
 
@@ -3962,6 +3964,7 @@ export class Game {
 
     // Автосейв: раз в 30 с, при изменении прогресса (с задержкой) и перед выходом.
     this.saveTimer = window.setInterval(() => this.saveNow(), 30_000);
+    this.heartbeatTimer = window.setInterval(() => this.heartbeat(), 1000);
     this.unsubProgress = this.progression.onChange(() => {
       if (this.saveDebounce) window.clearTimeout(this.saveDebounce);
       this.saveDebounce = window.setTimeout(() => this.saveNow(), 1500);
@@ -4474,8 +4477,22 @@ export class Game {
     window.location.reload();
   }
 
+  /**
+   * Свёрнутая вкладка: браузер останавливает кадры (rAF), syncNet не идёт, и пакеты движения
+   * (вместе с платформой — значком у ника и в оверлее) не уходят. Раз в секунду шлём последний
+   * пакет, пока вкладка скрыта: таймеры в фоне работают и с частотой 1 Гц.
+   */
+  private heartbeat(): void {
+    const net = this.net;
+    if (!document.hidden || !net?.online || !net.room) return;
+    this.moveMsg.plat = this.player.inVR ? 3 : this.isTouch ? 2 : 1;
+    net.sendMove(performance.now(), this.moveMsg);
+  }
+
   private detachNet(): void {
     if (this.saveTimer !== null) window.clearInterval(this.saveTimer);
+    if (this.heartbeatTimer !== null) window.clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = null;
     if (this.saveDebounce !== null) window.clearTimeout(this.saveDebounce);
     window.removeEventListener("beforeunload", this.beforeUnload);
     this.unsubProgress?.();
