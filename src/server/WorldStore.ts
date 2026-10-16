@@ -43,6 +43,11 @@ export interface PultSettings {
   specEventVol: number;
 }
 
+export interface WorldQueues {
+  catacombs: string[];
+  raid: string[];
+}
+
 interface WorldRecord {
   drops: DropSave[];
   /** Общая подгонка положений/света — админ задаёт её всем из панели. */
@@ -50,6 +55,8 @@ interface WorldRecord {
   pult?: Partial<PultSettings>;
   /** Выбор голоса озвучки в чате: normNick -> Fish Audio reference_id. */
   chatVoices?: Record<string, string>;
+  /** Очереди: записи на катакомбы и отряд на рейд (ники в нижнем регистре). */
+  queues?: WorldQueues;
   savedAt: number;
 }
 
@@ -63,6 +70,7 @@ export class WorldStore {
   private loadout: Record<string, unknown> = {};
   private pult: Partial<PultSettings> = {};
   private chatVoices: Record<string, string> = {};
+  private queues: WorldQueues = { catacombs: [], raid: [] };
 
   constructor() {
     try {
@@ -77,6 +85,12 @@ export class WorldStore {
       }
       if (raw?.chatVoices && typeof raw.chatVoices === "object" && !Array.isArray(raw.chatVoices)) {
         this.chatVoices = raw.chatVoices as Record<string, string>;
+      }
+      if (raw?.queues && typeof raw.queues === "object") {
+        this.queues = {
+          catacombs: Array.isArray(raw.queues.catacombs) ? raw.queues.catacombs : [],
+          raid: Array.isArray(raw.queues.raid) ? raw.queues.raid : [],
+        };
       }
       console.log(
         `[world] восстановлено: лут ${this.drops.length}, общая подгонка ${Object.keys(this.loadout).length ? "есть" : "нет"}, пульт ${Object.keys(this.pult).length ? "есть" : "нет"}`,
@@ -117,6 +131,17 @@ export class WorldStore {
     this.writeFile();
   }
 
+  /** Очереди, сохранённые до перезапуска (катакомбы и рейд). */
+  loadQueues(): WorldQueues {
+    return this.queues;
+  }
+
+  /** Сохранить очереди и записать файл. */
+  saveQueues(q: WorldQueues): void {
+    this.queues = q;
+    this.writeFile();
+  }
+
   /** Выбранный зрителем голос озвучки в чате (null — не выбирал). */
   chatVoice(norm: string): string | null {
     return this.chatVoices[norm] ?? null;
@@ -147,6 +172,7 @@ export class WorldStore {
         loadout: this.loadout,
         pult: this.pult,
         chatVoices: this.chatVoices,
+        queues: this.queues,
         savedAt: Date.now(),
       };
       const tmp = `${FILE}.tmp`;

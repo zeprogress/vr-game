@@ -1559,6 +1559,11 @@ export class ZoneRoom extends Room<ZoneState> {
     }
 
     if (RESTORE_BOTS_ON_START && !STAGING) this.restoreBots();
+    // Очереди — записи на катакомбы и отряд на рейд — переживают перезапуск и деплой (world.json).
+    const q = world.loadQueues();
+    this.cat.restoreReserved(q.catacombs);
+    for (const n of q.raid) this.raidPending.add(n);
+    if (this.raidPending.size >= BOT.raidMinParty) this.raidGoAt = Date.now() + BOT.raidDelaySec * 1000;
     // Стенд: «чат» приходит с локальной страницы (devChat), а не из Twitch.
     if (STAGING) {
       devChat.set((nick, text) => {
@@ -2841,6 +2846,15 @@ export class ZoneRoom extends Room<ZoneState> {
     if (gone > 0) {
       this.reply(`Отряд из ${gone} героев пошёл в рейд: ${this.raidName()}! За ним — до победы.`);
     }
+  }
+
+  /** Записать очереди катакомб и рейда в мир (переживают перезапуск); на диск — только при изменении. */
+  private syncQueues(): void {
+    const rec = { catacombs: this.cat.queueKeys(), raid: [...this.raidPending] };
+    const json = JSON.stringify(rec);
+    if (json === this.queuesSaved) return;
+    this.queuesSaved = json;
+    world.saveQueues(rec);
   }
 
   /** Отмена рейда у всех: отряд и очередь распущены (босс восстановил здоровье). */
@@ -7249,7 +7263,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // `!катакомбы выйти` — снять запись; героя в мир не поднимаем ради этого.
     if (a === "выйти" || a === "out") {
       if (!id && this.bots.has(norm)) id = `bot:${norm}`;
-      this.reply(`@${nick} ${id ? this.cat.unjoin(id) : "ты не записан на катакомбы."}`);
+      this.reply(`@${nick} ${id ? this.cat.unjoin(id, nick) : "ты не записан на катакомбы."}`);
       return;
     }
     if (!id) {
@@ -9969,6 +9983,12 @@ export class ZoneRoom extends Room<ZoneState> {
       serverPerf.section("persist", serverPerf.now() - perfP0);
     }
 
+    this.queueClock += dt;
+    if (this.queueClock >= 1) {
+      this.queueClock = 0;
+      this.syncQueues();
+    }
+
     this.tickEvents();
     this.tickChatQuest();
     this.tickRaid();
@@ -10810,6 +10830,9 @@ export class ZoneRoom extends Room<ZoneState> {
   private raidBossLow = 1;
   /** !raid копит отряд: norm-ключи записавшихся, пока не выступили. */
   private readonly raidPending = new Set<string>();
+  /** Очереди, записанные в мир в последний раз (JSON) — пишем на диск только при изменении. */
+  private queuesSaved = "";
+  private queueClock = 0;
   /** ms момента общего выступления (0 — отсчёт не идёт). */
   private raidGoAt = 0;
 
@@ -11213,6 +11236,7 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   override onDispose(): void {
+    this.syncQueues();
     invHub.setZone(null);
     if (STAGING) devChat.set(null);
     this.twitch?.stop();

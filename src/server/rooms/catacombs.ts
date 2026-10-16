@@ -131,14 +131,20 @@ function withRandomMechs(b: CatBoss): CatBoss {
 }
 
 /** Режиссёр катакомб: сбор, забег по залам, награды, возврат. */
+/** Ключ записи на катакомбы — ник в нижнем регистре: переживает перезапуск (сессии героев меняются). */
+export const catQueueKey = (nick: string): string => nick.trim().toLowerCase();
+
 export class CatacombDirector {
   phase: number = CAT_PHASE.none;
   readonly party = new Set<string>();
   /**
    * Записанные на катакомбы (!катакомбы): держатся до спуска отряда. Если сбор не набрался,
    * записи не пропадают — при следующем сборе записанные попадают в отряд сами.
+   * Ключи — ники (catQueueKey), сохраняются в мире (queueKeys / restoreReserved).
    */
   readonly reserved = new Set<string>();
+  /** Ключ записи (ник) каждого героя отряда — чтобы снять или сохранить запись по id. */
+  private readonly partyKey = new Map<string, string>();
   /** Открытые залы (стоять можно в lo..hi). */
   lo = 0;
   hi = 0;
@@ -269,6 +275,9 @@ export class CatacombDirector {
     if (from === to || !this.party.has(from)) return null;
     this.party.delete(from);
     this.party.add(to);
+    const pk = this.partyKey.get(from);
+    this.partyKey.delete(from);
+    if (pk !== undefined) this.partyKey.set(to, pk);
     const d = this.deaths.get(from);
     this.deaths.delete(from);
     if (d !== undefined) this.deaths.set(to, d);
@@ -321,48 +330,68 @@ export class CatacombDirector {
    */
   join(id: string, nick: string, open: boolean): string {
     const now = this.host.now();
+    const key = catQueueKey(nick);
     if (this.phase === CAT_PHASE.none) {
       if (!this.host.autoOn()) return "катакомбы сейчас выключены.";
       if (!open) {
         const at = Math.max(this.nextAuto, this.cooldownUntil);
         // Плановое время прошло (ждём отряд) — без отсчёта, чтобы не обещать время, которое уже не работает.
-        if (at <= now) return this.reserve(id, "катакомбы откроются, как только в мире наберётся отряд — в отряд попадёшь без повторной записи");
+        if (at <= now) return this.reserve(key, "катакомбы откроются, как только в мире наберётся отряд — в отряд попадёшь без повторной записи");
         const wait = Math.max(1, Math.ceil((at - now) / 60000));
-        return this.reserve(id, `катакомбы откроются сами примерно через ${wait} мин — в отряд попадёшь без повторной записи`);
+        return this.reserve(key, `катакомбы откроются сами примерно через ${wait} мин — в отряд попадёшь без повторной записи`);
       }
       const wait = Math.ceil((this.cooldownUntil - now) / 60000);
-      if (wait > 0) return this.reserve(id, `катакомбы ещё запечатаны — откроются через ~${wait} мин`);
-      if (!this.host.canOpen()) return this.reserve(id, "сейчас идёт другое событие — катакомбы откроются после него");
+      if (wait > 0) return this.reserve(key, `катакомбы ещё запечатаны — откроются через ~${wait} мин`);
+      if (!this.host.canOpen()) return this.reserve(key, "сейчас идёт другое событие — катакомбы откроются после него");
       this.openGather(nick);
     }
-    if (this.phase !== CAT_PHASE.gather) return this.reserve(id, "отряд уже спустился — записан на следующий сбор");
+    if (this.phase !== CAT_PHASE.gather) return this.reserve(key, "отряд уже спустился — записан на следующий сбор");
     if (this.party.has(id)) return `ты уже в отряде (${this.party.size}).`;
     if (this.party.size >= CATACOMBS.maxParty) return "отряд полон.";
-    this.party.add(id);
+    this.addParty(id, key);
     this.pushState();
     const left = Math.ceil((this.phaseEnd - now) / 1000);
     return `в отряде катакомб: ${this.party.size} (нужно от ${CATACOMBS.minParty}) · спуск через ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
   }
 
+  private addParty(id: string, key: string): void {
+    this.party.add(id);
+    this.partyKey.set(id, key);
+  }
+
+  /** Записи для сохранения в мире: записанные и, во время сбора, герои отряда (ключи — ники). */
+  queueKeys(): string[] {
+    const out = new Set(this.reserved);
+    if (this.phase === CAT_PHASE.gather) for (const k of this.partyKey.values()) out.add(k);
+    return [...out];
+  }
+
+  /** Поднять записи, сохранённые до перезапуска. */
+  restoreReserved(keys: readonly string[]): void {
+    for (const k of keys) if (k) this.reserved.add(k);
+  }
+
   /** Покинул мир (вышел/бот снят) — из пати. */
   leave(id: string): void {
+    this.partyKey.delete(id);
     if (this.party.delete(id)) this.pushState();
   }
 
   /** Записать на следующий сбор (повтор — напомнить). */
-  private reserve(id: string, why: string): string {
-    if (this.reserved.has(id)) return `ты уже записан на катакомбы — ${why}. Выйти: !катакомбы выйти.`;
-    this.reserved.add(id);
+  private reserve(key: string, why: string): string {
+    if (this.reserved.has(key)) return `ты уже записан на катакомбы — ${why}. Выйти: !катакомбы выйти.`;
+    this.reserved.add(key);
     this.pushState();
     return `записан на катакомбы: ${why}. Выйти: !катакомбы выйти.`;
   }
 
   /** !катакомбы выйти — снять запись (в забеге из отряда не выходят). */
-  unjoin(id: string): string {
+  unjoin(id: string, nick: string): string {
     if (this.phase >= CAT_PHASE.run && this.party.has(id)) return "ты уже в катакомбах — выйти нельзя.";
     // Снимаем из обоих мест (и из записи, и из отряда сбора) — без короткого замыкания.
-    const fromRes = this.reserved.delete(id);
+    const fromRes = this.reserved.delete(catQueueKey(nick));
     const fromParty = this.phase === CAT_PHASE.gather && this.party.delete(id);
+    this.partyKey.delete(id);
     if (!fromRes && !fromParty) return "ты не записан на катакомбы.";
     this.pushState();
     return "запись на катакомбы снята.";
@@ -379,11 +408,13 @@ export class CatacombDirector {
     const now = this.host.now();
     this.phase = CAT_PHASE.gather;
     this.party.clear();
+    this.partyKey.clear();
     // Записанные заранее, кто сейчас в мире, — сразу в отряде (записываться снова не нужно).
-    const here = new Set(this.host.heroes().filter((h) => !h.dead).map((h) => h.id));
-    for (const id of this.reserved) {
+    const here = new Map(this.host.heroes().filter((h) => !h.dead).map((h) => [catQueueKey(h.nick), h.id] as const));
+    for (const key of this.reserved) {
       if (this.party.size >= CATACOMBS.maxParty) break;
-      if (here.has(id)) this.party.add(id);
+      const id = here.get(key);
+      if (id) this.addParty(id, key);
     }
     this.rewarded.clear();
     this.phaseEnd = now + CATACOMBS.gatherSec * 1000;
@@ -640,7 +671,10 @@ export class CatacombDirector {
   private startRun(): void {
     const now = this.host.now();
     // Отряд спустился — записи тех, кто в забеге, сняты.
-    for (const id of this.party) this.reserved.delete(id);
+    for (const id of this.party) {
+      const k = this.partyKey.get(id);
+      if (k) this.reserved.delete(k);
+    }
     this.phase = CAT_PHASE.run;
     // Отсчёт до следующих катакомб — с НАЧАЛА забега (2026-10-07: раньше с конца).
     this.nextAuto = this.host.now() + this.autoGap();
@@ -1073,9 +1107,13 @@ export class CatacombDirector {
     this.host.setShrine(0, 0, -1);
     this.explosive.clear();
     // Сбор не набрался (или прервали): записанные из сбора остаются записаны на следующий.
-    if (!wasRun) for (const id of this.party) this.reserved.add(id);
+    if (!wasRun) for (const id of this.party) {
+      const k = this.partyKey.get(id);
+      if (k) this.reserved.add(k);
+    }
     this.phase = CAT_PHASE.none;
     this.party.clear();
+    this.partyKey.clear();
     this.lo = 0;
     this.hi = 0;
     this.stage = 0;
