@@ -1246,10 +1246,14 @@ export class RemoteAvatar implements Hittable {
     else want = this.animSet && rig.anims.has(this.animSet.idle) ? this.animSet.idle : "idle";
 
     const k = Math.min(1, dt * 12);
+    // Темп ног — от фактической скорости: клип бега/шага иначе крутится в полном темпе и на разгоне
+    // (после возрождения, у новой цели) выглядит быстрее, чем бот реально бежит. Полный бег = 1.
+    const pace = Math.max(0.35, Math.min(1.4, this.planarSpeed / PLAYER.runSpeed));
     for (const n of BOT_CLIPS) {
       if (n === "death") continue;
       const g = rig.anims.get(n);
       if (!g) continue;
+      if (n === "run" || n === "walk") g.speedRatio = pace;
       const target = n === want ? 1 : 0;
       let w = this.animW.get(n) ?? 0;
       w += (target - w) * k;
