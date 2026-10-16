@@ -654,7 +654,7 @@ export class Overlay {
         dot.className = "spk";
         if (!p.speaking) dot.style.visibility = "hidden"; // держит выравнивание
         const nm = document.createElement("span");
-        const platIcon = p.bot ? "🤖" : p.plat === 3 ? "🥽" : p.plat === 2 ? "📱" : p.plat === 1 ? "💻" : "";
+        const platIcon = p.bot ? "🤖" : p.plat === 3 ? "🥽" : p.plat === 2 ? "📱" : p.plat === 1 ? "🖥" : "";
         nm.textContent = (platIcon ? `${platIcon} ` : "") + p.nick;
         row.append(dot, nm);
         this.online.appendChild(row);
