@@ -64,7 +64,7 @@ export function skillDamageText(id: SkillId, cls: ClassId, strike: number, a: Sk
       return `Урон по скачкам: ${hops(base, sk.hits, CHAIN.falloff)}`;
     case "plague": {
       const k = skillAttrMul("plague", a);
-      return `Яд ${n(PLAGUE.baseDmg * PLAGUE.tickFrac * k)} в секунду за стак, взрыв ${n(PLAGUE.baseDmg * SKILLS2.plague.dmgMult * k)}`;
+      return `Яд ${n(strike * PLAGUE.tickFrac * k)} в секунду за стак, взрыв ${n(strike * SKILLS2.plague.dmgMult * k)}`;
     }
     case "soulSteal":
       return `Урон ${n(base)}; лечение ${n(base * SOUL_STEAL.transfer * skillAttrMul("soulSteal", a))}`;

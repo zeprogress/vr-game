@@ -2561,8 +2561,10 @@ export class ZoneRoom extends Room<ZoneState> {
   private afterDaggerHit(ownerId: string, p: PlayerState, rt: Runtime, mob: Mob, add = 1): void {
     if (rt.plagueUntil <= this.elapsed || mob.dead) return;
     // Стак яда; на 5 стаках сим сам взрывает яд и заражает соседей (ZoneSim.poisonBurstAt).
+    // База яда — удар кинжалом по атаке оружия (с заточкой и тиром), как «сила удара» умения; сила — от мудрости.
+    const atk = skillStrike("assassin", p.level, p, this.strikeHandFor(p, "assassin", rt)).dmg;
     const k = skillAttrMul("plague", p);
-    this.sim.poisonMob(mob.id, PLAGUE.baseDmg * PLAGUE.tickFrac * k, PLAGUE.baseDmg * SKILLS2.plague.dmgMult * k, ownerId, add);
+    this.sim.poisonMob(mob.id, atk * PLAGUE.tickFrac * k, atk * SKILLS2.plague.dmgMult * k, ownerId, add);
   }
 
   /** Множитель баффа победы над событием (×2 опыт/урон), пока активен. */
