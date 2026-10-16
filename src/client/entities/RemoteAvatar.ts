@@ -63,7 +63,7 @@ const BOT_FEET_Y = -1.68;
  * локальной осью Y кости `Fist.*` — Y идёт вдоль предплечья наружу.
  */
 /** Радиус пятна-тени под аватаром, м. */
-const SHADOW_RADIUS = 0.5;
+const SHADOW_RADIUS = 0.6; // мягкое пятно героя: шире прежнего
 /** Во сколько раз плашка бота крупнее обычной — её читают со стрима издалека. */
 const BOT_TAG_SCALE = 2.1;
 /**
@@ -334,7 +334,7 @@ export class RemoteAvatar implements Hittable {
     this.mat.diffuseColor = colorFor(id);
     this.mat.specularColor = new Color3(0.1, 0.1, 0.1);
 
-    this.shadow = new BlobShadow(scene, id);
+    this.shadow = new BlobShadow(scene, id, true);
     const isBotTag = id.startsWith("bot:");
     this.nameTag = new NameTag(
       scene,

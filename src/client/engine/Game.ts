@@ -451,7 +451,7 @@ export class Game {
     );
     this.netMobs.lazy = true; // виды мобов — только рядом с игроком (см. NetMobs.materialize)
     this.spellLights = new SpellLights(this.scene);
-    this.ownShadow = new BlobShadow(this.scene, "self");
+    this.ownShadow = new BlobShadow(this.scene, "self", true);
     this.crossFx = new WorldCrossFx(this.scene);
     this.healAura = new HealAuraFx(this.scene);
     this.skillFx = new SkillFx(this.scene);
@@ -1053,7 +1053,7 @@ export class Game {
       const eye = this.player.eyePosition;
       this.ownShadow.setEnabled(!this.player.dead);
       if (!this.player.dead) {
-        this.ownShadow.place(eye.x, eye.y - PLAYER.eyeHeight, eye.z, 0.5);
+        this.ownShadow.place(eye.x, eye.y - PLAYER.eyeHeight, eye.z, 0.6);
       }
       this.applyWorldLoadoutIfChanged();
       this.updateHpBarFade();

@@ -408,6 +408,9 @@ function lodSphere(scene: Scene, tint: readonly [number, number, number]): Mesh[
 const FLAME_FIRE = new Color3(1, 0.5, 0.12);
 const FLAME_BLOOD = new Color3(0.95, 0.05, 0.05);
 
+/** Пятно под мобом — по следу модели (1 = ровно след; пятно плотнее не делаем). */
+const SHADOW_FOOT_K = 1.0;
+
 export class Mob implements Hittable {
   /** ПК в третьем лице: плашки как в WoW (HP всегда, цвет уровня по опасности). null — как было. */
   static pcPlates: { level: number } | null = null;
@@ -822,6 +825,20 @@ export class Mob implements Hittable {
     // на s.scale для босса домножается через this.root отдельно).
     const base = (MOB.bodyRadius * 1.75) / rig.nativeHeight;
     holder.scaling.setAll(base);
+    // След модели для пятна-тени: полуширина и полудлина в координатах корня (без его масштаба и курса).
+    {
+      const sc0 = this.root.scaling.clone();
+      const ry0 = this.root.rotation.y;
+      this.root.scaling.setAll(1);
+      this.root.rotation.y = 0;
+      this.root.computeWorldMatrix(true);
+      const bv = holder.getHierarchyBoundingVectors(true);
+      this.footX = Math.max(0.05, (bv.max.x - bv.min.x) / 2);
+      this.footZ = Math.max(0.05, (bv.max.z - bv.min.z) / 2);
+      this.root.scaling.copyFrom(sc0);
+      this.root.rotation.y = ry0;
+      this.root.computeWorldMatrix(true);
+    }
 
     // Мобам лагерей (пчела и т.п.) оставляем родные текстуры пака (только
     // эмиссивная заливка под дневной свет); перекрашиваем под цвет кинда
@@ -892,6 +909,9 @@ export class Mob implements Hittable {
   }
 
   private baseModelScale = 1;
+  /** След модели (полуширина и полудлина, м при масштабе 1); 0 — модели ещё нет, пятно по радиусу тела. */
+  private footX = 0;
+  private footZ = 0;
   /** Макушка модели над корнем, локальные единицы (0 — модели нет, высота по телу слизня). */
   private modelTop = 0;
 
@@ -1021,7 +1041,12 @@ export class Mob implements Hittable {
     }
     // Пятно остаётся на земле, пока моб в прыжке — по нему видно высоту.
     if (!this.dead && inView) {
-      this.shadow.place(pos.x, pos.y, pos.z, MOB.bodyRadius * this.scale * 1.75);
+      const sc = this.scale;
+      if (this.footX > 0) {
+        this.shadow.place(pos.x, pos.y, pos.z, this.footX * sc * SHADOW_FOOT_K, this.footZ * sc * SHADOW_FOOT_K, this.root.rotation.y);
+      } else {
+        this.shadow.place(pos.x, pos.y, pos.z, MOB.bodyRadius * sc, MOB.bodyRadius * sc, 0);
+      }
     }
     secAdd("mob.pos+view+shadow", sp);
 

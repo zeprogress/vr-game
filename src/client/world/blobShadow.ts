@@ -14,19 +14,19 @@ import { catTune } from "./catTune";
 
 /** Диаметр прототипа, м. Реальный размер задаётся масштабом инстанса. */
 const PROTO_SIZE = 2;
-/** Непрозрачность пятна, когда объект лежит на земле. */
+/** Непрозрачность пятна, когда объект лежит на земле (наружу). */
 const ALPHA = 0.28;
 /** Выше этой высоты тень уже почти не видна, м. */
 const FADE_HEIGHT = 3;
 /** Приподнимаем над землёй, чтобы не спорить с ней по глубине. */
 const LIFT = 0.07;
-/** Плечо для замера уклона земли, м. */
-const SLOPE_D = 0.6;
 /**
  * Катакомбы: пол ровный на CAT_FLOOR_Y, земля тёмная — пятно плотнее (плотность — catTune.shadow).
  * Выше пола — с обычной глубиной: колонны и стены его закрывают, а не проступают поверх.
  */
 const CAT_LIFT = 0.12;
+/** Плечо для замера уклона земли, м. */
+const SLOPE_D = 0.6;
 
 /**
  * Мягкое тёмное пятно под объектом — дешёвая замена тени.
@@ -36,61 +36,83 @@ const CAT_LIFT = 0.12;
  * Пятно остаётся на земле, пока моб в воздухе, и по нему сразу видно высоту
  * прыжка: чем выше, тем шире и бледнее.
  *
- * Диск НАКЛОНЯЕТСЯ по нормали рельефа. Плоский он резался о склон, и от
- * круга оставалась половина — под землёй его отсекало по глубине.
+ * Пятно — эллипс по следу модели: полуширина и полудлина (rx, rz) и поворот по курсу,
+ * а не круг по высоте тела. Диск НАКЛОНЯЕТСЯ по нормали рельефа.
  *
- * Один прототип и материал на сцену, дальше — аппаратные инстансы. Два набора пятен:
- * наружу (по рельефу, поверх земли) и в катакомбах (на полу, с глубиной).
+ * Четыре набора пятен на сцену: наружу/катакомбы × резкое/мягкое (мягкое — у героев).
+ * В каждом наборе — один меш с тонкими инстансами.
  */
+const SOFT_CORE = 0.4;
+const SHARP_CORE = 0.55;
+
+const batches = new WeakMap<Scene, (Batch | null)[]>();
+const mats = new WeakMap<Scene, (StandardMaterial | null)[]>();
+const texs = new WeakMap<Scene, (DynamicTexture | null)[]>();
 const protos = new WeakMap<Scene, Mesh>();
-const catMats = new WeakMap<Scene, StandardMaterial>();
-const shadowTexs = new WeakMap<Scene, DynamicTexture>();
+
+/** Индекс набора: 0 — наружу, 1 — катакомбы; +2 — мягкое пятно (герои). */
+function setIndex(cat: boolean, soft: boolean): number {
+  return (cat ? 1 : 0) + (soft ? 2 : 0);
+}
 
 /**
- * Пятно с плотной серединой: у светлячков спад `pow(1-r, 2.4)` — он даёт
- * ореол, а не тень, и середина выходит жидкой. Здесь держим почти
- * непрозрачно до 55% радиуса и мягко сводим к краю.
+ * Пятно: плотная середина до `core` радиуса, дальше плавно сходит к краю.
+ * Мягкое — середина короче и край шире, без жёсткой кромки.
  */
-function shadowTexture(scene: Scene): DynamicTexture {
-  const found = shadowTexs.get(scene);
+function shadowTexture(scene: Scene, soft: boolean): DynamicTexture {
+  const list = texs.get(scene) ?? [null, null];
+  texs.set(scene, list);
+  const i = soft ? 1 : 0;
+  const found = list[i];
   if (found) return found;
   const S = 128;
-  const tex = new DynamicTexture("blobShadowTex", { width: S, height: S }, scene, false);
+  const tex = new DynamicTexture(soft ? "blobShadowSoftTex" : "blobShadowTex", { width: S, height: S }, scene, false);
   tex.hasAlpha = true;
   const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
   ctx.clearRect(0, 0, S, S);
+  const core = soft ? SOFT_CORE : SHARP_CORE;
   const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
-  const STOPS = 20;
-  for (let i = 0; i <= STOPS; i++) {
-    const r = i / STOPS;
-    const t = Math.max(0, (r - 0.55) / 0.45); // до 55% — плотно
+  const STOPS = 24;
+  for (let k = 0; k <= STOPS; k++) {
+    const r = k / STOPS;
+    const t = Math.max(0, (r - core) / (1 - core));
     const a = 1 - t * t * (3 - 2 * t);
     g.addColorStop(r, `rgba(0,0,0,${a.toFixed(4)})`);
   }
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, S, S);
   tex.update(true);
-  shadowTexs.set(scene, tex);
+  list[i] = tex;
   return tex;
+}
+
+/** Материал набора. Наружу — мягче по тени земли (ALPHA), в катакомбах — catTune.shadow. */
+function matFor(scene: Scene, idx: number): StandardMaterial {
+  const list = mats.get(scene) ?? [null, null, null, null];
+  mats.set(scene, list);
+  const found = list[idx];
+  if (found) return found;
+  const cat = (idx & 1) === 1;
+  const soft = idx >= 2;
+  const mat = new StandardMaterial(`blobShadowMat${idx}`, scene);
+  mat.diffuseColor = new Color3(0, 0, 0);
+  mat.emissiveColor = new Color3(0, 0, 0);
+  mat.specularColor = new Color3(0, 0, 0);
+  mat.opacityTexture = shadowTexture(scene, soft);
+  mat.disableLighting = true;
+  mat.disableDepthWrite = true; // иначе пятна спорят друг с другом
+  mat.backFaceCulling = false; // наклон может повернуть диск изнанкой
+  mat.alpha = cat ? catTune.shadow : ALPHA;
+  list[idx] = mat;
+  return mat;
 }
 
 /** Экспортирован для мест с плоским полом (напр. TowerArenaFx) — свой класс без наклона по рельефу. */
 export function protoFor(scene: Scene): Mesh {
   const found = protos.get(scene);
   if (found) return found;
-
-  const mat = new StandardMaterial("blobShadowMat", scene);
-  mat.diffuseColor = new Color3(0, 0, 0);
-  mat.emissiveColor = new Color3(0, 0, 0);
-  mat.specularColor = new Color3(0, 0, 0);
-  mat.opacityTexture = shadowTexture(scene);
-  mat.disableLighting = true;
-  mat.disableDepthWrite = true; // иначе пятна спорят друг с другом
-  mat.backFaceCulling = false; // наклон может повернуть диск изнанкой
-  mat.alpha = ALPHA;
-
   const proto = MeshBuilder.CreatePlane("blobShadowProto", { size: PROTO_SIZE }, scene);
-  proto.material = mat;
+  proto.material = matFor(scene, 0);
   proto.isPickable = false;
   // Пятно просвечивает землю и склоны, как круги эффектов (groundFx.ts): без теста глубины.
   groundFxThrough(proto);
@@ -99,36 +121,20 @@ export function protoFor(scene: Scene): Mesh {
   return proto;
 }
 
-/** Материал пятен катакомб: тот же диск, но с глубиной — пол, колонны и стены закрывают его как обычный меш. */
-function catMatFor(scene: Scene): StandardMaterial {
-  const found = catMats.get(scene);
-  if (found) return found;
-  const mat = new StandardMaterial("blobShadowCatMat", scene);
-  mat.diffuseColor = new Color3(0, 0, 0);
-  mat.emissiveColor = new Color3(0, 0, 0);
-  mat.specularColor = new Color3(0, 0, 0);
-  mat.opacityTexture = shadowTexture(scene);
-  mat.disableLighting = true;
-  mat.disableDepthWrite = true;
-  mat.backFaceCulling = false;
-  mat.alpha = catTune.shadow;
-  catMats.set(scene, mat);
-  return mat;
-}
-
 /** Плотность пятен в катакомбах (панель ?cattune=1 двигает на лету). */
 export function setCatShadowAlpha(scene: Scene, alpha: number): void {
-  catMatFor(scene).alpha = alpha;
+  matFor(scene, 1).alpha = alpha;
+  matFor(scene, 3).alpha = alpha;
 }
 
 const _n = new Vector3();
 const _t = new Vector3();
 const _b = new Vector3();
-const _fwd = new Vector3(0, 0, 1);
+const _ax = new Vector3();
 const UP = new Vector3(0, 1, 0);
 
 /**
- * Все пятна сцены — ОДИН меш с тонкими инстансами (thin instances): раньше у каждого моба и
+ * Все пятна набора — ОДИН меш с тонкими инстансами (thin instances): раньше у каждого моба и
  * героя был свой InstancedMesh, и на каждый из них шёл пересчёт матрицы, регистрация в кадре и
  * запись в буфер инстансов (~20 штук — заметная доля CPU-времени кадра в VR). Теперь слот —
  * 16 чисел в общем буфере, который грузится на GPU одним вызовом, только если что-то менялось.
@@ -141,23 +147,19 @@ interface Batch {
   free: number[];
   dirty: boolean;
 }
-/** Два набора на сцену: [наружу, катакомбы]. */
-const batches = new WeakMap<Scene, [Batch | null, Batch | null]>();
 const ZERO16 = new Float32Array(16);
 
-function batchFor(scene: Scene, cat: boolean): Batch {
-  const pair = batches.get(scene) ?? [null, null];
-  const i = cat ? 1 : 0;
-  const found = pair[i];
+function batchFor(scene: Scene, idx: number): Batch {
+  const list = batches.get(scene) ?? [null, null, null, null];
+  batches.set(scene, list);
+  const found = list[idx];
   if (found && !found.mesh.isDisposed()) return found;
-  const mesh = MeshBuilder.CreatePlane(cat ? "blobShadowsCat" : "blobShadows", { size: PROTO_SIZE }, scene);
-  if (cat) {
-    mesh.material = catMatFor(scene);
-  } else {
-    mesh.material = protoFor(scene).material;
-    // Группу и тест глубины ставим сразу: отложенный обработчик сцены не должен отнести пятна в мир.
-    groundFxThrough(mesh);
-  }
+  const cat = (idx & 1) === 1;
+  const mesh = MeshBuilder.CreatePlane(`blobShadows${idx}`, { size: PROTO_SIZE }, scene);
+  mesh.material = matFor(scene, idx);
+  // Наружу: группа и тест глубины ставим сразу — отложенный обработчик сцены не должен отнести пятна в мир.
+  // В катакомбах — обычная глубина: колонны и стены закрывают пятно.
+  if (!cat) groundFxThrough(mesh);
   mesh.isPickable = false;
   mesh.alwaysSelectAsActiveMesh = true; // границы пятен по всей карте — не отсекаем по рамке плоскости
   const b: Batch = { mesh, buf: new Float32Array(64 * 16), cap: 64, used: 0, free: [], dirty: false };
@@ -169,8 +171,7 @@ function batchFor(scene: Scene, cat: boolean): Batch {
     mesh.thinInstanceCount = b.used;
     mesh.thinInstanceBufferUpdated("matrix");
   });
-  pair[i] = b;
-  batches.set(scene, pair);
+  list[idx] = b;
   return b;
 }
 
@@ -186,23 +187,28 @@ function grow(b: Batch): void {
 /** Пятно под одним объектом. Двигать через `place()`. */
 export class BlobShadow {
   private readonly scene: Scene;
+  private readonly soft: boolean;
   private batch: Batch;
   private slot: number;
-  /** В каком наборе сейчас пятно: катакомбы или наружу. */
-  private cat = false;
+  /** Текущий набор (см. setIndex). */
+  private idx: number;
   private enabled = true;
-  /** Последние параметры place(): у стоящего моба они не меняются — пересчёт
-   *  (5 запросов высоты рельефа + базис) пропускаем. */
+  /** Последние параметры place(): у стоящего моба они не меняются — пересчёт пропускаем. */
   private lx = NaN;
   private ly = NaN;
   private lz = NaN;
-  private lr = NaN;
+  private lrx = NaN;
+  private lrz = NaN;
+  private lyaw = NaN;
   private disposed = false;
   private readonly m = new Float32Array(16);
 
-  constructor(scene: Scene, _name: string) {
+  /** soft — мягкое пятно (герои): шире по краю, без жёсткой кромки. */
+  constructor(scene: Scene, _name: string, soft = false) {
     this.scene = scene;
-    this.batch = batchFor(scene, false);
+    this.soft = soft;
+    this.idx = setIndex(false, soft);
+    this.batch = batchFor(scene, this.idx);
     const b = this.batch;
     this.slot = b.free.pop() ?? b.used++;
     if (this.slot >= b.cap) grow(b);
@@ -215,42 +221,49 @@ export class BlobShadow {
     b.dirty = true;
   }
 
-  /** Переехать в другой набор (из наружи в катакомбы и обратно): старый слот освобождаем. */
-  private moveTo(cat: boolean): void {
+  /** Переехать в другой набор (наружу ↔ катакомбы): старый слот освобождаем. */
+  private moveTo(idx: number): void {
     const old = this.batch;
     old.buf.set(ZERO16, this.slot * 16);
     old.dirty = true;
     old.free.push(this.slot);
-    const b = batchFor(this.scene, cat);
+    const b = batchFor(this.scene, idx);
     this.batch = b;
     this.slot = b.free.pop() ?? b.used++;
     if (this.slot >= b.cap) grow(b);
-    this.cat = cat;
+    this.idx = idx;
   }
 
   /**
    * @param x,y,z мировая точка объекта (y — его низ)
-   * @param radius радиус пятна на земле, м
+   * @param rx полуширина пятна на земле, м (поперёк курса)
+   * @param rz полудлина пятна на земле, м (вдоль курса; по умолчанию — как rx, круг)
+   * @param yaw курс объекта, рад (поворот эллипса; у круга не важен)
    */
-  place(x: number, y: number, z: number, radius: number): void {
+  place(x: number, y: number, z: number, rx: number, rz = rx, yaw = 0): void {
     if (this.disposed) return;
     const cat = inCatRegion(x, z);
-    if (cat !== this.cat) {
-      this.moveTo(cat);
+    const idx = setIndex(cat, this.soft);
+    if (idx !== this.idx) {
+      this.moveTo(idx);
       this.lx = NaN; // переехали — матрицу пересчитываем
     }
     if (
       Math.abs(x - this.lx) < 3e-2 &&
       Math.abs(y - this.ly) < 3e-2 &&
       Math.abs(z - this.lz) < 3e-2 &&
-      Math.abs(radius - this.lr) < 3e-2
+      Math.abs(rx - this.lrx) < 3e-2 &&
+      Math.abs(rz - this.lrz) < 3e-2 &&
+      Math.abs(yaw - this.lyaw) < 1e-2
     ) {
       return;
     }
     this.lx = x;
     this.ly = y;
     this.lz = z;
-    this.lr = radius;
+    this.lrx = rx;
+    this.lrz = rz;
+    this.lyaw = yaw;
     // Катакомбы: пол ровный, рельефа нет — пятно на полу, по вертикали.
     const ground = cat ? CAT_FLOOR_Y : terrainHeight(x, z);
     if (cat) {
@@ -261,9 +274,13 @@ export class BlobShadow {
       const dhdz = (terrainHeight(x, z + SLOPE_D) - terrainHeight(x, z - SLOPE_D)) / (2 * SLOPE_D);
       _n.set(-dhdx, 1, -dhdz).normalize();
     }
-    // Локальная Z плоскости должна смотреть по нормали. Базис строим от
-    // мировой Z: при почти вертикальной нормали он не вырождается.
-    Vector3.CrossToRef(_n, _fwd, _t);
+    // Ось «поперёк курса» — X локальной системы объекта (по повороту Babylon RotationY),
+    // в плоскости земли. Вторая ось — перпендикуляр к ней и нормали.
+    const c = Math.cos(yaw);
+    const s = Math.sin(yaw);
+    _ax.set(c, 0, -s);
+    _t.copyFrom(_ax);
+    _t.subtractInPlace(_n.scale(Vector3.Dot(_ax, _n)));
     if (_t.lengthSquared() < 1e-6) _t.set(1, 0, 0);
     _t.normalize();
     Vector3.CrossToRef(_n, _t, _b);
@@ -272,12 +289,14 @@ export class BlobShadow {
     const h = Math.max(0, y - ground);
     const k = Math.min(1, h / FADE_HEIGHT);
     // Высоко в прыжке пятно чуть сжимается — тоже читается как высота.
-    const s = ((radius * 2) / PROTO_SIZE) * (1 + k * 0.6) * (1 - k * 0.3);
+    const f = (1 + k * 0.6) * (1 - k * 0.3);
+    const sx = rx * f; // полуоси плоскости (PROTO_SIZE = 2 → масштаб = полуразмер)
+    const sz = rz * f;
     // Матрица «масштаб · поворот · сдвиг» из базиса (t, b, n) прямо в буфер (строки Babylon).
     const m = this.m;
-    m[0] = _t.x * s; m[1] = _t.y * s; m[2] = _t.z * s; m[3] = 0;
-    m[4] = _b.x * s; m[5] = _b.y * s; m[6] = _b.z * s; m[7] = 0;
-    m[8] = _n.x * s; m[9] = _n.y * s; m[10] = _n.z * s; m[11] = 0;
+    m[0] = _t.x * sx; m[1] = _t.y * sx; m[2] = _t.z * sx; m[3] = 0;
+    m[4] = _b.x * sz; m[5] = _b.y * sz; m[6] = _b.z * sz; m[7] = 0;
+    m[8] = _n.x * sx; m[9] = _n.y * sx; m[10] = _n.z * sx; m[11] = 0;
     m[12] = x; m[13] = ground + (cat ? CAT_LIFT : LIFT); m[14] = z; m[15] = 1;
     if (this.enabled) this.write(m);
   }
