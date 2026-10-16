@@ -467,8 +467,8 @@ def mat_ruinfloor(n, rng):
 
 def mat_crypt_block(n, rng):
     """Склеп: тёсаные блоки в три ряда разной длины, широкая фаска, штрихи зубила, сажа-потёки и известь в швах.
-    Большие блоки (тайл — ~3 м): на стенах и колоннах склепа."""
-    rows = 3
+    Мелкий рисунок: четыре ряда в кадре (в игре — ряд ~0.5 м)."""
+    rows = 4
     rh = n / rows
     ys, xs = np.mgrid[0:n, 0:n].astype(np.float32)
     chips = fbm(n, 32, 4, rng)
@@ -514,39 +514,46 @@ def mat_crypt_block(n, rng):
 
 
 def mat_crypt_floor(n, rng):
-    """Пол склепа: тяжёлые плиты (2 ряда, в ряду 2–3 плиты) со скошенными кромками, трещины, стёртость,
-    пыль и мелкие кости в швах. Большие плиты: тайл ~3 м."""
+    """Пол склепа: ровные квадратные плиты 4×4 в кадре, узкие швы, почти без рисунка — минимум деталей.
+    Цвет плит чуть разный (±4%), пыли и трещин нет; кромка фаски — единственный рельеф."""
+    k = 4
+    cell = n / k
+    ys, xs = np.mgrid[0:n, 0:n].astype(np.float32)
+    cx = np.floor(xs / cell).astype(int)
+    cy = np.floor(ys / cell).astype(int)
+    fx = (xs % cell) / cell
+    fy = (ys % cell) / cell
+    edge = np.minimum(np.minimum(fx, 1 - fx), np.minimum(fy, 1 - fy)) * cell  # расстояние до шва, px
+    slab = np.clip((edge - 3) / 4, 0, 1)  # шов ~6 px, фаска ~4 px
+    tint = rng.random((k, k)).astype(np.float32)[cy, cx]
+    wear = fbm(n, 4, 3, rng)
+    grain = fbm(n, 128, 2, rng)
+    h = norm01(slab * 0.9 + grain * 0.04)
+    tone = np.clip(0.6 * tint + 0.25 * wear + 0.15 * grain, 0, 1)
+    col = ramp(tone, [(0, "#222120"), (1, "#2e2c29")])
+    col = np.where((slab < 0.35)[..., None], hexc("#141311"), col)
+    col *= (0.9 + 0.1 * slab)[..., None]
+    rough = np.clip(0.8 + (grain - 0.5) * 0.1, 0.6, 1)
+    return col, h, rough
+
+
+def mat_crypt_column(n, rng):
+    """Колонна склепа: 16 каннелюр по кругу (бесшовно: целое число), четыре пояса-стыка по высоте, выветривание.
+    Кадр на всю окружность: u — по кругу колонны, v — по высоте."""
     ys, xs = np.mgrid[0:n, 0:n].astype(np.float32) / n
-    wx = xs + 0.02 * (pfbm(rng, xs, ys, 4, 3) - 0.5)
-    wy = ys + 0.02 * (pfbm(rng, xs + 0.3, ys, 4, 3) - 0.5)
-    rows = 2
-    ry = wy * rows
-    row = np.floor(ry).astype(int) % rows
-    shift = rng.random(rows).astype(np.float32)
-    cols_n = np.array([2, 3])[row]
-    rx = (wx + shift[row]) % 1.0 * cols_n
-    fx = rx - np.floor(rx)
-    fy = ry - np.floor(ry)
-    edge = np.minimum(np.minimum(fx, 1 - fx) / cols_n * rows, np.minimum(fy, 1 - fy))
-    tid = (np.floor(rx) + row * 5).astype(int)
-    tint = rng.random(64).astype(np.float32)[tid % 64]
-    wear = pfbm(rng, xs, ys, 4, 5)
-    chip = pfbm(rng, xs, ys, 20, 4)
-    slab = np.clip(edge * 16 - 0.2 + (chip - 0.5) * 1.0, 0, 1)
-    dirt = np.clip((0.45 - pfbm(rng, xs, ys, 3, 4)) * 4, 0, 1)
-    bones = pebbles(rng, xs, ys, 140, 0.007) * np.clip((1 - slab) + dirt, 0, 1)
-    crack = np.clip(1 - pvoronoi_edges(rng, wx, wy, 24) / 0.005, 0, 1) * (tint > 0.4)
-    grain = pfbm(rng, xs, ys, 256, 2)
-    h = norm01(slab * (0.85 + 0.15 * wear) * (1 - dirt * 0.5) + dirt * 0.2 + bones * 0.25 - crack * 0.3 + grain * 0.05)
-    col = ramp(np.clip(0.5 * tint + 0.35 * wear + 0.15 * grain, 0, 1), [(0, "#1d1c1b"), (0.5, "#2e2c29"), (1, "#3f3b36")])
-    seam = np.clip(1 - slab * 1.6, 0, 1)
-    dm = np.clip(seam + dirt, 0, 1)
-    col = col * (1 - dm[..., None]) + hexc("#17130f") * dm[..., None]
-    bm = np.clip(bones * 3, 0, 1)
-    col = col * (1 - bm[..., None] * 0.6) + hexc("#77756b") * bm[..., None] * 0.6
-    col *= (1 - crack * 0.55)[..., None]
+    ang = xs * 16 * 2 * np.pi
+    flute = np.abs(np.sin(ang / 2)) ** 0.7  # гребни каннелюр (округлые), дно — 0
+    joint = (np.abs(np.sin(np.pi * ys * 4)) < 0.035).astype(np.float32)  # стыки барабанов
+    wear = fbm(n, 16, 4, rng)
+    chips = fbm(n, 64, 3, rng)
+    grain = fbm(n, 256, 2, rng)
+    h = norm01(0.6 * flute + 0.1 * wear - joint * 0.35 - (chips > 0.8) * 0.2 + grain * 0.03)
+    tone = np.clip(0.5 * flute + 0.3 * wear + 0.2 * grain, 0, 1)
+    col = ramp(tone, [(0, "#2a2a2c"), (0.6, "#44444a"), (1, "#56565c")])
+    col = np.where((joint > 0.5)[..., None], hexc("#16161a"), col)
     col *= (0.85 + 0.15 * h)[..., None]
-    rough = np.clip(0.88 + (grain - 0.5) * 0.2 - wear * 0.15, 0.45, 1)
+    col = col * (1 - (chips > 0.8)[..., None] * 0.25)
+    rough = np.clip(0.75 + (grain - 0.5) * 0.15 + wear * 0.1, 0.4, 1)
     return col, h, rough
 
 
@@ -573,6 +580,7 @@ MATS = {
     "crypt_block": (mat_crypt_block, 31, 3.0),
     "crypt_floor": (mat_crypt_floor, 32, 2.6),
     "crypt_altar": (mat_crypt_altar, 33, 1.2),
+    "crypt_column": (mat_crypt_column, 34, 2.2),
     "rock": (mat_rock, 11, 4.5),
     "masonry": (mat_masonry, 12, 2.6),
     "flagstone": (mat_flagstone, 13, 2.2),

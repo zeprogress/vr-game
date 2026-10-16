@@ -57,6 +57,7 @@ import {
   type DirectorCtx,
   type CtxPlayer,
   type CtxMob,
+  type CtxMobFx,
 } from "./SpectatorCamera";
 import { setupRenderLayers } from "../engine/renderLayers";
 
@@ -187,6 +188,8 @@ export class Spectator {
   private readonly _mobs: CtxMob[] = [];
   private readonly _playerPool: CtxPlayer[] = [];
   private readonly _mobPool: CtxMob[] = [];
+  /** Действия супербосса катакомб для толчков камеры (одна общая запись на кадр). */
+  private readonly _bossFx: CtxMobFx = { slam: 0, atk: 0, atkKind: 0, windup: 0, charging: 0 };
   private readonly _boss = { id: "", pos: new Vector3(), aggro: false };
   private readonly _fwd = new Vector3();
 
@@ -1155,6 +1158,16 @@ export class Spectator {
         e.kind = m.kind;
         e.eye.copyFromFloats(m.x + fx * r * 0.9, m.y + r * 1.1, m.z + fz * r * 0.9);
         e.forward.copyFromFloats(fx, 0, fz);
+        if (id === st.catBoss) {
+          this._bossFx.slam = m.slamSeq;
+          this._bossFx.atk = m.attackSeq;
+          this._bossFx.atkKind = m.attackKind;
+          this._bossFx.windup = m.windup;
+          this._bossFx.charging = m.charging;
+          e.fx = this._bossFx;
+        } else {
+          e.fx = null;
+        }
         this._mobs.push(e);
         if (m.kind === "boss") {
           let aggro = m.windup > 0 || m.charging === 1 || m.enraged === 1;

@@ -625,8 +625,12 @@ export class CatacombsFx {
       return m;
     };
     // Камень с текстурой и картой нормалей (public/textures/catacomb, tools/textures/gen_tiles.py).
-    // Свой Texture на материал; залы копируют текстуры через hallStone.
-    const cryptMat = (name: string, tex: string, dif: [number, number, number], emi: [number, number, number], u: number, v: number): StandardMaterial => {
+    // Свой Texture на материал; залы копируют текстуры через hallStone. Блик — широкий, чтобы рельеф
+    // читался и на тёмном камне (от одной нормали на тёмном цвете объём не виден); мелкая деталь — из подземелья.
+    const detTex = new Texture("/textures/dungeon/rock_detail.png", scene);
+    detTex.uScale = 3;
+    detTex.vScale = 3;
+    const cryptMat = (name: string, tex: string, dif: [number, number, number], emi: [number, number, number], u: number, v: number, detail = true): StandardMaterial => {
       const m = mat(name, dif, emi);
       const c = new Texture(`/textures/catacomb/${tex}_c.jpg`, scene);
       const n = new Texture(`/textures/catacomb/${tex}_n.jpg`, scene);
@@ -637,15 +641,26 @@ export class CatacombsFx {
       m.diffuseTexture = c;
       m.bumpTexture = n;
       this.bumpTexs.push(n);
+      m.specularColor = new Color3(0.2, 0.19, 0.18);
+      m.specularPower = 24;
+      if (detail) {
+        m.detailMap.texture = detTex;
+        m.detailMap.isEnabled = true;
+        m.detailMap.diffuseBlendLevel = 0.35;
+        m.detailMap.bumpLevel = 0.8;
+      }
       return m;
     };
     // Темно: собственного свечения чуть-чуть, остальное — факелы.
-    const floorMat = cryptMat("catFloor", "crypt_floor", [0.57, 0.53, 0.48], [0.04, 0.035, 0.04], 8, 8);
-    const wallMat = cryptMat("catWall", "crypt_block", [0.5, 0.46, 0.42], [0.03, 0.028, 0.03], 3, 5);
+    // Пол — ровная плитка без мелкой детали (минимум рисунка по просьбе: деталь только на стенах и колоннах).
+    const floorMat = cryptMat("catFloor", "crypt_floor", [0.57, 0.53, 0.48], [0.04, 0.035, 0.04], 10, 10, false);
+    const wallMat = cryptMat("catWall", "crypt_block", [0.5, 0.46, 0.42], [0.03, 0.028, 0.03], 2, 8);
     // Потолок — чёрный во всех залах и коридорах: ни текстуры, ни блика.
     const ceilMat = mat("catCeil", [0.02, 0.02, 0.025], [0, 0, 0]);
     ceilMat.specularColor = new Color3(0, 0, 0);
-    const pillarMat = cryptMat("catPillar", "crypt_block", [0.9 * CRYPT_WALL_GAIN, 0.84 * CRYPT_WALL_GAIN, 0.78 * CRYPT_WALL_GAIN], [0.05, 0.045, 0.045], 1, 5);
+    // Колонны — каннелюры; базы, плиты, гробы и прочий камень — блоки. Яркость — CRYPT_WALL_GAIN.
+    const columnMat = cryptMat("catColumn", "crypt_column", [1.2, 1.12, 1.04], [0.05, 0.045, 0.045], 1, 3);
+    const blockMat = cryptMat("catBlock", "crypt_block", [0.9 * CRYPT_WALL_GAIN, 0.84 * CRYPT_WALL_GAIN, 0.78 * CRYPT_WALL_GAIN], [0.05, 0.045, 0.045], 1, 2);
     const ironMat = mat("catIron", [0.16, 0.14, 0.12], [0.015, 0.012, 0.01]);
     const boneMat = mat("catBone", [0.85, 0.8, 0.66], [0.04, 0.035, 0.03]);
     // Знамёна разных цветов (багровое, синее, зелёное, золотое) — краски на стенах.
@@ -694,6 +709,11 @@ export class CatacombsFx {
       m.diffuseColor = base.diffuseColor.clone();
       m.emissiveColor = base.emissiveColor.clone();
       m.specularColor = base.specularColor.clone();
+      m.specularPower = base.specularPower;
+      m.detailMap.texture = base.detailMap.texture;
+      m.detailMap.isEnabled = base.detailMap.isEnabled;
+      m.detailMap.diffuseBlendLevel = base.detailMap.diffuseBlendLevel;
+      m.detailMap.bumpLevel = base.detailMap.bumpLevel;
       m.maxSimultaneousLights = 6;
       return m;
     };
@@ -783,8 +803,8 @@ export class CatacombsFx {
     const y0 = CAT_FLOOR_Y;
     // Свои меши у каждого зала — чтобы его факелы светили только на него (includedOnlyMeshes).
     const hallMeshes: Mesh[][] = CAT_HALLS.map(() => []);
-    const lists = (): { floor: Mesh[]; wall: Mesh[]; ceil: Mesh[]; pillar: Mesh[]; iron: Mesh[]; bone: Mesh[]; cloth: Mesh[]; urn: Mesh[] } => ({
-      floor: [], wall: [], ceil: [], pillar: [], iron: [], bone: [], cloth: [], urn: [],
+    const lists = (): { floor: Mesh[]; wall: Mesh[]; ceil: Mesh[]; pillar: Mesh[]; column: Mesh[]; iron: Mesh[]; bone: Mesh[]; cloth: Mesh[]; urn: Mesh[] } => ({
+      floor: [], wall: [], ceil: [], pillar: [], column: [], iron: [], bone: [], cloth: [], urn: [],
     });
     let seed = 11;
     const rnd = (): number => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -955,7 +975,7 @@ export class CatacombsFx {
         const pz = h.z + Math.cos(a) * pr;
         const col = MeshBuilder.CreateCylinder("catPillar", { height: H, diameter: 1.3, tessellation: 12 }, scene);
         col.position.set(px, y0 + H / 2, pz);
-        L.pillar.push(col);
+        L.column.push(col);
         const base = MeshBuilder.CreateBox("catPillarBase", { width: 1.8, height: 0.6, depth: 1.8 }, scene);
         base.position.set(px, y0 + 0.3, pz);
         L.pillar.push(base);
@@ -1136,14 +1156,15 @@ export class CatacombsFx {
       if (floorMesh) groundLayer(floorMesh);
       this.hallWallMesh[hi] = merge(L.wall, "catWalls", this.hallWallMats[hi]);
       this.hallCeilMesh[hi] = merge(L.ceil, "catCeil", this.hallCeilMats[hi]);
-      merge(L.pillar, "catPillars", pillarMat);
+      merge(L.pillar, "catPillars", blockMat);
+      merge(L.column, "catColumns", columnMat);
       merge(L.iron, "catIron", ironMat);
       merge(L.bone, "catBones", boneMat);
       bannerLists.forEach((list, bi) => merge(list, `catCloth${BANNERS[bi][0]}`, bannerMats[bi]));
       bannerLists = BANNERS.map(() => []);
       merge(L.urn, "catUrns", urnMat);
       // Декор тем: строим все варианты, включён тот, что выпал залу на этот заход (applyThemes).
-      const td = this.buildThemeDecor(hi, { statueMat, obsidMat, skullMat, boneMat, ironMat, pillarMat, lavaTex, nicheTex, glow: addGlow }, rnd);
+      const td = this.buildThemeDecor(hi, { statueMat, obsidMat, skullMat, boneMat, ironMat, blockMat, lavaTex, nicheTex, glow: addGlow }, rnd);
       this.themeDecor.push(td.groups);
       for (const [list, name, m] of td.lit) {
         const mm = merge(list, name, m);
@@ -1376,7 +1397,7 @@ export class CatacombsFx {
     hi: number,
     M: {
       statueMat: StandardMaterial; obsidMat: StandardMaterial; skullMat: StandardMaterial; boneMat: StandardMaterial;
-      ironMat: StandardMaterial; pillarMat: StandardMaterial; lavaTex: DynamicTexture; nicheTex: DynamicTexture;
+      ironMat: StandardMaterial; blockMat: StandardMaterial; lavaTex: DynamicTexture; nicheTex: DynamicTexture;
       glow: (hall: number, x: number, y: number, z: number, size: number, kind: "torch" | "warm" | "candle", theme?: number) => Mesh | null;
     },
     rnd: () => number,
@@ -1412,7 +1433,7 @@ export class CatacombsFx {
 
     // 0 · Склеп: статуи стражей (меч остриём в пол) и каменные гробы.
     {
-      const stone = list(0, "Stone", M.pillarMat);
+      const stone = list(0, "Stone", M.blockMat);
       const statue = list(0, "Statue", M.statueMat);
       for (const deg of [36, 108, 252, 324]) {
         const p = at(deg, h.r - 3.6);

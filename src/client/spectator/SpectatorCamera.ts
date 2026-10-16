@@ -145,12 +145,23 @@ export interface CtxPlayer {
   prio: number;
 }
 
+/** Действия босса для толчков камеры: счётчики ударов и замахов, телеграф, рывок. */
+export interface CtxMobFx {
+  slam: number;
+  atk: number;
+  atkKind: number;
+  windup: number;
+  charging: number;
+}
+
 export interface CtxMob {
   id: string;
   kind: string;
   /** Точка «глаз» моба — чуть перед мордой и выше центра. */
   eye: Vector3;
   forward: Vector3;
+  /** Действия босса катакомб (у остальных мобов — null). */
+  fx?: CtxMobFx | null;
 }
 
 /** Данные для режиссёра: где игроки, живые мобы и агрит ли босс. */
@@ -183,6 +194,11 @@ const CAT_GATE_CAM = { back: 7, height: 3.4, ahead: 14, lookY: 1.3, follow: 1.6 
  * но кадр по нему: угол — чтобы влез весь рост босса от подошвы до макушки (bossFit — запас, доля роста).
  */
 const CAT_CAM = { height: 5.2, heightPerSpread: 0.22, backPerHeight: 1.1, mobNear: 9, bossFit: 0.6 } as const;
+/**
+ * Толчки камеры по действиям супербосса (м, сила в долях кадра): удар по площади — сильный,
+ * замахи — по виду (MOB_SWING: укус, коготь, хвост, дыхание, крылья, магия), телеграф и рывок — слабее.
+ */
+const BOSS_QUAKE = { slam: 0.5, charge: 0.35, windup: 0.1, swing: [0.15, 0.25, 0.35, 0.3, 0.4, 0.2] as readonly number[] } as const; // swing — по MOB_SWING: укус, коготь, хвост, дыхание, крылья, магия
 
 const CENTER = new Vector3(0, 0, 0);
 /** Обычный вертикальный угол обзора камеры спектатора, рад. */
@@ -275,6 +291,16 @@ export class SpectatorCamera {
   private readonly curTgt = new Vector3(0, 2, 0);
   private readonly _p = new Vector3();
   private readonly _t = new Vector3();
+  /** Толчок камеры: сила (затухает) и счётчик времени для тряски; поверх позы, без влияния на сглаживание. */
+  private quakeA = 0;
+  private quakeClock = 0;
+  private readonly _shake = new Vector3();
+  private readonly _ps = new Vector3();
+  private readonly _ts = new Vector3();
+  /** Что уже видели у босса катакомб (чтобы толчок шёл на новое действие, а не на первый кадр). */
+  private readonly bossSeen = { id: "", slam: -1, atk: -1, windup: 0, charging: 0 };
+  /** 0..1 — кадр подъезжает к боссу на рывке (плавно). */
+  private catTopPush = 0;
   private frameDt = 0.016;
 
   // Низкочастотный фильтр позы для кадров «из глаз».
@@ -492,9 +518,20 @@ export class SpectatorCamera {
       this._p.set(px, py, pz);
       if (this._p.y < minY) this._p.y = minY;
     }
-    this.cam.position.copyFrom(this._p);
+    // Толчок камеры (удар/замах/рывок босса): затухает за доли секунды, поверх позы — сглаживание не трогаем.
+    this.quakeA *= Math.exp(-dt * 7);
+    this.quakeClock = (this.quakeClock + dt) % 1000;
+    const qa = this.quakeA;
+    const qt = this.quakeClock;
+    const sx = (Math.sin(qt * 53.1) * 0.7 + Math.sin(qt * 91.7) * 0.3) * qa;
+    const sy = (Math.sin(qt * 47.3 + 1.3) * 0.5 + Math.sin(qt * 83.9) * 0.2) * qa * 0.6;
+    const sz = (Math.sin(qt * 61.7 + 2.1) * 0.7 + Math.sin(qt * 29.3) * 0.3) * qa;
+    this._shake.set(sx, sy, sz);
+    this._ps.copyFrom(this._p).addInPlace(this._shake);
+    this._ts.set(this._t.x + sx * 0.5, this._t.y + sy * 0.5, this._t.z + sz * 0.5);
+    this.cam.position.copyFrom(this._ps);
     this.curTgt.copyFrom(this._t);
-    this.cam.setTarget(this._t);
+    this.cam.setTarget(this._ts);
 
     // Угол обзора: у кинопути может быть свой (fov), иначе обычный. Меняем
     // плавно, чтобы вход/выход из кадра не дёргал перспективу.
@@ -876,10 +913,16 @@ export class SpectatorCamera {
           const bossGy = bossM ? ctx.groundY(bossM.eye.x, bossM.eye.z) : 0;
           const bossTop = bossM ? Math.max(2.5, (bossM.eye.y - bossGy) * 1.25) : 0;
           this.catTopBossMix += ((bossM ? 1 : 0) - this.catTopBossMix) * k;
+          this.bossActs(bossM);
+          // Рывок босса: кадр подъезжает ближе (плавно), пока он несётся.
+          this.catTopPush += ((bossM?.fx?.charging === 1 ? 1 : 0) - this.catTopPush) * (1 - Math.exp(-this.frameDt * 2.5));
           // Как в изометрических ARPG: камера на середине высоты зала, под ~50° сверху-сбоку;
           // бой шире — чуть выше и дальше (но не выше свода).
-          const height = Math.min(CAT_CEIL - 2, CAT_CAM.height + this.catTopH * CAT_CAM.heightPerSpread);
-          const back = Math.min(c.r * 0.9, height * CAT_CAM.backPerHeight + this.catTopH * 0.3);
+          // Дыхание кадра: высота плывёт на десятки сантиметров (у босса — заметнее), камера не замирает под сводом.
+          const breathe = Math.sin(this.orbitClock * 0.23) * 0.5 + Math.sin(this.orbitClock * 0.61) * 0.25;
+          const height = Math.min(CAT_CEIL - 2, CAT_CAM.height + this.catTopH * CAT_CAM.heightPerSpread + breathe * (0.4 + 0.8 * this.catTopBossMix));
+          // Рывок босса: кадр ближе — отход меньше на 18%.
+          const back = Math.min(c.r * 0.9, height * CAT_CAM.backPerHeight + this.catTopH * 0.3) * (1 - 0.18 * this.catTopPush);
           // Медленно подкручивается влево-вправо (±35° за ~50 с) — объём и живость, без рывков.
           const sway = Math.sin(this.orbitClock * 0.125) * 0.6;
           let px = this.catTopC.x + Math.sin(sway) * back;
@@ -1315,6 +1358,41 @@ export class SpectatorCamera {
   }
 
   private readonly _catFocus = new Vector3();
+
+  /** Толчок камеры на действие босса катакомб: удар по площади, замах, телеграф и рывок. Первый кадр босса — без толчка. */
+  private bossActs(m: CtxMob | undefined): void {
+    const fx = m?.fx;
+    const seen = this.bossSeen;
+    if (!m || !fx) {
+      seen.id = "";
+      return;
+    }
+    if (seen.id !== m.id) {
+      seen.id = m.id;
+      seen.slam = fx.slam;
+      seen.atk = fx.atk;
+      seen.windup = fx.windup;
+      seen.charging = fx.charging;
+      return;
+    }
+    if (fx.slam !== seen.slam) {
+      seen.slam = fx.slam;
+      this.quake(BOSS_QUAKE.slam);
+    }
+    if (fx.atk !== seen.atk) {
+      seen.atk = fx.atk;
+      this.quake(BOSS_QUAKE.swing[fx.atkKind] ?? 0.2);
+    }
+    if (fx.charging === 1 && seen.charging !== 1) this.quake(BOSS_QUAKE.charge);
+    if (fx.windup > 0 && seen.windup <= 0) this.quake(BOSS_QUAKE.windup);
+    seen.charging = fx.charging;
+    seen.windup = fx.windup;
+  }
+
+  /** Толчок силой a (доля кадра): сильнейший из текущих, затухает сам. */
+  private quake(a: number): void {
+    this.quakeA = Math.max(this.quakeA, a);
+  }
 
   private orbit(
     focus: Vector3,

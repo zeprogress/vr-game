@@ -4,7 +4,7 @@
  * Панель `?cattune=1` (ui/CatTuner) двигает значения в игре; подобранное лежит в localStorage
  * и читается только при открытой панели — обычные игроки берут дефолт из исходника.
  */
-export const CAT_TUNE_DEFAULT = { wall: 0.6, bump: 1, shadow: 0.42 } as const;
+export const CAT_TUNE_DEFAULT = { wall: 0.36, bump: 2, shadow: 0.42 } as const;
 
 export const catTune: { wall: number; bump: number; shadow: number } = { ...CAT_TUNE_DEFAULT };
 
