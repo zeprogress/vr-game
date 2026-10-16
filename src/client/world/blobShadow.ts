@@ -8,7 +8,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 import { terrainHeight } from "#shared/terrain";
-import { LAYER } from "../engine/renderLayers";
+import { groundFxThrough } from "../ui/groundFx";
 
 /** Диаметр прототипа, м. Реальный размер задаётся масштабом инстанса. */
 const PROTO_SIZE = 2;
@@ -79,7 +79,8 @@ export function protoFor(scene: Scene): Mesh {
   const proto = MeshBuilder.CreatePlane("blobShadowProto", { size: PROTO_SIZE }, scene);
   proto.material = mat;
   proto.isPickable = false;
-  proto.renderingGroupId = LAYER.groundFx;
+  // Пятно просвечивает землю и склоны, как круги эффектов (groundFx.ts): без теста глубины.
+  groundFxThrough(proto);
   proto.isVisible = false; // рисуем только инстансы
   protos.set(scene, proto);
   return proto;
@@ -112,6 +113,8 @@ function batchFor(scene: Scene): Batch {
   if (found && !found.mesh.isDisposed()) return found;
   const mesh = MeshBuilder.CreatePlane("blobShadows", { size: PROTO_SIZE }, scene);
   mesh.material = protoFor(scene).material;
+  // Группу и тест глубины ставим сразу: отложенный обработчик сцены не должен отнести пятна в мир.
+  groundFxThrough(mesh);
   mesh.isPickable = false;
   mesh.alwaysSelectAsActiveMesh = true; // границы пятен по всей карте — не отсекаем по рамке плоскости
   const b: Batch = { mesh, buf: new Float32Array(64 * 16), cap: 64, used: 0, free: [], dirty: false };
