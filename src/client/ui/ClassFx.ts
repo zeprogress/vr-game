@@ -814,8 +814,9 @@ export function playClassAct(
       vfx.burst(x, y + 0.2, z, ATK, { count: 24, speed: 7, life: 0.55, grav: 14, size: 0.2 });
       return true;
     case "hammerWave":
-      vfx.decal(x, y - 0.8, z, d ?? 2.5, ATK, 0.4, 4, 0.45); // без трещин, вдвое прозрачнее
-      vfx.burst(x, y - 0.4, z, ATK, { count: 10, speed: 4, life: 0.35, grav: 6, size: 0.16 });
+      // Синяя волна на середине роста героя (y — сервер): без трещин, прозрачнее, чтобы герой был виден.
+      vfx.decal(x, y, z, d ?? 4, FXC.lightning, 0.4, 4, 0.25);
+      vfx.burst(x, y, z, FXC.lightning, { count: 10, speed: 4, life: 0.35, grav: 6, size: 0.16 });
       return true;
     case "spearPierce":
       if (x2 !== undefined && z2 !== undefined) {

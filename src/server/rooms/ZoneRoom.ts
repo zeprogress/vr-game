@@ -2463,7 +2463,7 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     let splash = 0;
     if (weapon === "spear") splash += this.spearPierce(heroId, p, struck, dmg);
-    if (weapon === "hammer") splash += this.hammerWave(heroId, p, hand, rt, sx, sy, sz);
+    if (weapon === "hammer") splash += this.hammerWave(heroId, p, hand, rt, sx, sz);
     // Меч задевает соседей рядом с целью — небольшой АОЕ.
     if (weapon === "sword") {
       splash += this.sim.splashDamage(sx, sy, sz, COMBAT.swordSplashRadius, dmg * COMBAT.swordSplashFraction, struck.id, heroId);
@@ -2517,7 +2517,7 @@ export class ZoneRoom extends Room<ZoneState> {
    * молота, по всем мобам в радиусе, включая саму цель). Возвращает весь
    * урон волны (для вампиризма от сплэша).
    */
-  private hammerWave(ownerId: string, p: PlayerState, hand: "left" | "right", rt: Runtime, x: number, y: number, z: number): number {
+  private hammerWave(ownerId: string, p: PlayerState, hand: "left" | "right", rt: Runtime, x: number, z: number): number {
     const radius = HAMMER.waveRadius;
     const dmg =
       HAMMER.waveMagic *
@@ -2534,7 +2534,8 @@ export class ZoneRoom extends Room<ZoneState> {
       this.sim.hitMob(m.id, dmg, m.x - x, m.z - z, ownerId, false, false, true);
       total += dmg;
     }
-    this.broadcast(MSG.act, { k: "hammerWave", id: ownerId, x, y, z, d: radius } satisfies ActRelay);
+    // Волна — на середине роста героя (не у ног и не у точки удара по высоте).
+    this.broadcast(MSG.act, { k: "hammerWave", id: ownerId, x, y: p.head.y - PLAYER.eyeHeight / 2, z, d: radius } satisfies ActRelay);
     return total;
   }
 
