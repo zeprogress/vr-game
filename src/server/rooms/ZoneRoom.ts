@@ -3023,6 +3023,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.eventPhaseAt = Date.now() + eh.hardTimeout * 1000;
       this.huntBossId = this.sim.spawnEventMob(e.kind, spot.x, spot.z, {
         ...eliteMobOpts(e),
+        boss: true,
         hp: Math.round(e.hp * hpMul),
         dmgMul: e.dmgMul * dmgMul,
       });
@@ -6961,7 +6962,7 @@ export class ZoneRoom extends Room<ZoneState> {
     type: string,
     x: number,
     z: number,
-    o: { hpMul: number; dmgMul: number; scaleMul?: number; atkMul?: number; def?: CatDefense; name?: string; partyLevel: number; affix?: CatAffix | null },
+    o: { hpMul: number; dmgMul: number; scaleMul?: number; atkMul?: number; def?: CatDefense; name?: string; partyLevel: number; affix?: CatAffix | null; boss?: boolean },
   ): string {
     const af = o.affix;
     this.catLevel = o.partyLevel;
@@ -6994,6 +6995,7 @@ export class ZoneRoom extends Room<ZoneState> {
       // Опыта мобы катакомб не дают — он только за стражей и Владыку (CATACOMBS.xpCurve).
       opts.xp = 0;
       if (o.name) opts.name = o.name;
+      if (o.boss) opts.boss = true;
       id = this.sim.spawnEventMob(def.kind, x, z, opts);
     } else {
       id = this.sim.spawnEventMob(type === "spitter" ? "spitter" : "slime", x, z, { xp: 0 });

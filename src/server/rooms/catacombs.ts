@@ -55,7 +55,7 @@ export interface CatHost {
   /** Итог победы: комната дополнит строки (ник, класс, урон, убийства) и разошлёт таблицу. */
   report(r: Omit<CatReportMsg, "rows">, heroes: { id: string; deaths: number; loot: LootItem[] }[]): void;
   /** Моб катакомб: тип (ключ ELITE_MOBS или slime/spitter), точка и множители. Возвращает id. */
-  spawn(type: string, x: number, z: number, o: { hpMul: number; dmgMul: number; scaleMul?: number; atkMul?: number; def?: CatDefense; name?: string; partyLevel: number; affix?: CatAffix | null }): string;
+  spawn(type: string, x: number, z: number, o: { hpMul: number; dmgMul: number; scaleMul?: number; atkMul?: number; def?: CatDefense; name?: string; partyLevel: number; affix?: CatAffix | null; boss?: boolean }): string;
   /** Темы залов на заход (для клиентов). */
   setThemes(s: string): void;
   /** Святилище в зале (k −1 — убрать). */
@@ -838,6 +838,7 @@ export class CatacombDirector {
       def: b.defense,
       name: b.name,
       partyLevel: this.partyLevel,
+      boss: true,
     });
     this.mobs.add(this.bossId);
     const ring = [0, 1, 2, 3, 4, 5].map((i) => ({ x: at.x + Math.cos(i * 1.05) * 3.5, z: at.z + Math.sin(i * 1.05) * 3.5 }));
@@ -914,7 +915,7 @@ export class CatacombDirector {
           const gz = H.z + Math.sin(a) * H.r * 0.55;
           const id = this.host.spawn(b.seal?.key ?? "boneChief", gx, gz, {
             hpMul: F.guardianHp * (1 + 0.35 * (this.party.size - 1)) * this.threat("hp"), dmgMul: this.threat("dmg"), scaleMul: 1.3,
-            name: b.seal?.name ?? "Хранитель печати", partyLevel: this.partyLevel,
+            name: b.seal?.name ?? "Хранитель печати", partyLevel: this.partyLevel, boss: true,
           });
           this.guardians.add(id);
           this.mobs.add(id);

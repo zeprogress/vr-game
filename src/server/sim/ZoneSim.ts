@@ -525,6 +525,8 @@ export class Mob {
   readonly model: string;
   /** Переопределение имени/уровня в плашке (усиленные мобы). Пусто/0 — по kind. */
   readonly eliteName: string;
+  /** Босс (рейд, охота, катакомбы): обычная броня с него не падает — золото и уникальное падают как у элиты. */
+  readonly bossFight: boolean;
   /** Множитель шанса колец (жнец ×10); см. ELITE_MOBS.ringMul. */
   readonly ringMul: number;
   /** Множитель радиуса расталкивания толпы (separateMobs); см. ELITE_MOBS.sepMul. */
@@ -668,6 +670,7 @@ export class Mob {
     opts: {
       model?: string;
       name?: string;
+      boss?: boolean;
       level?: number;
       hp?: number;
       dmgMul?: number;
@@ -736,6 +739,7 @@ export class Mob {
     this.respawnSec = opts.respawnSec ?? MOB.respawn;
     this.model = opts.model ?? "";
     this.eliteName = opts.name ?? "";
+    this.bossFight = opts.boss ?? false;
     this.ringMul = opts.ringMul ?? 1;
     this.sepMul = opts.sepMul ?? 1;
     this.eliteLevel = opts.level ?? 0;
@@ -2547,7 +2551,7 @@ export class ZoneSim {
     // Рейд-босс «Лунный аватар» — в центре арены на плато горы (shared/raid.ts), стоит на месте.
     {
       const def = ELITE_MOBS[RAID.boss];
-      const m = new Mob(def.kind, RAID.x, RAID.z, { ...eliteOpts(def), respawnSec: RAID.respawnSec });
+      const m = new Mob(def.kind, RAID.x, RAID.z, { ...eliteOpts(def), respawnSec: RAID.respawnSec, boss: true });
       m.restYaw = Math.atan2(-RAID.x, -RAID.z);
       m.yaw = m.restYaw;
       this.raidBossId = m.id;
@@ -3820,7 +3824,7 @@ export class ZoneSim {
       } else {
         // Обычный и элитный моб: обычная и золотая часть — два независимых шанса; золото реже в ARMOR_GOLD.dropDiv раз.
         // Обычная часть: на 1-м уровне как есть, к 53-му падает до нуля (armorBaseLevelMul).
-        if (Math.random() < ARMOR_DROP[kind] * champMul * armorBaseLevelMul(m.eliteLevel)) {
+        if (!m.bossFight && Math.random() < ARMOR_DROP[kind] * champMul * armorBaseLevelMul(m.eliteLevel)) {
           const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
           rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid()) });
         }
