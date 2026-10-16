@@ -6,6 +6,20 @@ import type { HeroStatRow } from "#shared/heroStats";
 import { TOWER } from "#shared/tower";
 import { AEGIS_NAME, ITEMS } from "#shared/items";
 
+/** Значок устройства (1 ПК, 2 телефон, 3 VR, 4 бот) как SVG-строка; 0 — без значка. */
+function devIconSvg(kind: number): string {
+  const look = DEVICE_ICON_LOOK[kind];
+  if (!look) return "";
+  return (
+    `<svg class="ov-dev" viewBox="0 0 20 20" aria-hidden="true">` +
+    `<path d="${DEVICE_BADGE}" fill="${look.color}" stroke="rgba(6,8,12,.9)" stroke-width="1.6" stroke-linejoin="round"/>` +
+    `<path d="${look.dark}" fill="#15171d"/>` +
+    (look.light ? `<path d="${look.light}" fill="#fff"/>` : "") +
+    `</svg>`
+  );
+}
+import { DEVICE_BADGE, DEVICE_ICON_LOOK } from "#shared/look";
+
 /**
  * Оверлеи стрима (этап 17 Ф6).
  *
@@ -105,6 +119,7 @@ const CSS = `
 .ov-online b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
   text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
 .ov-online div { display:flex; gap:.7vh; align-items:center; justify-content:flex-end; }
+.ov-online .ov-dev { width:1.7vh; height:1.7vh; vertical-align:-0.3vh; }
 .ov-online i.spk { width:1vh; height:1vh; border-radius:50%; background:#3ad16b;
   box-shadow:0 0 8px #3ad16b; flex:none; }
 .ov-top { left:2.2vw; top:6.4vh; font-size:1.7vh; line-height:1.6; }
@@ -654,8 +669,15 @@ export class Overlay {
         dot.className = "spk";
         if (!p.speaking) dot.style.visibility = "hidden"; // держит выравнивание
         const nm = document.createElement("span");
-        const platIcon = p.bot ? "🤖" : p.plat === 3 ? "🥽" : p.plat === 2 ? "📱" : p.plat === 1 ? "🖥" : "";
-        nm.textContent = (platIcon ? `${platIcon} ` : "") + p.nick;
+        // Значок устройства — векторный, как у ника (shared/look.ts), не эмодзи: эмодзи шрифт OBS не знает.
+        const ico = devIconSvg(p.bot ? 4 : p.plat);
+        if (ico) {
+          const w = document.createElement("span");
+          w.className = "ov-devw";
+          w.innerHTML = ico;
+          nm.append(w, " ");
+        }
+        nm.append(p.nick);
         row.append(dot, nm);
         this.online.appendChild(row);
       }
