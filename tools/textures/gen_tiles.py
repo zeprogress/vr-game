@@ -465,7 +465,114 @@ def mat_ruinfloor(n, rng):
     return col, h, rough
 
 
+def mat_crypt_block(n, rng):
+    """Склеп: тёсаные блоки в три ряда разной длины, широкая фаска, штрихи зубила, сажа-потёки и известь в швах.
+    Большие блоки (тайл — ~3 м): на стенах и колоннах склепа."""
+    rows = 3
+    rh = n / rows
+    ys, xs = np.mgrid[0:n, 0:n].astype(np.float32)
+    chips = fbm(n, 32, 4, rng)
+    wear = fbm(n, 8, 6, rng)
+    grain = fbm(n, 128, 3, rng)
+    edge_d = np.zeros((n, n), np.float32)
+    tint = np.zeros((n, n), np.float32)
+    for r in range(rows):
+        y0, y1 = r * rh, (r + 1) * rh
+        m_y = (ys >= y0) & (ys < y1)
+        cuts = [0.0]
+        while cuts[-1] < n:
+            cuts.append(cuts[-1] + rh * (1.5 + rng.random() * 1.2))
+        cuts[-1] = n
+        if cuts[-1] - cuts[-2] < rh * 0.9 and len(cuts) > 2:
+            cuts.pop(-2)
+        cuts = np.array(cuts, np.float32)
+        shift = rng.random() * n
+        xr = (xs + shift) % n
+        k = np.clip(np.searchsorted(cuts, xr, side="right") - 1, 0, len(cuts) - 2)
+        ex = np.minimum(xr - cuts[k], cuts[k + 1] - xr)
+        ey = np.minimum(ys - y0, y1 - ys)
+        edge_d = np.where(m_y, np.minimum(ex, ey), edge_d)
+        tints = rng.random(len(cuts)).astype(np.float32)
+        tint = np.where(m_y, tints[k], tint)
+    bevel = np.clip(edge_d / (rh * 0.12) + (chips - 0.5) * 1.4, 0, 1)
+    # штрихи зубила: диагональные полосы (целые частоты — бесшовно), видны только на части блока
+    chisel = (np.sin(2 * np.pi * (18 * xs + 9 * ys) / n) * 0.5 + 0.5) * np.clip((fbm(n, 64, 3, rng) - 0.45) * 3, 0, 1)
+    h = norm01(0.2 + 0.7 * bevel * (0.9 + 0.1 * wear) + grain * 0.05 + chisel * 0.05 - (chips > 0.74) * bevel * 0.15)
+    tone = np.clip(0.5 * tint + 0.35 * wear + 0.15 * grain, 0, 1)
+    col = ramp(tone, [(0, "#1a1b1e"), (0.5, "#2b2d31"), (1, "#3e4147")])
+    col = np.where((bevel < 0.12)[..., None], hexc("#0f1011"), col)
+    # сажа: тёмные вертикальные потёки (шум только по X — постоянен по Y, поэтому бесшовно)
+    streak = fbm(n, 24, 3, rng)[0]
+    soot = np.clip((streak[None, :] - 0.5) * 3, 0, 1) * (0.5 + 0.5 * wear)
+    col *= (1 - soot * 0.45)[..., None]
+    col *= (0.8 + 0.2 * h)[..., None]
+    col *= (0.93 + 0.14 * (grain - 0.5))[..., None]
+    salt = np.clip((fbm(n, 256, 2, rng) - 0.68) * 6, 0, 1)
+    col = col * (1 - salt[..., None] * 0.3) + hexc("#7d8084") * salt[..., None] * 0.3
+    rough = np.clip(0.9 + (grain - 0.5) * 0.15 - soot * 0.1, 0.5, 1)
+    return col, h, rough
+
+
+def mat_crypt_floor(n, rng):
+    """Пол склепа: тяжёлые плиты (2 ряда, в ряду 2–3 плиты) со скошенными кромками, трещины, стёртость,
+    пыль и мелкие кости в швах. Большие плиты: тайл ~3 м."""
+    ys, xs = np.mgrid[0:n, 0:n].astype(np.float32) / n
+    wx = xs + 0.02 * (pfbm(rng, xs, ys, 4, 3) - 0.5)
+    wy = ys + 0.02 * (pfbm(rng, xs + 0.3, ys, 4, 3) - 0.5)
+    rows = 2
+    ry = wy * rows
+    row = np.floor(ry).astype(int) % rows
+    shift = rng.random(rows).astype(np.float32)
+    cols_n = np.array([2, 3])[row]
+    rx = (wx + shift[row]) % 1.0 * cols_n
+    fx = rx - np.floor(rx)
+    fy = ry - np.floor(ry)
+    edge = np.minimum(np.minimum(fx, 1 - fx) / cols_n * rows, np.minimum(fy, 1 - fy))
+    tid = (np.floor(rx) + row * 5).astype(int)
+    tint = rng.random(64).astype(np.float32)[tid % 64]
+    wear = pfbm(rng, xs, ys, 4, 5)
+    chip = pfbm(rng, xs, ys, 20, 4)
+    slab = np.clip(edge * 16 - 0.2 + (chip - 0.5) * 1.0, 0, 1)
+    dirt = np.clip((0.45 - pfbm(rng, xs, ys, 3, 4)) * 4, 0, 1)
+    bones = pebbles(rng, xs, ys, 140, 0.007) * np.clip((1 - slab) + dirt, 0, 1)
+    crack = np.clip(1 - pvoronoi_edges(rng, wx, wy, 24) / 0.005, 0, 1) * (tint > 0.4)
+    grain = pfbm(rng, xs, ys, 256, 2)
+    h = norm01(slab * (0.85 + 0.15 * wear) * (1 - dirt * 0.5) + dirt * 0.2 + bones * 0.25 - crack * 0.3 + grain * 0.05)
+    col = ramp(np.clip(0.5 * tint + 0.35 * wear + 0.15 * grain, 0, 1), [(0, "#1d1c1b"), (0.5, "#2e2c29"), (1, "#3f3b36")])
+    seam = np.clip(1 - slab * 1.6, 0, 1)
+    dm = np.clip(seam + dirt, 0, 1)
+    col = col * (1 - dm[..., None]) + hexc("#17130f") * dm[..., None]
+    bm = np.clip(bones * 3, 0, 1)
+    col = col * (1 - bm[..., None] * 0.6) + hexc("#77756b") * bm[..., None] * 0.6
+    col *= (1 - crack * 0.55)[..., None]
+    col *= (0.85 + 0.15 * h)[..., None]
+    rough = np.clip(0.88 + (grain - 0.5) * 0.2 - wear * 0.15, 0.45, 1)
+    return col, h, rough
+
+
+def mat_crypt_altar(n, rng):
+    """Полированный тёмный мрамор алтарей и гробниц: прожилки (диагональ — целые коэффициенты, бесшовно),
+    почти чёрная база, тёплые пятна, низкая шероховатость — блик от факелов."""
+    ys, xs = np.mgrid[0:n, 0:n].astype(np.float32) / n
+    warp = pfbm(rng, xs, ys, 3, 3)
+    vein = pfbm(rng, xs + 2 * ys + 1.2 * warp, ys + 0.8 * warp, 5, 4, ridge=True)
+    fine = pfbm(rng, xs + 2 * ys + 2.0 * warp, ys + 0.5 * warp, 14, 2, ridge=True)
+    blot = pfbm(rng, xs, ys, 3, 4)
+    grain = pfbm(rng, xs, ys, 256, 2)
+    h = norm01(0.5 * blot + 0.3 * vein + 0.1 * fine + grain * 0.03)
+    base = ramp(np.clip(0.5 * blot + 0.3 * grain, 0, 1), [(0, "#0e0f12"), (0.6, "#17181c"), (1, "#222328")])
+    vm = np.clip((vein - 0.7) * 7, 0, 1) * (0.4 + 0.6 * fine)
+    col = base * (1 - vm[..., None] * 0.6) + hexc("#8a8c93") * vm[..., None] * 0.6
+    warm = np.clip((pfbm(rng, xs, ys, 4, 3) - 0.6) * 3, 0, 1) * 0.5
+    col = col * (1 - warm[..., None]) + hexc("#3a2a22") * warm[..., None]
+    rough = np.clip(0.3 + 0.35 * vm + (grain - 0.5) * 0.1, 0.15, 0.8)
+    return col, h, rough
+
+
 MATS = {
+    "crypt_block": (mat_crypt_block, 31, 3.0),
+    "crypt_floor": (mat_crypt_floor, 32, 2.6),
+    "crypt_altar": (mat_crypt_altar, 33, 1.2),
     "rock": (mat_rock, 11, 4.5),
     "masonry": (mat_masonry, 12, 2.6),
     "flagstone": (mat_flagstone, 13, 2.2),
@@ -516,7 +623,7 @@ def main():
         fn, seed, strength = MATS[name]
         rng = np.random.default_rng(seed)
         col, h, rough = fn(a.size, rng)
-        if name in ("rock", "masonry", "flagstone", "cavefloor", "ruinfloor"):
+        if name in ("rock", "masonry", "flagstone", "cavefloor", "ruinfloor", "crypt_block", "crypt_floor"):
             col = flatten_low(col)
             # и в рельефе — без крупных «холмов» на весь кадр
             hl = np.real(np.fft.ifft2(np.fft.fft2(h) * (np.hypot(np.fft.fftfreq(a.size)[None, :] * a.size, np.fft.fftfreq(a.size)[:, None] * a.size) < 4)))

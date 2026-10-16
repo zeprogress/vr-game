@@ -7,8 +7,10 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
+import { CAT_FLOOR_Y, inCatRegion } from "#shared/catacombs";
 import { terrainHeight } from "#shared/terrain";
 import { groundFxThrough } from "../ui/groundFx";
+import { catTune } from "./catTune";
 
 /** Диаметр прототипа, м. Реальный размер задаётся масштабом инстанса. */
 const PROTO_SIZE = 2;
@@ -20,6 +22,11 @@ const FADE_HEIGHT = 3;
 const LIFT = 0.07;
 /** Плечо для замера уклона земли, м. */
 const SLOPE_D = 0.6;
+/**
+ * Катакомбы: пол ровный на CAT_FLOOR_Y, земля тёмная — пятно плотнее (плотность — catTune.shadow).
+ * Выше пола — с обычной глубиной: колонны и стены его закрывают, а не проступают поверх.
+ */
+const CAT_LIFT = 0.12;
 
 /**
  * Мягкое тёмное пятно под объектом — дешёвая замена тени.
@@ -32,9 +39,12 @@ const SLOPE_D = 0.6;
  * Диск НАКЛОНЯЕТСЯ по нормали рельефа. Плоский он резался о склон, и от
  * круга оставалась половина — под землёй его отсекало по глубине.
  *
- * Один прототип и материал на сцену, дальше — аппаратные инстансы.
+ * Один прототип и материал на сцену, дальше — аппаратные инстансы. Два набора пятен:
+ * наружу (по рельефу, поверх земли) и в катакомбах (на полу, с глубиной).
  */
 const protos = new WeakMap<Scene, Mesh>();
+const catMats = new WeakMap<Scene, StandardMaterial>();
+const shadowTexs = new WeakMap<Scene, DynamicTexture>();
 
 /**
  * Пятно с плотной серединой: у светлячков спад `pow(1-r, 2.4)` — он даёт
@@ -42,6 +52,8 @@ const protos = new WeakMap<Scene, Mesh>();
  * непрозрачно до 55% радиуса и мягко сводим к краю.
  */
 function shadowTexture(scene: Scene): DynamicTexture {
+  const found = shadowTexs.get(scene);
+  if (found) return found;
   const S = 128;
   const tex = new DynamicTexture("blobShadowTex", { width: S, height: S }, scene, false);
   tex.hasAlpha = true;
@@ -58,6 +70,7 @@ function shadowTexture(scene: Scene): DynamicTexture {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, S, S);
   tex.update(true);
+  shadowTexs.set(scene, tex);
   return tex;
 }
 
@@ -86,10 +99,33 @@ export function protoFor(scene: Scene): Mesh {
   return proto;
 }
 
+/** Материал пятен катакомб: тот же диск, но с глубиной — пол, колонны и стены закрывают его как обычный меш. */
+function catMatFor(scene: Scene): StandardMaterial {
+  const found = catMats.get(scene);
+  if (found) return found;
+  const mat = new StandardMaterial("blobShadowCatMat", scene);
+  mat.diffuseColor = new Color3(0, 0, 0);
+  mat.emissiveColor = new Color3(0, 0, 0);
+  mat.specularColor = new Color3(0, 0, 0);
+  mat.opacityTexture = shadowTexture(scene);
+  mat.disableLighting = true;
+  mat.disableDepthWrite = true;
+  mat.backFaceCulling = false;
+  mat.alpha = catTune.shadow;
+  catMats.set(scene, mat);
+  return mat;
+}
+
+/** Плотность пятен в катакомбах (панель ?cattune=1 двигает на лету). */
+export function setCatShadowAlpha(scene: Scene, alpha: number): void {
+  catMatFor(scene).alpha = alpha;
+}
+
 const _n = new Vector3();
 const _t = new Vector3();
 const _b = new Vector3();
 const _fwd = new Vector3(0, 0, 1);
+const UP = new Vector3(0, 1, 0);
 
 /**
  * Все пятна сцены — ОДИН меш с тонкими инстансами (thin instances): раньше у каждого моба и
@@ -105,16 +141,23 @@ interface Batch {
   free: number[];
   dirty: boolean;
 }
-const batches = new WeakMap<Scene, Batch>();
+/** Два набора на сцену: [наружу, катакомбы]. */
+const batches = new WeakMap<Scene, [Batch | null, Batch | null]>();
 const ZERO16 = new Float32Array(16);
 
-function batchFor(scene: Scene): Batch {
-  const found = batches.get(scene);
+function batchFor(scene: Scene, cat: boolean): Batch {
+  const pair = batches.get(scene) ?? [null, null];
+  const i = cat ? 1 : 0;
+  const found = pair[i];
   if (found && !found.mesh.isDisposed()) return found;
-  const mesh = MeshBuilder.CreatePlane("blobShadows", { size: PROTO_SIZE }, scene);
-  mesh.material = protoFor(scene).material;
-  // Группу и тест глубины ставим сразу: отложенный обработчик сцены не должен отнести пятна в мир.
-  groundFxThrough(mesh);
+  const mesh = MeshBuilder.CreatePlane(cat ? "blobShadowsCat" : "blobShadows", { size: PROTO_SIZE }, scene);
+  if (cat) {
+    mesh.material = catMatFor(scene);
+  } else {
+    mesh.material = protoFor(scene).material;
+    // Группу и тест глубины ставим сразу: отложенный обработчик сцены не должен отнести пятна в мир.
+    groundFxThrough(mesh);
+  }
   mesh.isPickable = false;
   mesh.alwaysSelectAsActiveMesh = true; // границы пятен по всей карте — не отсекаем по рамке плоскости
   const b: Batch = { mesh, buf: new Float32Array(64 * 16), cap: 64, used: 0, free: [], dirty: false };
@@ -126,7 +169,8 @@ function batchFor(scene: Scene): Batch {
     mesh.thinInstanceCount = b.used;
     mesh.thinInstanceBufferUpdated("matrix");
   });
-  batches.set(scene, b);
+  pair[i] = b;
+  batches.set(scene, pair);
   return b;
 }
 
@@ -141,8 +185,11 @@ function grow(b: Batch): void {
 
 /** Пятно под одним объектом. Двигать через `place()`. */
 export class BlobShadow {
-  private readonly batch: Batch;
-  private readonly slot: number;
+  private readonly scene: Scene;
+  private batch: Batch;
+  private slot: number;
+  /** В каком наборе сейчас пятно: катакомбы или наружу. */
+  private cat = false;
   private enabled = true;
   /** Последние параметры place(): у стоящего моба они не меняются — пересчёт
    *  (5 запросов высоты рельефа + базис) пропускаем. */
@@ -154,7 +201,8 @@ export class BlobShadow {
   private readonly m = new Float32Array(16);
 
   constructor(scene: Scene, _name: string) {
-    this.batch = batchFor(scene);
+    this.scene = scene;
+    this.batch = batchFor(scene, false);
     const b = this.batch;
     this.slot = b.free.pop() ?? b.used++;
     if (this.slot >= b.cap) grow(b);
@@ -167,12 +215,30 @@ export class BlobShadow {
     b.dirty = true;
   }
 
+  /** Переехать в другой набор (из наружи в катакомбы и обратно): старый слот освобождаем. */
+  private moveTo(cat: boolean): void {
+    const old = this.batch;
+    old.buf.set(ZERO16, this.slot * 16);
+    old.dirty = true;
+    old.free.push(this.slot);
+    const b = batchFor(this.scene, cat);
+    this.batch = b;
+    this.slot = b.free.pop() ?? b.used++;
+    if (this.slot >= b.cap) grow(b);
+    this.cat = cat;
+  }
+
   /**
    * @param x,y,z мировая точка объекта (y — его низ)
    * @param radius радиус пятна на земле, м
    */
   place(x: number, y: number, z: number, radius: number): void {
     if (this.disposed) return;
+    const cat = inCatRegion(x, z);
+    if (cat !== this.cat) {
+      this.moveTo(cat);
+      this.lx = NaN; // переехали — матрицу пересчитываем
+    }
     if (
       Math.abs(x - this.lx) < 3e-2 &&
       Math.abs(y - this.ly) < 3e-2 &&
@@ -185,12 +251,16 @@ export class BlobShadow {
     this.ly = y;
     this.lz = z;
     this.lr = radius;
-    const ground = terrainHeight(x, z);
-
-    // Нормаль рельефа: по ней кладём диск, иначе он режется о склон.
-    const dhdx = (terrainHeight(x + SLOPE_D, z) - terrainHeight(x - SLOPE_D, z)) / (2 * SLOPE_D);
-    const dhdz = (terrainHeight(x, z + SLOPE_D) - terrainHeight(x, z - SLOPE_D)) / (2 * SLOPE_D);
-    _n.set(-dhdx, 1, -dhdz).normalize();
+    // Катакомбы: пол ровный, рельефа нет — пятно на полу, по вертикали.
+    const ground = cat ? CAT_FLOOR_Y : terrainHeight(x, z);
+    if (cat) {
+      _n.copyFrom(UP);
+    } else {
+      // Нормаль рельефа: по ней кладём диск, иначе он режется о склон.
+      const dhdx = (terrainHeight(x + SLOPE_D, z) - terrainHeight(x - SLOPE_D, z)) / (2 * SLOPE_D);
+      const dhdz = (terrainHeight(x, z + SLOPE_D) - terrainHeight(x, z - SLOPE_D)) / (2 * SLOPE_D);
+      _n.set(-dhdx, 1, -dhdz).normalize();
+    }
     // Локальная Z плоскости должна смотреть по нормали. Базис строим от
     // мировой Z: при почти вертикальной нормали он не вырождается.
     Vector3.CrossToRef(_n, _fwd, _t);
@@ -208,7 +278,7 @@ export class BlobShadow {
     m[0] = _t.x * s; m[1] = _t.y * s; m[2] = _t.z * s; m[3] = 0;
     m[4] = _b.x * s; m[5] = _b.y * s; m[6] = _b.z * s; m[7] = 0;
     m[8] = _n.x * s; m[9] = _n.y * s; m[10] = _n.z * s; m[11] = 0;
-    m[12] = x; m[13] = ground + LIFT; m[14] = z; m[15] = 1;
+    m[12] = x; m[13] = ground + (cat ? CAT_LIFT : LIFT); m[14] = z; m[15] = 1;
     if (this.enabled) this.write(m);
   }
 

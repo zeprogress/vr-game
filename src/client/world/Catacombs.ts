@@ -8,6 +8,7 @@ import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import type { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { PointLight } from "@babylonjs/core/Lights/pointLight";
 import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
 import { Color4 } from "@babylonjs/core/Maths/math.color";
@@ -43,7 +44,8 @@ import {
   inCatRegion,
 } from "#shared/catacombs";
 import { terrainHeight } from "#shared/terrain";
-import { catWallTune, onCatWallTuneChanged } from "./catWallTune";
+import { catTune, onCatTuneChanged } from "./catTune";
+import { setCatShadowAlpha } from "./blobShadow";
 import { makeFireMaterial } from "./FireShader";
 import { LAYER, groundLayer } from "../engine/renderLayers";
 
@@ -98,34 +100,6 @@ const THEME_MOTES: Record<string, { c1: [number, number, number, number]; c2: [n
   pit: { c1: [1, 0.55, 0.15, 0.85], c2: [1, 0.25, 0.05, 0.6], up: 1.1 },
   moon: { c1: [0.7, 0.85, 1, 0.55], c2: [0.55, 0.6, 1, 0.35], up: 0.12 },
 };
-
-/** Каменная плитка: тёмные плиты с швами (процедурно, без файлов). */
-function stoneTexture(scene: Scene, name: string, base: [number, number, number], tiles: number): DynamicTexture {
-  const S = 256;
-  const tex = new DynamicTexture(name, { width: S, height: S }, scene, true);
-  const g = tex.getContext() as unknown as CanvasRenderingContext2D;
-  const c = (k: number): string => `rgb(${Math.round(base[0] * k)},${Math.round(base[1] * k)},${Math.round(base[2] * k)})`;
-  g.fillStyle = c(0.55);
-  g.fillRect(0, 0, S, S);
-  const n = tiles;
-  const step = S / n;
-  let seed = 7;
-  const rnd = (): number => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (let y = 0; y < n; y++) {
-    const off = y % 2 ? step / 2 : 0;
-    for (let x = -1; x < n; x++) {
-      g.fillStyle = c(0.8 + rnd() * 0.45);
-      g.fillRect(x * step + off + 2, y * step + 2, step - 4, step - 4);
-      // трещинки и пятна
-      g.fillStyle = c(0.5 + rnd() * 0.2);
-      for (let k = 0; k < 3; k++) g.fillRect(x * step + off + rnd() * step, y * step + rnd() * step, 2 + rnd() * 6, 1 + rnd() * 3);
-    }
-  }
-  tex.update();
-  tex.wrapU = 1;
-  tex.wrapV = 1;
-  return tex;
-}
 
 /** Радиальное свечение (ореол факела/портала). */
 function glowTexture(scene: Scene): DynamicTexture {
@@ -404,6 +378,10 @@ function beamTexture(scene: Scene): DynamicTexture {
  * залов включается, только когда камера внутри (на поляне — ни одного
  * лишнего источника, бюджет Quest).
  */
+/** Яркость текстур склепа относительно прежнего процедурного камня (по среднему тону): пол ≈ ×2.7, стены ≈ ×2.4. */
+const CRYPT_FLOOR_GAIN = 2.7;
+const CRYPT_WALL_GAIN = 2.4;
+
 export class CatacombsFx {
   private built = false;
   private root: TransformNode | null = null;
@@ -439,6 +417,8 @@ export class CatacombsFx {
   /** Что перекрашивается темой: пол/стены, ниши (2 цвета), ореолы огня, огонь, декор темы. */
   private readonly hallFloorMats: StandardMaterial[] = [];
   private readonly hallWallMats: StandardMaterial[] = [];
+  /** Карты нормалей камня склепа: панель ?cattune=1 двигает их силу (catTune.bump). */
+  private readonly bumpTexs: Texture[] = [];
   /** Потолок каждого зала (своя копия материала — прозрачность зала не трогает соседей). */
   private readonly hallCeilMats: StandardMaterial[] = [];
   /** Меши стен и потолка каждого зала: прячутся, пока камера снаружи зала и они загораживают вид. */
@@ -635,18 +615,8 @@ export class CatacombsFx {
     for (let i = 0; i < CAT_HALLS.length; i++) this.hallFire.push(makeFireMaterial(scene, `catFireH${i}`, false));
     const flames: Mesh[][] = CAT_HALLS.map(() => []);
     const flameNodes: TransformNode[] = [];
-    // Своя текстура на каждый материал: clone() у DynamicTexture так и не становится
-    // «готовой» — меши с ней движок не рисовал (не было пола и стен).
-    const FLOOR: [number, number, number] = [120, 112, 104];
-    const WALL: [number, number, number] = [96, 90, 86];
-    const mat = (name: string, tex: [number, number, number] | null, dif: [number, number, number], emi: [number, number, number], u = 1, vv = 1): StandardMaterial => {
+    const mat = (name: string, dif: [number, number, number], emi: [number, number, number]): StandardMaterial => {
       const m = new StandardMaterial(name, scene);
-      if (tex) {
-        const t = stoneTexture(scene, `${name}Tex`, tex, tex === FLOOR ? 6 : 5);
-        t.uScale = u;
-        t.vScale = vv;
-        m.diffuseTexture = t;
-      }
       m.diffuseColor = new Color3(...dif);
       m.emissiveColor = new Color3(...emi);
       m.specularColor = new Color3(0.05, 0.04, 0.03);
@@ -654,24 +624,41 @@ export class CatacombsFx {
       m.maxSimultaneousLights = 6;
       return m;
     };
+    // Камень с текстурой и картой нормалей (public/textures/catacomb, tools/textures/gen_tiles.py).
+    // Свой Texture на материал; залы копируют текстуры через hallStone.
+    const cryptMat = (name: string, tex: string, dif: [number, number, number], emi: [number, number, number], u: number, v: number): StandardMaterial => {
+      const m = mat(name, dif, emi);
+      const c = new Texture(`/textures/catacomb/${tex}_c.jpg`, scene);
+      const n = new Texture(`/textures/catacomb/${tex}_n.jpg`, scene);
+      for (const t of [c, n]) {
+        t.uScale = u;
+        t.vScale = v;
+      }
+      m.diffuseTexture = c;
+      m.bumpTexture = n;
+      this.bumpTexs.push(n);
+      return m;
+    };
     // Темно: собственного свечения чуть-чуть, остальное — факелы.
-    const floorMat = mat("catFloor", FLOOR, [0.57, 0.53, 0.48], [0.04, 0.035, 0.04], 6, 6);
-    const wallMat = mat("catWall", WALL, [0.5, 0.46, 0.42], [0.03, 0.028, 0.03], 10, 2);
-    const ceilMat = mat("catCeil", WALL, [0.4, 0.36, 0.36], [0.02, 0.018, 0.024], 6, 6);
-    const pillarMat = mat("catPillar", WALL, [0.9, 0.84, 0.78], [0.05, 0.045, 0.045], 1, 3);
-    const ironMat = mat("catIron", null, [0.16, 0.14, 0.12], [0.015, 0.012, 0.01]);
-    const boneMat = mat("catBone", null, [0.85, 0.8, 0.66], [0.04, 0.035, 0.03]);
+    const floorMat = cryptMat("catFloor", "crypt_floor", [0.57, 0.53, 0.48], [0.04, 0.035, 0.04], 8, 8);
+    const wallMat = cryptMat("catWall", "crypt_block", [0.5, 0.46, 0.42], [0.03, 0.028, 0.03], 3, 5);
+    // Потолок — чёрный во всех залах и коридорах: ни текстуры, ни блика.
+    const ceilMat = mat("catCeil", [0.02, 0.02, 0.025], [0, 0, 0]);
+    ceilMat.specularColor = new Color3(0, 0, 0);
+    const pillarMat = cryptMat("catPillar", "crypt_block", [0.9 * CRYPT_WALL_GAIN, 0.84 * CRYPT_WALL_GAIN, 0.78 * CRYPT_WALL_GAIN], [0.05, 0.045, 0.045], 1, 5);
+    const ironMat = mat("catIron", [0.16, 0.14, 0.12], [0.015, 0.012, 0.01]);
+    const boneMat = mat("catBone", [0.85, 0.8, 0.66], [0.04, 0.035, 0.03]);
     // Знамёна разных цветов (багровое, синее, зелёное, золотое) — краски на стенах.
     const BANNERS: [string, [number, number, number]][] = [
       ["Red", [0.48, 0.05, 0.06]], ["Blue", [0.08, 0.16, 0.48]], ["Green", [0.06, 0.32, 0.14]], ["Gold", [0.55, 0.38, 0.08]],
     ];
     const bannerMats = BANNERS.map(([n, c]) => {
-      const m = mat(`catCloth${n}`, null, c, [c[0] * 0.08, c[1] * 0.08, c[2] * 0.08]);
+      const m = mat(`catCloth${n}`, c, [c[0] * 0.08, c[1] * 0.08, c[2] * 0.08]);
       m.backFaceCulling = false;
       return m;
     });
     let bannerLists: Mesh[][] = BANNERS.map(() => []);
-    const urnMat = mat("catUrn", null, [0.45, 0.3, 0.18], [0.02, 0.015, 0.01]);
+    const urnMat = mat("catUrn", [0.45, 0.3, 0.18], [0.02, 0.015, 0.01]);
     const glowTex = glowTexture(scene);
     // Цвет — из самой текстуры (emissiveColor складывается с ней и выбелил бы огонь).
     const warmTex = warmGlowTexture(scene, "catWarmGlow", 1);
@@ -703,6 +690,7 @@ export class CatacombsFx {
     const hallStone = (base: StandardMaterial, name: string): StandardMaterial => {
       const m = new StandardMaterial(name, scene);
       m.diffuseTexture = base.diffuseTexture;
+      m.bumpTexture = base.bumpTexture;
       m.diffuseColor = base.diffuseColor.clone();
       m.emissiveColor = base.emissiveColor.clone();
       m.specularColor = base.specularColor.clone();
@@ -717,8 +705,8 @@ export class CatacombsFx {
       this.hallNicheMats.push([addMat(`catNicheA${hi}`, nicheTex, 0.85), addMat(`catNicheB${hi}`, nicheTex, 0.85)]);
     });
     // Декор тем: статуи (склеп), стены черепов (костница), обсидиан (яма).
-    const statueMat = mat("catStatue", WALL, [0.8, 0.78, 0.74], [0.05, 0.05, 0.05], 1, 2);
-    const obsidMat = mat("catObsidian", null, [0.08, 0.06, 0.07], [0.03, 0.008, 0.004]);
+    const statueMat = cryptMat("catStatue", "crypt_block", [0.8 * CRYPT_WALL_GAIN, 0.78 * CRYPT_WALL_GAIN, 0.74 * CRYPT_WALL_GAIN], [0.05, 0.05, 0.05], 1, 2);
+    const obsidMat = mat("catObsidian", [0.08, 0.06, 0.07], [0.03, 0.008, 0.004]);
     obsidMat.specularColor = new Color3(0.35, 0.25, 0.25);
     const skullMat = new StandardMaterial("catSkullWall", scene);
     skullMat.diffuseTexture = skullWallTexture(scene);
@@ -1366,9 +1354,16 @@ export class CatacombsFx {
     this.motes = ps;
 
     root.setEnabled(false);
+    // Настройки катакомб (панель ?cattune=1 — на правки сразу, без перезагрузки).
+    this.applyTune();
+    onCatTuneChanged(() => this.applyTune());
+  }
+
+  /** Настройки катакомб (catTune): сила нормалей, плотность теней и яркость стен. Вызывается при сборке и на правки панели. */
+  private applyTune(): void {
+    for (const t of this.bumpTexs) t.level = catTune.bump;
+    setCatShadowAlpha(this.scene, catTune.shadow);
     this.paintThemes();
-    // Панель ?catwall=1 тронула затемнение стен — перекрасить залы на месте.
-    onCatWallTuneChanged(() => this.paintThemes());
   }
 
   /**
@@ -1653,10 +1648,11 @@ export class CatacombsFx {
       const t = this.hallTheme[h];
       const th = CAT_THEMES[t];
       const [r, g, b] = th.light;
-      // Пол темнее (×0.6 к теме): кровь и дорожка на нём читаются лучше.
-      this.hallFloorMats[h]?.diffuseColor.set(th.floor[0] * 0.6, th.floor[1] * 0.6, th.floor[2] * 0.6);
-      // Стены темнее: × catWallTune.mul (дефолт — catWallTune.ts), панель ?catwall=1 двигает его на лету.
-      const wk = catWallTune.mul;
+      // Пол темнее (×0.6 к теме): кровь и дорожка на нём читаются лучше. CRYPT_FLOOR_GAIN — яркость текстуры склепа.
+      const fk = 0.6 * CRYPT_FLOOR_GAIN;
+      this.hallFloorMats[h]?.diffuseColor.set(th.floor[0] * fk, th.floor[1] * fk, th.floor[2] * fk);
+      // Стены темнее: × catTune.wall (дефолт — catTune.ts), панель ?cattune=1 двигает его на лету.
+      const wk = catTune.wall * CRYPT_WALL_GAIN;
       this.hallWallMats[h]?.diffuseColor.set(th.floor[0] * 0.55 * wk, th.floor[1] * 0.5 * wk, th.floor[2] * 0.5 * wk);
       this.poolMats[h]?.emissiveColor.set(r, g, b);
       this.hallGlowMats[h]?.emissiveColor.set(Math.min(1, r * 0.85 + 0.2), Math.min(1, g * 0.85 + 0.18), Math.min(1, b * 0.85 + 0.12));
@@ -1720,10 +1716,16 @@ export class CatacombsFx {
     const node = new TransformNode("catShrine", scene);
     node.parent = this.root;
     this.shrine = node;
+    // Алтарь — тёмный мрамор с картой нормалей. Свет — свой, только на алтарь (includedOnlyMeshes ниже).
     const stone = new StandardMaterial("catShrineStone", scene);
-    stone.diffuseColor = new Color3(0, 0, 0);
-    stone.emissiveColor = new Color3(0.16, 0.15, 0.14);
-    stone.disableLighting = true;
+    stone.diffuseTexture = new Texture("/textures/catacomb/crypt_altar_c.jpg", scene);
+    const altarN = new Texture("/textures/catacomb/crypt_altar_n.jpg", scene);
+    stone.bumpTexture = altarN;
+    stone.diffuseColor = new Color3(1, 1, 1);
+    stone.emissiveColor = new Color3(0.05, 0.05, 0.055);
+    stone.specularColor = new Color3(0.35, 0.35, 0.38);
+    stone.specularPower = 40;
+    this.bumpTexs.push(altarN);
     const glow = (name: string, tex: DynamicTexture | null, alpha: number): StandardMaterial => {
       const m = new StandardMaterial(name, scene);
       if (tex) m.opacityTexture = tex;
@@ -1749,6 +1751,13 @@ export class CatacombsFx {
     base.position.y = 0.6;
     const slab = add(MeshBuilder.CreateBox("catShrineSlab", { width: 1.5, height: 0.2, depth: 1.5 }, scene), stone);
     slab.position.y = 1.3;
+    const altarLight = new PointLight("catShrineLight", new Vector3(0, 2.2, 0), scene);
+    altarLight.parent = node;
+    altarLight.diffuse = new Color3(0.9, 0.85, 0.8);
+    altarLight.specular = new Color3(0.2, 0.2, 0.2);
+    altarLight.range = 6;
+    altarLight.intensity = 0.8;
+    altarLight.includedOnlyMeshes = [base, slab];
     const ring = add(MeshBuilder.CreateGround("catShrineRing", { width: 7, height: 7 }, scene), glow("catShrineRingMat", ringTexture(scene), 0.95));
     ring.position.y = 0.09;
     this.shrineRing = ring;
