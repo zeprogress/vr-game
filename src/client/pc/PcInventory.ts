@@ -2327,10 +2327,10 @@ ${["gold", "legendary", "ruby"].map(tier).join("\n")}
 /* сведения о герое */
 .pcinv-ci { display:flex; flex-direction:column; gap:6px; padding:2px 4px; }
 .pcinv-ci-nick { position:relative; width:100%; box-sizing:border-box; text-align:center; font:700 24px/1.1 "Iowan Old Style",Georgia,serif; color:#f3ead7; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-  padding:6px 26px; letter-spacing:.05em; text-shadow:0 1px 0 #000,0 0 12px rgba(201,168,106,.45);
-  border-top:1px solid rgba(201,168,106,.65); border-bottom:1px solid rgba(201,168,106,.65);
-  background:linear-gradient(90deg,transparent,rgba(201,168,106,.16) 30%,rgba(201,168,106,.16) 70%,transparent); }
-.pcinv-ci-nick::before, .pcinv-ci-nick::after { content:"◆"; position:absolute; top:50%; transform:translateY(-50%); color:#c9a86a; font-size:11px; text-shadow:0 0 6px rgba(201,168,106,.8); }
+  padding:6px 26px; letter-spacing:.05em; text-shadow:0 1px 0 #000,0 0 8px rgba(201,168,106,.2);
+  border-top:1px solid rgba(201,168,106,.3); border-bottom:1px solid rgba(201,168,106,.3);
+  background:linear-gradient(90deg,transparent,rgba(201,168,106,.06) 30%,rgba(201,168,106,.06) 70%,transparent); }
+.pcinv-ci-nick::before, .pcinv-ci-nick::after { content:"◆"; position:absolute; top:50%; transform:translateY(-50%); color:rgba(201,168,106,.55); font-size:9px; }
 .pcinv-ci-nick::before { left:8px; } .pcinv-ci-nick::after { right:8px; }
 .pcinv-ci-lvrow { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:2px; }
 .pcinv-ci-title { max-width:60%; flex:0 1 auto; min-width:0; margin:0; }
