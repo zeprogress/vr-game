@@ -2328,7 +2328,7 @@ ${["gold", "legendary", "ruby"].map(tier).join("\n")}
 .pcinv-ci-title { align-self:flex-start; max-width:100%; }
 .pcinv-ci-lv { margin-top:2px; font-size:14px; color:#e5ecf4; }
 .pcinv-xp { position:relative; width:100%; height:18px; border-radius:9px; background:#0d1a2b; border:1px solid #2a3b52; box-shadow:inset 0 1px 3px rgba(0,0,0,.6); overflow:hidden; }
-.pcinv-xp-fill { position:absolute; left:0; top:0; bottom:0; width:0; background:linear-gradient(90deg,#1f7fe0,#47b3ff); box-shadow:0 0 8px rgba(60,160,255,.8); }
+.pcinv-xp-fill { position:absolute; left:0; top:0; bottom:0; width:0; background:linear-gradient(90deg,#14467d,#2a6fb0); box-shadow:0 0 5px rgba(40,110,190,.55); }
 .pcinv-xp-text { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:0 6px;
   font-size:11.5px; color:#f2f6fb; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 2px #000, 0 0 3px #000; }
 .pcinv-at6 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; margin-top:4px; }

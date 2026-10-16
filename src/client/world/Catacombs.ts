@@ -77,8 +77,6 @@ export function catViewOf(st: {
   };
 }
 
-/** Непрозрачность стен и потолка зала, когда камера за его контуром (видно сквозь). */
-const CAT_FADE_ALPHA = 0.22;
 
 /** Залы рядом по графу (тот же или соединены коридором) — их держим включёнными. */
 function hallsNear(a: number, b: number): boolean {
@@ -448,8 +446,9 @@ export class CatacombsFx {
   private readonly hallWallMats: StandardMaterial[] = [];
   /** Потолок каждого зала (своя копия материала — прозрачность зала не трогает соседей). */
   private readonly hallCeilMats: StandardMaterial[] = [];
-  /** Текущая непрозрачность стен и потолка каждого зала (1 — сплошной, CAT_FADE_ALPHA — снаружи). */
-  private hallFade: number[] = [];
+  /** Меши стен и потолка каждого зала: прячутся, пока камера снаружи зала и они загораживают вид. */
+  private readonly hallWallMesh: (Mesh | null)[] = [];
+  private readonly hallCeilMesh: (Mesh | null)[] = [];
   private readonly hallNicheMats: StandardMaterial[][] = [];
   private readonly hallGlowMats: StandardMaterial[] = [];
   private readonly themeDecor: Mesh[][][] = [];
@@ -511,32 +510,17 @@ export class CatacombsFx {
   }
 
   /**
-   * Камера за контуром зала (над ним или снаружи) — стены и потолок этого зала становятся
-   * полупрозрачными, чтобы не закрывать вид на то, что внутри. Внутри зала — сплошные.
+   * Камера снаружи зала — стены и потолок этого зала пропадают, чтобы не загораживать вид на то, что внутри.
    */
-  private fadeHalls(dt: number, cam: { x: number; z: number }): void {
-    if (this.hallFade.length !== CAT_HALLS.length) this.hallFade = CAT_HALLS.map(() => 1);
-    const k = Math.min(1, dt / 0.3);
+  private fadeHalls(_dt: number, cam: { x: number; z: number }): void {
+    // Правило: стена (и потолок) между камерой и залом исчезает, пока загораживает камеру — то есть
+    // пока камера снаружи зала. Внутри зала стены и потолок целые. Полупрозрачности нет.
     CAT_HALLS.forEach((h, hi) => {
       const outside = Math.hypot(cam.x - h.x, cam.z - h.z) > h.r + 1;
-      const target = outside ? CAT_FADE_ALPHA : 1;
-      const cur = this.hallFade[hi];
-      const next = cur + (target - cur) * k;
-      if (Math.abs(next - cur) < 1e-4 && cur === target) return;
-      this.hallFade[hi] = next;
-      const wm = this.hallWallMats[hi];
-      const cm = this.hallCeilMats[hi];
-      // Прозрачная стена глубину не пишет: иначе всё за ней (герои, мобы, плашки) не проходит тест глубины,
-      // и сквозь неё виден пустой чёрный фон. Сплошная (внутри зала) — пишет, как обычно.
-      const see = next < 0.999;
-      if (wm) {
-        wm.alpha = next;
-        wm.disableDepthWrite = see;
-      }
-      if (cm) {
-        cm.alpha = next;
-        cm.disableDepthWrite = see;
-      }
+      const wm = this.hallWallMesh[hi];
+      if (wm && wm.isEnabled() === outside) wm.setEnabled(!outside);
+      const cm = this.hallCeilMesh[hi];
+      if (cm && cm.isEnabled() === outside) cm.setEnabled(!outside);
     });
   }
 
@@ -732,12 +716,8 @@ export class CatacombsFx {
     };
     CAT_HALLS.forEach((_, hi) => {
       this.hallFloorMats.push(hallStone(floorMat, `catFloorH${hi}`));
-      const wallH = hallStone(wallMat, `catWallH${hi}`);
-      wallH.alphaMode = Constants.ALPHA_COMBINE;
-      this.hallWallMats.push(wallH);
-      const ceilH = hallStone(ceilMat, `catCeilH${hi}`);
-      ceilH.alphaMode = Constants.ALPHA_COMBINE;
-      this.hallCeilMats.push(ceilH);
+      this.hallWallMats.push(hallStone(wallMat, `catWallH${hi}`));
+      this.hallCeilMats.push(hallStone(ceilMat, `catCeilH${hi}`));
       this.hallGlowMats.push(addMat(`catTorchGlowH${hi}`, warmTex, 0.55));
       this.hallNicheMats.push([addMat(`catNicheA${hi}`, nicheTex, 0.85), addMat(`catNicheB${hi}`, nicheTex, 0.85)]);
     });
@@ -1158,8 +1138,8 @@ export class CatacombsFx {
       // Пол зала — слой земли: круги эффектов поверх него (engine/renderLayers.ts).
       const floorMesh = merge(L.floor, "catFloor", this.hallFloorMats[hi]);
       if (floorMesh) groundLayer(floorMesh);
-      merge(L.wall, "catWalls", this.hallWallMats[hi]);
-      merge(L.ceil, "catCeil", this.hallCeilMats[hi]);
+      this.hallWallMesh[hi] = merge(L.wall, "catWalls", this.hallWallMats[hi]);
+      this.hallCeilMesh[hi] = merge(L.ceil, "catCeil", this.hallCeilMats[hi]);
       merge(L.pillar, "catPillars", pillarMat);
       merge(L.iron, "catIron", ironMat);
       merge(L.bone, "catBones", boneMat);
