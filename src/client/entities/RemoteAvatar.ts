@@ -88,6 +88,8 @@ const INTERP_DELAY = 140;
 /** Если свежий снапшот старше — держим позу (не экстраполируем). */
 const HOLD_AFTER = 300;
 const BUFFER_MS = 700;
+/** Пауза между снапшотами дольше — ряд интерполяции начинаем заново (см. push снапшота). */
+const STALL_MS = 400;
 
 /** Клипы модели бота, которые реально используем (в паке их больше). */
 const BOT_CLIPS: readonly string[] = [
@@ -721,8 +723,11 @@ export class RemoteAvatar implements Hittable {
     ) {
       return;
     }
+    // Долгая пауза (бот стоял, сервер не слал движения — например, 2 с в лагере после возрождения):
+    // старые метки уже в прошлом, и новые снапшоты зажмёт окно ниже у «сейчас» — интерполяция
+    // проиграет их пачкой, и бот бежит в разы быстрее. После паузы ряд начинаем заново.
     // Телепорт (респавн) — не тащим модель интерполяцией через всю карту.
-    if (last && (Math.abs(h.x - last.head[0]) > 8 || Math.abs(h.z - last.head[2]) > 8)) {
+    if (last && (now - this.lastPushRaw > STALL_MS || Math.abs(h.x - last.head[0]) > 8 || Math.abs(h.z - last.head[2]) > 8)) {
       for (const old of this.buf) this.snapPool.push(old);
       this.buf.length = 0;
       last = undefined;

@@ -10746,6 +10746,12 @@ export class ZoneRoom extends Room<ZoneState> {
       bot.homeX = home.x;
       bot.homeZ = home.z;
       bot.holdUntil = Date.now() + BOT_RESPAWN_HOLD_MS;
+      // Скорость и маршрут — от прошлой жизни (тик мёртвого бота их не трогает): иначе он
+      // выйдет из лагеря с прежним разгоном и по старым путевым точкам.
+      bot.vx = 0;
+      bot.vz = 0;
+      bot.nav = undefined;
+      bot.progAt = undefined;
     }
     // Пати катакомб возрождается у входа в текущий зал.
     const sp = this.cat.respawnPoint(id) ?? hubSpawnPoint();
