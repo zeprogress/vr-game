@@ -110,6 +110,19 @@ export function armorLegendaryDropChance(kind: "regular" | "elite" | "boss"): nu
   return armorGoldDropChance(kind) / ARMOR_LEGENDARY.dropDiv;
 }
 
+/**
+ * Уникальная часть по уровню моба: на 1-м уровне её не бывает, к 53-му (кость жнеца) шанс растёт линейно
+ * и на 53-м — полный (как было до этого правила). Обычный моб — уровень 1 (eliteLevel 0).
+ */
+export const ARMOR_LEGENDARY_LEVEL = { from: 1, full: 53 } as const;
+
+/** Множитель шанса уникальной части по уровню моба: 0 на ARMOR_LEGENDARY_LEVEL.from, 1 с ARMOR_LEGENDARY_LEVEL.full и выше. */
+export function armorLegendaryLevelMul(level: number): number {
+  const L = Math.max(1, level);
+  const { from, full } = ARMOR_LEGENDARY_LEVEL;
+  return Math.min(1, Math.max(0, (L - from) / (full - from)));
+}
+
 /** Один аффикс части: стат и очки ролла (1..33). */
 export interface ArmorRoll {
   stat: ArmorStat;
