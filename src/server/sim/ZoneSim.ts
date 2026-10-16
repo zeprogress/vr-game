@@ -3,7 +3,7 @@ import { QUEST } from "#shared/quests";
 import { AFFIX, BOW, COMBAT, DROP_CHANCE, WEAPON_DROP_MUL, UNIQUE_DROP_MUL, goldDropMulForLevel, WORLD, PLAYER } from "#shared/constants";
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { RAID } from "#shared/raid";
-import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, eliteXpAt, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
+import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
 import { DUN_MOB_CAMPS, dunProject, dunWorld, inDunRegion } from "#shared/dungeon";
 import { ARMOR_DROP, ARMOR_PARTS, armorGoldDropChance, armorLegendaryDropChance, rollArmor, type ArmorInstance } from "#shared/armor";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
@@ -3042,8 +3042,9 @@ export class ZoneSim {
    * Опыт за добитых мобов, поделённый между всеми, кто нанёс урон (босс —
    * гибридно, обычные мобы — пропорционально урону). Комната разошлёт.
    */
-  readonly bossXpShare: { owner: string; xp: number }[] = [];
-  readonly mobXpShare: { owner: string; xp: number }[] = [];
+  readonly bossXpShare: { owner: string; frac: number; lvl: number }[] = [];
+  /** Доля убийства моба (с вкладом) и его уровень: опыт игроку считает комната по его уровню (killXp). */
+  readonly mobXpShare: { owner: string; frac: number; lvl: number }[] = [];
   /** Криты снарядов за тик: где показать красный «X». Комната разошлёт и очистит. */
   readonly critHits: { x: number; y: number; z: number; owner: string }[] = [];
   /** Числа урона у спектатора (?dmgNumbers) — комната сама решает, слать ли (см. state.dmgNumbers). */
@@ -3477,8 +3478,9 @@ export class ZoneSim {
       this.dragonTop.push(parts.reduce((a, b) => (b[1] > a[1] ? b : a))[0]);
     }
     if (total <= 0 || pool <= 0) return;
+    // Опыт — доля одного убийства (killXp), делится по вкладу; уровень моба — для соразмерности.
     for (const [owner, d] of parts) {
-      this.mobXpShare.push({ owner, xp: (pool * d) / total });
+      this.mobXpShare.push({ owner, frac: d / total, lvl: m.eliteLevel });
     }
   }
 
@@ -3690,8 +3692,7 @@ export class ZoneSim {
     for (const [owner, xp] of award) {
       if (xp <= 0) continue;
       const share = Math.max(0.4, Math.min(1.8, (xp / pool) * n));
-      const lvl = this.getAttackerLevel(owner);
-      this.bossXpShare.push({ owner, xp: Math.round(BOSS_ADAPT.xpElites * eliteXpAt(lvl) * share) });
+      this.bossXpShare.push({ owner, frac: share, lvl: this.getAttackerLevel(owner) });
     }
     m.contrib.clear();
   }

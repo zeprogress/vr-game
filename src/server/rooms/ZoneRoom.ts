@@ -179,6 +179,7 @@ import {
   dodgeChance,
   holdsOneItem,
   grantXp,
+  killXp,
   isStatName,
   maxHpFor,
   moveSpeedFor,
@@ -10165,8 +10166,9 @@ export class ZoneRoom extends Room<ZoneState> {
     for (const k of this.sim.mobXpShare) {
       const kp = this.state.players.get(k.owner);
       if (!kp) continue;
+      // Доля убийства моба ЕГО уровня (killXp): соразмерно, не больше потребности уровня за раз.
       const lvlCap = xpToNext(kp.level);
-      const raw = k.xp * this.buffMult(k.owner, "xp");
+      const raw = killXp(k.lvl, kp.level) * k.frac * this.buffMult(k.owner, "xp");
       const xp = Number.isFinite(lvlCap) ? Math.min(raw, lvlCap) : raw;
       this.awardXp(this.clientOf(k.owner), kp, xp);
     }
@@ -10250,7 +10252,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const kp = this.state.players.get(k.owner);
         if (kp) {
           const lvlCap = xpToNext(kp.level); // Infinity на максимальном уровне
-          const raw = k.xp * this.buffMult(k.owner, "xp");
+          const raw = killXp(k.lvl, kp.level, true) * k.frac * this.buffMult(k.owner, "xp");
           const xp = Number.isFinite(lvlCap) ? Math.min(raw, lvlCap) : raw;
           this.awardXp(this.clientOf(k.owner), kp, xp);
           if (xp > topXp) {

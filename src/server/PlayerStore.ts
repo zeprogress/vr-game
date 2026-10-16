@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { PLAYER, RESPAWN } from "#shared/constants";
 import type { ArmorInstance, ArmorPart } from "#shared/armor";
 import type { HeldWeapons, SaveMsg, StowedWeapon } from "#shared/net/messages";
-import { blankProgress, maxHpFor, resetAttrs, type Progress } from "#shared/progression";
+import { blankProgress, maxHpFor, resetAttrs, xpToNext, type Progress } from "#shared/progression";
 import { emptyBag, type Slot, type WeaponInstance } from "#shared/items";
 import type { QuestSave, StorySave, WeeklySave } from "#shared/quests";
 import type { RingInst } from "#shared/jewels";
@@ -86,6 +86,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   scrollWindUntil?: number;
   /** Версия системы атрибутов: 2 — «Классы 2.0» (6 атрибутов, цена очков растёт). Нет/1 — старая. */
   attrVer?: number;
+  /** Версия кривой опыта (XP_VER): старые записи хранят опыт в единицах удвоения 2^(L−1). */
+  xpVer?: number;
   /** Класс бота зрителя (оружие класса), выбранный !class. Нет — прежнее/случайное. */
   botClass?: string;
   /** Хозяин сам распределяет очки атрибутов (вложил вручную или сбросил) — бот больше не раскидывает их сам. */
@@ -105,6 +107,24 @@ export interface PlayerRecord extends SaveMsg, Progress {
 
 /** Текущая версия системы атрибутов. */
 export const ATTR_VER = 2;
+
+/** Текущая версия кривой опыта (2 — XP_CURVE от 2026-10-16). */
+export const XP_VER = 2;
+
+/**
+ * Переход на новую кривую опыта: в старой записи опыт — в единицах удвоения (до следующего уровня
+ * 2^(L−1)). Уровень не трогаем, а пройденную долю уровня переносим в новые единицы — иначе запас
+ * старого опыта (миллиарды) при первом же убийстве поднимал бы героя на десятки уровней.
+ */
+export function migrateXp(r: PlayerRecord): boolean {
+  if (r.xpVer === XP_VER) return false;
+  const oldNeed = Math.pow(2, Math.max(0, (r.level ?? 1) - 1));
+  const need = xpToNext(r.level ?? 1);
+  const frac = Math.max(0, Math.min(0.999, (r.xp ?? 0) / oldNeed));
+  r.xp = Number.isFinite(need) ? Math.round(frac * need) : 0;
+  r.xpVer = XP_VER;
+  return true;
+}
 
 /**
  * Переход на «Классы 2.0»: у старых записей три атрибута по 1 очку за
@@ -133,6 +153,7 @@ function blank(token: string): PlayerRecord {
     ...p,
     hp: maxHpFor(p.level, p),
     attrVer: ATTR_VER,
+    xpVer: XP_VER,
     owned: [],
     stowed: [],
     held: { left: null, right: null },
@@ -160,13 +181,17 @@ export class PlayerStore {
       if (existsSync(FILE)) {
         const raw = JSON.parse(readFileSync(FILE, "utf8")) as PlayerRecord[];
         let migrated = 0;
+        let xpMigrated = 0;
         for (const r of raw) {
           if (!r?.token) continue;
           if (migrateAttrs(r)) migrated++;
+          if (migrateXp(r)) xpMigrated++;
           this.records.set(r.token, r);
         }
-        console.log(`[store] загружено персонажей: ${this.records.size}${migrated ? `, переведено на «Классы 2.0»: ${migrated}` : ""}`);
-        if (migrated) this.dirty = true;
+        console.log(
+          `[store] загружено персонажей: ${this.records.size}${migrated ? `, переведено на «Классы 2.0»: ${migrated}` : ""}${xpMigrated ? `, опыт переведён на новую кривую: ${xpMigrated}` : ""}`,
+        );
+        if (migrated || xpMigrated) this.dirty = true;
       }
     } catch (e) {
       console.warn("[store] players.json не прочитан:", (e as Error).message);

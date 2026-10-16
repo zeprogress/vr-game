@@ -58,10 +58,52 @@ export function resetAttrs(p: Progress): void {
   p.unspent = pointsAt(p.level);
 }
 
-/** Сколько опыта нужно для перехода с `level` на следующий (удваивается). */
+/**
+ * Кривая опыта (2026-10-16): опыт до следующего уровня растёт ×growth за уровень (L1 → 100, L10 → 644,
+ * L26 → 17 686, L52 → 3 847 341). Опыт моба — от ЕГО уровня: столько, чтобы герою того же уровня
+ * хватало killsBase·killsGrowth^(L−1) убийств (L1 — 10, L10 — 23, L30 — 140, L52 — ≈1040, L99 — ≈75 000):
+ * до 100 уровня ≈ 864 000 убийств = месяц при 20 в минуту (52 ур. — ~9 ч, 70 — ~2 сут, 90 — ~12 сут).
+ * Сильный моб даёт больше, слабый — меньше; слабому герою за сильного — не больше ratioMax от «своего» моба.
+ */
+export const XP_CURVE = {
+  base: 100,
+  growth: 1.23,
+  killsBase: 10,
+  /** Подобран так, чтобы 100 уровень брался за месяц (30 суток) при 20 убийствах мобов своего уровня в минуту. */
+  killsGrowth: 1.0954,
+  /**
+   * Герой ниже моба: прибавка плавно гасится по разнице уровней и подходит к ×bonusCap от «своего» моба
+   * (+1 ур. — ×1.12, +3 — ×1.39, +5 — ×1.66, +10 — ×1.98, дальше не больше ×2).
+   */
+  bonusCap: 2,
+  /** Босс: во столько раз больше моба уровня бойца (делится по вкладу). */
+  bossMul: 10,
+} as const;
+
+/** Сколько опыта нужно для перехода с `level` на следующий. */
 export function xpToNext(level: number): number {
   if (level >= PROGRESSION.maxLevel) return Infinity;
-  return PROGRESSION.baseXp * Math.pow(2, level - 1);
+  return Math.round(XP_CURVE.base * XP_CURVE.growth ** (level - 1));
+}
+
+/** Опыт за моба уровня `level` (полное убийство). */
+export function mobXpAt(level: number): number {
+  const L = Math.max(1, Math.min(PROGRESSION.maxLevel - 1, level));
+  return xpToNext(L) / (XP_CURVE.killsBase * XP_CURVE.killsGrowth ** (L - 1));
+}
+
+/**
+ * Опыт за полное убийство моба уровня `mobLevel` игроку уровня `level` (его доля — умножается на вклад).
+ * Моб без уровня (обычные мобы) считается 1-го уровня. Моб ниже героя — его собственный опыт;
+ * выше — опыт «своего» моба × плавная прибавка (tanh-насыщение до XP_CURVE.bonusCap).
+ */
+export function killXp(mobLevel: number, level: number, boss = false): number {
+  if (level >= PROGRESSION.maxLevel) return 0;
+  const own = mobXpAt(level);
+  const r = mobXpAt(mobLevel > 0 ? mobLevel : 1) / own;
+  const cap = XP_CURVE.bonusCap;
+  const k = r <= 1 ? r : 1 + (cap - 1) * Math.tanh((r - 1) / (cap - 1));
+  return own * k * (boss ? XP_CURVE.bossMul : 1);
 }
 
 export function atMaxLevel(level: number): boolean {
