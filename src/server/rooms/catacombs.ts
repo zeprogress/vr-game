@@ -816,6 +816,7 @@ export class CatacombDirector {
       name: c.name,
       partyLevel: this.partyLevel,
       affix: this.spawnAffix,
+      boss: true,
     });
     this.mobs.add(id);
     this.host.announce({ kind: "boss", title: `Чемпион: ${c.name}`, sub: "мини-босс волны", secs: 3 });
