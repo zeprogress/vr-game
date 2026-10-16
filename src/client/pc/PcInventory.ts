@@ -884,7 +884,6 @@ export class PcInventory {
     sel.value = d.title ?? "";
     sel.disabled = !d.titles?.length;
     sel.onchange = () => this.hooks.act({ act: "title", id: sel.value, idx: 0 });
-    box.append(sel);
     // Уровень и опыт до следующего.
     this.xpLv = div("pcinv-ci-lv");
     // Длинная полоса опыта во всю ширину, подпись — внутри неё.
@@ -892,7 +891,10 @@ export class PcInventory {
     this.xpFill = div("pcinv-xp-fill");
     this.xpText = div("pcinv-xp-text");
     xp.append(this.xpFill, this.xpText);
-    box.append(this.xpLv, xp);
+    // Титул — напротив уровня, в одной строке.
+    const lvRow = div("pcinv-ci-lvrow");
+    lvRow.append(this.xpLv, sel);
+    box.append(lvRow, xp);
     this.paintXp();
     // Атрибуты (с прибавкой от колец и камней): клик — вкладка «Атрибуты».
     const gemB = pcJewelBonus(d.jewels);
@@ -2324,9 +2326,15 @@ ${["gold", "legendary", "ruby"].map(tier).join("\n")}
 
 /* сведения о герое */
 .pcinv-ci { display:flex; flex-direction:column; gap:6px; padding:2px 4px; }
-.pcinv-ci-nick { font:700 24px/1.1 "Iowan Old Style",Georgia,serif; color:#dbe8f6; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.pcinv-ci-title { align-self:flex-start; max-width:100%; }
-.pcinv-ci-lv { margin-top:2px; font-size:14px; color:#e5ecf4; }
+.pcinv-ci-nick { position:relative; width:100%; box-sizing:border-box; text-align:center; font:700 24px/1.1 "Iowan Old Style",Georgia,serif; color:#f3ead7; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  padding:6px 26px; letter-spacing:.05em; text-shadow:0 1px 0 #000,0 0 12px rgba(201,168,106,.45);
+  border-top:1px solid rgba(201,168,106,.65); border-bottom:1px solid rgba(201,168,106,.65);
+  background:linear-gradient(90deg,transparent,rgba(201,168,106,.16) 30%,rgba(201,168,106,.16) 70%,transparent); }
+.pcinv-ci-nick::before, .pcinv-ci-nick::after { content:"◆"; position:absolute; top:50%; transform:translateY(-50%); color:#c9a86a; font-size:11px; text-shadow:0 0 6px rgba(201,168,106,.8); }
+.pcinv-ci-nick::before { left:8px; } .pcinv-ci-nick::after { right:8px; }
+.pcinv-ci-lvrow { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:2px; }
+.pcinv-ci-title { max-width:60%; flex:0 1 auto; min-width:0; margin:0; }
+.pcinv-ci-lv { margin-top:2px; font-size:14px; color:#e5ecf4; white-space:nowrap; }
 .pcinv-xp { position:relative; width:100%; height:18px; border-radius:9px; background:#0d1a2b; border:1px solid #2a3b52; box-shadow:inset 0 1px 3px rgba(0,0,0,.6); overflow:hidden; }
 .pcinv-xp-fill { position:absolute; left:0; top:0; bottom:0; width:0; background:linear-gradient(90deg,#14467d,#2a6fb0); box-shadow:0 0 5px rgba(40,110,190,.55); }
 .pcinv-xp-text { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:0 6px;

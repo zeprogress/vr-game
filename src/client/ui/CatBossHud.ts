@@ -123,16 +123,19 @@ function ensureCss(): void {
 .cbh-root { position:fixed; top:10px; left:50%; transform:translateX(-50%); width:min(420px, 92vw); z-index:40; pointer-events:none;
   font:600 13px system-ui, sans-serif; color:#f4eee8; background:rgba(22,10,10,.74); border:1px solid rgba(255,160,120,.35);
   border-radius:10px; padding:7px 10px 8px; text-shadow:0 1px 2px #000; }
-.cbh-spec { top:58px; width:min(460px, 92vw); font-size:15px; }
-.cbh-title { color:#ffb38a; font-weight:800; margin-bottom:5px; letter-spacing:.2px; }
+.cbh-spec { top:58px; width:min(600px, 94vw); font-size:18px; padding:10px 14px 12px; }
+.cbh-title { color:#ffb38a; font-weight:800; margin-bottom:7px; letter-spacing:.2px; }
+.cbh-spec .cbh-title { font-size:21px; }
 .cbh-bar { position:relative; height:14px; border-radius:7px; background:rgba(255,255,255,.12); overflow:hidden; }
+.cbh-spec .cbh-bar { height:22px; border-radius:11px; }
 .cbh-fill { position:absolute; left:0; top:0; bottom:0; background:linear-gradient(90deg, #a3241c, #ff6a3d); }
 .cbh-pct { position:absolute; right:6px; top:0; font-size:11px; line-height:14px; }
-.cbh-res { margin-top:6px; display:flex; flex-wrap:wrap; gap:5px; }
+.cbh-spec .cbh-pct { font-size:15px; line-height:22px; }
+.cbh-res { margin-top:8px; display:flex; flex-wrap:wrap; gap:6px; }
 .cbh-chip { display:inline-flex; align-items:center; gap:4px; background:rgba(255,255,255,.1); border-radius:6px; padding:1px 7px 1px 4px; font-size:12px; }
-.cbh-spec .cbh-chip { font-size:14px; }
+.cbh-spec .cbh-chip { font-size:16px; padding:3px 10px 3px 6px; }
 .cbh-ico { width:15px; height:15px; flex:none; }
-.cbh-spec .cbh-ico { width:18px; height:18px; }
+.cbh-spec .cbh-ico { width:22px; height:22px; }
 `;
   document.head.append(s);
 }
