@@ -347,7 +347,7 @@ export class RemoteAvatar implements Hittable {
       isBotTag,
     );
     this.nameTag.showHp(); // зелёная полоска жизни под ником
-    if (id.startsWith("bot:")) this.nameTag.showXp(); // + полоска опыта до уровня
+    this.nameTag.showXp(); // + полоска опыта до уровня
     this.setMode(mode);
     this.offGearTune = onGearTuneChanged(() => this.reseatBotGear());
   }
@@ -682,7 +682,7 @@ export class RemoteAvatar implements Hittable {
     this.wantKeyR = keyOf(this.wantR);
     this.skin = p.skin ?? 0;
     if (!this.isBot) this.nameTag.setPlatform(p.plat ?? 0);
-    // Уровень и титул — над ником у всех: живых игроков и ботов (полоска опыта — только у ботов).
+    // Уровень, титул и полоска опыта — над ником у всех: живых игроков и ботов.
     const unspent = p.unspent > 0;
     const tagChanged = p.level !== this.level || this.nick !== p.nick || unspent !== this.hasUnspent;
     this.level = p.level;
@@ -692,9 +692,7 @@ export class RemoteAvatar implements Hittable {
       this.nameTag.setInfo(p.nick, p.level, unspent);
     }
     this.nameTag.setTitle(p.title ?? "");
-    if (this.isBot) {
-      this.nameTag.setXp(atMaxLevel(p.level) ? -1 : p.xp / xpToNext(p.level));
-    }
+    this.nameTag.setXp(atMaxLevel(p.level) ? -1 : p.xp / xpToNext(p.level));
     this.hp = p.hp;
     this.maxHp = p.maxHp > 0 ? p.maxHp : 100;
     // В башне баффы не действуют — и не показываем их.
