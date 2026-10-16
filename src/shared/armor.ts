@@ -115,8 +115,8 @@ export function armorLegendaryDropChance(kind: "regular" | "elite" | "boss"): nu
  * полный шанс, как было до этого правила. Обычный моб — уровень 1 (eliteLevel 0).
  */
 export const ARMOR_LEVEL_GATE = {
-  /** Золотая: с 25-го уровня. */
-  gold: { from: 25, full: 53 },
+  /** Золотая: с 1-го уровня, растёт линейно до полного к 53-му. */
+  gold: { from: 1, full: 53 },
   /** Уникальная: с 1-го уровня. */
   legendary: { from: 1, full: 53 },
 } as const;

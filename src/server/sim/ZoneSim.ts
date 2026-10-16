@@ -3823,7 +3823,7 @@ export class ZoneSim {
           const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
           rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid()) });
         }
-        // Золотая — с 25-го уровня моба (до него нет), к 53-му — как было (ARMOR_LEVEL_GATE).
+        // Золотая — с 1-го уровня растёт линейно, к 53-му — как было (ARMOR_LEVEL_GATE).
         if (Math.random() < armorGoldDropChance(kind) * champMul * armorLevelMul(m.eliteLevel, ARMOR_LEVEL_GATE.gold)) {
           const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
           rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "gold") });
