@@ -1,17 +1,11 @@
 import { glyph, skillIcon, weaponIcon } from "#shared/icons";
 import { iconHtml } from "../ui/icons";
 import { mmss, type BuffEntry } from "../ui/buffList";
-import { WORLD } from "#shared/constants";
-import { ELITE_MOBS, MOB_CAMPS } from "#shared/mobs";
-import { HUB_CENTER } from "#shared/hub";
-import { TOWER_PROP_POS } from "#shared/tower";
-import { LAKE } from "#shared/constants";
 
 /**
- * Экран ПК «как в WoW» (третье лицо): рамка героя слева сверху, мини-карта
- * справа сверху, панель действий с полосой опыта снизу по центру, журнал
- * (события игры + чат Twitch) слева снизу, кнопки меню справа снизу,
- * большая карта по M. Только DOM, поверх канваса; клики мимо элементов
+ * Экран ПК «как в WoW» (третье лицо): рамка героя слева сверху, панель действий
+ * с полосой опыта снизу по центру, журнал (события игры + чат Twitch) слева снизу,
+ * кнопки меню справа снизу. Только DOM, поверх канваса; клики мимо элементов
  * проходят в игру (pointer-events: none на обёртке).
  */
 
@@ -51,22 +45,6 @@ const LOG_MAX = 80;
 
 export type WeaponIcon = "sword" | "bow" | "staff" | "fist" | "dagger" | "spear" | "hammer";
 
-export interface MapDot {
-  x: number;
-  z: number;
-}
-export interface MapData {
-  px: number;
-  pz: number;
-  /** Куда повёрнут герой. */
-  yaw: number;
-  /** Куда смотрит камера (конус обзора). */
-  camYaw: number;
-  players: (MapDot & { bot: boolean; nick: string })[];
-  mobs: (MapDot & { elite: boolean; boss: boolean })[];
-  event: MapDot | null;
-  targetId: string | null;
-}
 
 export interface PcHudHooks {
   /** Телефон: только рамка героя (с баффами) и мини-карта; кнопки и управление — свои, экранные. */
@@ -115,16 +93,6 @@ export class PcHud {
   private tabLog!: HTMLButtonElement;
   private readonly chatBtn: HTMLButtonElement;
   private cfg: ChatCfg;
-  // карты
-  private readonly mini: HTMLCanvasElement;
-  private readonly miniCtx: CanvasRenderingContext2D;
-  private readonly miniLabel: HTMLDivElement;
-  private readonly bigWrap: HTMLDivElement;
-  private readonly big: HTMLCanvasElement;
-  private readonly bigCtx: CanvasRenderingContext2D;
-  private miniRange = 70;
-  private mapT = 0;
-
   private lastSig: Record<string, string> = {};
 
   constructor(private readonly hooks: PcHudHooks) {
@@ -168,19 +136,6 @@ export class PcHud {
     unit.title = "Снаряжение (C)";
     unit.addEventListener("click", () => this.hooks.onCharacter());
 
-    // --- мини-карта ---
-    const mm = div("pc-minimap");
-    this.mini = document.createElement("canvas");
-    this.mini.width = this.mini.height = 320;
-    this.miniCtx = this.mini.getContext("2d")!;
-    const zoomIn = btn("pc-mm-zoom pc-mm-in", "+", "Приблизить карту");
-    const zoomOut = btn("pc-mm-zoom pc-mm-out", "−", "Отдалить карту");
-    zoomIn.onclick = () => (this.miniRange = Math.max(30, this.miniRange - 20));
-    zoomOut.onclick = () => (this.miniRange = Math.min(170, this.miniRange + 20));
-    this.miniLabel = div("pc-mm-label");
-    this.mini.onclick = () => this.toggleMap();
-    this.mini.title = "Карта (M)";
-    mm.append(this.mini, zoomIn, zoomOut, this.miniLabel);
 
     // --- панель действий ---
     const bar = div("pc-actionbar");
@@ -227,7 +182,6 @@ export class PcHud {
     };
     const bag = mb("", "Снаряжение и сумка (C / B)", () => this.hooks.onBag());
     bag.innerHTML = iconHtml("ui.sack");
-    mb(glyph("ui.map"), "Карта (M)", () => this.toggleMap());
     this.chatBtn = mb(glyph("ui.chat"), "Журнал и чат (L)", () => this.setChatOn(!this.cfg.on));
     mb(glyph("ui.fullscreen"), "На весь экран (F11 / Ctrl+Enter)", () => toggleFullscreen());
     mb(glyph("ui.menu"), "Меню (Esc)", () => this.hooks.onMenu());
@@ -314,23 +268,6 @@ export class PcHud {
       });
     }
 
-    // --- большая карта ---
-    this.bigWrap = div("pc-bigmap");
-    const bigBox = div("pc-bigmap-box pc-frame");
-    const bigHead = div("pc-bigmap-head");
-    bigHead.append(div("", "Карта мира"));
-    const bigClose = btn("pc-chat-gear", "✕", "Закрыть (M)");
-    bigClose.onclick = () => this.toggleMap(false);
-    bigHead.append(bigClose);
-    this.big = document.createElement("canvas");
-    this.big.width = this.big.height = 1040;
-    this.bigCtx = this.big.getContext("2d")!;
-    bigBox.append(bigHead, this.big);
-    this.bigWrap.append(bigBox);
-    this.bigWrap.style.display = "none";
-    this.bigWrap.onclick = (e) => {
-      if (e.target === this.bigWrap) this.toggleMap(false);
-    };
 
     // Автобой — галочка над панелью действий (телефон — под кнопками справа).
     const ab = document.createElement("label");
@@ -340,7 +277,7 @@ export class PcHud {
     this.autoBotBox.type = "checkbox";
     this.autoBotBox.onchange = () => hooks.onAutoBot?.(this.autoBotBox.checked);
     ab.append(this.autoBotBox, document.createTextNode(" Автобой"));
-    this.root.append(unit, mm, bar, micro, ab, this.chatEl, this.bigWrap);
+    this.root.append(unit, bar, micro, ab, this.chatEl);
     document.body.appendChild(this.root);
     this.applyChatOn();
 
@@ -351,8 +288,7 @@ export class PcHud {
     const t = e.target as HTMLElement | null;
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
     if (e.repeat) return;
-    if (e.code === "KeyM") this.toggleMap();
-    else if (e.code === "KeyL") this.setChatOn(!this.cfg.on);
+    if (e.code === "KeyL") this.setChatOn(!this.cfg.on);
     else if (e.code === "KeyB") this.hooks.onBag();
     else if (e.code === "KeyC") this.hooks.onCharacter();
     else if (e.code === "Enter" && (e.ctrlKey || e.metaKey)) toggleFullscreen();
@@ -619,158 +555,6 @@ export class PcHud {
     }
   }
 
-  // ---- карты ----
-
-  toggleMap(force?: boolean): void {
-    const on = force ?? this.bigWrap.style.display === "none";
-    this.bigWrap.style.display = on ? "" : "none";
-    this.mapT = 1; // перерисовать сразу
-  }
-
-  /** Esc: закрыть большую карту. true — была открыта. */
-  closeMap(): boolean {
-    if (!this.mapOpen) return false;
-    this.toggleMap(false);
-    return true;
-  }
-
-  get mapOpen(): boolean {
-    return this.bigWrap.style.display !== "none";
-  }
-
-  /** Раз в ~0.1 с: мини-карта и (если открыта) большая. */
-  updateMaps(dt: number, d: MapData, clock: string): void {
-    this.mapT += dt;
-    if (this.mapT < 0.1) return;
-    this.mapT = 0;
-    this.drawMini(d);
-    if (this.mapOpen) this.drawBig(d);
-    const lbl = `${Math.round(d.px)}, ${Math.round(d.pz)} · ${clock}`;
-    if (this.lastSig.mm !== lbl) {
-      this.lastSig.mm = lbl;
-      this.miniLabel.textContent = lbl;
-    }
-  }
-
-  private drawMini(d: MapData): void {
-    const c = this.miniCtx;
-    const W = this.mini.width;
-    const R = W / 2;
-    const k = R / this.miniRange; // px на метр
-    c.clearRect(0, 0, W, W);
-    c.save();
-    c.beginPath();
-    // Телефон — квадратная карта в углу экрана, ПК — круглая.
-    if (this.hooks.touch) c.rect(2, 2, W - 4, W - 4);
-    else c.arc(R, R, R - 2, 0, Math.PI * 2);
-    c.clip();
-    c.fillStyle = "#2f4228";
-    c.fillRect(0, 0, W, W);
-    const toX = (x: number): number => R + (x - d.px) * k;
-    const toY = (z: number): number => R - (z - d.pz) * k;
-    this.drawStatic(c, toX, toY, k, false);
-    // конус обзора камеры
-    c.fillStyle = "rgba(255,255,255,0.08)";
-    c.beginPath();
-    c.moveTo(R, R);
-    c.arc(R, R, R, d.camYaw - Math.PI / 2 - 0.55, d.camYaw - Math.PI / 2 + 0.55);
-    c.closePath();
-    c.fill();
-    this.drawDynamic(c, d, toX, toY, 1);
-    c.restore();
-    // север
-    c.fillStyle = "#eadfc4";
-    c.font = "bold 22px system-ui";
-    c.textAlign = "center";
-    c.fillText("С", R, 26);
-    arrow(c, R, R, d.yaw, 13);
-  }
-
-  private drawBig(d: MapData): void {
-    const c = this.bigCtx;
-    const W = this.big.width;
-    const half = WORLD.size / 2;
-    const k = W / (half * 2);
-    c.clearRect(0, 0, W, W);
-    c.fillStyle = "#2f4228";
-    c.fillRect(0, 0, W, W);
-    const toX = (x: number): number => (x + half) * k;
-    const toY = (z: number): number => (half - z) * k;
-    this.drawStatic(c, toX, toY, k, true);
-    this.drawDynamic(c, d, toX, toY, 1.6);
-    arrow(c, toX(d.px), toY(d.pz), d.yaw, 16);
-  }
-
-  /** Озеро, лагерь, башня, лагеря мобов (на большой карте — с подписями). */
-  private drawStatic(
-    c: CanvasRenderingContext2D,
-    toX: (x: number) => number,
-    toY: (z: number) => number,
-    k: number,
-    labels: boolean,
-  ): void {
-    c.fillStyle = "#3d6f8f";
-    c.beginPath();
-    c.ellipse(toX(LAKE.x), toY(LAKE.z), LAKE.rx * k, LAKE.rz * k, 0, 0, Math.PI * 2);
-    c.fill();
-    c.fillStyle = "rgba(201,162,74,0.35)";
-    c.beginPath();
-    c.arc(toX(HUB_CENTER.x), toY(HUB_CENTER.z), 30 * k, 0, Math.PI * 2);
-    c.fill();
-    c.fillStyle = "#8c7a5a";
-    c.fillRect(toX(TOWER_PROP_POS.x) - 5, toY(TOWER_PROP_POS.z) - 5, 10, 10);
-    // Смешанная стоянка (несколько видов в одной точке) — одна подпись: «Метатель копий, Скалолом · 40».
-    const spots = new Map<string, { x: number; z: number; names: string[]; level: number }>();
-    for (const camp of MOB_CAMPS) {
-      const def = ELITE_MOBS[camp.type];
-      c.strokeStyle = "rgba(224,80,64,0.55)";
-      c.lineWidth = 2;
-      c.beginPath();
-      c.arc(toX(camp.x), toY(camp.z), Math.max(5, camp.spread * k * 0.8), 0, Math.PI * 2);
-      c.stroke();
-      const key = `${camp.x},${camp.z}`;
-      const s = spots.get(key) ?? { x: camp.x, z: camp.z, names: [], level: 0 };
-      if (!s.names.includes(def.name)) s.names.push(def.name);
-      s.level = Math.max(s.level, def.level);
-      spots.set(key, s);
-    }
-    if (labels) for (const s of spots.values()) label(c, `${s.names.join(", ")} · ${s.level}`, toX(s.x), toY(s.z) - 6, "#ffc9bf");
-    if (labels) {
-      label(c, "Лагерь", toX(HUB_CENTER.x), toY(HUB_CENTER.z) - 4, "#f3e2b0");
-      label(c, "Озеро", toX(LAKE.x), toY(LAKE.z), "#cfe8ff");
-      label(c, "Башня", toX(TOWER_PROP_POS.x), toY(TOWER_PROP_POS.z) - 10, "#eadfc4");
-    }
-  }
-
-  private drawDynamic(
-    c: CanvasRenderingContext2D,
-    d: MapData,
-    toX: (x: number) => number,
-    toY: (z: number) => number,
-    s: number,
-  ): void {
-    for (const m of d.mobs) {
-      c.fillStyle = m.boss ? "#ff3b30" : m.elite ? "#e86a4a" : "#c9564a";
-      const r = (m.boss ? 7 : m.elite ? 4 : 3) * s;
-      c.beginPath();
-      c.arc(toX(m.x), toY(m.z), r, 0, Math.PI * 2);
-      c.fill();
-    }
-    if (d.event) {
-      c.strokeStyle = "#ffd84a";
-      c.lineWidth = 3 * s;
-      c.beginPath();
-      c.arc(toX(d.event.x), toY(d.event.z), 9 * s, 0, Math.PI * 2);
-      c.stroke();
-    }
-    for (const p of d.players) {
-      c.fillStyle = p.bot ? "#5aa9ff" : "#6fe07a";
-      c.beginPath();
-      c.arc(toX(p.x), toY(p.z), 4 * s, 0, Math.PI * 2);
-      c.fill();
-    }
-  }
-
   dispose(): void {
     window.removeEventListener("keydown", this.onKey);
     this.root.remove();
@@ -780,34 +564,6 @@ export class PcHud {
 export function toggleFullscreen(): void {
   if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
   else void document.documentElement.requestFullscreen?.().catch(() => {});
-}
-
-function arrow(c: CanvasRenderingContext2D, x: number, y: number, yaw: number, size: number): void {
-  c.save();
-  c.translate(x, y);
-  c.rotate(yaw);
-  c.fillStyle = "#ffd84a";
-  c.strokeStyle = "#000";
-  c.lineWidth = 2;
-  c.beginPath();
-  c.moveTo(0, -size);
-  c.lineTo(size * 0.7, size * 0.8);
-  c.lineTo(0, size * 0.4);
-  c.lineTo(-size * 0.7, size * 0.8);
-  c.closePath();
-  c.fill();
-  c.stroke();
-  c.restore();
-}
-
-function label(c: CanvasRenderingContext2D, text: string, x: number, y: number, color: string): void {
-  c.font = "600 20px system-ui";
-  c.textAlign = "center";
-  c.lineWidth = 4;
-  c.strokeStyle = "rgba(0,0,0,0.75)";
-  c.strokeText(text, x, y);
-  c.fillStyle = color;
-  c.fillText(text, x, y);
 }
 
 function loadCfg(): ChatCfg {
@@ -899,12 +655,7 @@ function injectHudStyle(): void {
 .pc-hp .pc-bar-fill { background:linear-gradient(#4fd06a,#2a9a44); }
 .pc-mana { height:8px; margin-top:3px; }
 .pc-mana .pc-bar-fill { background:linear-gradient(#5b9cff,#2e62c8); }
-.pc-minimap { position:absolute; right:14px; top:14px; width:160px; height:160px; pointer-events:auto; }
-.pc-minimap canvas { width:160px; height:160px; cursor:pointer; display:block; }
-.pc-mm-zoom { position:absolute; width:22px; height:22px; border-radius:50%; border:1px solid var(--pc-edge,#3a3e48);
   background:#1d1a22; font-size:15px; line-height:18px; padding:0; }
-.pc-mm-in { right:-4px; top:112px; } .pc-mm-out { right:-4px; top:138px; }
-.pc-mm-label { position:absolute; left:0; right:0; top:166px; text-align:center; font-size:11px; color:#cfc6ae; }
 .pc-actionbar { position:absolute; left:50%; bottom:12px; transform:translateX(-50%); display:flex; flex-direction:column;
   align-items:center; gap:5px; pointer-events:auto; }
 .pc-catdps { position:absolute; left:14px; top:150px; width:270px; padding:6px 8px; border-radius:8px; background:rgba(14,13,19,.78);
@@ -959,9 +710,6 @@ function injectHudStyle(): void {
 .pc-hud.touch .pc-chat.open .pc-chat-log { font-size:15.5px; line-height:1.4; }
 .pc-hud.touch .pc-chat:not(.open) .pc-chat-log { font-size:13.5px; }
 .pc-hud.touch .pc-unit { left:6px; top:6px; transform:scale(.82); transform-origin:0 0; background:none; box-shadow:none; }
-.pc-hud.touch .pc-minimap { right:4px; top:4px; transform:scale(.5); transform-origin:100% 0; }
-.pc-hud.touch .pc-minimap canvas { border-radius:6px; }
-.pc-hud.touch .pc-mm-label, .pc-hud.touch .pc-mm-zoom { display:none; }
 .pc-micro-btn { width:38px; height:38px; border-radius:7px; background:rgba(14,13,19,.88); border:1px solid #3a3e48; font-size:18px; padding:0;
   display:flex; align-items:center; justify-content:center; }
 .pc-micro-btn:hover { border-color:var(--pc-edge-hi,#6e7482); background:rgba(40,38,48,.95); }
@@ -995,10 +743,6 @@ function injectHudStyle(): void {
 .pc-chat-cfg { position:absolute; left:0; bottom:100%; margin-bottom:6px; background:rgba(14,13,19,.95);
   border:none; border-radius:8px; padding:8px 10px; display:flex; flex-direction:column; gap:5px; }
 .pc-chat-cfg label { display:flex; gap:7px; align-items:center; cursor:pointer; }
-.pc-bigmap { position:absolute; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; pointer-events:auto; }
-.pc-bigmap-box { padding:8px; }
-.pc-bigmap-head { display:flex; justify-content:space-between; align-items:center; padding:0 4px 6px; color:#f3e2b0; }
-.pc-bigmap canvas { width:min(78vh,78vw); height:min(78vh,78vw); display:block; border-radius:6px; }
 `;
   document.head.appendChild(s);
 }

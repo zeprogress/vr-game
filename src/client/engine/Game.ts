@@ -40,7 +40,7 @@ import { NetMobs } from "../combat/MobSystem";
 import type { Hittable, HitReporter } from "../combat/Hittable";
 import { Hud } from "../ui/Hud";
 import { PcTargeting } from "../pc/PcTargeting";
-import { PcHud, type MapData, type WeaponIcon } from "../pc/PcHud";
+import { PcHud, type WeaponIcon } from "../pc/PcHud";
 import { QuestBang } from "../world/hub/HubNpc";
 import { setGrassVr } from "../world/GrassField";
 import { LightFocus } from "../world/lightFocus";
@@ -749,7 +749,7 @@ export class Game {
         }
         if (this.pcMenu?.close()) return true;
         if (this.questWin?.close() || this.shopWin?.close() || this.hunterWin?.close()) return true;
-        if (this.pcInv?.close() || this.pcHud?.closeMap() || this.pcTarget?.clear()) return true;
+        if (this.pcInv?.close() || this.pcTarget?.clear()) return true;
         this.pcMenu?.open();
         return true;
       };
@@ -971,7 +971,7 @@ export class Game {
           MANA_ENABLED && this.combat.holdsStaff,
         );
       }
-      if (this.pcHud) this.updatePcHud(dt);
+      if (this.pcHud) this.updatePcHud();
       else if (this.pcInv) {
         // Телефон: уровень и опыт в сведениях окна снаряжения (на ПК их передаёт updatePcHud).
         const prog = this.progression;
@@ -2670,8 +2670,8 @@ export class Game {
     return this.touchInput;
   }
 
-  /** ПК-экран: рамка героя, опыт, панель действий, карты, «+N опыта» в журнал. */
-  private updatePcHud(dt: number): void {
+  /** ПК-экран: рамка героя, опыт, панель действий, «+N опыта» в журнал. */
+  private updatePcHud(): void {
     const h = this.pcHud!;
     const prog = this.progression;
     const kind = this.combat.abilityKind;
@@ -2709,33 +2709,6 @@ export class Game {
       h.log("xp", `Новый уровень: ${prog.level}!`);
     }
     this.pcLastXp = { level: prog.level, xp: prog.xp };
-
-    const st = this.net?.room?.state;
-    const p = this.player.position;
-    const d: MapData = {
-      px: p.x,
-      pz: p.z,
-      yaw: this.player.facing,
-      camYaw: this.player.cameraYaw,
-      players: [],
-      mobs: [],
-      event: st && st.eventKind ? { x: st.eventX, z: st.eventZ } : null,
-      targetId: this.pcTarget?.targetId ?? null,
-    };
-    if (st) {
-      const self = this.net?.sessionId;
-      st.players.forEach((ps, id) => {
-        if (id === self) return;
-        d.players.push({ x: ps.head.x, z: ps.head.z, bot: id.startsWith("bot:"), nick: ps.nick });
-      });
-      st.mobs.forEach((m) => {
-        if (m.dead || m.kind === "shard") return;
-        d.mobs.push({ x: m.x, z: m.z, elite: !!m.mobName, boss: m.kind === "boss" });
-      });
-    }
-    const hr = ((LOADOUT.world.hour % 24) + 24) % 24;
-    const clock = `${String(Math.floor(hr)).padStart(2, "0")}:${String(Math.floor((hr % 1) * 60)).padStart(2, "0")}`;
-    h.updateMaps(dt, d, clock);
   }
 
   /**
