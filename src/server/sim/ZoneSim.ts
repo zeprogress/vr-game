@@ -3791,7 +3791,8 @@ export class ZoneSim {
       }
     } else if (m.kind !== "shard") {
       const elite = m.eliteName !== "";
-      const goldMul = goldDropMulForLevel(this.getAttackerLevel(attacker));
+      // Золото — по уровню моба, как золотая броня (ARMOR_LEVEL_GATE.gold): обычный моб (уровень 1) — ноль, к 53-му — полный.
+      const goldMul = armorLevelMul(m.eliteLevel, ARMOR_LEVEL_GATE.gold);
       // Вожак — шанс оружия выше в QUEST.champ.dropMul раз (уникальное — только у вожаков лагерей).
       const champMul = m.champ ? QUEST.champ.dropMul : 1;
       // В катакомбах золотого оружия из мобов нет (только легендарное у элитных).
