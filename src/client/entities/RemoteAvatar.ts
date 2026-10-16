@@ -342,12 +342,12 @@ export class RemoteAvatar implements Hittable {
       new Vector3(0, 0.42, 0),
       nick,
       null,
-      // Ботам — уровень голубым, живым игрокам — золотым (по умолчанию).
+      // Ботам — уровень голубым (у живых игроков плашка вообще не рисуется).
       isBotTag ? new Color3(0.42, 0.72, 1) : undefined,
       isBotTag,
     );
     this.nameTag.showHp(); // зелёная полоска жизни под ником
-    this.nameTag.showXp(); // + полоска опыта до уровня
+    if (id.startsWith("bot:")) this.nameTag.showXp(); // + полоска опыта до уровня
     this.setMode(mode);
     this.offGearTune = onGearTuneChanged(() => this.reseatBotGear());
   }
@@ -682,9 +682,11 @@ export class RemoteAvatar implements Hittable {
     this.wantKeyR = keyOf(this.wantR);
     this.skin = p.skin ?? 0;
     if (!this.isBot) this.nameTag.setPlatform(p.plat ?? 0);
-    // Уровень, титул и полоска опыта — над ником у всех: живых игроков и ботов.
+    // Уровень нужен всем (скорость анимации замаха), а плашку над головой с
+    // ним рисуем только ботам — как и раньше.
     const unspent = p.unspent > 0;
-    const tagChanged = p.level !== this.level || this.nick !== p.nick || unspent !== this.hasUnspent;
+    const tagChanged =
+      this.isBot && (p.level !== this.level || this.nick !== p.nick || unspent !== this.hasUnspent);
     this.level = p.level;
     this.hasUnspent = unspent;
     if (tagChanged) {
@@ -692,7 +694,9 @@ export class RemoteAvatar implements Hittable {
       this.nameTag.setInfo(p.nick, p.level, unspent);
     }
     this.nameTag.setTitle(p.title ?? "");
-    this.nameTag.setXp(atMaxLevel(p.level) ? -1 : p.xp / xpToNext(p.level));
+    if (this.isBot) {
+      this.nameTag.setXp(atMaxLevel(p.level) ? -1 : p.xp / xpToNext(p.level));
+    }
     this.hp = p.hp;
     this.maxHp = p.maxHp > 0 ? p.maxHp : 100;
     // В башне баффы не действуют — и не показываем их.

@@ -9,7 +9,7 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Constants } from "@babylonjs/core/Engines/constants";
-import { DEVICE_BADGE, DEVICE_ICON_LOOK, MOB_ARMOR_LOOK, MOB_DEF_SHIELD } from "#shared/look";
+import { MOB_ARMOR_LOOK, MOB_DEF_SHIELD } from "#shared/look";
 import { LAYER } from "../engine/renderLayers";
 
 /**
@@ -33,6 +33,8 @@ const LVL_PX = 36;
 /** Значок защиты моба справа от уровня, px ячейки. */
 const ICON_PX = 42;
 const FONT_FAMILY = "system-ui, sans-serif";
+/** Метка бота зрителя перед ником — единственное отличие от живого игрока со стороны. */
+const BOT_MARK = "🤖 ";
 /** Не чаще этого (мс) грузим изменённую страницу атласа в видеокарту. */
 const FLUSH_MS = 100;
 
@@ -317,9 +319,8 @@ export class NameTag {
     };
 
     const nameY = level === null ? H / 2 : 44;
-    // Слева место под значок устройства (бот — свой значок); длинный ник — ужимаем кегль, чтобы влез в ячейку.
-    const device = this.isBot ? 4 : this.platform;
-    const lead = device > 0 ? 52 : 0;
+    // Слева место под значок бота/платформы; длинный ник — ужимаем кегль, чтобы влез в ячейку.
+    const lead = this.isBot || this.platform > 0 ? 52 : 0;
     let px = NAME_PX;
     ctx.font = `bold ${px}px ${FONT_FAMILY}`;
     let nameW = ctx.measureText(name).width;
@@ -331,7 +332,13 @@ export class NameTag {
     }
     ctx.textAlign = "center";
     outlined(name, W / 2, nameY, this.nameColor, Math.max(6, px * 0.17));
-    if (device > 0) drawDeviceIcon(ctx, device, W / 2 - nameW / 2 - 40, nameY, 46);
+    if (this.isBot) {
+      ctx.textAlign = "right";
+      ctx.fillStyle = this.nameColor;
+      ctx.fillText(BOT_MARK.trim(), W / 2 - nameW / 2 - 8, nameY);
+      ctx.textAlign = "center";
+    }
+    if (this.platform > 0) drawPlatformIcon(ctx, this.platform, W / 2 - nameW / 2 - 40, nameY, 46);
 
     if (level !== null) {
       const a = this.accent;
@@ -527,38 +534,93 @@ function drawDefIcon(ctx: CanvasRenderingContext2D, d: (typeof MOB_ARMOR_LOOK)[n
   ctx.restore();
 }
 
-/** Контуры значков устройства (DEVICE_ICON_LOOK) — один раз на всю игру. */
-const devPaths = new Map<string, Path2D>();
-function devPath(d: string): Path2D {
-  let p = devPaths.get(d);
-  if (!p) devPaths.set(d, (p = new Path2D(d)));
-  return p;
-}
-
 /**
- * Значок устройства у ника (x, y — центр, s — сторона квадрата в пикселях текстуры):
- * 1 — ПК, 2 — телефон, 3 — VR-шлем, 4 — бот зрителя. Тот же приём, что у значков защит:
- * цветная подложка с тёмной обводкой и тёмный силуэт внутри, только векторные пути.
+ * Значок платформы в сером кружке (чтобы белый рисунок не сливался с белым ником):
+ * 1 — монитор, 2 — смартфон, 3 — VR-шлем (очки с ремешком). (cx, cy) — центр кружка,
+ * `h` — его диаметр в пикселях текстуры плашки.
  */
-function drawDeviceIcon(ctx: CanvasRenderingContext2D, kind: number, x: number, y: number, s: number): void {
-  const look = DEVICE_ICON_LOOK[kind];
-  if (!look) return;
-  const badge = devPath(DEVICE_BADGE);
+function drawPlatformIcon(ctx: CanvasRenderingContext2D, kind: number, cx: number, cy: number, h: number): void {
   ctx.save();
-  ctx.translate(x - s / 2, y - s / 2);
-  ctx.scale(s / 20, s / 20);
+  const R = h * 0.6;
+  const BG = "#4a4f5e";
+  ctx.fillStyle = BG;
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(255,255,255,0.28)";
+  ctx.stroke();
+
+  ctx.strokeStyle = "#ffffff";
+  ctx.fillStyle = "#ffffff";
+  ctx.lineWidth = 4;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
-  ctx.strokeStyle = "rgba(6,8,12,0.9)";
-  ctx.lineWidth = 1.6;
-  ctx.stroke(badge);
-  ctx.fillStyle = look.color;
-  ctx.fill(badge);
-  ctx.fillStyle = "#15171d";
-  ctx.fill(devPath(look.dark));
-  if (look.light) {
-    ctx.fillStyle = "#ffffff";
-    ctx.fill(devPath(look.light));
+  const rr = (x: number, y: number, w: number, hh: number, r: number): void => {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + hh, r);
+    ctx.arcTo(x + w, y + hh, x, y + hh, r);
+    ctx.arcTo(x, y + hh, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  };
+  if (kind === 1) {
+    // Монитор: экран + ножка + основание.
+    const w = R * 1.1;
+    const sh = R * 0.75;
+    rr(cx - w / 2, cy - R * 0.5, w, sh, 3);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - R * 0.5 + sh);
+    ctx.lineTo(cx, cy + R * 0.42);
+    ctx.moveTo(cx - w * 0.3, cy + R * 0.42);
+    ctx.lineTo(cx + w * 0.3, cy + R * 0.42);
+    ctx.stroke();
+  } else if (kind === 2) {
+    // Смартфон: вертикальный прямоугольник с точкой-кнопкой.
+    const w = R * 0.68;
+    const ph = R * 1.15;
+    rr(cx - w / 2, cy - ph / 2, w, ph, 4);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy + ph / 2 - 6, 2.4, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (kind === 3) {
+    // VR-шлем: сплошной визор с вырезом под нос и парой линз + ремешок по бокам.
+    const w = R * 1.35;
+    const vh = R * 0.75;
+    const x0 = cx - w / 2;
+    const y0 = cy - vh / 2;
+    ctx.beginPath();
+    ctx.moveTo(x0 + 6, y0);
+    ctx.lineTo(x0 + w - 6, y0);
+    ctx.arcTo(x0 + w, y0, x0 + w, y0 + 6, 6);
+    ctx.lineTo(x0 + w, y0 + vh - 8);
+    ctx.arcTo(x0 + w, y0 + vh, x0 + w - 8, y0 + vh, 8);
+    ctx.lineTo(cx + w * 0.16, y0 + vh); // до выреза
+    ctx.quadraticCurveTo(cx, y0 + vh - vh * 0.42, cx - w * 0.16, y0 + vh); // вырез под нос
+    ctx.lineTo(x0 + 8, y0 + vh);
+    ctx.arcTo(x0, y0 + vh, x0, y0 + vh - 8, 8);
+    ctx.lineTo(x0, y0 + 6);
+    ctx.arcTo(x0, y0, x0 + 6, y0, 6);
+    ctx.closePath();
+    ctx.fill();
+    // Линзы — цвета подложки.
+    ctx.fillStyle = BG;
+    ctx.beginPath();
+    ctx.arc(cx - w * 0.26, cy - vh * 0.06, vh * 0.2, 0, Math.PI * 2);
+    ctx.arc(cx + w * 0.26, cy - vh * 0.06, vh * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    // Ремешок: короткие дужки по бокам.
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(x0, cy - vh * 0.18);
+    ctx.lineTo(x0 - 6, cy - vh * 0.18);
+    ctx.moveTo(x0 + w, cy - vh * 0.18);
+    ctx.lineTo(x0 + w + 6, cy - vh * 0.18);
+    ctx.stroke();
   }
   ctx.restore();
 }
