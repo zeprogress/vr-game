@@ -68,6 +68,8 @@ import type { StatName } from "#shared/progression";
 import type { ItemId } from "#shared/items";
 
 const SEND_HZ = 18;
+/** Вкладка свёрнута дольше этого (мс) — уходим из мира, персонаж живёт ботом (MSG.afk). */
+const AFK_AFTER_MS = 30_000;
 const SEND_EVERY = 1000 / SEND_HZ;
 
 /** Сколько ждём один joinOrCreate/reconnect, прежде чем считать попытку зависшей. */
@@ -218,13 +220,46 @@ export class NetClient {
   private adminPass = "";
   private reconnecting = false;
   private closedByUs = false;
+  /** Свёрнутая вкладка: таймер ухода и флаг «ушли из мира, вернёмся по видимости». */
+  private afkTimer: number | null = null;
+  private afkAway = false;
   /** Токен для быстрого возврата в ту же сессию (Colyseus allowReconnection). */
   private reconnectToken = "";
   /** Сообщение последней неудачной попытки connect() — для UI (см. Login.ts). */
   lastJoinError = "";
 
+  constructor() {
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", () => this.tabVisibilityChanged());
+  }
+
   get online(): boolean {
     return this.room !== null;
+  }
+
+  /** Вкладка свернулась — через AFK_AFTER_MS уходим из мира; вернулась — заходим заново. */
+  private tabVisibilityChanged(): void {
+    if (document.hidden) {
+      if (this.afkTimer === null && !this.afkAway) this.afkTimer = window.setTimeout(() => this.goAway(), AFK_AFTER_MS);
+      return;
+    }
+    if (this.afkTimer !== null) {
+      window.clearTimeout(this.afkTimer);
+      this.afkTimer = null;
+    }
+    if (this.afkAway) {
+      this.afkAway = false;
+      void this.reconnectLoop();
+    }
+  }
+
+  /** Долго свёрнуто: сервер оставляет персонажа ботом (как при выходе с «оставить бота»). */
+  private goAway(): void {
+    this.afkTimer = null;
+    const room = this.room;
+    if (!document.hidden || !room || this.closedByUs) return;
+    this.afkAway = true;
+    room.send(MSG.afk);
+    void room.leave(true);
   }
 
   /** Идёт попытка переподключения — не разбирать сеть, но и не считать офлайном. */
@@ -372,7 +407,7 @@ export class NetClient {
         this.onKicked?.();
         return;
       }
-      if (!this.closedByUs) void this.reconnectLoop();
+      if (!this.closedByUs && !this.afkAway) void this.reconnectLoop();
     });
   }
 

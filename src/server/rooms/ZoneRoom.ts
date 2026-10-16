@@ -355,6 +355,8 @@ interface Runtime {
   kills: number;
   /** Продолжать ли персонажа ботом после выхода. По умолчанию — нет. */
   leaveBot: boolean;
+  /** Клиент сам ушёл из мира, потому что вкладка свёрнута (MSG.afk): персонаж живёт ботом, как при leaveBot. */
+  afkLeave?: boolean;
   /** ms окончания баффа победы над событием (×2 опыт/урон). 0 — нет баффа. */
   eventBuffUntil: number;
   /** Бафф «Тепло костра» до этого момента (Date.now()); 0 — нет. */
@@ -1574,6 +1576,10 @@ export class ZoneRoom extends Room<ZoneState> {
       });
     }
 
+    this.onMessage(MSG.afk, (client: Client) => {
+      const rt = this.rt.get(client.sessionId);
+      if (rt) rt.afkLeave = true;
+    });
     this.onMessage(MSG.move, (client: Client, msg: MoveMsg) => {
       const p = this.state.players.get(client.sessionId);
       const rt = this.rt.get(client.sessionId);
@@ -11202,7 +11208,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Часы до снятия (BOT.ownerAbsentSec) стартуют сейчас и дальше продлеваются
     // только настоящими сообщениями в чате Twitch (onChat) — заявка: "бот
     // висел N часов, а в чате время добавлялось от последнего сообщения".
-    if (streamNorm && p && rt?.leaveBot && this.bots.size < BOT.maxBots && !this.nickIsPlayed(streamNorm)) {
+    if (streamNorm && p && (rt?.leaveBot || rt?.afkLeave) && this.bots.size < BOT.maxBots && !this.nickIsPlayed(streamNorm)) {
       this.chatSeen.set(streamNorm, Date.now());
       this.spawnBot(p.nick, streamNorm);
       // Был в катакомбах — бот продолжает забег за него (место в отряде, урон, смерти).
