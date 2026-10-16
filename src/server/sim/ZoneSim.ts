@@ -250,6 +250,10 @@ export class Mob {
   dead = false;
   private deadT = 0;
   private respawnIn = 0;
+  /** Тело лежит, но не возрождается (катакомбы: его уберёт ZoneSim после смерти — см. CAT_CORPSE_LINGER_S). */
+  keepDead(): void {
+    this.respawnIn = Number.POSITIVE_INFINITY;
+  }
   grounded = true;
   /** Открытые залы катакомб, если моб там (таран не уводит его за стены); иначе null. Выставляет симуляция. */
   catHalls: readonly number[] | null = null;
@@ -2396,6 +2400,9 @@ export function eliteOpts(d: EliteMobDef): NonNullable<ConstructorParameters<typ
   };
 }
 
+/** Катакомбы: сколько секунд тело моба лежит в мире после смерти — клиент проигрывает клип смерти, потом убираем. */
+const CAT_CORPSE_LINGER_S = 2;
+
 export class ZoneSim {
   /** Админ-панель пульта: false — мобы замирают на месте (не тикают вовсе). */
   mobsEnabled = true;
@@ -2414,6 +2421,8 @@ export class ZoneSim {
   readonly eventMobs = new Set<string>();
   /** Мобы катакомб (shared/catacombs.ts): не возрождаются, лут роняют, ходят только по открытым залам. */
   readonly catMobs = new Set<string>();
+  /** Тела мобов катакомб после смерти: id → сколько секунд ещё лежат (см. CAT_CORPSE_LINGER_S). */
+  private readonly lingerDead = new Map<string, number>();
   /** Катакомбы: убрать всех мобов катакомб и отложенные возвращения их големов (у решётки и в конце забега). */
   clearCatMobs(): void {
     for (const id of this.catMobs) this.mobs.delete(id);
@@ -2808,6 +2817,13 @@ export class ZoneSim {
       this.pendingRevivals.splice(i, 1);
       const revived = new Mob(r.kind, r.homeX, r.homeZ, r.opts);
       this.mobs.set(revived.id, revived);
+    }
+    // Тела катакомб уходят из мира, когда клиент уже проиграл смерть.
+    for (const [id, left] of this.lingerDead) {
+      if (left - dt <= 0) {
+        this.lingerDead.delete(id);
+        this.mobs.delete(id);
+      } else this.lingerDead.set(id, left - dt);
     }
     // Катакомбы: моб знает открытые залы (таран и рывок не уводят его за стены).
     for (const m of this.mobs.values()) m.catHalls = this.catMobs.has(m.id) ? this.catOpen : null;
@@ -3254,7 +3270,9 @@ export class ZoneSim {
     if (this.catMobs.has(m.id)) {
       // Катакомбы: не возрождается, но лут роняет как обычный (награда по пути).
       this.catMobs.delete(m.id);
-      this.mobs.delete(m.id);
+      // Тело лежит ещё CAT_CORPSE_LINGER_S — иначе клиент не видит смерть и моб просто пропадает.
+      m.keepDead();
+      this.lingerDead.set(m.id, CAT_CORPSE_LINGER_S);
       if (attacker) this.catKills.set(attacker, (this.catKills.get(attacker) ?? 0) + 1);
       this.spawnLoot(m, attacker);
       this.splitMobXp(m);
