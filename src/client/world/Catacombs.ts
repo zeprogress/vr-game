@@ -1263,12 +1263,19 @@ export class CatacombsFx {
     };
     nicheGlow.forEach((slots, hi) => slots.forEach((list, k) => mergeFlat(list, `catNiche${hi}_${k}`, this.hallNicheMats[hi][k], this.hallNodes[hi])));
     const sealMesh = mergeFlat(seals, "catSeals", flatMat("catSealMat", sealTexture(scene), new Color3(0.16, 0.1, 0.04), false, 0.5));
-    if (sealMesh) this.sealMat = sealMesh.material as StandardMaterial;
+    if (sealMesh) {
+      this.sealMat = sealMesh.material as StandardMaterial;
+      sealMesh.renderingGroupId = LAYER.groundFx;
+    }
     // Дорожка — без освещения (факелы то гаснут, то меняются): цвет всегда одинаковый, не чернеет.
     const runnerMat = flatMat("catRunnerMat", runnerTexture(scene), new Color3(0.2, 0.07, 0.05), false, 0.9);
     runnerMat.disableLighting = true;
-    mergeFlat(runners, "catRunners", runnerMat);
-    mergeFlat(stains, "catStains", flatMat("catStainMat", stainTexture(scene), new Color3(0, 0, 0), false, 0.85));
+    // Порядок отрисовки: пятна крови — слой земли, печать и дорожка — поверх них (groundFx). Иначе пятно
+    // (чёрное, полупрозрачное) рисовалось то раньше дорожки, то позже — дорожка темнела и мигала.
+    const runnerMesh = mergeFlat(runners, "catRunners", runnerMat);
+    if (runnerMesh) runnerMesh.renderingGroupId = LAYER.groundFx;
+    const stainMesh = mergeFlat(stains, "catStains", flatMat("catStainMat", stainTexture(scene), new Color3(0, 0, 0), false, 0.85));
+    if (stainMesh) groundLayer(stainMesh);
 
     // Факелы светят только на свой зал (и его коридоры) — иначе свет лез бы во все материалы сцены.
     this.hallLights.forEach((ls, i) => {
