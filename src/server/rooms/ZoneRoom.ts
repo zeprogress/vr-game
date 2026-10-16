@@ -168,6 +168,7 @@ import {
   type WeaponInstance,
   type WeaponTier,
   type AffixSub,
+  enchantRoll,
 } from "#shared/items";
 import {
   hpRegenFrac,
@@ -1063,7 +1064,7 @@ function enchantTry(
   if (!takeFromBag(bag, "scrap", info.cost)) {
     return { ok: false, text: `Не хватает лома: нужно ${info.cost}, есть ${bagCount(bag, "scrap")}.` };
   }
-  const up = Math.random() < info.chance;
+  const up = enchantRoll(w.affixes[idx], info.chance);
   const before = info.points;
   if (up) {
     const gain = ENCHANT.gainMin + Math.floor(Math.random() * (ENCHANT.gainMax - ENCHANT.gainMin + 1));
@@ -1109,7 +1110,7 @@ function armorEnchantTry(a: ArmorInstance, idx: number, bag: Slot[]): InvActResu
   if (!takeFromBag(bag, "scrap", info.cost)) {
     return { ok: false, text: `Не хватает лома: нужно ${info.cost}, есть ${bagCount(bag, "scrap")}.` };
   }
-  const up = Math.random() < info.chance;
+  const up = enchantRoll(a.rolls[idx], info.chance);
   const before = a.rolls[idx].pts;
   if (up) {
     const gain = ENCHANT.gainMin + Math.floor(Math.random() * (ENCHANT.gainMax - ENCHANT.gainMin + 1));

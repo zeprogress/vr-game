@@ -9,7 +9,7 @@
  * Модуль без серверных и клиентских зависимостей: им пользуются и сервер (ролл, лом, бонусы, заточка),
  * и клиент (подписи, сумка). Из items.ts берутся только заточка и максимум очков.
  */
-import { enchantCurve, POINTS_MAX, type EnchantInfo } from "./items";
+import { enchantCurve, POINTS_MAX, type EnchantDeck, type EnchantInfo } from "./items";
 import type { PcInvArmor } from "./net/messages";
 
 export const ARMOR_PARTS = ["helm", "chest", "gloves", "legs", "boots"] as const;
@@ -114,6 +114,8 @@ export function armorLegendaryDropChance(kind: "regular" | "elite" | "boss"): nu
 export interface ArmorRoll {
   stat: ArmorStat;
   pts: number;
+  /** Колода заточки этого свойства (см. enchantRoll в items.ts). */
+  ench?: EnchantDeck;
 }
 
 /** Предмет брони: в сумке или надетый. */
@@ -275,7 +277,10 @@ export function sanitizeArmorList(v: unknown): ArmorInstance[] {
       if (rolls.some((x) => x.stat === r.stat)) continue;
       const pts = Number(r.pts);
       if (!Number.isFinite(pts)) continue;
-      rolls.push({ stat: r.stat as ArmorStat, pts: Math.max(1, Math.min(ARMOR_POINTS_MAX, Math.round(pts))) });
+      const roll: ArmorRoll = { stat: r.stat as ArmorStat, pts: Math.max(1, Math.min(ARMOR_POINTS_MAX, Math.round(pts))) };
+      const e = (r as { ench?: EnchantDeck }).ench;
+      if (e && typeof e.p === "number" && Number.isInteger(e.s) && Number.isInteger(e.f) && e.s >= 0 && e.f >= 0) roll.ench = { p: e.p, s: e.s, f: e.f };
+      rolls.push(roll);
     }
     if (rolls.length === 0) continue;
     const inst: ArmorInstance = { id: a.id, part, tier, rolls };

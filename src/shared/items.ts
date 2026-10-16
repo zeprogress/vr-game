@@ -495,11 +495,23 @@ export function sortAffixes(list: RolledAffix[]): void {
   list.sort((a, b) => AFFIX_ORDER.indexOf(a.sub) - AFFIX_ORDER.indexOf(b.sub));
 }
 
+/**
+ * Колода заточки: сколько удач и неудач осталось в текущей колоде (тасуется без возврата, как в картах).
+ * `p` — шанс, под который собрана колода; сменился шанс (после удачи очки выросли) — колода пересобирается.
+ */
+export interface EnchantDeck {
+  p: number;
+  s: number;
+  f: number;
+}
+
 export interface RolledAffix {
   kind: AffixKind;
   sub: AffixSub;
   /** Величина — доля (0.12 = +12%). У Крита — шанс; сила выводится из него (critRollMult). */
   value: number;
+  /** Колода заточки этого ролла (см. enchantRoll). */
+  ench?: EnchantDeck;
 }
 
 /** Инстанс сдропанного оружия — конкретный, со своими роллами (в отличие от WeaponDef — общего шаблона тира). */
@@ -1094,7 +1106,27 @@ export function migrateLoot(w: WeaponInstance): boolean {
 /** Максимум очков ролла (шкала заточки 1..POINTS_MAX). Клиенты берут его из EnchantInfo.of. */
 export const POINTS_MAX = 33;
 
-export const ENCHANT = { chanceHi: 0.85, chanceDrop: 0.77, chanceMin: 0.08, costBase: 1.5, costTop: 20, qualityMul: 1.2, legendaryMul: 1.5, gainMin: 1, gainMax: 3 } as const;
+export const ENCHANT = { chanceHi: 0.85, chanceDrop: 0.77, chanceMin: 0.08, costBase: 1.5, costTop: 20, qualityMul: 1.2, legendaryMul: 1.5, gainMin: 1, gainMax: 3, deckSize: 20 } as const;
+
+/**
+ * Бросок удачи заточки по колоде: в колоде deckSize карт, из них round(шанс × deckSize) удачных; карта тянется без возврата.
+ * Удачи ровнее, чем независимые броски (серий меньше), средняя доля удач — тот же шанс.
+ * Колода живёт в самом ролле (`ench`), сохраняется вместе с предметом.
+ */
+export function enchantRoll(holder: { ench?: EnchantDeck }, chance: number, rnd: () => number = Math.random): boolean {
+  const p = Math.round(chance * 1000) / 1000;
+  let d = holder.ench;
+  if (!d || d.p !== p || d.s + d.f <= 0) {
+    const n = ENCHANT.deckSize;
+    const s = Math.min(n - 1, Math.max(1, Math.round(p * n)));
+    d = { p, s, f: n - s };
+    holder.ench = d;
+  }
+  const up = rnd() < d.s / (d.s + d.f);
+  if (up) d.s--;
+  else d.f--;
+  return up;
+}
 
 /**
  * Точка атаки за лом — уникальное и рубиновое оружие (щит не атакует). Каждая удачная точка добавляет к урону.
