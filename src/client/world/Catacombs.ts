@@ -210,18 +210,12 @@ function sealTexture(scene: Scene): DynamicTexture {
     g.fillText(runes[i], 0, 0);
     g.restore();
   }
-  // Звезда в центре.
-  g.beginPath();
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
-    const r = i % 2 ? 26 : 66;
-    const x = c + Math.cos(a) * r;
-    const y = c + Math.sin(a) * r;
-    if (i) g.lineTo(x, y);
-    else g.moveTo(x, y);
-  }
-  g.closePath();
-  g.fill();
+  // Руна в центре печати (вместо звезды): крупная, бронзовая.
+  g.fillStyle = "rgba(220,170,80,0.95)";
+  g.font = "bold 190px serif";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillText("ᛟ", c, c + 8);
   tex.update();
   tex.hasAlpha = true;
   return tex;
@@ -661,7 +655,7 @@ export class CatacombsFx {
     };
     // Темно: собственного свечения чуть-чуть, остальное — факелы.
     const floorMat = mat("catFloor", FLOOR, [0.95, 0.88, 0.8], [0.06, 0.05, 0.055], 6, 6);
-    const wallMat = mat("catWall", WALL, [0.85, 0.78, 0.72], [0.045, 0.04, 0.045], 10, 2);
+    const wallMat = mat("catWall", WALL, [0.5, 0.46, 0.42], [0.03, 0.028, 0.03], 10, 2);
     const ceilMat = mat("catCeil", WALL, [0.4, 0.36, 0.36], [0.02, 0.018, 0.024], 6, 6);
     const pillarMat = mat("catPillar", WALL, [0.9, 0.84, 0.78], [0.05, 0.045, 0.045], 1, 3);
     const ironMat = mat("catIron", null, [0.16, 0.14, 0.12], [0.015, 0.012, 0.01]);
@@ -1270,7 +1264,10 @@ export class CatacombsFx {
     nicheGlow.forEach((slots, hi) => slots.forEach((list, k) => mergeFlat(list, `catNiche${hi}_${k}`, this.hallNicheMats[hi][k], this.hallNodes[hi])));
     const sealMesh = mergeFlat(seals, "catSeals", flatMat("catSealMat", sealTexture(scene), new Color3(0.16, 0.1, 0.04), false, 0.5));
     if (sealMesh) this.sealMat = sealMesh.material as StandardMaterial;
-    mergeFlat(runners, "catRunners", flatMat("catRunnerMat", runnerTexture(scene), new Color3(0.05, 0.02, 0.01), false, 0.9));
+    // Дорожка — без освещения (факелы то гаснут, то меняются): цвет всегда одинаковый, не чернеет.
+    const runnerMat = flatMat("catRunnerMat", runnerTexture(scene), new Color3(0.2, 0.07, 0.05), false, 0.9);
+    runnerMat.disableLighting = true;
+    mergeFlat(runners, "catRunners", runnerMat);
     mergeFlat(stains, "catStains", flatMat("catStainMat", stainTexture(scene), new Color3(0, 0, 0), false, 0.85));
 
     // Факелы светят только на свой зал (и его коридоры) — иначе свет лез бы во все материалы сцены.
@@ -1632,7 +1629,7 @@ export class CatacombsFx {
       const th = CAT_THEMES[t];
       const [r, g, b] = th.light;
       this.hallFloorMats[h]?.diffuseColor.set(th.floor[0], th.floor[1], th.floor[2]);
-      this.hallWallMats[h]?.diffuseColor.set(th.floor[0] * 0.9, th.floor[1] * 0.88, th.floor[2] * 0.9);
+      this.hallWallMats[h]?.diffuseColor.set(th.floor[0] * 0.55, th.floor[1] * 0.5, th.floor[2] * 0.5);
       this.poolMats[h]?.emissiveColor.set(r, g, b);
       this.hallGlowMats[h]?.emissiveColor.set(Math.min(1, r * 0.85 + 0.2), Math.min(1, g * 0.85 + 0.18), Math.min(1, b * 0.85 + 0.12));
       const nm = this.hallNicheMats[h];
