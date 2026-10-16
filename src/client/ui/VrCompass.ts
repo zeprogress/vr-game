@@ -8,6 +8,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
+import { LAYER } from "../engine/renderLayers";
 
 /**
  * Компас заданий в VR: золотая стрелка перед игроком на уровне груди,
@@ -41,7 +42,7 @@ export class VrCompass {
       m.material = mat;
       m.parent = this.arrow;
       m.isPickable = false;
-      m.renderingGroupId = 2;
+      m.renderingGroupId = LAYER.ui;
     }
     this.tex = new DynamicTexture("vrCompassTex", { width: 512, height: 96 }, scene, false);
     this.tex.hasAlpha = true;
@@ -57,7 +58,7 @@ export class VrCompass {
     label.position.y = 0.075;
     label.billboardMode = Mesh.BILLBOARDMODE_ALL;
     label.isPickable = false;
-    label.renderingGroupId = 2;
+    label.renderingGroupId = LAYER.ui;
     this.root.setEnabled(false);
   }
 

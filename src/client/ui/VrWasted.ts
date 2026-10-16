@@ -7,6 +7,7 @@ import { Effect } from "@babylonjs/core/Materials/effect";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
+import { LAYER } from "../engine/renderLayers";
 
 /**
  * «WASTED» при смерти (VR) — как в GTA: экран темнеет (вместе с красной виньеткой из
@@ -92,7 +93,7 @@ export class VrWasted {
     this.dim.isPickable = false;
     this.dim.applyFog = false;
     this.dim.alwaysSelectAsActiveMesh = true;
-    this.dim.renderingGroupId = 3;
+    this.dim.renderingGroupId = LAYER.top;
     this.dim.setEnabled(false);
 
     // Текст — один раз в текстуру.
@@ -147,7 +148,7 @@ export class VrWasted {
     this.text.isPickable = false;
     this.text.applyFog = false;
     this.text.alwaysSelectAsActiveMesh = true;
-    this.text.renderingGroupId = 3;
+    this.text.renderingGroupId = LAYER.top;
     this.text.setEnabled(false);
   }
 

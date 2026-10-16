@@ -58,6 +58,7 @@ import {
   type CtxPlayer,
   type CtxMob,
 } from "./SpectatorCamera";
+import { setupRenderLayers } from "../engine/renderLayers";
 
 /** Как часто спектатор шлёт сводку производительности в журнал сервера. */
 const PERF_REPORT_MS = 10 * 60_000;
@@ -249,6 +250,7 @@ export class Spectator {
     if (this.fixedSize) this.engine.setSize(this.fixedSize.w, this.fixedSize.h);
     else this.engine.setHardwareScalingLevel(override.rs ?? preset.scaling);
     this.scene = new Scene(this.engine);
+    setupRenderLayers(this.scene); // земля → круги эффектов → мир (engine/renderLayers.ts)
     // WebGPU: не больше 6 источников на материал (предел uniform-буферов) — иначе чёрный кадр.
     if ((this.engine as { isWebGPU?: boolean }).isWebGPU) capWebGpuLights(this.scene);
     // Как у игрока: обходим только включённые и видимые меши, а не все ~2000 (пулы эффектов,

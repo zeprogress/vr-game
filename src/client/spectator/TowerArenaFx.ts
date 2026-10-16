@@ -26,6 +26,7 @@ import { protoFor as shadowProtoFor } from "../world/blobShadow";
 import { NameTag } from "../ui/NameTag";
 import { TOWER_LIGHT_TUNE } from "./towerLightTune";
 import type { Sfx } from "../audio/Sfx";
+import { LAYER } from "../engine/renderLayers";
 
 /** Плоский пол арены — своя тень без наклона по рельефу (см. blobShadow.ts). */
 const SHADOW_PROTO_SIZE = 2;
@@ -365,7 +366,7 @@ export class TowerArenaFx {
     // непрозрачной геометрией арены и там НЕ рендерится вовсе (проверено
     // напрямую в движке) — группа 1 как у остальной полупрозрачной мелочи
     // (дымка, мягкое пятно на полу) чинит это.
-    this.beamMesh.renderingGroupId = 1;
+    this.beamMesh.renderingGroupId = LAYER.overlay;
     // Пивот конуса — узкий (верхний) торец, через setPivotPoint (НЕ через
     // mesh.position + bakeCurrentTransformIntoVertices — тот печёт ПОЛНУЮ
     // мировую матрицу на момент вызова в вершины, а меш остаётся на месте в
@@ -432,7 +433,7 @@ export class TowerArenaFx {
       m.isPickable = false;
       m.billboardMode = Mesh.BILLBOARDMODE_ALL;
       m.parent = this.root;
-      m.renderingGroupId = 1;
+      m.renderingGroupId = LAYER.overlay;
       const a = (i / HAZE_COUNT) * Math.PI * 2;
       const r = R0 * (0.3 + Math.random() * 0.5);
       m.position.set(Math.cos(a) * r, 1.5 + Math.random() * 4, Math.sin(a) * r);
@@ -841,7 +842,7 @@ export class TowerArenaFx {
         f.material = p.burnMat;
         f.isPickable = false;
         f.billboardMode = Mesh.BILLBOARDMODE_Y;
-        f.renderingGroupId = 1;
+        f.renderingGroupId = LAYER.overlay;
         const a = (i / 5) * Math.PI * 2;
         f.position.set(Math.cos(a) * 0.4, 0.3, Math.sin(a) * 0.4);
         f.parent = p.burnFx;

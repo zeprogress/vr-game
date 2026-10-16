@@ -8,6 +8,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/linesBuilder";
+import { LAYER } from "../engine/renderLayers";
 
 /**
  * Панель в мире для VR (где HTML не виден): картинка на плоскости в стиле
@@ -150,12 +151,12 @@ export class VrPanel {
     this.plane = MeshBuilder.CreatePlane(name, { width: planeW, height: planeW * (texH / texW) }, scene);
     this.plane.material = mat;
     this.plane.isPickable = false;
-    this.plane.renderingGroupId = 2;
+    this.plane.renderingGroupId = LAYER.ui;
     this.plane.setEnabled(false);
     this.laser = MeshBuilder.CreateLines(`${name}Laser`, { points: this.laserPts, updatable: true }, scene);
     this.laser.color = new Color3(0.4, 0.85, 1);
     this.laser.isPickable = false;
-    this.laser.renderingGroupId = 2;
+    this.laser.renderingGroupId = LAYER.ui;
     this.laser.alwaysSelectAsActiveMesh = true;
     this.laser.setEnabled(false);
   }

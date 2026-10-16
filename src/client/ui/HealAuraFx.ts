@@ -8,6 +8,7 @@ import { Constants } from "@babylonjs/core/Engines/constants";
 import { groundFxThrough } from "./groundFx";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
+import { LAYER } from "../engine/renderLayers";
 
 const AURA_COLOR = FXC.heal; // общая палитра shared/look.ts
 /** Сколько аур может гореть одновременно (несколько ботов-лекарей). */
@@ -64,7 +65,7 @@ export class HealAuraFx {
       );
       dome.material = domeMat;
       dome.isPickable = false;
-      dome.renderingGroupId = 1;
+      dome.renderingGroupId = LAYER.overlay;
       dome.setEnabled(false);
 
       this.pool.push({ disc, dome, age: 1, life: 1, radius: 1 });

@@ -8,6 +8,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import "@babylonjs/core/Meshes/Builders/groundBuilder";
+import { groundLayer, setupRenderLayers } from "../engine/renderLayers";
 
 /**
  * Лаборатория (lab.html) — лёгкая отдельная сцена для точечной проверки ДО
@@ -57,6 +58,7 @@ const cur = SCENES.find((s) => s.id === params.get("s")) ?? SCENES[0];
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 const engine = new Engine(canvas, true, { stencil: true });
 const scene = new Scene(engine);
+setupRenderLayers(scene);
 const DAY = new Color4(0.55, 0.72, 0.9, 1);
 const NIGHT = new Color4(0.03, 0.04, 0.08, 1);
 scene.clearColor = DAY;
@@ -76,6 +78,7 @@ const sun = new DirectionalLight("sun", new Vector3(-0.4, -1, 0.3), scene);
 sun.intensity = 0.8;
 
 const ground = MeshBuilder.CreateGround("ground", { width: 60, height: 60 }, scene);
+groundLayer(ground);
 const gm = new StandardMaterial("groundMat", scene);
 gm.diffuseColor = new Color3(0.28, 0.42, 0.22);
 gm.specularColor = new Color3(0, 0, 0);

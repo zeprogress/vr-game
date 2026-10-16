@@ -6,6 +6,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
+import { LAYER } from "../engine/renderLayers";
 
 const W = 640;
 const H = 320;
@@ -49,7 +50,7 @@ export class SpeechBubble {
     this.plane.parent = parent;
     this.plane.position.set(0, y, 0);
     this.plane.isPickable = false;
-    this.plane.renderingGroupId = 0;
+    this.plane.renderingGroupId = LAYER.world;
     this.plane.billboardMode = Mesh.BILLBOARDMODE_Y;
     this.plane.setEnabled(false);
   }

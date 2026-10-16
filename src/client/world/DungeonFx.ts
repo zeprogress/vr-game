@@ -45,6 +45,7 @@ import { Color4 } from "@babylonjs/core/Maths/math.color";
 import type { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { makeFireMaterial } from "./FireShader";
 import { terrainHeight } from "#shared/terrain";
+import { LAYER, groundLayer } from "../engine/renderLayers";
 
 /**
  * Подземелье «Глубинный храм»: полы, обрывы, потолки и стены построек — из shared/dungeonGeo (общие
@@ -463,6 +464,7 @@ export class DungeonFx {
         foam.isPickable = false;
       }
       const ps = new ParticleSystem(`dunSpray${i}`, 140, scene);
+      ps.renderingGroupId = LAYER.world; // частицы — мир (по умолчанию группа 0 = земля)
       ps.particleTexture = spray;
       ps.minSize = 3;
       ps.maxSize = 9;
@@ -614,6 +616,8 @@ export class DungeonFx {
     for (const part of dunGeometry()) {
       const m = this.customMesh(`dunGeo_${part.zone}_${part.mat}`, part.pos, part.idx, part.uv, part.col);
       m.material = this.geoMat(part.mat);
+      // Полы подземелья — слой земли (круги эффектов поверх); стены, обрывы, своды — мир.
+      if (part.mat === "floorStone" || part.mat === "floorRock") groundLayer(m);
       m.parent = root;
       m.isPickable = false;
       m.freezeWorldMatrix();

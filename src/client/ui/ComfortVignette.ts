@@ -6,6 +6,7 @@ import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { Effect } from "@babylonjs/core/Materials/effect";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
+import { LAYER } from "../engine/renderLayers";
 
 const NAME = "comfortVignette";
 
@@ -86,7 +87,7 @@ export class ComfortVignette {
     this.quad.isPickable = false;
     this.quad.applyFog = false;
     this.quad.alwaysSelectAsActiveMesh = true;
-    this.quad.renderingGroupId = 3; // поверх всего
+    this.quad.renderingGroupId = LAYER.top; // поверх всего
     this.quad.setEnabled(false);
   }
 

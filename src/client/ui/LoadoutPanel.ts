@@ -21,6 +21,7 @@ import {
   type ItemKind,
   type TargetKey,
 } from "../config/loadout";
+import { LAYER } from "../engine/renderLayers";
 
 const TEX_W = 512;
 // Заявка: раздел "glow" (10 полей) не влезал — было 512, строки/подсказки
@@ -124,7 +125,7 @@ export class LoadoutPanel {
     this.plane.position.set(0, 0.18, 0);
     this.plane.billboardMode = Mesh.BILLBOARDMODE_ALL;
     this.plane.isPickable = false;
-    this.plane.renderingGroupId = 2;
+    this.plane.renderingGroupId = LAYER.ui;
     this.plane.setEnabled(false);
 
     this.redraw();

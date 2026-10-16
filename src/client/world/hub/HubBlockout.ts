@@ -20,6 +20,7 @@ import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { buildHubCampfire } from "./HubCampfire";
 import { relightMaterials } from "../Fireflies";
+import { groundLayer } from "../../engine/renderLayers";
 
 /**
  * HUB «Боевой лагерь» — BLOCKOUT v1. Только примитивы и простые материалы:
@@ -265,6 +266,7 @@ function buildCampGround(scene: Scene, cx: number, cz: number): Mesh {
     }
   }
   const m = new Mesh("hubGround", scene);
+  groundLayer(m);
   const vd = new VertexData();
   const normals: number[] = [];
   VertexData.ComputeNormals(pos, idx, normals);

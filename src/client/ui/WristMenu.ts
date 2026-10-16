@@ -30,6 +30,7 @@ import { VR_SETTINGS, setVrSettings } from "../config/vrSettings";
 import { BOT } from "#shared/constants";
 import { BOT_SKIN_LABELS } from "../world/models";
 import { weaponStats, type HeroStats, type WornWeapon } from "./itemStats";
+import { LAYER } from "../engine/renderLayers";
 
 const STATS: StatName[] = ["str", "agi", "int", "con", "luc", "wis"];
 /** Цвет ника в чате — по нику (тот же расчёт, что у панели чата на ПК/телефоне). */
@@ -234,14 +235,14 @@ export class WristMenu {
     this.plane.position.set(0, 0.24, 0);
     this.plane.billboardMode = Mesh.BILLBOARDMODE_ALL;
     this.plane.isPickable = false;
-    this.plane.renderingGroupId = 2;
+    this.plane.renderingGroupId = LAYER.ui;
     this.plane.setEnabled(false);
 
     // Лазерный указатель: тонкая линия от руки до точки на меню.
     this.laser = MeshBuilder.CreateLines("wristLaser", { points: this.laserPts, updatable: true }, scene);
     this.laser.color = new Color3(0.4, 0.85, 1);
     this.laser.isPickable = false;
-    this.laser.renderingGroupId = 2;
+    this.laser.renderingGroupId = LAYER.ui;
     this.laser.alwaysSelectAsActiveMesh = true;
     this.laser.setEnabled(false);
 

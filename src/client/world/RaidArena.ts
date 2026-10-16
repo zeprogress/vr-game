@@ -18,6 +18,7 @@ import { MOB } from "#shared/mobs";
 import { terrainHeight } from "#shared/terrain";
 import { FX_RGB } from "#shared/look";
 import { groundFxThrough } from "../ui/groundFx";
+import { groundLayer } from "../engine/renderLayers";
 
 /** Бой с рейд-боссом для визуала — поля ZoneState raid* (см. server/rooms/raidFight.ts). */
 export interface RaidView {
@@ -204,6 +205,7 @@ export class RaidArenaFx {
     floor.position.y = 0.06;
     floor.parent = this.spin;
     floor.material = this.floorMat;
+    groundLayer(floor);
     floor.isPickable = false;
 
     this.voidMat = new StandardMaterial("raidVoidMat", scene);

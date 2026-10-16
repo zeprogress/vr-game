@@ -6,6 +6,7 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
+import { LAYER } from "../engine/renderLayers";
 
 /** Источник позы глаз (в VR — голова гарнитуры, иначе — камера). Всё в мире. */
 interface EyeSource {
@@ -65,7 +66,7 @@ export class HealCrossFx {
     mat.alpha = 0.95;
     m.material = mat;
     m.isPickable = false;
-    m.renderingGroupId = 2;
+    m.renderingGroupId = LAYER.ui;
     m.setEnabled(false);
     this.proto = m;
   }

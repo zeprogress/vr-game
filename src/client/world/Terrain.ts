@@ -12,6 +12,7 @@ import { terrainHeight, terrainHeightNatural as surface, SCULPT_BOUNDS } from "#
 import { trees } from "#shared/trees";
 import { rocks } from "#shared/rocks";
 import { relightMaterials } from "./Fireflies";
+import { groundLayer } from "../engine/renderLayers";
 
 export interface Terrain {
   mesh: Mesh;
@@ -198,6 +199,7 @@ function buildPatch(scene: Scene, name: string, xs: number[], zs: number[]): { m
   VertexData.ComputeNormals(positions, indices, normals);
   const colors = bakeAo(positions, row);
   const mesh = new Mesh(name, scene);
+  groundLayer(mesh); // земля — первым слоем, круги эффектов поверх (engine/renderLayers.ts)
   const vd = new VertexData();
   vd.positions = positions;
   vd.indices = indices;
@@ -282,6 +284,7 @@ function chunkMesh(scene: Scene, name: string, g: Grid, ix0: number, ix1: number
   edge(col0, izs.map((_, r) => r * w));
   edge(colN, izs.map((_, r) => r * w + w - 1));
   const mesh = new Mesh(name, scene);
+  groundLayer(mesh); // земля — первым слоем, круги эффектов поверх (engine/renderLayers.ts)
   const vd = new VertexData();
   vd.positions = positions;
   vd.indices = indices;

@@ -17,6 +17,7 @@ import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { WORLD } from "#shared/constants";
 import type { Terrain } from "./Terrain";
 import { GROUND_GLOW_TUNE, onGroundGlowTuneChanged } from "./groundGlowTune";
+import { LAYER } from "../engine/renderLayers";
 
 /**
  * Пятно на земле — минимальный шейдер вместо StandardMaterial: у того без
@@ -312,7 +313,7 @@ export class Fireflies {
     this.poolProto.material = this.poolMat;
     this.poolProto.isPickable = false;
     this.poolProto.isVisible = false;
-    this.poolProto.renderingGroupId = 0;
+    this.poolProto.renderingGroupId = LAYER.groundFx;
 
     // Запечённое пятно на земле: лежит плашмя и не поворачивается к камере
     // (в отличие от pool) — статичная «подсветка» вместо настоящего
@@ -349,7 +350,7 @@ export class Fireflies {
     this.groundProto.material = this.groundMat;
     this.groundProto.isPickable = false;
     this.groundProto.isVisible = false;
-    this.groundProto.renderingGroupId = 0;
+    this.groundProto.renderingGroupId = LAYER.groundFx;
 
     const rnd = rng(FIREFLY_SEED);
     const R = WORLD.grassRadius * 1.6;

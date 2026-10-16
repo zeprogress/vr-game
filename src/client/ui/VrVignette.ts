@@ -9,6 +9,7 @@ import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 import { VIGNETTE } from "#shared/constants";
 import { clamp01 } from "#shared/geometry";
+import { LAYER } from "../engine/renderLayers";
 
 const NAME = "damageVignette";
 
@@ -79,7 +80,7 @@ export class VrVignette {
     this.quad.isPickable = false;
     this.quad.applyFog = false;
     this.quad.alwaysSelectAsActiveMesh = true;
-    this.quad.renderingGroupId = 3; // поверх всего
+    this.quad.renderingGroupId = LAYER.top; // поверх всего
     this.quad.setEnabled(false);
   }
 

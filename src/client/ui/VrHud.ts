@@ -7,6 +7,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import type { BuffEntry } from "./buffList";
+import { LAYER } from "../engine/renderLayers";
 
 /**
  * Надписи поверх мира в VR: плоский DOM-HUD в шлеме не виден, поэтому события
@@ -215,7 +216,7 @@ class Panel {
     this.mesh.parent = anchor;
     this.mesh.position.set(x, y, z);
     this.mesh.isPickable = false;
-    this.mesh.renderingGroupId = 2;
+    this.mesh.renderingGroupId = LAYER.ui;
     this.mesh.setEnabled(false);
   }
 

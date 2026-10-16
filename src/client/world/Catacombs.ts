@@ -44,6 +44,7 @@ import {
 } from "#shared/catacombs";
 import { terrainHeight } from "#shared/terrain";
 import { makeFireMaterial } from "./FireShader";
+import { LAYER, groundLayer } from "../engine/renderLayers";
 
 /** Что о катакомбах знает клиент (из RoomState). */
 export interface CatView {
@@ -771,6 +772,7 @@ export class CatacombsFx {
     candleMat.disableDepthWrite = true;
     if (this.useSpriteGlows) {
       const mgr = new SpriteManager("catGlows", "", 800, 128, scene);
+      mgr.renderingGroupId = LAYER.world; // спрайты — мир (по умолчанию группа 0 = земля)
       mgr.texture = nicheTex; // белое мягкое свечение; цвет — у каждого спрайта
       mgr.blendMode = Constants.ALPHA_ADD;
       mgr.disableDepthWrite = true;
@@ -1146,7 +1148,9 @@ export class CatacombsFx {
         hallMeshes[hi].push(mm);
         return mm;
       };
-      merge(L.floor, "catFloor", this.hallFloorMats[hi]);
+      // Пол зала — слой земли: круги эффектов поверх него (engine/renderLayers.ts).
+      const floorMesh = merge(L.floor, "catFloor", this.hallFloorMats[hi]);
+      if (floorMesh) groundLayer(floorMesh);
       merge(L.wall, "catWalls", this.hallWallMats[hi]);
       merge(L.ceil, "catCeil", this.hallCeilMats[hi]);
       merge(L.pillar, "catPillars", pillarMat);
@@ -1230,6 +1234,7 @@ export class CatacombsFx {
         if (!mm) continue;
         mm.name = `catCor${i}`;
         mm.material = m;
+        if (list === L.floor) groundLayer(mm);
         mm.parent = this.hallNodes[ha];
         mm.isPickable = false;
         mm.freezeWorldMatrix();
@@ -1332,6 +1337,7 @@ export class CatacombsFx {
 
     // Пылинки: медленно кружат в свете факелов, редкие тлеющие искры.
     const ps = new ParticleSystem("catMotes", 260, scene);
+    ps.renderingGroupId = LAYER.world; // частицы — мир (по умолчанию группа 0 = земля)
     ps.particleTexture = glowTex;
     ps.blendMode = ParticleSystem.BLENDMODE_ADD;
     ps.emitter = new Vector3(0, y0 + 3, 0);

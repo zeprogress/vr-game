@@ -6,6 +6,7 @@ import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
+import { LAYER } from "../engine/renderLayers";
 
 const FULL_W = 1200;
 const FULL_H = 830;
@@ -54,7 +55,7 @@ export class VrPerfHud {
     this.plane.position.set(0, lite ? -0.28 : -0.05, lite ? 0.9 : 0.75);
     this.plane.billboardMode = Mesh.BILLBOARDMODE_ALL;
     this.plane.isPickable = false;
-    this.plane.renderingGroupId = 3;
+    this.plane.renderingGroupId = LAYER.top;
     this.draw({});
   }
 

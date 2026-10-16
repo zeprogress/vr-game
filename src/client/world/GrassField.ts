@@ -23,6 +23,7 @@ import { lakeEllipseDist, LAKE_R_AVG } from "#shared/terrain";
 import { HUB, HUB_CENTER } from "#shared/hub";
 import { relightMaterials } from "./Fireflies";
 import { TOWER_PROP_CLEAR, TOWER_PROP_POS } from "#shared/tower";
+import { groundLayer, isGroundLayer } from "../engine/renderLayers";
 
 /**
  * Трава и кусты — ТОЛЬКО перед игроком.
@@ -448,6 +449,8 @@ export async function loadGrassField(
       m.setVerticesData(VertexBuffer.ColorKind, vcol, false);
     }
     m.material = material;
+    // Трава — слой земли: круги эффектов ложатся поверх неё (кусты — мир, перекрывают эффекты).
+    if (withColor) groundLayer(m);
     m.useVertexColors = !!vcol && withColor;
     m.isPickable = false;
     m.name = name;
@@ -575,6 +578,7 @@ export async function loadGrassField(
     fm.maxSimultaneousLights = mat.maxSimultaneousLights;
     grassFarMats.push(fm);
     const fmesh = new Mesh(`${src.name}Far`, scene);
+    if (isGroundLayer(src)) groundLayer(fmesh);
     const vd = new VertexData();
     vd.positions = [-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0];
     vd.normals = [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0];
@@ -599,6 +603,7 @@ export async function loadGrassField(
     if (GRASS_CROSS) {
       // Три карточки через 60° вокруг вертикали, та же текстура и материал, что у дали.
       const cm = new Mesh(`${src.name}Cross`, scene);
+      if (isGroundLayer(src)) groundLayer(cm);
       const cvd = new VertexData();
       const pos: number[] = [];
       const uvs: number[] = [];

@@ -8,6 +8,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 import { terrainHeight } from "#shared/terrain";
+import { LAYER } from "../engine/renderLayers";
 
 /** Диаметр прототипа, м. Реальный размер задаётся масштабом инстанса. */
 const PROTO_SIZE = 2;
@@ -78,7 +79,7 @@ export function protoFor(scene: Scene): Mesh {
   const proto = MeshBuilder.CreatePlane("blobShadowProto", { size: PROTO_SIZE }, scene);
   proto.material = mat;
   proto.isPickable = false;
-  proto.renderingGroupId = 0;
+  proto.renderingGroupId = LAYER.groundFx;
   proto.isVisible = false; // рисуем только инстансы
   protos.set(scene, proto);
   return proto;

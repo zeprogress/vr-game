@@ -11,6 +11,7 @@ import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 import { ITEMS } from "#shared/items";
+import { LAYER } from "../engine/renderLayers";
 
 const LABEL_W = 128;
 const LABEL_H = 64;
@@ -128,7 +129,7 @@ export function createPotion(scene: Scene): PotionBottle {
   label.position.y = -0.075;
   label.billboardMode = Mesh.BILLBOARDMODE_ALL;
   label.isPickable = false;
-  label.renderingGroupId = 1; // не тонет в бутылочке
+  label.renderingGroupId = LAYER.overlay; // не тонет в бутылочке
 
   let shown = -1;
   const setCount = (n: number): void => {

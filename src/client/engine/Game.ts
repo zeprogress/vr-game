@@ -140,6 +140,7 @@ import { type RaidArenaFx, raidViewOf } from "../world/RaidArena";
 import { RaidHud } from "../ui/RaidHud";
 import { CatBossHud, catBossViewOf } from "../ui/CatBossHud";
 import { RAID, raidCarry } from "#shared/raid";
+import { setupRenderLayers } from "./renderLayers";
 
 /**
  * Каркас движка: один Engine, одна Scene, один рендер-луп.
@@ -363,6 +364,7 @@ export class Game {
     // в шлеме рисуется один глаз. Замеры «быстрее без UBO» были сделаны именно на таком, одноглазом рендере.
     if (new URLSearchParams(location.search).has("noubo")) this.engine.disableUniformBuffers = true;
     this.scene = new Scene(this.engine);
+    setupRenderLayers(this.scene); // земля → круги эффектов → мир (engine/renderLayers.ts)
     // WebGPU: не больше 6 источников на материал (предел uniform-буферов) — иначе чёрный кадр.
     if ((this.engine as { isWebGPU?: boolean }).isWebGPU) capWebGpuLights(this.scene);
     installActiveMeshCandidates(this.scene); // обход только включённых и видимых мешей (см. meshCandidates.ts)

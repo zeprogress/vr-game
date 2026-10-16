@@ -6,6 +6,7 @@ import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { Effect } from "@babylonjs/core/Materials/effect";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
+import { LAYER } from "../engine/renderLayers";
 
 /**
  * Оглушение в VR: пять жёлтых звёздочек кружат по эллипсу в верхней части обзора
@@ -99,7 +100,7 @@ export class VrStunStars {
     this.mesh.isPickable = false;
     this.mesh.applyFog = false;
     this.mesh.alwaysSelectAsActiveMesh = true;
-    this.mesh.renderingGroupId = 3;
+    this.mesh.renderingGroupId = LAYER.top;
     this.mesh.setEnabled(false);
   }
 

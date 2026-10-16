@@ -5,6 +5,7 @@ import "@babylonjs/core/Particles/particleSystemComponent";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { LAYER } from "../engine/renderLayers";
 
 /**
  * Огонь горящих мобов на частицах (по умолчанию; `?fire=0` — старые
@@ -97,6 +98,7 @@ export class BurnParticles {
     private readonly palette: Palette = FIRE,
   ) {
     const ps = new ParticleSystem("burnFire", CAPACITY, scene);
+    ps.renderingGroupId = LAYER.world; // частицы — мир (по умолчанию группа 0 = земля)
     ps.particleTexture = softDot(scene);
     ps.blendMode = ParticleSystem.BLENDMODE_ADD;
     ps.emitter = Vector3.Zero();

@@ -10,6 +10,7 @@ import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import { MOB_ARMOR_LOOK, MOB_DEF_SHIELD } from "#shared/look";
+import { LAYER } from "../engine/renderLayers";
 
 /**
  * Плашки имён над мобами и героями — ОДНА общая текстура-атлас на много плашек (страница 2048×1024,
@@ -258,7 +259,7 @@ export class NameTag {
     // Туман плашку не глушит — вдали имя должно читаться.
     this.plane.applyFog = false;
     // Группа 0 + проверка глубины: плашку загораживают стены, деревья и пол.
-    this.plane.renderingGroupId = 0;
+    this.plane.renderingGroupId = LAYER.world;
     this.plane.billboardMode = Mesh.BILLBOARDMODE_Y;
     this.baseY = offset.y;
 
@@ -488,7 +489,7 @@ export class NameTag {
    */
   setAlwaysOnTop(on: boolean): void {
     this.plane.material = on ? this.atlas.topMaterial(this.page) : this.page.mat;
-    this.plane.renderingGroupId = on ? 1 : 0;
+    this.plane.renderingGroupId = on ? LAYER.overlay : LAYER.world;
   }
 
   dispose(): void {
