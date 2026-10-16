@@ -102,6 +102,34 @@ const THEME_MOTES: Record<string, { c1: [number, number, number, number]; c2: [n
   moon: { c1: [0.7, 0.85, 1, 0.55], c2: [0.55, 0.6, 1, 0.35], up: 0.12 },
 };
 
+/** Каменная плитка: тёмные плиты с швами (процедурно, без файлов). */
+function stoneTexture(scene: Scene, name: string, base: [number, number, number], tiles: number): DynamicTexture {
+  const S = 256;
+  const tex = new DynamicTexture(name, { width: S, height: S }, scene, true);
+  const g = tex.getContext() as unknown as CanvasRenderingContext2D;
+  const c = (k: number): string => `rgb(${Math.round(base[0] * k)},${Math.round(base[1] * k)},${Math.round(base[2] * k)})`;
+  g.fillStyle = c(0.55);
+  g.fillRect(0, 0, S, S);
+  const n = tiles;
+  const step = S / n;
+  let seed = 7;
+  const rnd = (): number => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let y = 0; y < n; y++) {
+    const off = y % 2 ? step / 2 : 0;
+    for (let x = -1; x < n; x++) {
+      g.fillStyle = c(0.8 + rnd() * 0.45);
+      g.fillRect(x * step + off + 2, y * step + 2, step - 4, step - 4);
+      // трещинки и пятна
+      g.fillStyle = c(0.5 + rnd() * 0.2);
+      for (let k = 0; k < 3; k++) g.fillRect(x * step + off + rnd() * step, y * step + rnd() * step, 2 + rnd() * 6, 1 + rnd() * 3);
+    }
+  }
+  tex.update();
+  tex.wrapU = 1;
+  tex.wrapV = 1;
+  return tex;
+}
+
 /** Радиальное свечение (ореол факела/портала). */
 function glowTexture(scene: Scene): DynamicTexture {
   const tex = new DynamicTexture("catGlow", { width: 128, height: 128 }, scene, false);
@@ -225,9 +253,9 @@ function runnerTexture(scene: Scene): DynamicTexture {
 }
 
 /** Пятно крови/копоти на полу. */
-/** Камень стен: повторов текстуры на метр (u — вдоль стены, v — по высоте); блок ≈ 0.4 м. */
-const WALL_UK = 1.25;
-const WALL_VK = 0.625;
+/** Камень стен: повторов текстуры на метр (u — вдоль стены, v — по высоте); блок ≈ 0.8 м. */
+const WALL_UK = 0.625;
+const WALL_VK = 0.3125;
 
 /**
  * UV коробки по её размеру в метрах, а не 0..1 на грань: длинные стены коридора и короткие отрезки
@@ -415,8 +443,7 @@ function beamTexture(scene: Scene): DynamicTexture {
  * залов включается, только когда камера внутри (на поляне — ни одного
  * лишнего источника, бюджет Quest).
  */
-/** Яркость текстур склепа относительно прежнего процедурного камня (по среднему тону): пол ≈ ×2.7, стены ≈ ×2.4. */
-const CRYPT_FLOOR_GAIN = 2.7;
+/** Яркость текстур склепа относительно прежнего процедурного камня (по среднему тону): стены ≈ ×2.4. */
 const CRYPT_WALL_GAIN = 2.4;
 
 export class CatacombsFx {
@@ -690,7 +717,14 @@ export class CatacombsFx {
     };
     // Темно: собственного свечения чуть-чуть, остальное — факелы.
     // Пол — ровная плитка без мелкой детали (минимум рисунка по просьбе: деталь только на стенах и колоннах).
-    const floorMat = cryptMat("catFloor", "crypt_floor", [0.57, 0.53, 0.48], [0.04, 0.035, 0.04], 10, 10, false);
+    const floorMat = mat("catFloor", [0.57, 0.53, 0.48], [0.04, 0.035, 0.04]);
+    {
+      // Пол — процедурная каменная плитка, как до текстур склепа (тайл 6×6 по диску).
+      const t = stoneTexture(scene, "catFloorTex", [120, 112, 104], 6);
+      t.uScale = 6;
+      t.vScale = 6;
+      floorMat.diffuseTexture = t;
+    }
     const wallMat = cryptMat("catWall", "crypt_block", [0.5, 0.46, 0.42], [0.03, 0.028, 0.03], 1, 1);
     // Потолок — чёрный во всех залах и коридорах: ни текстуры, ни блика.
     const ceilMat = mat("catCeil", [0.02, 0.02, 0.025], [0, 0, 0]);
@@ -1708,9 +1742,8 @@ export class CatacombsFx {
       const t = this.hallTheme[h];
       const th = CAT_THEMES[t];
       const [r, g, b] = th.light;
-      // Пол темнее (×0.6 к теме): кровь и дорожка на нём читаются лучше. CRYPT_FLOOR_GAIN — яркость текстуры склепа.
-      const fk = 0.6 * CRYPT_FLOOR_GAIN;
-      this.hallFloorMats[h]?.diffuseColor.set(th.floor[0] * fk, th.floor[1] * fk, th.floor[2] * fk);
+      // Пол темнее (×0.6 к теме): кровь и дорожка на нём читаются лучше.
+      this.hallFloorMats[h]?.diffuseColor.set(th.floor[0] * 0.6, th.floor[1] * 0.6, th.floor[2] * 0.6);
       // Стены темнее: × catTune.wall (дефолт — catTune.ts), панель ?cattune=1 двигает его на лету.
       const wk = catTune.wall * CRYPT_WALL_GAIN;
       this.hallWallMats[h]?.diffuseColor.set(th.floor[0] * 0.55 * wk, th.floor[1] * 0.5 * wk, th.floor[2] * 0.5 * wk);
