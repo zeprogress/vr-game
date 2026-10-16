@@ -614,10 +614,11 @@ export class DungeonFx {
 
     // Полы, обрывы, потолки, стены построек, вода — по кускам «зона × материал».
     for (const part of dunGeometry()) {
-      const m = this.customMesh(`dunGeo_${part.zone}_${part.mat}`, part.pos, part.idx, part.uv, part.col);
+      const m = this.customMesh(`dunGeo_${part.zone}_${part.mat}${part.walk ? "_walk" : ""}`, part.pos, part.idx, part.uv, part.col);
       m.material = this.geoMat(part.mat);
-      // Полы подземелья — слой земли (круги эффектов поверх); стены, обрывы, своды — мир.
-      if (part.mat === "floorStone" || part.mat === "floorRock") groundLayer(m);
+      // Полы и ходовые поверхности (лестницы, мосты, помосты) — слой земли: круги эффектов поверх;
+      // стены, обрывы, своды — мир.
+      if (part.walk || part.mat === "floorStone" || part.mat === "floorRock") groundLayer(m);
       m.parent = root;
       m.isPickable = false;
       m.freezeWorldMatrix();

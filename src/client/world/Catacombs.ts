@@ -526,8 +526,17 @@ export class CatacombsFx {
       this.hallFade[hi] = next;
       const wm = this.hallWallMats[hi];
       const cm = this.hallCeilMats[hi];
-      if (wm) wm.alpha = next;
-      if (cm) cm.alpha = next;
+      // Прозрачная стена глубину не пишет: иначе всё за ней (герои, мобы, плашки) не проходит тест глубины,
+      // и сквозь неё виден пустой чёрный фон. Сплошная (внутри зала) — пишет, как обычно.
+      const see = next < 0.999;
+      if (wm) {
+        wm.alpha = next;
+        wm.disableDepthWrite = see;
+      }
+      if (cm) {
+        cm.alpha = next;
+        cm.disableDepthWrite = see;
+      }
     });
   }
 
@@ -725,11 +734,9 @@ export class CatacombsFx {
       this.hallFloorMats.push(hallStone(floorMat, `catFloorH${hi}`));
       const wallH = hallStone(wallMat, `catWallH${hi}`);
       wallH.alphaMode = Constants.ALPHA_COMBINE;
-      wallH.needDepthPrePass = true;
       this.hallWallMats.push(wallH);
       const ceilH = hallStone(ceilMat, `catCeilH${hi}`);
       ceilH.alphaMode = Constants.ALPHA_COMBINE;
-      ceilH.needDepthPrePass = true;
       this.hallCeilMats.push(ceilH);
       this.hallGlowMats.push(addMat(`catTorchGlowH${hi}`, warmTex, 0.55));
       this.hallNicheMats.push([addMat(`catNicheA${hi}`, nicheTex, 0.85), addMat(`catNicheB${hi}`, nicheTex, 0.85)]);

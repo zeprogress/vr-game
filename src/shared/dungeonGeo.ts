@@ -27,6 +27,8 @@ export interface DunGeoPart {
   mat: DunGeoMat;
   /** Зона (для кусков-чанков). */
   zone: string;
+  /** Ходовая поверхность (верх лестниц, мостов, помостов) — клиент рисует её слоем земли, круги эффектов поверх. */
+  walk?: boolean;
   pos: number[];
   idx: number[];
   uv: number[];
@@ -79,11 +81,11 @@ const FLOOR_EDGE = 2.5;
 
 class Builder {
   readonly parts = new Map<string, DunGeoPart>();
-  part(mat: DunGeoMat, zone: string): DunGeoPart {
-    const key = `${zone}|${mat}`;
+  part(mat: DunGeoMat, zone: string, walk = false): DunGeoPart {
+    const key = `${zone}|${mat}${walk ? "|walk" : ""}`;
     let p = this.parts.get(key);
     if (!p) {
-      p = { mat, zone, pos: [], idx: [], uv: [], col: [] };
+      p = { mat, zone, pos: [], idx: [], uv: [], col: [], ...(walk ? { walk } : {}) };
       this.parts.set(key, p);
     }
     return p;
@@ -601,7 +603,7 @@ function room(B: Builder, s: Extract<DunShape, { t: "disc" | "poly" }>): void {
   const zone = s.zone;
   const pts = s.t === "poly" ? s.pts : circle(s.u, s.v, s.r);
   const hAt = (u: number, v: number): number => dunRoomHeight(s, u, v);
-  const top = s.ledge ? B.part("masonry", zone) : B.part(floorMat(zone), zone);
+  const top = s.ledge ? B.part("masonry", zone, true) : B.part(floorMat(zone), zone);
   if (s.t === "disc" && s.ri) {
     // кольцо: верх — полоса между окружностями, внутренняя стенка — в провал
     const outer = circle(s.u, s.v, s.r, 64);
@@ -707,7 +709,7 @@ function strip(B: Builder, s: Extract<DunShape, { t: "strip" }>): void {
   // Мосты рисуются модулями (пролёты), верёвочные — деревом; связки — верх полом зоны.
   if (s.kind === "bridge") return;
   const mat: DunGeoMat = s.kind === "rope" ? "wood" : s.kind === "stairs" && styleOf.get(zone) !== "cave" ? "masonry" : floorMat(zone);
-  const top = B.part(mat, zone);
+  const top = B.part(mat, zone, true);
   const T = DUN_TILE[mat];
   const depth = s.kind === "rope" ? 0.35 : null;
   const sec = ds.map((d) => {
