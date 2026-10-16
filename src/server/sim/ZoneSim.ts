@@ -3761,6 +3761,8 @@ export class ZoneSim {
     // зелья + фиксированные 40%/класс у босса). Элитные лагерные мобы
     // делят MobKind с обычными (slime/spitter), поэтому щедрость дропа
     // различаем по Mob.eliteName, а не по kind — см. DROP_CHANCE.
+    // Мини-боссы и боссы (bossFight) — золотого оружия из таблицы тоже не берём.
+    if (m.bossFight) for (let i = rolled.length - 1; i >= 0; i--) if (ITEMS[rolled[i].id].weapon?.tier === "gold") rolled.splice(i, 1);
     if (m.kind === "boss") {
       // Лут под уровень бойцов: золото высокоуровневым срезается (как у обычных
       // мобов, goldDropMulForLevel), часть срезанного становится уникальным.
@@ -3776,6 +3778,8 @@ export class ZoneSim {
           rolled.splice(i, 1);
         }
       }
+      // Золотого оружия у боссов не бывает: уникальное — только по своим шансам ниже.
+      for (let i = rolled.length - 1; i >= 0; i--) if (ITEMS[rolled[i].id].weapon?.tier === "gold") rolled.splice(i, 1);
       if (Math.random() < DROP_CHANCE.bossAegis * UNIQUE_DROP_MUL) {
         const item = WEAPON_DROP[weaponKey("shield", "legendary")];
         if (item) rolled.push({ id: item, count: 1, aegis: true });
@@ -3791,7 +3795,8 @@ export class ZoneSim {
       // Вожак — шанс оружия выше в QUEST.champ.dropMul раз (уникальное — только у вожаков лагерей).
       const champMul = m.champ ? QUEST.champ.dropMul : 1;
       // В катакомбах золотого оружия из мобов нет (только легендарное у элитных).
-      const goldChance = inCatRegion(m.x, m.z) ? 0 : (elite ? DROP_CHANCE.eliteGold : DROP_CHANCE.regularGold) * goldMul * champMul * WEAPON_DROP_MUL;
+      // У боссов и мини-боссов (bossFight) золотого оружия нет — только уникальное.
+      const goldChance = inCatRegion(m.x, m.z) || m.bossFight ? 0 : (elite ? DROP_CHANCE.eliteGold : DROP_CHANCE.regularGold) * goldMul * champMul * WEAPON_DROP_MUL;
       const own = Object.values(ELITE_MOBS).find((d) => d.model === m.model)?.legendaryChance;
       const legendaryChance = elite && m.model ? (own ?? DROP_CHANCE.eliteLegendary) * champMul * UNIQUE_DROP_MUL : 0;
       const tier: WeaponTier | null =
@@ -3811,11 +3816,7 @@ export class ZoneSim {
       const kind = m.kind === "boss" ? "boss" : m.eliteName !== "" ? "elite" : "regular";
       const champMul = m.kind !== "boss" && m.champ ? QUEST.champ.dropMul : 1;
       if (kind === "boss") {
-        // У босса золото заменяет обычную часть: тот же шанс, выпадает золотая.
-        if (Math.random() < armorGoldDropChance("boss")) {
-          const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
-          rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "gold") });
-        }
+        // Золотой части у босса нет (только уникальная ниже).
         // Уникальная часть — отдельный шанс (вдвое реже золотой), тоже вместо обычной.
         if (Math.random() < armorLegendaryDropChance("boss")) {
           const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
@@ -3829,7 +3830,7 @@ export class ZoneSim {
           rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid()) });
         }
         // Золотая — с 1-го уровня растёт линейно, к 53-му — как было (ARMOR_LEVEL_GATE).
-        if (Math.random() < armorGoldDropChance(kind) * champMul * armorLevelMul(m.eliteLevel, ARMOR_LEVEL_GATE.gold)) {
+        if (!m.bossFight && Math.random() < armorGoldDropChance(kind) * champMul * armorLevelMul(m.eliteLevel, ARMOR_LEVEL_GATE.gold)) {
           const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
           rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "gold") });
         }
