@@ -127,6 +127,11 @@ export function armorLevelMul(level: number, gate: { from: number; full: number 
   return Math.min(1, Math.max(0, (L - gate.from) / (gate.full - gate.from)));
 }
 
+/** Шанс, который падает от полного на уровне `from` до нуля на `to` (уровень моба); дальше — ноль. */
+export function levelFadeMul(level: number, from: number, to: number): number {
+  return 1 - armorLevelMul(level, { from, full: to });
+}
+
 /** Обычная часть: полный шанс на 1-м уровне, линейно падает и на 53-м — ноль (и дальше ноль). */
 export function armorBaseLevelMul(level: number): number {
   return 1 - armorLevelMul(level, { from: 1, full: 53 });
