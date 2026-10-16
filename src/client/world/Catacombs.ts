@@ -654,7 +654,7 @@ export class CatacombsFx {
       return m;
     };
     // Темно: собственного свечения чуть-чуть, остальное — факелы.
-    const floorMat = mat("catFloor", FLOOR, [0.95, 0.88, 0.8], [0.06, 0.05, 0.055], 6, 6);
+    const floorMat = mat("catFloor", FLOOR, [0.57, 0.53, 0.48], [0.04, 0.035, 0.04], 6, 6);
     const wallMat = mat("catWall", WALL, [0.5, 0.46, 0.42], [0.03, 0.028, 0.03], 10, 2);
     const ceilMat = mat("catCeil", WALL, [0.4, 0.36, 0.36], [0.02, 0.018, 0.024], 6, 6);
     const pillarMat = mat("catPillar", WALL, [0.9, 0.84, 0.78], [0.05, 0.045, 0.045], 1, 3);
@@ -788,6 +788,8 @@ export class CatacombsFx {
     const seals: Mesh[] = [];
     const runners: Mesh[] = [];
     const stains: Mesh[] = [];
+    /** Кровь на стенах залов: по залу, чтобы прятаться вместе с ним. */
+    const wallBlood: Mesh[][] = CAT_HALLS.map(() => []);
     const H = CAT_CEIL;
     const y0 = CAT_FLOOR_Y;
     // Свои меши у каждого зала — чтобы его факелы светили только на него (includedOnlyMeshes).
@@ -945,6 +947,16 @@ export class CatacombsFx {
         w.rotation.y = a;
         L.wall.push(w);
       }
+      // Кровь на стенах: вертикальные пятна у внутренней стороны кольца (мимо проёмов). В зале супербосса — больше.
+      const wallBloodN = hi === CAT_HALLS.length - 1 ? 22 : 8;
+      for (let k = 0; k < wallBloodN; k++) {
+        const a = rnd() * Math.PI * 2;
+        if (catNearDoor(hi, a, 1.5)) continue;
+        const bl = MeshBuilder.CreatePlane("catWallBlood", { width: 1.6 + rnd() * 2.2, height: 1.6 + rnd() * 2.2, sideOrientation: Mesh.DOUBLESIDE }, scene);
+        bl.position.set(h.x + Math.sin(a) * (h.r - 0.14), y0 + 0.6 + rnd() * H * 0.55, h.z + Math.cos(a) * (h.r - 0.14));
+        bl.rotation.y = a;
+        wallBlood[hi].push(bl);
+      }
       // Колонны по кругу, с капителями.
       const nCol = 10;
       for (let i = 0; i < nCol; i++) {
@@ -1096,9 +1108,10 @@ export class CatacombsFx {
         const run = MeshBuilder.CreateGround("catRunner", { width: 4.2, height: len }, scene);
         run.position.set(h.x, y0 + 0.065, h.z - h.r + len / 2 + 0.6);
         runners.push(run);
-        for (let k = 0; k < 5; k++) {
+        const floorBlood = hi === CAT_HALLS.length - 1 ? 30 : 12;
+        for (let k = 0; k < floorBlood; k++) {
           const a = rnd() * Math.PI * 2;
-          const rr = h.r * (0.25 + rnd() * 0.6);
+          const rr = h.r * (0.25 + rnd() * 0.65);
           const st = MeshBuilder.CreateGround("catStain", { width: 2 + rnd() * 2.5, height: 2 + rnd() * 2.5 }, scene);
           st.position.set(h.x + Math.cos(a) * rr, y0 + 0.068, h.z + Math.sin(a) * rr);
           st.rotation.y = rnd() * 6;
@@ -1276,6 +1289,8 @@ export class CatacombsFx {
     if (runnerMesh) runnerMesh.renderingGroupId = LAYER.groundFx;
     const stainMesh = mergeFlat(stains, "catStains", flatMat("catStainMat", stainTexture(scene), new Color3(0, 0, 0), false, 0.85));
     if (stainMesh) groundLayer(stainMesh);
+    const wallBloodMat = flatMat("catWallBloodMat", stainTexture(scene), new Color3(0, 0, 0), false, 0.9);
+    wallBlood.forEach((list, hi) => mergeFlat(list, `catWallBlood${hi}`, wallBloodMat, this.hallNodes[hi]));
 
     // Факелы светят только на свой зал (и его коридоры) — иначе свет лез бы во все материалы сцены.
     this.hallLights.forEach((ls, i) => {
@@ -1635,7 +1650,8 @@ export class CatacombsFx {
       const t = this.hallTheme[h];
       const th = CAT_THEMES[t];
       const [r, g, b] = th.light;
-      this.hallFloorMats[h]?.diffuseColor.set(th.floor[0], th.floor[1], th.floor[2]);
+      // Пол темнее (×0.6 к теме): кровь и дорожка на нём читаются лучше.
+      this.hallFloorMats[h]?.diffuseColor.set(th.floor[0] * 0.6, th.floor[1] * 0.6, th.floor[2] * 0.6);
       this.hallWallMats[h]?.diffuseColor.set(th.floor[0] * 0.55, th.floor[1] * 0.5, th.floor[2] * 0.5);
       this.poolMats[h]?.emissiveColor.set(r, g, b);
       this.hallGlowMats[h]?.emissiveColor.set(Math.min(1, r * 0.85 + 0.2), Math.min(1, g * 0.85 + 0.18), Math.min(1, b * 0.85 + 0.12));
