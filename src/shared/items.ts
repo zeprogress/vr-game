@@ -1106,7 +1106,7 @@ export function migrateLoot(w: WeaponInstance): boolean {
 /** Максимум очков ролла (шкала заточки 1..POINTS_MAX). Клиенты берут его из EnchantInfo.of. */
 export const POINTS_MAX = 33;
 
-export const ENCHANT = { chanceHi: 0.85, chanceDrop: 0.77, chanceMin: 0.08, costBase: 1.5, costTop: 20, qualityMul: 1.2, legendaryMul: 1.5, gainMin: 1, gainMax: 3, deckSize: 20 } as const;
+export const ENCHANT = { chanceHi: 0.85, chanceDrop: 0.77, chanceMin: 0.08, costBase: 0.75, costTop: 10, qualityMul: 1.2, legendaryMul: 1.5, gainMin: 1, gainMax: 3, deckSize: 20 } as const;
 
 /**
  * Бросок удачи заточки по колоде: в колоде deckSize карт, из них round(шанс × deckSize) удачных; карта тянется без возврата.
