@@ -9,6 +9,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import type { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { PointLight } from "@babylonjs/core/Lights/pointLight";
 import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
 import { Color4 } from "@babylonjs/core/Maths/math.color";
@@ -224,6 +225,42 @@ function runnerTexture(scene: Scene): DynamicTexture {
 }
 
 /** Пятно крови/копоти на полу. */
+/** Камень стен: повторов текстуры на метр (u — вдоль стены, v — по высоте); блок ≈ 0.4 м. */
+const WALL_UK = 1.25;
+const WALL_VK = 0.625;
+
+/**
+ * UV коробки по её размеру в метрах, а не 0..1 на грань: длинные стены коридора и короткие отрезки
+ * залов повторяют камень с одинаковым шагом (иначе коридорные блоки растягивались на весь коридор).
+ * Горизонтальные грани (пол, карниз) — по X и Z, вертикальные — по длине стены и высоте.
+ */
+function worldUV(m: Mesh, uk: number, vk: number): void {
+  const pos = m.getVerticesData(VertexBuffer.PositionKind);
+  const nrm = m.getVerticesData(VertexBuffer.NormalKind);
+  if (!pos || !nrm) return;
+  const n = pos.length / 3;
+  const uv = new Float32Array(n * 2);
+  for (let i = 0; i < n; i++) {
+    const x = pos[3 * i];
+    const y = pos[3 * i + 1];
+    const z = pos[3 * i + 2];
+    const ax = Math.abs(nrm[3 * i]);
+    const ay = Math.abs(nrm[3 * i + 1]);
+    const az = Math.abs(nrm[3 * i + 2]);
+    if (ay >= ax && ay >= az) {
+      uv[2 * i] = x * uk;
+      uv[2 * i + 1] = z * vk;
+    } else if (ax >= az) {
+      uv[2 * i] = z * uk;
+      uv[2 * i + 1] = y * vk;
+    } else {
+      uv[2 * i] = x * uk;
+      uv[2 * i + 1] = y * vk;
+    }
+  }
+  m.setVerticesData(VertexBuffer.UVKind, uv, false);
+}
+
 function stainTexture(scene: Scene): DynamicTexture {
   const tex = new DynamicTexture("catStainTex", { width: 128, height: 128 }, scene, false);
   const g = tex.getContext() as unknown as CanvasRenderingContext2D;
@@ -654,7 +691,7 @@ export class CatacombsFx {
     // Темно: собственного свечения чуть-чуть, остальное — факелы.
     // Пол — ровная плитка без мелкой детали (минимум рисунка по просьбе: деталь только на стенах и колоннах).
     const floorMat = cryptMat("catFloor", "crypt_floor", [0.57, 0.53, 0.48], [0.04, 0.035, 0.04], 10, 10, false);
-    const wallMat = cryptMat("catWall", "crypt_block", [0.5, 0.46, 0.42], [0.03, 0.028, 0.03], 2, 8);
+    const wallMat = cryptMat("catWall", "crypt_block", [0.5, 0.46, 0.42], [0.03, 0.028, 0.03], 1, 1);
     // Потолок — чёрный во всех залах и коридорах: ни текстуры, ни блика.
     const ceilMat = mat("catCeil", [0.02, 0.02, 0.025], [0, 0, 0]);
     ceilMat.specularColor = new Color3(0, 0, 0);
@@ -1154,6 +1191,7 @@ export class CatacombsFx {
       // Пол зала — слой земли: круги эффектов поверх него (engine/renderLayers.ts).
       const floorMesh = merge(L.floor, "catFloor", this.hallFloorMats[hi]);
       if (floorMesh) groundLayer(floorMesh);
+      for (const w of L.wall) worldUV(w, WALL_UK, WALL_VK);
       this.hallWallMesh[hi] = merge(L.wall, "catWalls", this.hallWallMats[hi]);
       this.hallCeilMesh[hi] = merge(L.ceil, "catCeil", this.hallCeilMats[hi]);
       merge(L.pillar, "catPillars", blockMat);
@@ -1232,6 +1270,7 @@ export class CatacombsFx {
       gate.parent = this.hallNodes[ha];
       gate.isPickable = false;
       this.gates.push({ mesh: gate, i, y: gy });
+      for (const w of L.wall) worldUV(w, WALL_UK, WALL_VK);
       for (const [list, m] of [[L.floor, floorMat], [L.wall, wallMat], [L.ceil, ceilMat], [L.iron, ironMat]] as [Mesh[], StandardMaterial][]) {
         if (!list.length) continue;
         const mm = Mesh.MergeMeshes(list, true, true) as Mesh | null;
