@@ -1495,7 +1495,8 @@ export class Spectator {
 
     // Строка сверху: идёт ивент — крупно; иначе крутим свежие изменения игры.
     if (st && st.catPhase >= CAT_PHASE.run) {
-      this.overlay?.setTicker("Идёт ивент — Катакомбы", "event");
+      // Идут катакомбы — сверху пусто: зрителю и так видно, что это забег (баннеры, таблица урона).
+      this.overlay?.setTicker("", "event");
     } else if (st?.catPhase === CAT_PHASE.gather) {
       this.overlay?.setTicker("Идёт сбор в Катакомбы (!катакомбы)", "event");
     } else if (st?.eventKind === 1) {

@@ -6470,9 +6470,14 @@ export class ZoneRoom extends Room<ZoneState> {
           const rec = token ? store.get(token) : undefined;
           if (!rec) continue;
           const dmg = Math.round(this.sim.catDamage.get(id) ?? 0);
-          // Новый сезон рекордов — старые числа героя не в счёт.
+          // Новый сезон рекордов — старые числа героя не в счёт, но сохраняются в архиве записи.
           const cur = (rec.catSeason ?? 1) === CATACOMBS.season;
+          const history =
+            !cur && rec.catBestDmg
+              ? [...(rec.catHistory ?? []), { season: rec.catSeason ?? 1, bestDmg: rec.catBestDmg, runs: rec.catRuns ?? 0, wins: rec.catWins ?? 0 }]
+              : rec.catHistory;
           store.put(token, {
+            ...(history ? { catHistory: history } : {}),
             catBestDmg: Math.max(cur ? (rec.catBestDmg ?? 0) : 0, dmg),
             catRuns: (cur ? (rec.catRuns ?? 0) : 0) + 1,
             catWins: (cur ? (rec.catWins ?? 0) : 0) + (win ? 1 : 0),

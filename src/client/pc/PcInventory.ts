@@ -887,13 +887,12 @@ export class PcInventory {
     box.append(sel);
     // Уровень и опыт до следующего.
     this.xpLv = div("pcinv-ci-lv");
-    const xpRow = div("pcinv-xprow");
+    // Длинная полоса опыта во всю ширину, подпись — внутри неё.
     const xp = div("pcinv-xp");
     this.xpFill = div("pcinv-xp-fill");
-    xp.append(this.xpFill);
-    this.xpText = div("pcinv-xp-pill");
-    xpRow.append(xp, this.xpText);
-    box.append(this.xpLv, xpRow);
+    this.xpText = div("pcinv-xp-text");
+    xp.append(this.xpFill, this.xpText);
+    box.append(this.xpLv, xp);
     this.paintXp();
     // Атрибуты (с прибавкой от колец и камней): клик — вкладка «Атрибуты».
     const gemB = pcJewelBonus(d.jewels);
@@ -2328,11 +2327,10 @@ ${["gold", "legendary", "ruby"].map(tier).join("\n")}
 .pcinv-ci-nick { font:700 24px/1.1 "Iowan Old Style",Georgia,serif; color:#dbe8f6; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pcinv-ci-title { align-self:flex-start; max-width:100%; }
 .pcinv-ci-lv { margin-top:2px; font-size:14px; color:#e5ecf4; }
-.pcinv-xprow { position:relative; display:flex; align-items:center; height:20px; }
-.pcinv-xp { position:relative; flex:1; min-width:40px; height:6px; border-radius:4px; background:#0d1a2b; box-shadow:inset 0 1px 2px rgba(0,0,0,.6); margin-right:-10px; overflow:hidden; }
-.pcinv-xp-fill { position:absolute; left:0; top:0; bottom:0; width:0; border-radius:4px; background:linear-gradient(90deg,#1f7fe0,#47b3ff); box-shadow:0 0 8px rgba(60,160,255,.8); }
-.pcinv-xp-pill { position:relative; z-index:1; height:20px; padding:0 9px; border-radius:10px; background:#08121f; border:1px solid #2a3b52; display:flex; align-items:center;
-  font-size:11.5px; color:#e5ecf4; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.pcinv-xp { position:relative; width:100%; height:18px; border-radius:9px; background:#0d1a2b; border:1px solid #2a3b52; box-shadow:inset 0 1px 3px rgba(0,0,0,.6); overflow:hidden; }
+.pcinv-xp-fill { position:absolute; left:0; top:0; bottom:0; width:0; background:linear-gradient(90deg,#1f7fe0,#47b3ff); box-shadow:0 0 8px rgba(60,160,255,.8); }
+.pcinv-xp-text { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:0 6px;
+  font-size:11.5px; color:#f2f6fb; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 2px #000, 0 0 3px #000; }
 .pcinv-at6 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; margin-top:4px; }
 .pcinv-atc { position:relative; isolation:isolate; display:flex; align-items:center; gap:5px; height:30px; padding:0 7px; cursor:pointer; }
 .pcinv-atc::before { content:""; position:absolute; inset:0; z-index:-1; background:#0a1626; border:1px solid #233650; clip-path:${CUT("5px")}; }
