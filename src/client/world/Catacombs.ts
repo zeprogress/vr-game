@@ -43,6 +43,7 @@ import {
   inCatRegion,
 } from "#shared/catacombs";
 import { terrainHeight } from "#shared/terrain";
+import { catWallTune, onCatWallTuneChanged } from "./catWallTune";
 import { makeFireMaterial } from "./FireShader";
 import { LAYER, groundLayer } from "../engine/renderLayers";
 
@@ -1366,6 +1367,8 @@ export class CatacombsFx {
 
     root.setEnabled(false);
     this.paintThemes();
+    // Панель ?catwall=1 тронула затемнение стен — перекрасить залы на месте.
+    onCatWallTuneChanged(() => this.paintThemes());
   }
 
   /**
@@ -1652,7 +1655,9 @@ export class CatacombsFx {
       const [r, g, b] = th.light;
       // Пол темнее (×0.6 к теме): кровь и дорожка на нём читаются лучше.
       this.hallFloorMats[h]?.diffuseColor.set(th.floor[0] * 0.6, th.floor[1] * 0.6, th.floor[2] * 0.6);
-      this.hallWallMats[h]?.diffuseColor.set(th.floor[0] * 0.55, th.floor[1] * 0.5, th.floor[2] * 0.5);
+      // Стены темнее: × catWallTune.mul (дефолт — catWallTune.ts), панель ?catwall=1 двигает его на лету.
+      const wk = catWallTune.mul;
+      this.hallWallMats[h]?.diffuseColor.set(th.floor[0] * 0.55 * wk, th.floor[1] * 0.5 * wk, th.floor[2] * 0.5 * wk);
       this.poolMats[h]?.emissiveColor.set(r, g, b);
       this.hallGlowMats[h]?.emissiveColor.set(Math.min(1, r * 0.85 + 0.2), Math.min(1, g * 0.85 + 0.18), Math.min(1, b * 0.85 + 0.12));
       const nm = this.hallNicheMats[h];

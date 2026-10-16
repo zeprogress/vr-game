@@ -60,6 +60,11 @@ if (params.get("sharpglow") === "1") {
   void import("./ui/SharpGlowTuner").then(({ mountSharpGlowTuner }) => mountSharpGlowTuner());
 }
 
+// ?catwall=1 — панель живой настройки затемнения стен катакомб.
+if (params.get("catwall") === "1") {
+  void import("./ui/CatWallTuner").then(({ mountCatWallTuner }) => mountCatWallTuner());
+}
+
 // ?grasstune=1 — панель живой настройки света/вида травы (ближней и дальней).
 if (params.get("grasstune") === "1") {
   void import("./ui/GrassTuner").then(({ mountGrassTuner }) => mountGrassTuner());
