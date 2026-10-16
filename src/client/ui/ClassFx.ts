@@ -1131,7 +1131,8 @@ export function playClassAct(
     }
     case "plagueBurst":
       vfx.decal(x, y, z, r ?? 3, FXC.poison, 0.6, 4, 1.1); // без трещин
-      vfx.burst(x, y + 0.6, z, FXC.poison, { count: 26, speed: 6, life: 0.6, grav: 4, size: 0.24 });
+      // d — середина тела моба (сервер): вспышка в модели; круг остаётся на земле.
+      vfx.burst(x, y + (d ?? 0.6), z, FXC.poison, { count: 26, speed: 6, life: 0.6, grav: 4, size: 0.24 });
       c.sound(at, "thud");
       return true;
     case "smoke":

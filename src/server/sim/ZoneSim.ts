@@ -3349,7 +3349,8 @@ export class ZoneSim {
     m.poisonBurstCd = PLAGUE.burstCd;
     const by = m.poisonBy;
     const dmg = m.poisonBurst;
-    this.poisonFx.push({ x: m.x, y: m.y, z: m.z, mobId: m.id, by, stacks: m.poisonStacks, burst: true });
+    // h — середина тела моба над землёй (полу-высота хитбокса), чтобы вспышка была в модели, а не у ног.
+    this.poisonFx.push({ x: m.x, y: m.y, z: m.z, mobId: m.id, by, stacks: m.poisonStacks, burst: true, h: MOB.bodyRadius * m.scale });
     const near = [...this.mobs.values()].filter((o) => !o.dead && Math.hypot(o.x - m.x, o.z - m.z) <= PLAGUE.burstRadius + MOB.bodyRadius * o.scale);
     for (const o of near) {
       const hp0 = o.hp;
@@ -3360,7 +3361,7 @@ export class ZoneSim {
     for (const o of near) if (o !== m && !o.dead) this.poisonMob(o.id, m.poisonDps, dmg, by, PLAGUE.spread);
   }
   /** События яда за тик (стак/взрыв) — комната рассылает act poisonStack / plagueBurst. */
-  readonly poisonFx: { x: number; y: number; z: number; mobId: string; by: string; stacks: number; burst: boolean }[] = [];
+  readonly poisonFx: { x: number; y: number; z: number; mobId: string; by: string; stacks: number; burst: boolean; h?: number }[] = [];
 
   /** Кровотечение (веер ножей): `dps` на `sec` с, берётся сильнейшее; не горение — свой эффект и красные цифры. */
   bleedMob(id: string, dps: number, sec: number, by: string): void {

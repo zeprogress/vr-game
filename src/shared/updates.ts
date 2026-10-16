@@ -12,6 +12,10 @@ export interface GameUpdate {
 
 export const UPDATES: readonly GameUpdate[] = [
   {
+    at: "2026-10-16 21:35",
+    items: ["Взрыв яда вспыхивает в середине тела моба, а не у ног"],
+  },
+  {
     at: "2026-10-16 21:20",
     items: ["Тени героев и мобов просвечивают землю, как круги умений"],
   },

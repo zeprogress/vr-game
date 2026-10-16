@@ -10213,7 +10213,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.sim.mobMisses.length = 0;
     // Яд: стак — зелёное кольцо под мобом, взрыв — зелёная вспышка по кругу.
     for (const f of this.sim.poisonFx) {
-      if (f.burst) this.broadcast(MSG.act, { k: "plagueBurst", id: f.by, x: f.x, y: terrainHeight(f.x, f.z), z: f.z, r: PLAGUE.burstRadius } satisfies ActRelay);
+      if (f.burst) this.broadcast(MSG.act, { k: "plagueBurst", id: f.by, x: f.x, y: terrainHeight(f.x, f.z), z: f.z, r: PLAGUE.burstRadius, d: f.h } satisfies ActRelay);
       else this.broadcast(MSG.act, { k: "poisonStack", id: f.by, x: f.x, y: f.y, z: f.z, mobId: f.mobId, r: f.stacks, d: PLAGUE.stackSec } satisfies ActRelay);
     }
     this.sim.poisonFx.length = 0;
