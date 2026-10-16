@@ -15,6 +15,7 @@
 import type { Attr } from "./classes2";
 import { ATTR_LOOK } from "./look";
 import { FAV_MAX } from "./items";
+import { armorLevelMul } from "./armor";
 
 export type GemAttr = Attr;
 export const GEM_ATTRS: readonly GemAttr[] = ["str", "agi", "int", "wis", "luc", "con"];
@@ -53,11 +54,17 @@ export const RING = {
   /** Множители шансов: элитный моб лагеря / босс (рейд-босс, Владыка, Багровый). */
   eliteMul: 3,
   bossMul: 40,
-  /** Доли тиров выпавшего кольца. */
+  /** Доли тиров выпавшего кольца (золотое и уникальное умножаются на уровень моба — RING_LEVEL_GATE). */
   ringTierW: { base: 0.7, gold: 0.25, legendary: 0.05 } as Record<RingTier, number>,
   /** Слотов колец у героя. */
   slots: 2,
 } as const;
+
+/**
+ * Золотое и уникальное кольцо: с 1-го уровня моба шанс нулевой, растёт линейно и к 53-му — как было.
+ * Обычное кольцо от уровня не зависит. Уровень — armorLevelMul (тот же гейт, что у брони).
+ */
+export const RING_LEVEL_GATE = { from: 1, full: 53 } as const;
 
 /** Камень: «str:3» — атрибут и уровень. */
 export type GemKey = string;
@@ -358,16 +365,21 @@ export function jewelOpFrom(act: string, id: string, idx: number, fuel?: string)
 export const JEWEL_ACTS = ["ringOn", "ringOff", "ringScrap", "ringFav", "ringScrapAll", "gemIn", "gemOut", "gemMerge", "gemMergeAll", "gemSplit"] as const;
 export type JewelAct = (typeof JEWEL_ACTS)[number];
 
-/** Что выпало с моба (или ничего): chanceMul — множитель шансов (элита/босс). */
-export function rollJewelDrop(chanceMul: number, ringMul = 1, rnd = Math.random): { gem?: GemKey; ring?: RingTier } {
+/**
+ * Что выпало с моба (или ничего): chanceMul — множитель шансов (элита/босс); level — уровень моба.
+ * Золотое и уникальное кольцо × уровень (RING_LEVEL_GATE), обычное — как было.
+ */
+export function rollJewelDrop(chanceMul: number, ringMul = 1, level: number = RING_LEVEL_GATE.full, rnd = Math.random): { gem?: GemKey; ring?: RingTier } {
   const out: { gem?: GemKey; ring?: RingTier } = {};
   if (rnd() < RING.gemChance * chanceMul) out.gem = gemKey(GEM_ATTRS[Math.floor(rnd() * GEM_ATTRS.length)], 1);
   if (rnd() < RING.ringChance * chanceMul * ringMul) {
-    let x = rnd();
-    out.ring = "base";
+    // Что не досталось золотому/уникальному на низком уровне, остаётся пустым (кольца нет).
+    const lv = armorLevelMul(level, RING_LEVEL_GATE);
+    const x = rnd();
+    let edge = 0;
     for (const t of RING_TIERS) {
-      x -= RING.ringTierW[t];
-      if (x < 0) {
+      edge += RING.ringTierW[t] * (t === "base" ? 1 : lv);
+      if (x < edge) {
         out.ring = t;
         break;
       }
