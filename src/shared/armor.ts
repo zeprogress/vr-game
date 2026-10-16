@@ -127,6 +127,11 @@ export function armorLevelMul(level: number, gate: { from: number; full: number 
   return Math.min(1, Math.max(0, (L - gate.from) / (gate.full - gate.from)));
 }
 
+/** Обычная часть: полный шанс на 1-м уровне, линейно падает и на 53-м — ноль (и дальше ноль). */
+export function armorBaseLevelMul(level: number): number {
+  return 1 - armorLevelMul(level, { from: 1, full: 53 });
+}
+
 /** Один аффикс части: стат и очки ролла (1..33). */
 export interface ArmorRoll {
   stat: ArmorStat;

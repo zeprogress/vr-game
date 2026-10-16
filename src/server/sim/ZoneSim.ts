@@ -5,7 +5,7 @@ import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { RAID } from "#shared/raid";
 import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
 import { DUN_MOB_CAMPS, dunProject, dunWorld, inDunRegion } from "#shared/dungeon";
-import { ARMOR_DROP, ARMOR_PARTS, armorGoldDropChance, armorLegendaryDropChance, armorLevelMul, ARMOR_LEVEL_GATE, rollArmor, type ArmorInstance } from "#shared/armor";
+import { ARMOR_DROP, ARMOR_PARTS, armorBaseLevelMul, armorGoldDropChance, armorLegendaryDropChance, armorLevelMul, ARMOR_LEVEL_GATE, rollArmor, type ArmorInstance } from "#shared/armor";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
 import { PLAGUE } from "#shared/classes2";
 import { catProject, inCatRegion } from "#shared/catacombs";
@@ -3819,7 +3819,8 @@ export class ZoneSim {
         }
       } else {
         // Обычный и элитный моб: обычная и золотая часть — два независимых шанса; золото реже в ARMOR_GOLD.dropDiv раз.
-        if (Math.random() < ARMOR_DROP[kind] * champMul) {
+        // Обычная часть: на 1-м уровне как есть, к 53-му падает до нуля (armorBaseLevelMul).
+        if (Math.random() < ARMOR_DROP[kind] * champMul * armorBaseLevelMul(m.eliteLevel)) {
           const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
           rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid()) });
         }
