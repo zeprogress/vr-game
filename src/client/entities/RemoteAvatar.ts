@@ -342,8 +342,8 @@ export class RemoteAvatar implements Hittable {
       new Vector3(0, 0.42, 0),
       nick,
       null,
-      // Ботам — уровень голубым, живым игрокам — золотым (по умолчанию).
-      isBotTag ? new Color3(0.42, 0.72, 1) : undefined,
+      // Уровень голубым — у живых игроков и ботов одинаково.
+      new Color3(0.42, 0.72, 1),
       isBotTag,
     );
     this.nameTag.showHp(); // зелёная полоска жизни под ником
