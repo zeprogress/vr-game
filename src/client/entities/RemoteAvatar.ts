@@ -342,7 +342,7 @@ export class RemoteAvatar implements Hittable {
       new Vector3(0, 0.42, 0),
       nick,
       null,
-      // Ботам — уровень голубым (у живых игроков плашка вообще не рисуется).
+      // Ботам — уровень голубым, живым игрокам — золотым (по умолчанию).
       isBotTag ? new Color3(0.42, 0.72, 1) : undefined,
       isBotTag,
     );
@@ -682,11 +682,9 @@ export class RemoteAvatar implements Hittable {
     this.wantKeyR = keyOf(this.wantR);
     this.skin = p.skin ?? 0;
     if (!this.isBot) this.nameTag.setPlatform(p.plat ?? 0);
-    // Уровень нужен всем (скорость анимации замаха), а плашку над головой с
-    // ним рисуем только ботам — как и раньше.
+    // Уровень и титул — над ником у всех: живых игроков и ботов (полоска опыта — только у ботов).
     const unspent = p.unspent > 0;
-    const tagChanged =
-      this.isBot && (p.level !== this.level || this.nick !== p.nick || unspent !== this.hasUnspent);
+    const tagChanged = p.level !== this.level || this.nick !== p.nick || unspent !== this.hasUnspent;
     this.level = p.level;
     this.hasUnspent = unspent;
     if (tagChanged) {
