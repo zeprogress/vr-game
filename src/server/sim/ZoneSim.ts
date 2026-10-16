@@ -3791,15 +3791,16 @@ export class ZoneSim {
       }
     } else if (m.kind !== "shard") {
       const elite = m.eliteName !== "";
-      // Золото — по уровню моба: с 1-го полный шанс, к 25-му падает до нуля.
-      const goldMul = levelFadeMul(m.eliteLevel, 1, 25);
+      // Золото — по уровню моба: с 1-го полный шанс, к 53-му падает до нуля.
+      const goldMul = levelFadeMul(m.eliteLevel, 1, 53);
       // Вожак — шанс оружия выше в QUEST.champ.dropMul раз (уникальное — только у вожаков лагерей).
       const champMul = m.champ ? QUEST.champ.dropMul : 1;
       // В катакомбах золотого оружия из мобов нет (только легендарное у элитных).
       // У боссов и мини-боссов (bossFight) золотого оружия нет — только уникальное.
       const goldChance = inCatRegion(m.x, m.z) || m.bossFight ? 0 : (elite ? DROP_CHANCE.eliteGold : DROP_CHANCE.regularGold) * goldMul * champMul * WEAPON_DROP_MUL;
       const own = Object.values(ELITE_MOBS).find((d) => d.model === m.model)?.legendaryChance;
-      const legendaryChance = elite && m.model ? (own ?? DROP_CHANCE.eliteLegendary) * champMul * UNIQUE_DROP_MUL : 0;
+      // Уникальное — наоборот: с 1-го уровня моба ноль, к 53-му — как есть (ARMOR_LEVEL_GATE.legendary).
+      const legendaryChance = elite && m.model ? (own ?? DROP_CHANCE.eliteLegendary) * champMul * UNIQUE_DROP_MUL * armorLevelMul(m.eliteLevel, ARMOR_LEVEL_GATE.legendary) : 0;
       const tier: WeaponTier | null =
         legendaryChance > 0 && Math.random() < legendaryChance
           ? "legendary"
