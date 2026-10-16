@@ -89,15 +89,15 @@ export const ARMOR_TIER_MUL: Record<ArmorTier, number> = { base: 1, gold: 1.2, l
 /**
  * Золото. Аффиксов у нагрудника и поножей — 1 или 2 (два с шансом twoChance); у перчаток и сапог — всегда 1.
  * dropDiv — во сколько раз золотая часть падает реже обычной (с обычного и элитного моба); у босса золото
- * заменяет обычную часть — тот же шанс ARMOR_DROP.boss, выпадает золотая. scrapMul — лом с золотой части ×.
+ * заменяет обычную часть — тот же шанс ARMOR_DROP.boss, выпадает золотая.
  */
-export const ARMOR_GOLD = { twoChance: 0.3, dropDiv: 2, scrapMul: 2 } as const;
+export const ARMOR_GOLD = { twoChance: 0.3, dropDiv: 2 } as const;
 
 /**
  * Уникальное. У нагрудника и поножей — 2 или 3 аффикса (3 с шансом threeChance); у остальных — 1. dropDiv — во сколько
- * раз реже золотой (тот же шанс от золота, у босса — ARMOR_DROP.boss / dropDiv). scrapMul — лом ×, вдвое больше золота.
+ * раз реже золотой (тот же шанс от золота, у босса — ARMOR_DROP.boss / dropDiv).
  */
-export const ARMOR_LEGENDARY = { threeChance: 0.5, dropDiv: 2, scrapMul: 4 } as const;
+export const ARMOR_LEGENDARY = { threeChance: 0.5, dropDiv: 2 } as const;
 const TWO_AFFIX_PARTS: readonly ArmorPart[] = ["chest", "legs"];
 
 /** Шанс золотой части за убийство: обычный и элитный моб — в dropDiv раз реже обычной; босс — ARMOR_DROP.boss (вместо обычной). */
@@ -184,11 +184,22 @@ export function armorQuality(a: ArmorInstance): number {
   return a.rolls.reduce((s, r) => s + r.pts, 0);
 }
 
-/** Лом за разбор: 1 + среднее очков аффикса / 11 — от 1 до 4 у обычной брони; у золотой ×ARMOR_GOLD.scrapMul. */
+/** Лом за один аффикс по тиру: от min при очках 1 до max при 33 (линейно, целое). Как ценник роллов: «1–4 за аффикс». */
+export const ARMOR_SCRAP_RANGE: Record<ArmorTier, readonly [number, number]> = {
+  base: [1, 4],
+  gold: [2, 8],
+  legendary: [4, 16],
+};
+
+/** Лом за разбор: сумма по аффиксам — каждый даёт ARMOR_SCRAP_RANGE своего тира, по очкам этого аффикса. */
 export function armorScrap(a: ArmorInstance): number {
-  const base = 1 + Math.round(armorQuality(a) / a.rolls.length / 11);
-  const mul = a.tier === "legendary" ? ARMOR_LEGENDARY.scrapMul : a.tier === "gold" ? ARMOR_GOLD.scrapMul : 1;
-  return base * mul;
+  const [lo, hi] = ARMOR_SCRAP_RANGE[a.tier];
+  let sum = 0;
+  for (const r of a.rolls) {
+    const p = Math.max(1, Math.min(ARMOR_POINTS_MAX, r.pts));
+    sum += Math.max(1, Math.round(lo + ((hi - lo) * (p - 1)) / (ARMOR_POINTS_MAX - 1)));
+  }
+  return sum;
 }
 
 /** Заточка одного аффикса idx (как ролл оружия): удача поднимает его очки на gain, не выше максимума. */
