@@ -826,15 +826,37 @@ export class Mob implements Hittable {
     const base = (MOB.bodyRadius * 1.75) / rig.nativeHeight;
     holder.scaling.setAll(base);
     // След модели для пятна-тени: полуширина и полудлина в координатах корня (без его масштаба и курса).
+    // Меряем по мировым bbox каждого меша, как и рост рига в models.ts: getHierarchyBoundingVectors
+    // на скиннутой модели врёт (вытягивал пятно по одной оси).
     {
       const sc0 = this.root.scaling.clone();
       const ry0 = this.root.rotation.y;
       this.root.scaling.setAll(1);
       this.root.rotation.y = 0;
       this.root.computeWorldMatrix(true);
-      const bv = holder.getHierarchyBoundingVectors(true);
-      this.footX = Math.max(0.05, (bv.max.x - bv.min.x) / 2);
-      this.footZ = Math.max(0.05, (bv.max.z - bv.min.z) / 2);
+      for (const n of this.root.getDescendants(false)) n.computeWorldMatrix(true);
+      let loX = Infinity;
+      let hiX = -Infinity;
+      let loZ = Infinity;
+      let hiZ = -Infinity;
+      for (const m of rig.meshes) {
+        if (m.getTotalVertices() === 0) continue;
+        m.refreshBoundingInfo({});
+        m.computeWorldMatrix(true);
+        const bb = m.getBoundingInfo().boundingBox;
+        loX = Math.min(loX, bb.minimumWorld.x);
+        hiX = Math.max(hiX, bb.maximumWorld.x);
+        loZ = Math.min(loZ, bb.minimumWorld.z);
+        hiZ = Math.max(hiZ, bb.maximumWorld.z);
+      }
+      if (Number.isFinite(hiX - loX) && hiX > loX && Number.isFinite(hiZ - loZ) && hiZ > loZ) {
+        // Пятно круглое: радиус — корень из площади следа (расставленные руки призрака и длинный дракон
+        // не растягивают тень), площадь следа сохраняем.
+        const fx = Math.max(0.05, (hiX - loX) / 2);
+        const fz = Math.max(0.05, (hiZ - loZ) / 2);
+        this.footX = Math.sqrt(fx * fz);
+        this.footZ = this.footX;
+      }
       this.root.scaling.copyFrom(sc0);
       this.root.rotation.y = ry0;
       this.root.computeWorldMatrix(true);
