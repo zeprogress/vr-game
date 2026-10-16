@@ -615,8 +615,7 @@ export class DungeonFx {
     // Полы, обрывы, потолки, стены построек, вода — по кускам «зона × материал».
     for (const part of dunGeometry()) {
       const m = this.customMesh(`dunGeo_${part.zone}_${part.mat}${part.walk ? "_walk" : ""}`, part.pos, part.idx, part.uv, part.col);
-      // Ходовые поверхности: свой материал без записи глубины (см. geoMat) — эффекты на ступенях не срезаются.
-      m.material = this.geoMat(part.mat, !!part.walk);
+      m.material = this.geoMat(part.mat);
       // Полы и ходовые поверхности (лестницы, мосты, помосты) — слой земли: круги эффектов поверх;
       // стены, обрывы, своды — мир.
       if (part.walk || part.mat === "floorStone" || part.mat === "floorRock") groundLayer(m);
@@ -812,14 +811,11 @@ export class DungeonFx {
     return m;
   }
 
-  /** walk — ходовая поверхность (лестница, мост, помост): без записи глубины, чтобы эффекты на ней не срезались ступенью. Герои за её краем могут просвечивать. */
-  private geoMat(key: DunGeoMat | "kitRock" | "metal" | "cloth" | "bone", walk = false): StandardMaterial {
-    const ck = walk ? `walk:${key}` : key;
-    let m = this.mats.get(ck);
+  private geoMat(key: DunGeoMat | "kitRock" | "metal" | "cloth" | "bone"): StandardMaterial {
+    let m = this.mats.get(key);
     if (m) return m;
     const scene = this.scene;
-    m = new StandardMaterial(`dunMat_${ck}`, scene);
-    if (walk) m.disableDepthWrite = true;
+    m = new StandardMaterial(`dunMat_${key}`, scene);
     m.maxSimultaneousLights = 6;
     m.backFaceCulling = false;
     m.twoSidedLighting = true;
@@ -905,7 +901,7 @@ export class DungeonFx {
         m.specularPower = 48;
       }
     }
-    this.mats.set(ck, m);
+    this.mats.set(key, m);
     return m;
   }
 
