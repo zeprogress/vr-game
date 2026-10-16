@@ -178,8 +178,11 @@ const RAID_ORDER = ["raidWide", "raidHero", "raidBoss", "raidTop", "raidHero"] a
 /** Скачок героя кадра за один кадр, м, — телепорт: камера режется, не ползёт. */
 const CAM_TELEPORT_JUMP = 3;
 const CAT_GATE_CAM = { back: 7, height: 3.4, ahead: 14, lookY: 1.3, follow: 1.6 } as const;
-/** Камера катакомб в комнате (и на супербоссе — так же, как в остальных): высота, отход, мобы рядом с героями. */
-const CAT_CAM = { height: 5.2, heightPerSpread: 0.22, backPerHeight: 1.1, mobNear: 9 } as const;
+/**
+ * Камера катакомб в комнате: высота, отход, мобы рядом с героями. На супербоссе высота и место те же,
+ * но кадр по нему: угол — чтобы влез весь рост босса от подошвы до макушки (bossFit — запас, доля роста).
+ */
+const CAT_CAM = { height: 5.2, heightPerSpread: 0.22, backPerHeight: 1.1, mobNear: 9, bossFit: 0.6 } as const;
 
 const CENTER = new Vector3(0, 0, 0);
 /** Обычный вертикальный угол обзора камеры спектатора, рад. */
@@ -542,6 +545,8 @@ export class SpectatorCamera {
   private catTopH = 6;
   /** Насколько кадр перешёл на супербосса (0 — обычный бой, 1 — только босс; сглажено). */
   private catTopInit = false;
+  /** Доля «супербосс в кадре» (0 — бой, 1 — супербосс): плавно, без рывков. */
+  private catTopBossMix = 0;
   /** Проводка через ворота: какой переход и где камера на оси коридора. */
   private catGateKey = "";
   private catGateS = 0;
@@ -866,6 +871,11 @@ export class SpectatorCamera {
           // Центр кадра — всегда внутри зала: камера не смотрит в стену и в проём коридора.
           [this.catTopC.x, this.catTopC.z] = catProject(this.catTopC.x, this.catTopC.z, [c.to], 3);
           const gy = ctx.groundY(this.catTopC.x, this.catTopC.z);
+          // Супербосс: рост из живой позы (от подошвы до макушки) — для кадра по высоте.
+          const bossM = c.final && c.bossId ? ctx.mobs.find((mm) => mm.id === c.bossId) : undefined;
+          const bossGy = bossM ? ctx.groundY(bossM.eye.x, bossM.eye.z) : 0;
+          const bossTop = bossM ? Math.max(2.5, (bossM.eye.y - bossGy) * 1.25) : 0;
+          this.catTopBossMix += ((bossM ? 1 : 0) - this.catTopBossMix) * k;
           // Как в изометрических ARPG: камера на середине высоты зала, под ~50° сверху-сбоку;
           // бой шире — чуть выше и дальше (но не выше свода).
           const height = Math.min(CAT_CEIL - 2, CAT_CAM.height + this.catTopH * CAT_CAM.heightPerSpread);
@@ -877,12 +887,16 @@ export class SpectatorCamera {
           // Только внутри зала (не в узком коридоре — там стены вплотную к камере).
           [px, pz] = catProject(px, pz, [c.to], 2);
           pos.set(px, gy + height, pz);
-          // Центр взгляда — пол боя.
-          tgt.set(this.catTopC.x, gy + 0.6, this.catTopC.z);
+          // Центр взгляда: обычно — пол боя; у супербосса — середина его роста.
+          const aimY = gy + 0.6 + (bossTop * 0.5 - 0.6) * this.catTopBossMix;
+          tgt.set(this.catTopC.x, aimY, this.catTopC.z);
           // Угол обзора — чтобы влез весь бой (от расстояния до дальнего края).
           const dist = Math.hypot(this.catTopC.x - px, this.catTopC.z - pz, height);
           const fovWide = 2 * Math.atan((this.catTopH + 2.5) / dist);
-          this.catFov = Math.max(0.9, Math.min(1.35, fovWide));
+          // Супербосс в кадре по высоте целиком: угол — по его росту (с запасом), не меньше, чем для боя.
+          const fovBoss = 2 * Math.atan((bossTop * CAT_CAM.bossFit + 0.5) / Math.hypot(this.catTopC.x - px, this.catTopC.z - pz, height - bossTop * 0.5));
+          const fovWant = Math.max(fovWide, fovBoss * this.catTopBossMix + fovWide * (1 - this.catTopBossMix));
+          this.catFov = Math.max(0.9, Math.min(1.35, fovWant));
           return;
         }
         break;
