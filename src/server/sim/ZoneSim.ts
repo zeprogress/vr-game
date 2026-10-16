@@ -5,7 +5,7 @@ import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { RAID } from "#shared/raid";
 import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
 import { DUN_MOB_CAMPS, dunProject, dunWorld, inDunRegion } from "#shared/dungeon";
-import { ARMOR_DROP, ARMOR_PARTS, armorGoldDropChance, armorLegendaryDropChance, armorLegendaryLevelMul, rollArmor, type ArmorInstance } from "#shared/armor";
+import { ARMOR_DROP, ARMOR_PARTS, armorGoldDropChance, armorLegendaryDropChance, armorLevelMul, ARMOR_LEVEL_GATE, rollArmor, type ArmorInstance } from "#shared/armor";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
 import { PLAGUE } from "#shared/classes2";
 import { catProject, inCatRegion } from "#shared/catacombs";
@@ -3823,12 +3823,13 @@ export class ZoneSim {
           const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
           rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid()) });
         }
-        if (Math.random() < armorGoldDropChance(kind) * champMul) {
+        // Золотая — с 25-го уровня моба (до него нет), к 53-му — как было (ARMOR_LEVEL_GATE).
+        if (Math.random() < armorGoldDropChance(kind) * champMul * armorLevelMul(m.eliteLevel, ARMOR_LEVEL_GATE.gold)) {
           const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
           rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "gold") });
         }
-        // Уникальная часть растёт с уровнем моба: с 1-го уровня — ноль, к 53-му — как было (armorLegendaryLevelMul).
-        if (Math.random() < armorLegendaryDropChance(kind) * champMul * armorLegendaryLevelMul(m.eliteLevel)) {
+        // Уникальная часть растёт с уровнем моба: с 1-го уровня — ноль, к 53-му — как было (ARMOR_LEVEL_GATE).
+        if (Math.random() < armorLegendaryDropChance(kind) * champMul * armorLevelMul(m.eliteLevel, ARMOR_LEVEL_GATE.legendary)) {
           const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
           rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "legendary") });
         }

@@ -111,16 +111,20 @@ export function armorLegendaryDropChance(kind: "regular" | "elite" | "boss"): nu
 }
 
 /**
- * Уникальная часть по уровню моба: на 1-м уровне её не бывает, к 53-му (кость жнеца) шанс растёт линейно
- * и на 53-м — полный (как было до этого правила). Обычный моб — уровень 1 (eliteLevel 0).
+ * Части брони по уровню моба: до `from` шанса нет, с `from` растёт линейно и с `full` (кость жнеца, 53) —
+ * полный шанс, как было до этого правила. Обычный моб — уровень 1 (eliteLevel 0).
  */
-export const ARMOR_LEGENDARY_LEVEL = { from: 1, full: 53 } as const;
+export const ARMOR_LEVEL_GATE = {
+  /** Золотая: с 25-го уровня. */
+  gold: { from: 25, full: 53 },
+  /** Уникальная: с 1-го уровня. */
+  legendary: { from: 1, full: 53 },
+} as const;
 
-/** Множитель шанса уникальной части по уровню моба: 0 на ARMOR_LEGENDARY_LEVEL.from, 1 с ARMOR_LEGENDARY_LEVEL.full и выше. */
-export function armorLegendaryLevelMul(level: number): number {
+/** Множитель шанса части по уровню моба: 0 до `from`, линейно до 1 на `full` и выше. */
+export function armorLevelMul(level: number, gate: { from: number; full: number }): number {
   const L = Math.max(1, level);
-  const { from, full } = ARMOR_LEGENDARY_LEVEL;
-  return Math.min(1, Math.max(0, (L - from) / (full - from)));
+  return Math.min(1, Math.max(0, (L - gate.from) / (gate.full - gate.from)));
 }
 
 /** Один аффикс части: стат и очки ролла (1..33). */
