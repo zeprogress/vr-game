@@ -1318,7 +1318,6 @@ if (ONLY.has("stuck")) {
       killed = true;
       const { RESPAWN } = await import("../src/shared/constants.ts");
       for (const b of bots) {
-        if (b.load !== "меч" && b.load !== "лук") continue;
         const ps: any = b.bot.state;
         const rt = (room as any).rt?.get(b.id);
         ps.hp = 0;
@@ -1392,6 +1391,7 @@ if (ONLY.has("stuck")) {
       const places = ((b.bot.state as any).__places ?? []).filter((x: number) => x >= b.postStart && x < b.postStart + 6).length;
       say(`  ${pad(b.load, 12)} после возрождения (6 с): ходьба — средняя ${f(walk.reduce((a: number, v: number) => a + v, 0) / Math.max(1, walk.length), 2)} м/с, макс ${f(Math.max(0, ...walk), 1)} м/с; телепорт (>20 м/с): ${b.post.length - walk.length} раз; перемещений умением ${places}`);
     }
+    if (b.spN) say(`  ${pad(b.load, 12)} перемещений умением за прогон: ${((b.bot.state as any).__places ?? []).length}`);
     if (b.spN) say(`  ${pad(b.load, 12)} скорость: средняя ${f(b.spSum / b.spN, 2)} м/с, макс ${f(b.spMax, 1)} м/с, выше 8 м/с: ${b.fast} раз (после смерти — ${b.resp}) из ${b.spN}`);
     if (b.episodes) anomalies.push(`лагерь ${campType}: ${b.load} застревал ${b.episodes} раз (до ${f(b.worst, 1)} с)`);
   }
