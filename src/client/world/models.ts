@@ -86,6 +86,8 @@ export const MODELS = {
   monMoonAvatar: "/models/gen/MoonAvatar.glb",
   // Костяной жнец 53 ур. (подземелье): скелет в броне со щитом и мечом, art/build/Skeleton_rig.blend → SkeletonShield.glb.
   monSkeletonReaver: "/models/gen/SkeletonShield.glb",
+  // Паук 60 ур. (подземелье): art/build/Spyder_rig.blend → Spider.glb (prep, палитра 6, клипы Idle/Walk/Run/Attack/HitReact/Death).
+  monSpider: "/models/gen/Spider.glb",
 } as const;
 
 export type ModelName = keyof typeof MODELS;

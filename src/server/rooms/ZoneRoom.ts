@@ -80,7 +80,7 @@ import {
   type AutoGoMsg,
 } from "#shared/net/messages";
 import { ADMIN_NICK, NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL } from "#shared/constants";
-import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, mobArmorBits, type CatDefense } from "#shared/mobs";
+import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, mobArmorBits, type CatDefense } from "#shared/mobs";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
 import { skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
 import { RaidFight, type RaidHost } from "./raidFight";
@@ -10183,6 +10183,7 @@ export class ZoneRoom extends Room<ZoneState> {
           this.addDanger(f.x, f.z, f.r + 0.6, (f.d ?? 1) + 0.2, f.k === "leapMark" && inDunRegion(f.x, f.z));
         // Ледяной круг (ледяной демон, Лунный аватар) — тоже выбегают.
         if (f.k === "freezeMark") this.addDanger(f.x, f.z, FREEZE.radius + 0.6, (f.d ?? 1) + 0.2);
+        if (f.k === "webMark") this.addDanger(f.x, f.z, WEB.radius + 0.6, (f.d ?? 1) + 0.2);
       }
       m.fx.length = 0;
     }

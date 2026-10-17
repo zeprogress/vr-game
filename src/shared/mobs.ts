@@ -197,6 +197,8 @@ export interface EliteMobDef {
   visLift?: number;
   /** Удар вблизи магический: броня от силы не гасит, защищает интеллект; фиолетовая вспышка. */
   magicMelee?: boolean;
+  /** Плетёт паутину: круг под героем (телеграф), герои в нём замедлены — см. WEB. */
+  web?: boolean;
   /** Опустить саму модель (клиент) на эту долю высоты тела — «летает ниже». */
   modelDrop?: number;
   /**
@@ -669,6 +671,14 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // (погоня ~6.8 м/с), бьёт часто и больно, с дистанции — прыжок-выпад (LEAP: круг-предупреждение, удар по
   // площади с оглушением). Модель: art/build/Skeleton_rig.blend → public/models/gen/SkeletonShield.glb
   // (клипы Idle/Walk/Run/Attack/HitReact/Death).
+  // Паук 60 ур. (подземелье): кусает ядом — магический удар, броня от силы его не гасит (магическая
+  // защита режет); плетёт паутину — круг под героем, в нём герой опутан и почти стоит (WEB).
+  spider: {
+    model: "monSpider", name: "Паук", blurb: "кусает ядом, опутывает паутиной", level: 60, kind: "slime",
+    hp: 14000, dmgMul: 18, xp: 8000000, scaleMul: 2.2, tint: null,
+    magicMelee: true, web: true, walksOnly: true, gait: true, noSquash: true, attackClip: "Attack",
+    attackCooldown: 1.4, meleeReach: 2.6,
+  },
   skeletonReaver: {
     model: "monSkeletonReaver", name: "Костяной жнец", blurb: "быстрый, сильные удары мечом, прикрывается щитом, магия режется на 20%, прыжок-выпад с оглушением", level: 53, kind: "slime",
     hp: 32000, dmgMul: 26, xp: 10000000, scaleMul: 2.2, tint: [0.72, 0.86, 1.0], // HP ×2 (2026-10-13): было 16000; тон кости — без красно-жёлтого
@@ -752,6 +762,19 @@ export const FREEZE = {
   /** Вместо оглушения — «Обморожение»: герои в круге замедлены на slowFrac на slowSec секунд. */
   slowSec: 4,
   slowFrac: 0.45,
+};
+
+/** Паук (EliteMobDef.web): паутина под героем — телеграф, потом круг опутывает: герои в нём
+ *  «в паутине» — замедлены почти до стояния (slowFrac) на slowSec секунд. Урон — слабее удара. */
+export const WEB = {
+  range: 14,
+  cooldown: 10,
+  /** Телеграф: круг на земле под героем, с. */
+  windup: 1.2,
+  radius: 3.5,
+  strikeMul: 0.8,
+  slowSec: 4,
+  slowFrac: 0.8,
 };
 
 /** Костяной вождь: костяные шипы из-под героев (см. EliteMobDef.spiker). */

@@ -129,7 +129,7 @@ import { noGuard, type BlockedBy } from "#shared/combat";
 import { AEGIS_NAME, aegisTier, bothHandsCls, FAV_MAX, ITEMS, sharpPctOfText, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
 import { sharpGlowTune } from "../items/sharpGlowTune";
 import { BOT, EVENT, PLAYER, POTION_CD, RESPAWN, SKILL, isAdminNick } from "#shared/constants";
-import { BLINK, BOSS, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, SPORE } from "#shared/mobs";
+import { BLINK, BOSS, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, WEB, SPORE } from "#shared/mobs";
 import { MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
 import { TOWN_MUSIC, BOSS_MUSIC, CATACOMBS_MUSIC, CATACOMBS_BOSS_MUSIC } from "../audio/playlist";
@@ -4138,6 +4138,14 @@ export class Game {
         break;
       case "freezeHit":
         this.skillFx.wraithPuff(x, y - 0.8, z, 1.2, true);
+        this.sfx.at({ x, y, z }, () => this.sfx.groundBash());
+        break;
+      case "webMark":
+        // Паук: паутина под героем — через d с опутает.
+        this.skillFx.stunBash(x, y, z, WEB.radius, d ?? WEB.windup);
+        break;
+      case "webHit":
+        this.skillFx.wraithPuff(x, y - 0.8, z, 1.0, true);
         this.sfx.at({ x, y, z }, () => this.sfx.groundBash());
         break;
       case "spikeMark":

@@ -3,7 +3,7 @@ import { QUEST } from "#shared/quests";
 import { AFFIX, BOW, COMBAT, DROP_CHANCE, WEAPON_DROP_MUL, UNIQUE_DROP_MUL, goldDropMulForLevel, WORLD, PLAYER } from "#shared/constants";
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { RAID } from "#shared/raid";
-import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
+import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, WEB, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
 import { DUN_MOB_CAMPS, dunProject, dunWorld, inDunRegion } from "#shared/dungeon";
 import { ARMOR_DROP, ARMOR_PARTS, armorBaseLevelMul, armorGoldDropChance, armorLegendaryDropChance, armorLevelMul, ARMOR_LEVEL_GATE, levelFadeMul, rollArmor, type ArmorInstance } from "#shared/armor";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
@@ -189,7 +189,7 @@ export interface PlayerHit {
 
 /** Событие моба для визуала у клиентов (ZoneRoom рассылает как MSG.act). */
 export interface MobFx {
-  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "spikeMark" | "spikeHit" | "chiefHeal" | "freezeMark" | "freezeHit" | "leapMark" | "leapHit" | "caltrops" | "burrowDive" | "burrowTrail" | "burrowMark" | "burrowHit" | "stormMark" | "stormHit" | "stormJump" | "ninjaSmoke" | "parryOn" | "parryHit" | "pierceShot";
+  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "spikeMark" | "spikeHit" | "chiefHeal" | "freezeMark" | "freezeHit" | "webMark" | "webHit" | "leapMark" | "leapHit" | "caltrops" | "burrowDive" | "burrowTrail" | "burrowMark" | "burrowHit" | "stormMark" | "stormHit" | "stormJump" | "ninjaSmoke" | "parryOn" | "parryHit" | "pierceShot";
   /** Радиус области, м (прыжок Скалолома, колючки). */
   r?: number;
   x: number;
@@ -414,6 +414,8 @@ export class Mob {
   readonly spiker: boolean;
   readonly healer: boolean;
   readonly freezer: boolean;
+  /** Паук: плетёт паутину (WEB) — круг под героем. */
+  readonly webber: boolean;
   /** 40 ур.: свой физический снаряд (Метатель копий, Шипохвост) — см. ZoneSim.shoot. */
   readonly shot: MobShot | null;
   /** 40 ур. Скалолом: прыжок на героя (LEAP) и ярость стаи (PACK_FRENZY). */
@@ -476,6 +478,10 @@ export class Mob {
   private freezeCd = 4;
   private freezeWindupT = 0;
   private freezeX = 0;
+  private webCd = 4;
+  private webWindupT = 0;
+  private webX = 0;
+  private webZ = 0;
   private freezeZ = 0;
   private chargeCd = 3;
   private chargeWindupT = 0;
@@ -575,7 +581,7 @@ export class Mob {
    * (рейд-босс и его копии) в это время не бьют вблизи и не стреляют — их поведение сохранено как есть.
    */
   private get castingNow(): boolean {
-    return this.sporeWindupT > 0 || this.blinkFadeT > 0 || this.pullWindupT > 0 || this.chargeWindupT > 0 || this.freezeWindupT > 0 || this.leapWindupT > 0 || this.stormT > 0;
+    return this.sporeWindupT > 0 || this.blinkFadeT > 0 || this.pullWindupT > 0 || this.chargeWindupT > 0 || this.freezeWindupT > 0 || this.webWindupT > 0 || this.leapWindupT > 0 || this.stormT > 0;
   }
 
   /**
@@ -715,6 +721,7 @@ export class Mob {
       spiker?: boolean;
       healer?: boolean;
       freezer?: boolean;
+      webber?: boolean;
       shot?: MobShot;
       leaper?: boolean;
       leapCooldown?: number;
@@ -800,6 +807,7 @@ export class Mob {
     this.spiker = opts.spiker ?? false;
     this.healer = opts.healer ?? false;
     this.freezer = opts.freezer ?? false;
+    this.webber = opts.webber ?? false;
     this.shot = opts.shot ?? null;
     this.leaper = opts.leaper ?? false;
     this.leapCooldown = opts.leapCooldown ?? LEAP.cooldown;
@@ -1628,6 +1636,36 @@ export class Mob {
         this.fx.push({ k: "freezeMark", x: np.x, z: np.z, d: FREEZE.windup });
       }
     }
+    // Паук: паутина под героем — телеграф, потом круг опутывает: герои в нём почти стоят (WEB).
+    if (this.webber) {
+      if (this.webCd > 0) this.webCd -= dt;
+      if (this.webWindupT > 0) {
+        this.webWindupT -= dt;
+        if (this.webWindupT <= 0) {
+          this.swing();
+          this.fx.push({ k: "webHit", x: this.webX, z: this.webZ });
+          for (const p of players) {
+            if (Math.hypot(p.x - this.webX, p.z - this.webZ) > WEB.radius) continue;
+            hits.push({
+              target: p.sessionId,
+              dmg: MOB.attackDamage * this.dmgMul * WEB.strikeMul,
+              fromX: this.webX,
+              fromZ: this.webZ,
+              projectile: false,
+              byMob: this.id,
+              slowSec: WEB.slowSec,
+              slowFrac: WEB.slowFrac,
+            });
+          }
+        }
+      } else if (chasing && np && !busy && this.webCd <= 0 && dist < WEB.range) {
+        this.webX = np.x;
+        this.webZ = np.z;
+        this.webWindupT = WEB.windup;
+        this.webCd = WEB.cooldown * (0.85 + Math.random() * 0.3);
+        this.fx.push({ k: "webMark", x: np.x, z: np.z, d: WEB.windup });
+      }
+    }
 
     // 40 ур. Скалолом: прыжок на героя — круг-предупреждение, бросок, удар по площади.
     if (this.leaper) {
@@ -2395,7 +2433,7 @@ export function eliteOpts(d: EliteMobDef): NonNullable<ConstructorParameters<typ
     splitSpeedMul: d.splitSpeedMul, splitReviveSec: d.splitReviveSec, splitXp: d.splitXp, splitChildXp: d.splitChildXp,
     sporeCaster: d.sporeCaster, blinker: d.blinker, lifesteal: d.lifesteal, meleeReach: d.meleeReach, attackCooldown: d.attackCooldown,
     speedMul: d.speedMul, dodge: d.dodge, regen: d.regen, puller: d.puller, charger: d.charger, reflector: d.reflector,
-    spiker: d.spiker, healer: d.healer, freezer: d.freezer, shot: d.shot, leaper: d.leaper, leapCooldown: d.leapCooldown, walksOnly: d.walksOnly, packFrenzy: d.packFrenzy,
+    spiker: d.spiker, healer: d.healer, freezer: d.freezer, webber: d.web, shot: d.shot, leaper: d.leaper, leapCooldown: d.leapCooldown, walksOnly: d.walksOnly, packFrenzy: d.packFrenzy,
     burrower: d.burrower, stormCaller: d.stormCaller, cloner: d.cloner, parry: d.parry, anchored: d.anchored,
   };
 }

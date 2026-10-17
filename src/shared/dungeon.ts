@@ -420,6 +420,11 @@ export const DUN_MOB_CAMPS: readonly { u: number; v: number; type: keyof typeof 
   { u: -18, v: -138, type: "skeletonReaver", count: 6, spread: 1.5 },
   { u: 20, v: -138, type: "skeletonReaver", count: 6, spread: 1.5 },
   { u: 0, v: -146, type: "skeletonReaver", count: 6, spread: 1.5 },
+  // Пауки 60 ур.: Зал Кольца (F) — по кольцу вокруг светящегося провала (провал r≈11, кольцо до r≈34;
+  // центр не берём — упадут), и площадка моста (C) на опоре посередине.
+  { u: 0, v: 10, type: "spider", count: 3, spread: 2 },
+  { u: -20, v: -10, type: "spider", count: 3, spread: 2 },
+  { u: 0, v: -80, type: "spider", count: 2, spread: 3 },
 ];
 
 // ---------------------------------------------------------------------------
