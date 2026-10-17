@@ -2,7 +2,7 @@ import { CAMPFIRE, EVENT } from "./constants";
 import type { IconKey } from "./icons";
 import { FX_RGB, rgbHex, type FxColor } from "./look";
 import { SCROLL } from "./shop";
-import { ABYSS, PLAGUE, SMOKE } from "./classes2";
+import { ABYSS, SMOKE } from "./classes2";
 
 /**
  * Баффы героя — ОДНА таблица на всё: значок и строка в списке баффов (рамка
@@ -64,7 +64,7 @@ export const BUFFS: Record<BuffId, BuffDef> = {
   // ---- 🧪 умения ассасина: видно, что умение работает ----
   plague: {
     name: "Чумной клинок",
-    desc: `удары отравляют (до ${PLAGUE.maxStacks} стаков, на ${PLAGUE.maxStacks} — взрыв яда)`,
+    desc: "удары отравляют",
     icon: "s.plague",
     color: "poison",
     shape: "sword",
