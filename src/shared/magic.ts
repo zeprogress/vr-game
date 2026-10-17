@@ -1,6 +1,6 @@
 import { AFFIX, PROGRESSION } from "./constants";
 import { levelGain } from "./levelGain";
-import { ATTR2, attrOf, invested } from "./attrs2";
+import { ATTR2, attrOf, invested, magicResistBase } from "./attrs2";
 import { ringResist } from "./jewels";
 import { armorBonus } from "./armor";
 
@@ -127,8 +127,7 @@ export function manaRegenFor(a: MagicAttrs): number {
 
 /** Доля магического урона (и снарядов магов), которую гасит МДР: max·n/(n+K). */
 export function magicResistFrac(a: MagicAttrs): number {
-  const n = invested(attrOf(a, "wis"));
-  const base = (ATTR2.wis.resistMax * n) / (n + ATTR2.wis.resistK);
+  const base = magicResistBase(a);
   // Надетые кольца (PlayerState.gb.rings, shared/jewels.ts): по RING.mres каждое, множатся.
   const rings = (a as { gb?: { rings?: number } }).gb?.rings ?? 0;
   const withRings = rings > 0 ? 1 - (1 - base) * (1 - ringResist(rings)) : base;

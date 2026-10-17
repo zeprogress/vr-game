@@ -1,27 +1,32 @@
-import { MELEE, PROGRESSION } from "./constants";
-import { MAGIC } from "./magic";
-import { attrOf, invested } from "./attrs2";
-import { armorBonus } from "./armor";
-import {
-  agiTempo2,
-  ATTR2,
-  castTempo2,
-  dodge2,
-  levelGain,
-  magicResist2,
-  maxHp2,
-  moveSpeed2,
-  WEAPONS2,
-  DUAL,
-  physArmor2,
-  physPower2,
-  physTempo2,
-  pointsAt,
-  stepCost,
-  type AttrsIn,
-} from "./classes2";
+import { PROGRESSION } from "./constants";
+import { ATTR2 } from "./attrs2";
+import { pointsAt, stepCost } from "./classes2";
 
-export { levelGain };
+/**
+ * Формулы боя живут в classes2.ts — единый источник для боя (клиент и сервер), башни, ботов и
+ * сводки баланса. Здесь они только переэкспортируются под прежними именами, чтобы импорты не менялись.
+ */
+export {
+  armorFrac,
+  arrowDamageFor,
+  arrowSpeedBonusFor,
+  attackSpeedFor,
+  castSpeedFor,
+  dodgeChance,
+  heroAttackInterval,
+  hpRegenFrac,
+  holdsOneItem,
+  maxHpFor,
+  meleeAnimRate,
+  meleeSpeedFor,
+  moveSpeedFor,
+  staffCastInterval,
+  swordDamageFor,
+  weaponDamageBase,
+  weaponDmgFromLevel,
+} from "./classes2";
+export type { AttackWeapon } from "./classes2";
+export { levelGain } from "./levelGain";
 
 /**
  * Прогресс героя — «Классы 2.0» (формулы в classes2.ts):
@@ -109,145 +114,6 @@ export function killXp(mobLevel: number, level: number, boss = false): number {
 export function atMaxLevel(level: number): boolean {
   return level >= PROGRESSION.maxLevel;
 }
-
-// ---- производные величины (тонкие обёртки над classes2) ----
-
-/**
- * В руках ОДИН предмет — уворот выше (см. dodgeChance). Одна рука пуста, или
- * обе держат один и тот же двуручник (лук/посох/копьё/молот: клиент сообщает
- * его сразу в обеих руках). Два меча/кинжала или оружие со щитом — не один.
- */
-export function holdsOneItem(leftCls: string, rightCls: string): boolean {
-  if (leftCls === "" || rightCls === "") return true;
-  return leftCls === rightCls && (leftCls === "bow" || leftCls === "staff" || leftCls === "spear" || leftCls === "hammer");
-}
-
-/**
- * Регенерация здоровья от ТЕЛ — доля МАКС. HP в секунду, работает и в бою
- * (вдобавок к PLAYER_HP.regen вне боя). Ролл щита «Регенерация» — сверху.
- */
-export function hpRegenFrac(a: AttrsIn): number {
-  // Регенерация от брони — складывается с телосложением (доля макс. HP в секунду).
-  return invested(attrOf(a, "con")) * ATTR2.con.regen + armorBonus(a, "regen");
-}
-
-/** Доля урона, гасимая физ. бронёй (ТЕЛ). */
-export function armorFrac(a: AttrsIn): number {
-  // Физ. защита брони (shared/armor.ts) множится с бронёй от телосложения.
-  return 1 - (1 - physArmor2(a)) * (1 - armorBonus(a, "physDef"));
-}
-
-/** Шанс увернуться от любой атаки (УДЧ); один предмет в руках — выше; кинжал в руке — врождённый уворот ассасина. */
-export function dodgeChance(a: AttrsIn, oneHanded: boolean, dagger = false): number {
-  return dodge2(a, oneHanded, dagger);
-}
-
-/** Базовый множитель физ. урона от уровня (без атрибута и тира оружия). */
-export function weaponDmgFromLevel(level: number): number {
-  return 1 + levelGain(level, PROGRESSION.perLevel.weaponDmg);
-}
-
-/** Итоговый базовый множитель физ. урона: уровень × СИЛ. Тир оружия — отдельно. */
-export function weaponDamageBase(level: number, a: AttrsIn): number {
-  return physPower2(level, a);
-}
-
-/** Мягкое затухание прироста: вначале ≈g, дальше растёт всё медленнее, но БЕЗ потолка. */
-function softGain(g: number, s: number): number {
-  return g > 0 ? s * Math.log(1 + g / s) : g;
-}
-/** Сила затухания общего темпа (меньше — сильнее гасит на высоких уровнях). */
-const ATK_SOFT = 1.8;
-/** Затухание темпа мечника — сильнее общего: на высоких уровнях не «пропеллер». */
-const MELEE_SOFT = 1.0;
-/** Доля прироста темпа ближнего боя: от уровня — половина, от ЛОВ — полностью (2026-10-02: было тоже половина и под затуханием). */
-const MELEE_LEVEL_SHARE = 0.5;
-const MELEE_AGI_SHARE = 1;
-
-const START: AttrsIn = { str: 1, agi: 1, int: 1, con: 1, luc: 1, wis: 1 };
-
-/** Темп физ. атак дальнего боя (лук): уровень × ЛОВ. */
-export function attackSpeedFor(level: number, a: AttrsIn = START): number {
-  return physTempo2(level, a, ATK_SOFT);
-}
-
-/** Совместимость: темп атаки только от уровня (где атрибуты неизвестны, напр. чужой аватар). */
-export function attackSpeedFromLevel(level: number): number {
-  return attackSpeedFor(level);
-}
-
-/**
- * Темп атаки БЛИЖНЕГО боя (меч/кинжал/копьё/молот/кулак) — приглушённый:
- * от прироста за уровень — MELEE_LEVEL_SHARE со своим, более сильным
- * затуханием; от ЛОВ — MELEE_AGI_SHARE (линейно, см. agiTempo2).
- */
-export function meleeSpeedFor(level: number, a: AttrsIn = START): number {
-  const lvl = attackSpeedFor(level, START);
-  return (1 + softGain((lvl - 1) * MELEE_LEVEL_SHARE, MELEE_SOFT)) * agiTempo2(a, MELEE_AGI_SHARE);
-}
-
-/** Оружие с паузой между атаками (посох — своя формула staffCastInterval). */
-export type AttackWeapon = "sword" | "dagger" | "spear" | "hammer" | "bow" | "fist";
-
-/**
- * Пауза между атаками героя, с — ОДНА для всех: ПК, телефон, VR (предел сервера) и боты
- * (2026-10-05: раньше у ПК меч бил в 1.8, лук — в 2.3 раза чаще ботов и телефона).
- * База — профиль оружия (WEAPONS2.*.interval), темп — уровень и ЛОВ; `mul` — ролл
- * «скорость атаки» × клич × рывок; два кинжала бьют по очереди — чаще.
- */
-export function heroAttackInterval(weapon: AttackWeapon, level: number, a: AttrsIn, mul = 1, dualPair = false): number {
-  if (weapon === "bow") return WEAPONS2.bow.interval / (attackSpeedFor(level, a) * mul);
-  if (weapon === "fist") return MELEE.cooldown / (meleeSpeedFor(level, a) * mul);
-  // Пара клинков (два кинжала / два меча) — руки чередуются, бьют чаще (DUAL).
-  const dual = dualPair && (weapon === "dagger" || weapon === "sword") ? DUAL.tempo : 1;
-  return WEAPONS2[weapon].interval / dual / (meleeSpeedFor(level, a) * mul);
-}
-
-/**
- * Пауза между огнешарами посоха, с: откат огнешара ÷ (скорость каста × `mul` —
- * ролл «скорость атаки», клич). ОДНА для игрока (клиент и проверка сервера),
- * бота, героя башни и окна характеристик (2026-10-03: бот кастовал по своей
- * паузе 2.2 с от ЛОВ — вдвое реже игрока на ПК).
- */
-export function staffCastInterval(level: number, a: AttrsIn, mul = 1): number {
-  return MAGIC.firebolt.cooldown / (castSpeedFor(level, a) * mul);
-}
-
-/** Скорость каста (посох, откат заклинаний): уровень × МДР. */
-export function castSpeedFor(level: number, a: AttrsIn = START): number {
-  return castTempo2(level, a);
-}
-
-/** Скорость проигрывания клипа замаха — быстрее темпа боя, чтобы клип успевал. */
-export function meleeAnimRate(level: number, a: AttrsIn = START): number {
-  return 1.5 * meleeSpeedFor(level, a);
-}
-
-export function maxHpFor(level: number, a: AttrsIn): number {
-  return maxHp2(level, a);
-}
-
-/** Урон мечом (базовый удар на 1 ур. = 1). Совместимость имени. */
-export function swordDamageFor(level: number, a: AttrsIn): number {
-  return weaponDamageBase(level, a);
-}
-
-export function moveSpeedFor(level: number, a: AttrsIn): number {
-  return moveSpeed2(level, a);
-}
-
-/** Добавка к скорости стрелы, м/с — небольшая, от уровня. */
-export function arrowSpeedBonusFor(level: number): number {
-  return Math.max(0, Math.floor(level) - 1) * PROGRESSION.arrowSpeedPerLevel;
-}
-
-/** Урон стрелы: 1.75 × физ. урон (СИЛ, как у всего физического оружия). Тир лука — отдельно. */
-export function arrowDamageFor(level: number, a: AttrsIn): number {
-  return WEAPONS2.bow.dmg * physPower2(level, a); // профиль лука — единый источник (было 1.75 вписано тут)
-}
-
-/** Магзащита (МДР) — реэкспорт для удобства. */
-export { magicResist2 as magicResistFor };
 
 // ---- изменения ----
 

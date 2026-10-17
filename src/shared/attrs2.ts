@@ -26,6 +26,18 @@ export function invested(v: number): number {
   return Math.max(0, v - ATTR2.start);
 }
 
+/** Доля физ. урона, которую гасит броня от ТЕЛ (без брони-предметов — её добавляет armorFrac). */
+export function physArmorBase(a: object): number {
+  const n = invested(attrOf(a, "con"));
+  return (ATTR2.con.armorMax * n) / (n + ATTR2.con.armorK);
+}
+
+/** Доля магического урона, которую гасит МДР (без колец и магической брони — их добавляет magicResistFrac). */
+export function magicResistBase(a: object): number {
+  const n = invested(attrOf(a, "wis"));
+  return (ATTR2.wis.resistMax * n) / (n + ATTR2.wis.resistK);
+}
+
 /**
  * Атрибут героя с прибавкой от камней в надетых кольцах (поле `gb` у PlayerState, считает
  * shared/jewels.ts). Все формулы характеристик читают атрибуты только так — прибавка видна везде.

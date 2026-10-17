@@ -12,7 +12,7 @@ import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 
 import { SHIELD } from "#shared/constants";
 import { ELITE_MOBS, MOB, type EliteMobDef } from "#shared/mobs";
-import { MAGIC } from "#shared/magic";
+import { MAGIC, magicPowerFor } from "#shared/magic";
 import {
   ATTR2,
   ATTRS,
@@ -24,7 +24,6 @@ import {
   SKILLS2,
   STAFF_SPLASH,
   autoBuild,
-  magicPower2,
   pointsAt,
   spentOn,
   stepCost,
@@ -559,7 +558,7 @@ export async function build(ctx: LabCtx): Promise<void> {
       }
       case "massHeal": {
         heroBusy = playHero("onehanded", false, 1);
-        const heal = magicPower2(level, attrs) * (MAGIC.heal.baseHeal + 0.7 * MAGIC.heal.healPerCharge) * 1.5;
+        const heal = magicPowerFor(level, attrs) * (MAGIC.heal.baseHeal + 0.7 * MAGIC.heal.healPerCharge) * 1.5;
         heroHeal(heal);
         ring(hpos, sk.radius, "#6fe08a", 0.9);
         break;
