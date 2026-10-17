@@ -228,7 +228,7 @@ const CSS = `
 .ov-cat .c { display:flex; gap:.6vw; margin:.25vh 0; }
 .ov-cat .c i { font-style:normal; font-weight:800; color:#ffd66b; min-width:8.2vw; white-space:nowrap; }
 .ov-cat .c span { opacity:.85; }
-.ov-cq { left:50%; bottom:10vh; transform:translateX(-50%); width:32vw; text-align:center; font-size:1.8vh; }
+.ov-cq { left:50%; bottom:8.5vh; transform:translateX(-50%); width:32vw; text-align:center; font-size:1.8vh; }
 .ov-cq b { display:block; font-weight:800; font-size:2.2vh; color:#d6b8ff; letter-spacing:.02em; }
 .ov-cq .bar { height:1.1vh; margin:.7vh 0 .4vh; background:rgba(255,255,255,.14); border-radius:1vh; overflow:hidden; }
 .ov-cq .bar i { display:block; height:100%; background:linear-gradient(90deg,#9146ff,#c79bff); border-radius:1vh; }
