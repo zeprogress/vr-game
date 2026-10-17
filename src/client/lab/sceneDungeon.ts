@@ -3,6 +3,8 @@ import { Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
 import { DUN_X, DUN_Y0, DUN_Z } from "#shared/dungeon";
+import { dunGeometry } from "#shared/dungeonGeo";
+import { buildGlb } from "#shared/glbWriter";
 import { DungeonFx } from "../world/DungeonFx";
 import type { LabCtx } from "./main";
 
@@ -43,7 +45,34 @@ export function build(ctx: LabCtx): void {
   ui.section("Точка обзора");
   ui.select("Вид", names, names[0], go);
   ui.note("Колесо — ближе/дальше, мышь — облёт вокруг цели. Свет пока общий (этап 5).");
+  ui.section("Выгрузка");
+  ui.button("⬇ геометрия подземелья (.glb)", exportDungeonGlb);
+  ui.note("Чистая геометрия (как в игре, без LOD-дублей), сдвиг — как в мире. Текстуры в файл не входят: назначить в редакторе из public/textures/dungeon.");
   go(names[0]);
   ctx.onFrame((dt) => fx.update(dt, cam.position));
   (window as unknown as { __dun: unknown }).__dun = { fx, go, VIEWS };
+}
+
+/** Цвета материалов для выгрузки — ориентир в редакторе (текстуры в файл не входят). */
+const EXPORT_COLORS: Record<string, [number, number, number]> = {
+  floorStone: [0.45, 0.42, 0.38],
+  floorRock: [0.35, 0.33, 0.3],
+  cliff: [0.3, 0.28, 0.27],
+  masonry: [0.4, 0.38, 0.36],
+  wood: [0.4, 0.28, 0.18],
+  water: [0.1, 0.25, 0.35],
+  ceiling: [0.2, 0.19, 0.18],
+  dome: [0.18, 0.18, 0.2],
+};
+
+/** Скачать геометрию подземелья одним .glb: зоны и материалы — мешами, корень — там же, где в игре. */
+function exportDungeonGlb(): void {
+  const parts = dunGeometry().map((p) => ({ name: `${p.zone}:${p.mat}`, mat: p.mat, pos: p.pos, idx: p.idx, uv: p.uv, col: p.col }));
+  const glb = buildGlb(parts, { materials: EXPORT_COLORS, root: [DUN_X, DUN_Y0, DUN_Z] });
+  const url = URL.createObjectURL(new Blob([glb.buffer as ArrayBuffer], { type: "model/gltf-binary" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "dungeon.glb";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
