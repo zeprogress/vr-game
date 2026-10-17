@@ -655,7 +655,6 @@ function injectHudStyle(): void {
 .pc-hp .pc-bar-fill { background:linear-gradient(#4fd06a,#2a9a44); }
 .pc-mana { height:8px; margin-top:3px; }
 .pc-mana .pc-bar-fill { background:linear-gradient(#5b9cff,#2e62c8); }
-  background:#1d1a22; font-size:15px; line-height:18px; padding:0; }
 .pc-actionbar { position:absolute; left:50%; bottom:12px; transform:translateX(-50%); display:flex; flex-direction:column;
   align-items:center; gap:5px; pointer-events:auto; }
 .pc-catdps { position:absolute; left:14px; top:150px; width:270px; padding:6px 8px; border-radius:8px; background:rgba(14,13,19,.78);
