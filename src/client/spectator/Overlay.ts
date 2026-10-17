@@ -75,7 +75,7 @@ const CSS = `
 .ov-top { left:1.6vw; top:6.4vh; font-size:1.7vh; line-height:1.6; }
 .ov-top b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
   text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
-.ov-top div { display:flex; gap:.9vh; align-items:center; min-height:2.9vh; margin-left:-.4vh; }
+.ov-top div { display:flex; gap:.9vh; align-items:center; min-height:2.9vh; margin-left:-.8vh; }
 .ov-top .rk { flex:none; width:3vh; text-align:left; line-height:1; opacity:.7;
   font-size:1.7vh; font-variant-numeric:tabular-nums; }
 .ov-top .rk.medal { font-size:2.5vh; opacity:1; }
@@ -84,7 +84,7 @@ const CSS = `
 .ov-catboard { left:1.6vw; top:23vh; font-size:1.7vh; line-height:1.6; padding-top:1.2vh; }
 .ov-catboard b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
   text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
-.ov-catboard div { display:flex; gap:.9vh; align-items:center; min-height:2.9vh; margin-left:-.4vh; }
+.ov-catboard div { display:flex; gap:.9vh; align-items:center; min-height:2.9vh; margin-left:-.8vh; }
 .ov-catboard .rk { flex:none; width:3vh; text-align:left; line-height:1; opacity:.7;
   font-size:1.7vh; font-variant-numeric:tabular-nums; }
 .ov-catboard .rk.medal { font-size:2.5vh; opacity:1; }
