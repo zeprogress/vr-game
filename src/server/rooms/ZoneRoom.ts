@@ -8320,6 +8320,12 @@ export class ZoneRoom extends Room<ZoneState> {
     if (mob && !raidBoss && (ranged || kiter)) {
       [bot.vx, bot.vz] = leashCut(bot.vx, bot.vz, p.head.x, p.head.z, mob.homeX, mob.homeZ, MOB.leashDistance - BOT.campLeashMargin, strPhase(bot.id) < 0.5 ? -1 : 1);
     }
+    // Общий потолок: скорость бота не выше его бега, что бы ни поменяло направление (поводок, толпа, отскок).
+    const vNow = Math.hypot(bot.vx, bot.vz);
+    if (vNow > botSpeed && vNow > 0) {
+      bot.vx *= botSpeed / vNow;
+      bot.vz *= botSpeed / vNow;
+    }
     this.botStep(p, bot, dt);
 
     // В тушу босса (и любого моба) бот своим шагом не заходит — см. botStep/botBlockedByMobs;
