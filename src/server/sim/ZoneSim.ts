@@ -657,6 +657,11 @@ export class Mob {
    */
   private walkDir(chasing: boolean, dist: number, dx: number, dz: number): [number, number] {
     if (chasing) {
+      // Стрелок (webber): встаёт на дистанции выстрела и плюётся сгустками; подошёл герой вплотную — бьёт вблизи.
+      if (this.ranged) {
+        if (dist <= this.standDist() + 0.5) return this.meleeStep(dx, dz, dist, this.standDist());
+        return this.meleeStep(dx, dz, dist, WEB.range * 0.8);
+      }
       // Прыгун перед прыжком стоит на дистанции LEAP (дальше minDist, ближе maxDist), иначе прыжка не будет:
       // дальше — подходит, ближе minDist+1 — идёт к удару (не пятится).
       if (this.leaper && this.leapCd < 1.5 && dist >= LEAP.minDist + 1) {
