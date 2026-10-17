@@ -679,7 +679,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // защита режет); плетёт паутину — круг под героем, в нём герой опутан и почти стоит (WEB).
   spider: {
     model: "monSpider", name: "Паук", blurb: "кусает ядом, опутывает паутиной", level: 60, kind: "slime",
-    hp: 14000, dmgMul: 18, xp: 4000000, scaleMul: 1.1, tint: null,
+    hp: 14000, dmgMul: 27, xp: 4000000, scaleMul: 1.1, tint: null,
     magicMelee: true, quietMagic: true, web: true, walksOnly: true, gait: true, noSquash: true, attackClip: "Attack",
     attackCooldown: 0.6, meleeReach: 1.8, speedMul: 1.5, champScaleMul: 2.4,
   },
