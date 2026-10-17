@@ -34,6 +34,7 @@ import { isTwoHanded } from "#shared/hands";
 import { applySharpGlow } from "../items/weaponModels";
 import { terrainHeight } from "#shared/terrain";
 import { meleeAnimRate, atMaxLevel, xpToNext } from "#shared/progression";
+import { isSnapTeleport, snapshotStep } from "#shared/snapTiming";
 import type { BotEmote } from "#shared/net/messages";
 import { BOT_GEAR, GEAR_FREEZE, onGearTuneChanged } from "./botGear";
 
@@ -88,10 +89,6 @@ const INTERP_DELAY = 140;
 /** Если свежий снапшот старше — держим позу (не экстраполируем). */
 const HOLD_AFTER = 300;
 const BUFFER_MS = 700;
-/** Пауза между снапшотами дольше — ряд интерполяции начинаем заново (см. push снапшота). */
-const STALL_MS = 400;
-/** Скачок головы между снапшотами, м, — это телепорт, а не бег. */
-const TELEPORT_JUMP = 3;
 
 /** Клипы модели бота, которые реально используем (в паке их больше). */
 const BOT_CLIPS: readonly string[] = [
@@ -703,6 +700,7 @@ export class RemoteAvatar implements Hittable {
     this.xpBuff = !inTower && (p.scrollXpSecs ?? 0) > 0;
     this.skillBuffs = { plague: !inTower && (p.plagueSecs ?? 0) > 0, abyss: !inTower && (p.abyssSecs ?? 0) > 0, smoke: !inTower && (p.smokeSecs ?? 0) > 0 };
     this.stunned = p.stunned === 1;
+    const wasDead = this.dead;
     this.dead = p.dead === 1;
     this.theirPvp = p.pvp === 1;
     let last: Snap | undefined = this.buf[this.buf.length - 1];
@@ -721,12 +719,12 @@ export class RemoteAvatar implements Hittable {
     ) {
       return;
     }
-    // Долгая пауза (бот стоял, сервер не слал движения — например, 2 с в лагере после возрождения):
-    // старые метки уже в прошлом, и новые снапшоты зажмёт окно ниже у «сейчас» — интерполяция
-    // проиграет их пачкой, и бот бежит в разы быстрее. После паузы ряд начинаем заново.
-    // Телепорт (респавн, прыжок прицелом до 9 м) — не тащим модель интерполяцией: иначе камера,
-    // которая держит героя, ползёт к нему ~140 мс. Бег — до 5 м/с, за снапшот ~0.3 м.
-    if (last && (now - this.lastPushRaw > STALL_MS || Math.abs(h.x - last.head[0]) > TELEPORT_JUMP || Math.abs(h.z - last.head[2]) > TELEPORT_JUMP)) {
+    // Телепорт (респавн, рывок, прыжок прицелом) — ряд интерполяции начинаем заново, иначе модель
+    // поедет через всю карту. Пауза сама по себе — не телепорт: пройденное за подвисание кадра
+    // растягиваем по реальному времени (см. snapTiming.ts), а не сбрасываем буфер (сброс давал рывок).
+    const jumpM = last ? Math.hypot(h.x - last.head[0], h.z - last.head[2]) : 0;
+    const realGap = last && this.lastPushRaw > 0 ? now - this.lastPushRaw : 0;
+    if (last && isSnapTeleport(jumpM, realGap, wasDead && !this.dead)) {
       for (const old of this.buf) this.snapPool.push(old);
       this.buf.length = 0;
       last = undefined;
@@ -740,7 +738,7 @@ export class RemoteAvatar implements Hittable {
     if (last && this.lastPushRaw > 0) {
       const real = now - this.lastPushRaw;
       if (real > 8 && real < 500) this.snapDt += (real - this.snapDt) * 0.15;
-      t = last.t + this.snapDt;
+      t = last.t + snapshotStep(real, this.snapDt);
       const lo = now - this.snapDt * 1.5;
       const hi = now + this.snapDt * 0.5;
       if (t < lo) t = lo;
