@@ -23,6 +23,7 @@ import { LOADOUT } from "../config/loadout";
 import { buildZone } from "../world/Zone";
 import { PRESETS, type Quality } from "../config/quality";
 import { Overlay, type OverlayCtx } from "./Overlay";
+import type { OverlayFrame } from "#shared/net/overlayFrame";
 import { createEyeGloves, type EyeGloves } from "./EyeGloves";
 import { NetMobs } from "../combat/MobSystem";
 import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
@@ -1466,36 +1467,6 @@ export class Spectator {
       }
     }
 
-    if (this.relayOvl) {
-      // Шлём при изменении (не чаще 4 раз в с) и «пульс» раз в 2 с — чтобы
-      // оверлей, открывшийся позже, быстро получил кадр.
-      const now = performance.now();
-      const sp = [...this.speakingIds];
-      const statsSig = watchStats?.map((r) => `${r.label}:${r.value}`).join(",") ?? "";
-      const sig = `${watching}|${watchTitle}|${watchLevel}|${statsSig}|${watchInv}|${watchBuffs?.map((x) => x.name).join(",") ?? ""}|${this.cam.shotKind}|${targetHp ? Math.round(targetHp.frac * 100) + targetHp.name : ""}|${sp.join(",")}`;
-      if ((sig !== this.lastOvlSig && now - this.lastOvlAt > 150) || now - this.lastOvlAt > 2000) {
-        this.lastOvlSig = sig;
-        this.lastOvlAt = now;
-        this.net?.sendSpecCmd({
-          t: "ovl",
-          d: {
-            w: watching,
-            ws: watchStats,
-            wi: watchInv,
-            wb: watchBuffs,
-            wl: watchLevel,
-            wt: watchTitle,
-            sl: Spectator.shotLabel(this.cam.shotKind),
-            hp: targetHp
-              ? { f: targetHp.frac, c: targetHp.cur, m: targetHp.max, n: targetHp.name, b: targetHp.boss }
-              : null,
-            sp,
-          },
-        });
-      }
-      if (!this.overlay) return;
-    }
-
     const online: { nick: string; speaking: boolean; bot: boolean; plat: number }[] = [];
     st?.players.forEach((p, id) =>
       online.push({
@@ -1507,22 +1478,28 @@ export class Spectator {
     );
 
     // Строка сверху: идёт ивент — крупно; иначе крутим свежие изменения игры.
+    let ticker = "";
+    let tickerKind: "event" | "news" = "news";
     if (st && st.catPhase >= CAT_PHASE.run) {
       // Идут катакомбы — сверху пусто: зрителю и так видно, что это забег (баннеры, таблица урона).
-      this.overlay?.setTicker("", "event");
+      ticker = "";
+      tickerKind = "event";
     } else if (st?.catPhase === CAT_PHASE.gather) {
-      this.overlay?.setTicker("Идёт сбор в Катакомбы (!катакомбы)", "event");
+      ticker = "Идёт сбор в Катакомбы (!катакомбы)";
+      tickerKind = "event";
     } else if (st?.eventKind === 1) {
-      this.overlay?.setTicker("Идёт ивент — нашествие мобов (!event)", "event");
+      ticker = "Идёт ивент — нашествие мобов (!event)";
+      tickerKind = "event";
     } else if (st?.eventKind === 2) {
-      this.overlay?.setTicker("Идёт ивент — охота на элиту (!event)", "event");
+      ticker = "Идёт ивент — охота на элиту (!event)";
+      tickerKind = "event";
     } else if (st?.eventKind === 3) {
-      this.overlay?.setTicker("Идёт ивент — Охотничья башня (!event)", "event");
-    } else {
-      this.overlay?.setTicker("", "news");
+      ticker = "Идёт ивент — Охотничья башня (!event)";
+      tickerKind = "event";
     }
 
-    this.overlay?.update({
+    // Один кадр на оба оверлея: в самом спектраторе и на отдельной странице (overlay.html) — одинаковые панели.
+    const frame: OverlayFrame = {
       watching,
       watchStats,
       watchInv,
@@ -1538,7 +1515,22 @@ export class Spectator {
         st && st.catPhase >= CAT_PHASE.gather
           ? { gather: st.catPhase === CAT_PHASE.gather, hall: CAT_HALLS[catParseRoute(st.catRoute)[st.catHi] ?? 0].name, left: st.catLeft, party: st.catParty, final: st.catFinal === 1, lives: st.catLives }
           : null,
-    });
+      ticker,
+      tickerKind,
+    };
+    if (this.relayOvl) {
+      // Кадр уходит странице оверлея: при изменении (не чаще 5 раз в с) и «пульс» раз в 2 с — чтобы
+      // оверлей, открывшийся позже, быстро получил кадр.
+      const now = performance.now();
+      const sig = JSON.stringify(frame);
+      if ((sig !== this.lastOvlSig && now - this.lastOvlAt > 150) || now - this.lastOvlAt > 2000) {
+        this.lastOvlSig = sig;
+        this.lastOvlAt = now;
+        this.net?.sendSpecCmd({ t: "frame", d: frame });
+      }
+    }
+    this.overlay?.setTicker(ticker, tickerKind);
+    this.overlay?.update(frame);
     this.chatQuestSound(st);
   }
 

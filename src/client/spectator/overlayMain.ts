@@ -1,7 +1,8 @@
 import { showCatReport } from "../ui/CatReport";
 import { NetClient } from "../net/NetClient";
-import { Overlay, type OverlayCtx } from "./Overlay";
-import type { OvlCam, SpecCmd } from "#shared/net/messages";
+import { Overlay } from "./Overlay";
+import type { SpecCmd } from "#shared/net/messages";
+import type { OverlayFrame } from "#shared/net/overlayFrame";
 
 /**
  * Оверлей стрима отдельной страницей (`/overlay.html?spectator=КЛЮЧ`) — второй
@@ -18,15 +19,16 @@ const key = params.get("spectator");
 const ov = new Overlay();
 ov.setShown(false);
 
-let cam: OvlCam | null = null;
-let camAt = 0;
+/** Последний кадр из рендерящего спектатора (контекст панелей и строка сверху). */
+let frame: OverlayFrame | null = null;
+let frameAt = 0;
 let live = false;
 
 const net = new NetClient();
 net.onSpecCmd = (cmd: SpecCmd) => {
-  if (cmd.t === "ovl") {
-    cam = cmd.d;
-    camAt = performance.now();
+  if (cmd.t === "frame") {
+    frame = cmd.d;
+    frameAt = performance.now();
   } else if (cmd.t === "card") ov.showCard(cmd.title, cmd.sub ?? "", cmd.secs ?? 0);
   else if (cmd.t === "overlay") ov.setConfig(cmd.patch);
 };
@@ -34,6 +36,9 @@ net.onPickupFeed = (m) => ov.pushPickup(m.nick, m.item, m.tier);
 net.onBossEvent = (kind, by, loot, lootItems) => ov.bossBanner(kind, by, loot, lootItems);
 net.onLeaderboard = (rows) => ov.setLeaderboard(rows);
 net.onCatBoard = (rows) => ov.setCatBoard(rows);
+// Таблица урона в катакомбах и карточки катакомб — как в спектраторе.
+net.onCatStats = (m) => ov.setCatTop(m.rows);
+net.onCatacomb = (m) => ov.showCard(m.title, m.sub, m.secs ?? 7, m.loot);
 net.onCatReport = (m) => showCatReport(m, { delayMs: 3500, holdSec: 25 });
 net.onWorldEvent = (phase, name, _x, _z, loot) => {
   const hunt = name === "Охота";
@@ -73,49 +78,29 @@ net.onReconnected = () => {
   ov.setShown(true);
 };
 
+// Пустой кадр — когда рендерящая страница молчит: панели гаснут, а не застывают.
+const EMPTY_FRAME: OverlayFrame = {
+  watching: null,
+  shotLabel: "",
+  targetHp: null,
+  watchStats: null,
+  watchTitle: null,
+  watchLevel: null,
+  watchBuffs: null,
+  watchInv: null,
+  online: [],
+  chatQuest: null,
+  catacombs: null,
+  towerStatus: null,
+  ticker: "",
+  tickerKind: "news",
+};
+
 function tick(): void {
-  const now = performance.now();
-  const st = net.room?.state ?? null;
-  // Рендерящая страница молчит дольше 8 с (перезагрузка/закрыта) — «смотрим» гасим.
-  const c = cam && now - camAt < 8000 ? cam : null;
-  const speaking = new Set(c?.sp ?? []);
-
-  const online: { nick: string; speaking: boolean; bot: boolean; plat: number }[] = [];
-  let towerStatus: OverlayCtx["towerStatus"] = null;
-  st?.players.forEach((p, id) => {
-    online.push({ nick: p.nick, speaking: speaking.has(id), bot: id.startsWith("bot:"), plat: p.plat });
-    if (p.towerFloor > 0) {
-      towerStatus = {
-        heroNick: p.nick,
-        floor: p.towerFloor,
-        mobsLeft: p.towerMobsLeft,
-        mobsTotal: p.towerMobsTotal,
-        bossActive: p.towerBossActive === 1,
-        timeSec: p.towerTimeSec,
-      };
-    }
-  });
-
-  if (st?.eventKind === 1) ov.setTicker("Идёт ивент — нашествие мобов (!event)", "event");
-  else if (st?.eventKind === 2) ov.setTicker("Идёт ивент — охота на элиту (!event)", "event");
-  else if (st?.eventKind === 3) ov.setTicker("Идёт ивент — Охотничья башня (!event)", "event");
-  else ov.setTicker("", "news");
-
-  ov.update({
-    watching: c?.w ?? null,
-    watchStats: c?.ws ?? null,
-    watchInv: c?.wi ?? null,
-    watchBuffs: c?.wb ?? null,
-    watchLevel: c?.wl ?? null,
-    watchTitle: c?.wt ?? null,
-    shotLabel: c?.sl ?? "",
-    targetHp: c?.hp
-      ? { frac: c.hp.f, cur: c.hp.c, max: c.hp.m, name: c.hp.n, boss: c.hp.b }
-      : null,
-    online,
-    towerStatus,
-    chatQuest: st?.cqTitle ? { title: st.cqTitle, got: st.cqGot, need: st.cqNeed, secs: st.cqSecs } : null,
-  });
+  // Рендерящая страница молчит дольше 8 с (перезагрузка/закрыта) — гасим то, что она считала.
+  const f = frame && performance.now() - frameAt < 8000 ? frame : EMPTY_FRAME;
+  ov.setTicker(f.ticker, f.tickerKind);
+  ov.update(f);
 }
 
 // Оверлею хватает 4 кадров в секунду: анимации в нём — CSS.

@@ -2,7 +2,8 @@ import { glyph, itemIcon } from "#shared/icons";
 import { CAT_HELP } from "#shared/catacombs";
 import { ensureIconCss, iconHtml } from "../ui/icons";
 import type { OverlayPatch, LeaderboardRow, CatBoardRow, LootItem } from "#shared/net/messages";
-import type { HeroStatRow } from "#shared/heroStats";
+import type { OverlayCtx } from "#shared/net/overlayFrame";
+export type { OverlayCtx };
 import { TOWER } from "#shared/tower";
 import { AEGIS_NAME, ITEMS } from "#shared/items";
 
@@ -25,42 +26,6 @@ function fmtDmg(n: number): string {
 function fmtTime(sec: number): string {
   const s = Math.max(0, Math.round(sec));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
-
-export interface OverlayCtx {
-  /** Кого показываем: ник игрока / имя моба / null (обзор, путь). */
-  watching: string | null;
-  /** Подпись кадра для режима без цели («Обзор зоны», «Пролёт: …»). */
-  shotLabel: string;
-  /** HP цели 0..1 и абсолютные значения — или null, если у кадра нет цели. */
-  targetHp: { frac: number; cur: number; max: number; name: string; boss: boolean } | null;
-  /** Таблица характеристик игрока под ником в «смотрим» (см. #shared/heroStats). */
-  watchStats: HeroStatRow[] | null;
-  /** Титул героя (под ником) или null. */
-  watchTitle?: string | null;
-  /** Уровень героя — «N ур.» рядом с ником. */
-  watchLevel: number | null;
-  /** Баффы на герое в «смотрим»: иконка, название, что даёт, сколько осталось (с) и цвет. */
-  watchBuffs: { icon: string; name: string; desc: string; secs: number; color: string }[] | null;
-  /** Краткий инвентарь игрока — строка под полосой «HP цели» (только для игрока). */
-  watchInv: string | null;
-  /** Онлайн-игроки: ник и говорит ли сейчас (зелёный огонёк). */
-  /** plat: 0 — не пришло (боты), 1 — ПК, 2 — телефон, 3 — VR (см. PlayerState.plat). */
-  online: readonly { nick: string; speaking: boolean; bot: boolean; plat: number }[];
-  /** Квест чата (все боты вместе) или null. */
-  chatQuest?: { title: string; got: number; need: number; secs: number } | null;
-  /** Катакомбы: сбор/забег — панель с таймером и командами чата. */
-  catacombs?: { gather: boolean; hall: string; left: number; party: number; final: boolean; lives: number } | null;
-  /** Текущий забег «Охотничьей башни» — этаж/мобы/босс, или null если башня не активна. */
-  towerStatus: {
-    heroNick: string;
-    floor: number;
-    mobsLeft: number;
-    mobsTotal: number;
-    bossActive: boolean;
-    /** Секунд с начала забега. */
-    timeSec: number;
-  } | null;
 }
 
 interface Config {

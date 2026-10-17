@@ -1,10 +1,10 @@
+import type { OverlayFrame } from "./overlayFrame";
 import type { JewelAct, PcInvJewels } from "../jewels";
 import type { SkillId } from "../classes2";
 import type { GuardState, WeaponKind, BlockedBy } from "../combat";
 import type { ItemId, WeaponClass, WeaponTier } from "../items";
 import type { StatName } from "../progression";
 import type { PlayerMode } from "./schema";
-import type { HeroStatRow } from "../heroStats";
 
 /**
  * Код закрытия комнаты, когда сервер намеренно выгоняет клиента (зашли тем
@@ -575,26 +575,6 @@ export interface TowerMobsMsg {
 }
 
 /** Данные о кадре камеры для вынесенного оверлея (SpecCmd "ovl"). */
-export interface OvlCam {
-  /** Кого смотрим: ник/имя моба или null. */
-  w: string | null;
-  /** Характеристики героя (таблица label/value) / инвентарь (строка) под ником. */
-  ws: HeroStatRow[] | null;
-  wi: string | null;
-  /** Баффы героя в «смотрим» (см. OverlayCtx.watchBuffs). */
-  /** Уровень и атрибуты [сил, лов, инт] героя в «смотрим». */
-  wl?: number | null;
-  /** Титул героя в «смотрим». */
-  wt?: string | null;
-  wb?: { icon: string; name: string; desc: string; secs: number; color: string }[] | null;
-  /** Подпись кадра без цели. */
-  sl: string;
-  /** HP цели: доля, текущее, максимум, имя, босс ли — или null. */
-  hp: { f: number; c: number; m: number; n: string; b: boolean } | null;
-  /** id игроков, которые сейчас говорят по голосовой связи. */
-  sp: string[];
-}
-
 /** Команды дашборда стрима (этап 17 Ф5). */
 export type SpecCmd =
   /** Принудительно поставить кадр. `shot` — токен: overview / orbitBoss /
@@ -643,7 +623,7 @@ export type SpecCmd =
   | { t: "nowShot"; shot: string }
   /** Рендерящий спектатор -> страница оверлея (overlay.html): что сейчас в кадре.
    *  Оверлей вынесен в отдельный Browser Source и сам камеры не знает. */
-  | { t: "ovl"; d: OvlCam }
+  | { t: "frame"; d: OverlayFrame }
   /** Свободная камера (отдельное окно `?freecam=1`) -> все спектаторы: положение
    *  и угол обзора. `on: 0` — камера закрыта, спектаторы возвращаются в свой режим. */
   | { t: "free"; on: number; x?: number; y?: number; z?: number; tx?: number; ty?: number; tz?: number; fov?: number; sm?: number }
