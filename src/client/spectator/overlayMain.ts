@@ -131,19 +131,24 @@ setInterval(() => {
   if (live) tick();
 }, 250);
 
-// Новая сборка на сервере — перезагружаем страницу (как основной спектатор).
-let knownBundle: string | null = null;
+// Новая сборка на сервере — перезагружаем страницу. Сравниваем с файлами, которые загружены в ЭТОЙ вкладке
+// (а не с первой проверкой через 2 мин): иначе вкладка, открытая до выкладки, не обновлялась никогда.
+const assetsOf = (doc: Document): string =>
+  [...doc.querySelectorAll('script[src], link[rel="modulepreload"][href]')]
+    .map((el) => el.getAttribute("src") ?? el.getAttribute("href") ?? "")
+    .filter((u) => /\/assets\/.+\.js$/.test(u))
+    .sort()
+    .join(",");
+const ownAssets = assetsOf(document);
 setInterval(async () => {
   try {
-    const html = await fetch(`/?_=${Date.now()}`, { cache: "no-store" }).then((r) => r.text());
-    const b = html.match(/assets\/main-[\w-]+\.js/)?.[0] ?? null;
-    if (!b) return;
-    if (knownBundle && b !== knownBundle) location.reload();
-    knownBundle = b;
+    const html = await fetch(`/overlay.html?_=${Date.now()}`, { cache: "no-store" }).then((r) => r.text());
+    const fresh = assetsOf(new DOMParser().parseFromString(html, "text/html"));
+    if (ownAssets && fresh && fresh !== ownAssets) location.reload();
   } catch {
     /* сервер перезапускается — пробуем в следующий раз */
   }
-}, 120_000);
+}, 60_000);
 
 if (!key) {
   console.error("[overlay] нужен ?spectator=КЛЮЧ");
