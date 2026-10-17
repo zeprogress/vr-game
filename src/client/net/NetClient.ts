@@ -278,14 +278,18 @@ export class NetClient {
   private joinOpts(): {
     nick?: string;
     token?: string;
+    sid?: string;
     spectator?: string;
     stream?: boolean;
     adminPass?: string;
   } {
     if (this.spectatorKey !== null) return { spectator: this.spectatorKey };
     if (this.stream) return { nick: this.nick, stream: true, adminPass: this.adminPass };
-    return { nick: this.nick, token: this.token, adminPass: this.adminPass };
+    return { nick: this.nick, token: this.token, sid: this.sid, adminPass: this.adminPass };
   }
+
+  /** Сессия браузера (localStorage, та же, что у веб-инвентаря): подтверждённый кодом вход. */
+  sid = "";
 
   /** Войти невидимым спектатором для стрима. `true` — успех. */
   async connectSpectator(key: string): Promise<boolean> {

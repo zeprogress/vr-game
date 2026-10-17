@@ -2,11 +2,13 @@
 import colyseus from "colyseus";
 import http from "node:http";
 
-import { NICK_MAX } from "#shared/constants";
+import { NICK_MAX, isAdminNick } from "#shared/constants";
 import { ZoneRoom } from "./rooms/ZoneRoom";
 import { TowerRoom } from "./rooms/TowerRoom";
 import { InventoryRoom } from "./rooms/InventoryRoom";
 import { store, chatLog } from "./store";
+import { invHub } from "./invHub";
+import { LOGIN_CLOSED_TEXT, LOGIN_CODE_TEXT, loginVerdict } from "./loginRule";
 import { devChat } from "./devChat";
 
 const { Server } = colyseus;
@@ -30,6 +32,36 @@ const httpServer = http.createServer((req, res) => {
     }
     const body = JSON.stringify(chatLog.readRecent());
     res.writeHead(200, { "content-type": "application/json; charset=utf-8" }).end(body);
+    return;
+  }
+  // Страница входа: можно ли пустить этот ник в этом браузере. POST с телом (сессия не попадает в журнал
+  // nginx). Ответ: ok | admin | closed | code (+ код, который надо написать в чат Twitch от этого ника).
+  // Сам вход всё равно проверяет ZoneRoom.onAuth — этот путь только подсказывает, что показать игроку.
+  if (req.method === "POST" && req.url?.startsWith("/api/login")) {
+    let raw = "";
+    req.on("data", (c: Buffer) => {
+      raw += c;
+      if (raw.length > 2048) req.destroy();
+    });
+    req.on("end", () => {
+      const json = (status: number, body: unknown): void => {
+        res.writeHead(status, { "content-type": "application/json; charset=utf-8" }).end(JSON.stringify(body));
+      };
+      let b: { nick?: unknown; sid?: unknown };
+      try {
+        b = JSON.parse(raw) as { nick?: unknown; sid?: unknown };
+      } catch {
+        return json(400, { status: "closed", text: "Нет данных входа." });
+      }
+      const norm = (typeof b.nick === "string" ? b.nick : "").trim().toLowerCase().slice(0, NICK_MAX);
+      const sid = invHub.sid(typeof b.sid === "string" ? b.sid : "");
+      if (!norm || norm === "гость") return json(200, { status: "closed", sid, text: "Введи ник, под которым играешь в Twitch." });
+      if (isAdminNick(norm)) return json(200, { status: "admin", sid });
+      const v = loginVerdict(store.get(`nick:${norm}`), invHub.isAuthed(sid, norm));
+      if (v.ok) return json(200, { status: "ok", sid });
+      if (v.reason === "closed") return json(200, { status: "closed", sid, text: LOGIN_CLOSED_TEXT });
+      return json(200, { status: "code", sid, code: invHub.code(sid, norm), text: LOGIN_CODE_TEXT });
+    });
     return;
   }
   // Локальный стенд: сообщение «из чата» без Twitch (см. devChat.ts).

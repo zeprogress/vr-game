@@ -2,6 +2,45 @@ import type { NetClient } from "../net/NetClient";
 import { isAdminNick, NICK_MAX } from "#shared/constants";
 
 const NICK_KEY = "lastNick";
+/** Та же сессия браузера, что у веб-инвентаря: один раз подтверждённый код работает и там, и тут. */
+const SID_KEY = "zepInvSid";
+const GATE_POLL_MS = 3000;
+const GATE_MAX_MS = 10 * 60_000;
+
+/** Ответ сервера на вопрос «можно ли пустить этот ник в этом браузере» (POST /api/login). */
+interface GateReply {
+  status: "ok" | "admin" | "closed" | "code";
+  sid: string;
+  code?: string;
+  text?: string;
+}
+
+function readSid(): string {
+  try {
+    return localStorage.getItem(SID_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeSid(sid: string): void {
+  try {
+    localStorage.setItem(SID_KEY, sid);
+  } catch {
+    /* не запомнится — код придётся подтвердить снова */
+  }
+}
+
+async function askGate(nick: string, sid: string): Promise<GateReply> {
+  const r = await fetch("/api/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ nick, sid }),
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(`login gate ${r.status}`);
+  return (await r.json()) as GateReply;
+}
 
 export interface LoginResult {
   nick: string;
@@ -127,6 +166,11 @@ export function runLogin(
       hooks.requestPointerLock(); // синхронно, до await — см. requestPointerLock в LoginHooks
       playBtn.disabled = true;
       status.textContent = "Подключение…";
+      // Обычный вход (не стрим): сначала ник должен быть подтверждён кодом из чата Twitch.
+      if (!stream && !(await passLoginGate(nick(), status, net))) {
+        playBtn.disabled = false;
+        return;
+      }
       const ok = await net.connect(nick(), token, stream, passInput.value);
       if (ok) {
         void proceed();
@@ -147,6 +191,39 @@ export function runLogin(
       if (e.key === "Enter" && !playBtn.disabled) playBtn.click();
     });
   });
+}
+
+/**
+ * Вход по нику временно только с подтверждением из чата Twitch: создан через `!play`, и код со страницы
+ * написан в чат от этого ника. Пока код не подтверждён — показываем его и ждём. `true` — можно входить.
+ */
+async function passLoginGate(n: string, status: HTMLDivElement, net: NetClient): Promise<boolean> {
+  if (isAdminNick(n)) return true; // пароль администратора проверит сервер
+  const until = Date.now() + GATE_MAX_MS;
+  let sid = readSid();
+  for (;;) {
+    let g: GateReply;
+    try {
+      g = await askGate(n, sid);
+    } catch {
+      status.textContent = "Сервер недоступен — попробуй ещё раз";
+      return false;
+    }
+    sid = g.sid || sid;
+    writeSid(sid);
+    net.sid = sid;
+    if (g.status === "ok" || g.status === "admin") return true;
+    if (g.status === "closed") {
+      status.textContent = g.text ?? "Вход временно закрыт";
+      return false;
+    }
+    status.textContent = `Напиши в чат Twitch от ника «${n}» код: ${g.code ?? ""} — и вход откроется сам.`;
+    if (Date.now() > until) {
+      status.textContent = "Код не подтвердили за 10 минут — нажми «Играть» снова";
+      return false;
+    }
+    await new Promise((r) => setTimeout(r, GATE_POLL_MS));
+  }
 }
 
 function styleEl(): HTMLStyleElement {

@@ -48,6 +48,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   botActive?: boolean;
   /** Когда хозяин-ник последний раз писал в чат (мс с эпохи): таймер ухода бота переживает рестарты сервера. */
   lastChatAt?: number;
+  /** Герой создан через `!play` в чате Twitch — только такие входят на сайт, пока вход закрыт (loginRule.ts). */
+  viaPlay?: boolean;
   /** Собранное оружие-инстансы (каждое со своими роллами аффиксов) — весь склад персонажа. */
   weapons?: WeaponInstance[];
   /** Броня (shared/armor.ts): все части в сумке и что надето в каждом слоте (id части). */

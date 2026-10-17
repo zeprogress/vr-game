@@ -5,6 +5,7 @@ import { devChat } from "../devChat";
 import type { Client } from "colyseus";
 import type { IncomingMessage } from "node:http";
 import { ipOfRequest } from "../clientIp";
+import { LOGIN_CLOSED_TEXT, LOGIN_CODE_TEXT, loginVerdict } from "../loginRule";
 
 import {
   BallState,
@@ -1240,6 +1241,8 @@ const REDEEM_CAMERA_MS = 60_000;
 interface JoinOpts {
   nick?: string;
   token?: string;
+  /** Сессия браузера (localStorage) — для подтверждения входа кодом из чата. */
+  sid?: string;
   /** Ключ невидимого спектатора для стрима (этап 17). */
   spectator?: string;
   /** Страница диктора (voice.html): только голос в игру, свой ключ CASTER_KEY. */
@@ -4005,7 +4008,7 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     // Код входа в веб-инвентарь (4 цифры со страницы /inv?ник) — не болтовня бота.
     if (invHub.tryChatCode(norm, text)) {
-      this.reply(`@${nick} инвентарь открыт — можно надевать и разбирать ✓`);
+      this.reply(`@${nick} код принят — вход в игру и инвентарь открыты ✓`);
       return;
     }
     const parts = text.trim().split(/\s+/);
@@ -6217,6 +6220,8 @@ export class ZoneRoom extends Room<ZoneState> {
       return;
     }
     this.playCd.set(norm, now);
+    // Герой создан через !play — только такие (и с кодом из чата) пускаем на сайт, пока вход закрыт.
+    store.put(`nick:${norm}`, { viaPlay: true });
     this.spawnBot(nick, norm, true);
     const p = this.bots.get(norm)?.state;
     this.reply(`@${nick} твой герой вышел в мир, ур.${p?.level ?? 1}. !stop — убрать, !skin — сменить внешность.`);
@@ -10924,8 +10929,19 @@ export class ZoneRoom extends Room<ZoneState> {
   private towerCamAt = 0;
   private towerCamEye = true;
 
-  override onAuth(client: Client, _options: unknown, request?: IncomingMessage): boolean {
+  override onAuth(client: Client, options: JoinOpts | undefined, request?: IncomingMessage): boolean {
     this.ipBySession.set(client.sessionId, ipOfRequest(request));
+    // Обычный вход по нику: временно только для созданных через !play и с подтверждением кодом из чата
+    // (см. loginRule.ts). Спектатор, диктор и вход по ссылке стрима — свои пути, их не трогаем.
+    if (options?.spectator !== undefined || options?.caster !== undefined || options?.stream) return true;
+    const norm = normNick(options?.nick ?? "");
+    if (!norm || norm === "гость") throw new Error("Введи ник, под которым играешь в Twitch.");
+    if (isAdminNick(norm)) return true; // админ-вход проверяет пароль в onJoin
+    const v = loginVerdict(store.get(`nick:${norm}`), invHub.isAuthed(invHub.sid(options?.sid), norm));
+    if (!v.ok) {
+      console.log(`[login] отказ «${norm}» · ip ${this.ipBySession.get(client.sessionId) ?? "?"} · ${v.reason === "closed" ? "закрыто" : "нет кода"}`);
+      throw new Error(v.reason === "closed" ? LOGIN_CLOSED_TEXT : LOGIN_CODE_TEXT);
+    }
     return true;
   }
 
