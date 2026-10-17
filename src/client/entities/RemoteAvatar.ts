@@ -722,7 +722,8 @@ export class RemoteAvatar implements Hittable {
     // Телепорт (респавн, рывок, прыжок прицелом) — ряд интерполяции начинаем заново, иначе модель
     // поедет через всю карту. Пауза сама по себе — не телепорт: пройденное за подвисание кадра
     // растягиваем по реальному времени (см. snapTiming.ts), а не сбрасываем буфер (сброс давал рывок).
-    const jumpM = last ? Math.hypot(h.x - last.head[0], h.z - last.head[2]) : 0;
+    // Портал в подземелье (подземелье глубоко под землёй) меняет высоту на сотни метров — меряем в 3D.
+    const jumpM = last ? Math.hypot(h.x - last.head[0], h.y - last.head[1], h.z - last.head[2]) : 0;
     const realGap = last && this.lastPushRaw > 0 ? now - this.lastPushRaw : 0;
     if (last && isSnapTeleport(jumpM, realGap, wasDead && !this.dead)) {
       for (const old of this.buf) this.snapPool.push(old);
@@ -1062,7 +1063,7 @@ export class RemoteAvatar implements Hittable {
       this.smoothInit = true;
       return;
     }
-    const jump = Math.hypot(p.x - this._smoothPos.x, p.z - this._smoothPos.z);
+    const jump = Math.hypot(p.x - this._smoothPos.x, p.y - this._smoothPos.y, p.z - this._smoothPos.z);
     if (jump > BOT_POS_SNAP) {
       this._smoothPos.copyFrom(p); // респавн — догонять нечего
       return;
@@ -1203,8 +1204,11 @@ export class RemoteAvatar implements Hittable {
     }
 
     const p = this.root.position;
-    // Кап на скачок (телепорт/первый кадр) — иначе «бег» на ровном месте.
-    const inst = Math.min(12, Math.hypot(p.x - this._prevPos.x, p.z - this._prevPos.z) / Math.max(dt, 1e-3));
+    // Телепорт (портал в подземелье и обратно, возрождение, рывок): это не бег — темп ног не разгоняем.
+    const hop = Math.hypot(p.x - this._prevPos.x, p.y - this._prevPos.y, p.z - this._prevPos.z);
+    if (hop > BOT_POS_SNAP) this.planarSpeed = 0;
+    // Кап на скачок (первый кадр) — иначе «бег» на ровном месте.
+    const inst = hop > BOT_POS_SNAP ? 0 : Math.min(12, Math.hypot(p.x - this._prevPos.x, p.z - this._prevPos.z) / Math.max(dt, 1e-3));
     this._prevPos.copyFrom(p);
     this.planarSpeed += (inst - this.planarSpeed) * Math.min(1, dt * 8);
 
