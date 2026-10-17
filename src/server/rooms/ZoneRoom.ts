@@ -1535,10 +1535,10 @@ export class ZoneRoom extends Room<ZoneState> {
       seedRefresh: process.env.TWITCH_BROADCASTER_REFRESH ?? "",
       tokenFile: REDEEM_TOKEN_FILE,
       rules: redeemRules.rules,
-      onCommand: (login, command, reward) => {
+      onCommand: (login, command) => {
         // Служебная команда награды: камера на себя. true — выполнено, false — баллы вернутся.
         if (command === REDEEM_CAMERA_CMD) return this.redeemCamera(login);
-        this.reply(`🎁 @${login} — «${reward}»`);
+        // Про саму активацию в чат не пишем: Twitch уже показывает, что зритель получил награду.
         // Ульта за баллы: если сейчас не применится (герой мёртв, нет оружия, откат героя) — баллы вернутся.
         // Причину зритель получит в чате от самой ульты.
         if (command === "!ульта") {
