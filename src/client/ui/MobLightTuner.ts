@@ -112,7 +112,7 @@ export function mountMobLightTuner(): () => void {
   slider("maxLights", 0, 8, "1", () => MOB_LIGHT_TUNE.maxLights, (v) => (MOB_LIGHT_TUNE.maxLights = v));
 
   // Свет одной модели (MODEL_LIGHT): реалистичные модели art/models темнее палитр пака.
-  section("модель (свет вида)");
+  section("модель (свет и тень)");
   const modelOut = document.createElement("textarea");
   modelOut.readOnly = true;
   modelOut.style.height = "40px";
@@ -125,9 +125,11 @@ export function mountMobLightTuner(): () => void {
   const rows = document.createElement("div");
   box.appendChild(rows);
   const showModel = (): void => {
-    modelOut.value = `${pick.value}: { emissive: ${fmt(cur.emissive)}, diffuse: ${fmt(cur.diffuse)}, tex: ${fmt(cur.tex)} },`;
+    const shadow = cur.shadow === undefined ? "" : `, shadow: ${fmt(cur.shadow)}`;
+    modelOut.value = `${pick.value}: { emissive: ${fmt(cur.emissive)}, diffuse: ${fmt(cur.diffuse)}, tex: ${fmt(cur.tex)}${shadow} },`;
   };
-  const modelSlider = (label: string, key: "emissive" | "diffuse" | "tex", max: number): HTMLInputElement => {
+  // shadow — не записан у модели по умолчанию: без записи ползунок показывает 1 (как след модели).
+  const modelSlider = (label: string, key: "emissive" | "diffuse" | "tex" | "shadow", max: number): HTMLInputElement => {
     const line = document.createElement("div");
     line.className = "r";
     const lb = document.createElement("label");
@@ -139,9 +141,10 @@ export function mountMobLightTuner(): () => void {
     input.step = "any";
     const view = document.createElement("span");
     view.className = "v";
+    const val = (): number => cur[key] ?? 1;
     const sync = (): void => {
-      input.value = String(cur[key]);
-      view.textContent = fmt(cur[key]);
+      input.value = String(val());
+      view.textContent = fmt(val());
     };
     input.addEventListener("input", () => {
       cur[key] = Number(input.value);
@@ -155,9 +158,15 @@ export function mountMobLightTuner(): () => void {
     rows.appendChild(line);
     return input;
   };
-  const ins = [modelSlider("текстура", "tex", 4), modelSlider("diffuse", "diffuse", 3), modelSlider("emissive", "emissive", 1.5)];
+  const ins = [
+    modelSlider("текстура", "tex", 4),
+    modelSlider("diffuse", "diffuse", 3),
+    modelSlider("emissive", "emissive", 1.5),
+    modelSlider("тень", "shadow", 3),
+  ];
   pick.addEventListener("change", () => {
     Object.assign(cur, modelLight(pick.value));
+    cur.shadow = modelLight(pick.value).shadow; // у модели без записи тени Object.assign оставил бы прошлую
     for (const i of ins) (i as HTMLInputElement & { sync?: () => void }).sync?.();
     showModel();
   });

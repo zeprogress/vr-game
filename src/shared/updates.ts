@@ -12,6 +12,10 @@ export interface GameUpdate {
 
 export const UPDATES: readonly GameUpdate[] = [
   {
+    at: "2026-10-17 14:54",
+    items: ["Скалолом: тень под ним стала больше"],
+  },
+  {
     at: "2026-10-17 02:33",
     items: ["Катакомбы: камень стен — ещё крупнее, блоки около 1.6 м"],
   },

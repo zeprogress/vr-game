@@ -33,16 +33,21 @@ export const MOB_LIGHT_TUNE: MobLightTune = {
  * StandardMaterial обрезает свет до 1 ДО умножения на текстуру — модель не бывает ярче своей
  * текстуры, diffuse/emissive тут не помогут; поднимает только tex (Texture.level).
  * Живая подстройка — панель ?moblight=1 (раздел «модель»).
+ *
+ * shadow — множитель пятна под моделью (к следу модели; без записи — 1). Скалолом: пятно
+ * меньше, чем его след, — поднят на 1.3. Модель общая, поэтому пятно растёт и у боссов на
+ * этой модели (Громолом, Гор'Таал).
  */
 export interface ModelLight {
   emissive: number;
   diffuse: number;
   tex: number;
+  shadow?: number;
 }
 export const MODEL_LIGHT: Record<string, ModelLight> = {
   monBee: { emissive: 0.08, diffuse: 1.6, tex: 1 },
   monOrc: { emissive: 0.2, diffuse: 1.15, tex: 1 },
-  monStoneTroll: { emissive: 0, diffuse: 1, tex: 2 },
+  monStoneTroll: { emissive: 0, diffuse: 1, tex: 2, shadow: 1.3 },
   // Рейд-босс «Лунный аватар»: светится сам — лунный свет, а не освещённый камень.
   monMoonAvatar: { emissive: 0.75, diffuse: 1.1, tex: 1.6 },
   monBogBrute: { emissive: 0.3, diffuse: 1.2, tex: 1.8 },

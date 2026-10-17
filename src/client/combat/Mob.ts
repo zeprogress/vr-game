@@ -33,7 +33,7 @@ import type { RigInstance, ModelName } from "../world/models";
 import { HealthBar3D } from "../ui/HealthBar3D";
 import { difficultyRgb } from "../pc/difficulty";
 import { NameTag } from "../ui/NameTag";
-import { trackMobMaterial } from "./mobLightTune";
+import { modelLight, trackMobMaterial } from "./mobLightTune";
 import { daylightAt } from "../world/DayTime";
 import { LOADOUT } from "../config/loadout";
 import { sharedMobMaterial } from "./mobMaterials";
@@ -407,9 +407,6 @@ function lodSphere(scene: Scene, tint: readonly [number, number, number]): Mesh[
 /** Цвет языков: огонь и кровотечение (веер ножей). */
 const FLAME_FIRE = new Color3(1, 0.5, 0.12);
 const FLAME_BLOOD = new Color3(0.95, 0.05, 0.05);
-
-/** Пятно под мобом — по следу модели (1 = ровно след; пятно плотнее не делаем). */
-const SHADOW_FOOT_K = 1.0;
 
 export class Mob implements Hittable {
   /** ПК в третьем лице: плашки как в WoW (HP всегда, цвет уровня по опасности). null — как было. */
@@ -1063,11 +1060,13 @@ export class Mob implements Hittable {
     }
     // Пятно остаётся на земле, пока моб в прыжке — по нему видно высоту.
     if (!this.dead && inView) {
+      // Пятно — по следу модели (1 = ровно след); множитель модели — MODEL_LIGHT.shadow (панель ?moblight=1).
       const sc = this.scale;
+      const k = modelLight(this.modelName).shadow ?? 1;
       if (this.footX > 0) {
-        this.shadow.place(pos.x, pos.y, pos.z, this.footX * sc * SHADOW_FOOT_K, this.footZ * sc * SHADOW_FOOT_K, this.root.rotation.y);
+        this.shadow.place(pos.x, pos.y, pos.z, this.footX * sc * k, this.footZ * sc * k, this.root.rotation.y);
       } else {
-        this.shadow.place(pos.x, pos.y, pos.z, MOB.bodyRadius * sc, MOB.bodyRadius * sc, 0);
+        this.shadow.place(pos.x, pos.y, pos.z, MOB.bodyRadius * sc * k, MOB.bodyRadius * sc * k, 0);
       }
     }
     secAdd("mob.pos+view+shadow", sp);
