@@ -18,7 +18,8 @@ export class WebCocoonFx {
   private on = false;
   private t = 0;
 
-  constructor(scene: Scene, parent: TransformNode, y = 0.9) {
+  /** y — от корня аватара; корень стоит на высоте глаз, поэтому середина тела — ниже на ~0.8 м. */
+  constructor(scene: Scene, parent: TransformNode, y = -0.8) {
     this.node = new TransformNodeCtor("webCocoon", scene);
     this.node.parent = parent;
     this.node.position.y = y;

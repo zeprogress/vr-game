@@ -330,7 +330,7 @@ export class RemoteAvatar implements Hittable {
     this.root.rotationQuaternion = Quaternion.Identity();
     this.buffAura = new BuffOrbitFx(scene, this.root, -0.75);
     this.stunStars = new StunStarsFx(scene, this.root, 0.4);
-    this.webCocoon = new WebCocoonFx(scene, this.root, 0.9);
+    this.webCocoon = new WebCocoonFx(scene, this.root, -0.8);
 
     this.mat = new StandardMaterial(`avatarMat_${id}`, scene);
     this.mat.diffuseColor = colorFor(id);

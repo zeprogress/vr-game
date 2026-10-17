@@ -80,7 +80,7 @@ import {
   type AutoGoMsg,
 } from "#shared/net/messages";
 import { ADMIN_NICK, NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL } from "#shared/constants";
-import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, mobArmorBits, type CatDefense } from "#shared/mobs";
+import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, mobArmorBits, type CatDefense } from "#shared/mobs";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
 import { skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
 import { RaidFight, type RaidHost } from "./raidFight";
@@ -382,6 +382,9 @@ interface Runtime {
   slowFrac: number;
   /** Корень паутиной: до какой секунды (this.elapsed) герой не может бежать. */
   rootedUntil: number;
+  /** Паутина: стаки (1..WEB.maxStacks) и до какой секунды они живут. */
+  webStacks: number;
+  webStackUntil: number;
   /** Кровотечение: до какой секунды, урон в секунду, кто нанёс, накопитель тика. */
   bleedUntil: number;
   bleedDps: number;
@@ -6385,6 +6388,8 @@ export class ZoneRoom extends Room<ZoneState> {
       slowUntil: 0,
       slowFrac: 0,
       rootedUntil: 0,
+      webStacks: 0,
+      webStackUntil: 0,
       bleedUntil: 0,
       bleedDps: 0,
       bleedBy: "",
@@ -10528,7 +10533,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (heldShield?.inst) {
       dmg *= 1 - (magicMob || magicShot ? shieldMagDef(heldShield.inst) : shieldPhysDef(heldShield.inst));
     }
-    if (magicMob && dmg > 0 && !h.dot) {
+    if (magicMob && dmg > 0 && !h.dot && !this.sim.mobs.get(h.byMob ?? "")?.quietMagic) {
       this.broadcast(MSG.act, { k: "magicHit", id: h.target, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay);
     }
     // «Тепло костра» (лагерь): входящий урон меньше на CAMPFIRE.buffDef.
@@ -10577,6 +10582,13 @@ export class ZoneRoom extends Room<ZoneState> {
     // Увернулся — спец-эффекты атаки (оглушение/отбрасывание) тоже мимо.
     // (Клиент живого игрока применит стан/отбрасывание сам — см. MSG.mobHit ниже.)
     // Полный блок щитом — тоже мимо.
+    // Паутина (паук): стаки копятся до WEB.maxStacks — чем больше, тем сильнее замедление бега.
+    if (h.webStack && !dodged && !(block.by === 1 && block.mult === 0)) {
+      if (rt.webStackUntil < this.elapsed) rt.webStacks = 0;
+      rt.webStacks = Math.min(WEB.maxStacks, rt.webStacks + 1);
+      rt.webStackUntil = this.elapsed + WEB.stackSec;
+      h = { ...h, slowSec: WEB.stackSec, slowFrac: rt.webStacks * WEB.perStack };
+    }
     if (!dodged && !(block.by === 1 && block.mult === 0)) {
       if (h.stunSec) rt.stunnedUntil = this.elapsed + h.stunSec;
       if (h.slowSec) {
@@ -11135,6 +11147,8 @@ export class ZoneRoom extends Room<ZoneState> {
       slowUntil: 0,
       slowFrac: 0,
       rootedUntil: 0,
+      webStacks: 0,
+      webStackUntil: 0,
       bleedUntil: 0,
       bleedDps: 0,
       bleedBy: "",

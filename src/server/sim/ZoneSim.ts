@@ -174,6 +174,8 @@ export interface PlayerHit {
   slowFrac?: number;
   /** Корень (паутина): герой не может бежать rootSec секунд, бить и умения — может. */
   rootSec?: number;
+  /** Паутина (паук): +1 стак на попадание; замедление считает сервер по числу стаков. */
+  webStack?: boolean;
   /** Сила отбрасывания ОТ источника удара, м/с (спец-атака моба). */
   knockback?: number;
   /** Урон средой (ядовитое облако): щит/меч/уворот не спасают. */
@@ -418,6 +420,8 @@ export class Mob {
   readonly freezer: boolean;
   /** Паук: плюётся паутинным сгустком (WEB, корень на попадание). */
   readonly webber: boolean;
+  /** Магический удар без белой вспышки над героем (паук). */
+  readonly quietMagic: boolean;
   /** 40 ур.: свой физический снаряд (Метатель копий, Шипохвост) — см. ZoneSim.shoot. */
   readonly shot: MobShot | null;
   /** 40 ур. Скалолом: прыжок на героя (LEAP) и ярость стаи (PACK_FRENZY). */
@@ -721,6 +725,7 @@ export class Mob {
       healer?: boolean;
       freezer?: boolean;
       webber?: boolean;
+      quietMagic?: boolean;
       shot?: MobShot;
       leaper?: boolean;
       leapCooldown?: number;
@@ -807,6 +812,9 @@ export class Mob {
     this.healer = opts.healer ?? false;
     this.freezer = opts.freezer ?? false;
     this.webber = opts.webber ?? false;
+    this.quietMagic = opts.quietMagic ?? false;
+    // Плюющийся паук держит дистанцию (как плевун) и в ближний бой не лезет.
+    if (this.webber) this.ranged = true;
     this.shot = opts.shot ?? null;
     this.leaper = opts.leaper ?? false;
     this.leapCooldown = opts.leapCooldown ?? LEAP.cooldown;
@@ -2269,8 +2277,8 @@ interface BallExtra {
   bleed?: { sec: number; frac: number };
   /** Паутинный сгусток: на попадание герой «в корне» на root с. (WEB). */
   root?: number;
-  /** Паутинный сгусток: сильное замедление на sec с, доля frac (WEB). */
-  slow?: { sec: number; frac: number };
+  /** Паутинный сгусток: +1 стак паутины на попадание (WEB). */
+  webStack?: boolean;
   caltrops?: MobShot["caltrops"];
 }
 
@@ -2343,7 +2351,7 @@ class Ball {
           ...(ex ? { phys: true } : {}),
           ...(ex?.bleed ? { bleedSec: ex.bleed.sec, bleedFrac: ex.bleed.frac } : {}),
           ...(ex?.root ? { rootSec: ex.root } : {}),
-          ...(ex?.slow ? { slowSec: ex.slow.sec, slowFrac: ex.slow.frac } : {}),
+          ...(ex?.webStack ? { webStack: true } : {}),
         });
         // Копьё пробивает: летит дальше, этого героя больше не задевает.
         if (ex?.pierce) {
@@ -2416,7 +2424,7 @@ export function eliteOpts(d: EliteMobDef): NonNullable<ConstructorParameters<typ
     splitSpeedMul: d.splitSpeedMul, splitReviveSec: d.splitReviveSec, splitXp: d.splitXp, splitChildXp: d.splitChildXp,
     sporeCaster: d.sporeCaster, blinker: d.blinker, lifesteal: d.lifesteal, meleeReach: d.meleeReach, attackCooldown: d.attackCooldown,
     speedMul: d.speedMul, dodge: d.dodge, regen: d.regen, puller: d.puller, charger: d.charger, reflector: d.reflector,
-    spiker: d.spiker, healer: d.healer, freezer: d.freezer, webber: d.web === true && Math.random() < WEB.share, shot: d.shot, leaper: d.leaper, leapCooldown: d.leapCooldown, walksOnly: d.walksOnly, packFrenzy: d.packFrenzy,
+    spiker: d.spiker, healer: d.healer, freezer: d.freezer, webber: d.web === true && Math.random() < WEB.share, quietMagic: d.quietMagic, shot: d.shot, leaper: d.leaper, leapCooldown: d.leapCooldown, walksOnly: d.walksOnly, packFrenzy: d.packFrenzy,
     burrower: d.burrower, stormCaller: d.stormCaller, cloner: d.cloner, parry: d.parry, anchored: d.anchored,
   };
 }
@@ -2825,7 +2833,7 @@ export class ZoneSim {
         mob.dmgMul,
         mob.spellAoe ? MAGE_SPELL.splashRadius : 0,
         mob.spellAoe ? MAGE_SPELL.splashFrac : 0,
-        web ? { code: SHOTS.web.code, grav: SHOTS.web.grav, radius: SHOTS.web.radius, dmgMul: WEB.dmgMul, root: WEB.rootSec, slow: { sec: WEB.slowSec, frac: WEB.slowFrac } } : null,
+        web ? { code: SHOTS.web.code, grav: SHOTS.web.grav, radius: SHOTS.web.radius, dmgMul: WEB.dmgMul, root: WEB.rootSec, webStack: true } : null,
       );
       this.balls.set(b.id, b);
     };

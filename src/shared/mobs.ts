@@ -199,6 +199,8 @@ export interface EliteMobDef {
   magicMelee?: boolean;
   /** Плюётся паутинным сгустком (корень на попадание) — см. WEB и SHOTS.web. */
   web?: boolean;
+  /** Магический удар без белой вспышки над героем (паук: удары вблизи — тихие). */
+  quietMagic?: boolean;
   /** Опустить саму модель (клиент) на эту долю высоты тела — «летает ниже». */
   modelDrop?: number;
   /**
@@ -678,8 +680,8 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   spider: {
     model: "monSpider", name: "Паук", blurb: "кусает ядом, опутывает паутиной", level: 60, kind: "slime",
     hp: 14000, dmgMul: 18, xp: 8000000, scaleMul: 1.1, tint: null,
-    magicMelee: true, web: true, walksOnly: true, gait: true, noSquash: true, attackClip: "Attack",
-    attackCooldown: 0.6, meleeReach: 1.8, speedMul: 1.5,
+    magicMelee: true, quietMagic: true, web: true, walksOnly: true, gait: true, noSquash: true, attackClip: "Attack",
+    attackCooldown: 0.6, meleeReach: 1.8, speedMul: 1.5, champScaleMul: 2.4,
   },
   skeletonReaver: {
     model: "monSkeletonReaver", name: "Костяной жнец", blurb: "быстрый, сильные удары мечом, прикрывается щитом, магия режется на 20%, прыжок-выпад с оглушением", level: 53, kind: "slime",
@@ -775,9 +777,10 @@ export const WEB = {
   cooldown: 7,
   /** Корень — сколько секунд герой не может бежать. */
   rootSec: 2.5,
-  /** Потом (и весь срок) — сильное замедление: rootSec + 2.5 с, бег на 80% медленнее. */
-  slowSec: 5,
-  slowFrac: 0.8,
+  /** Стаки паутины: каждый удар сгустка — +1 стак (до maxStacks); стак замедляет бег на perStack; без новых ударов стаки гаснут через stackSec. */
+  maxStacks: 5,
+  perStack: 0.15,
+  stackSec: 5,
   dmgMul: 0.5,
   /** Доля пауков-стрелков: остальные только кусают вблизи (выбирается при появлении). */
   share: 0.5,
