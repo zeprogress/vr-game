@@ -409,7 +409,7 @@ export class Spectator {
 
     // Оверлеи стрима (Ф6): вотермарк, часы, онлайн, «смотрим», HP цели, заставки.
     // overlay=ext: DOM-оверлей вынесен в отдельный Browser Source (overlay.html),
-    // а тут только отдаём ему данные кадра (SpecCmd "ovl") — главный поток сцены
+    // а тут только отдаём ему данные кадра (SpecCmd "frame") — главный поток сцены
     // не тратится на DOM.
     this.overlay =
       override.overlay === false || override.overlay === "ext" || override.freecam ? null : new Overlay();

@@ -574,7 +574,6 @@ export interface TowerMobsMsg {
   heroTargetZ: number;
 }
 
-/** Данные о кадре камеры для вынесенного оверлея (SpecCmd "ovl"). */
 /** Команды дашборда стрима (этап 17 Ф5). */
 export type SpecCmd =
   /** Принудительно поставить кадр. `shot` — токен: overview / orbitBoss /
