@@ -120,6 +120,8 @@ const CSS = `
 .ov-hp .fill { height:100%; background:linear-gradient(90deg,#3ad07a,#8fe45a);
   transition:width .25s ease; }
 .ov-hp.boss .fill { background:linear-gradient(90deg,#b3231d,#e8433f); }
+/* Панель босса (и супербосса катакомб) — вверху экрана, с отступом от края; для остальных целей — снизу. */
+.ov-hp.boss { top:2.4vh; bottom:auto; }
 .ov-hp.boss b { color:#ff9a95; }
 .ov-feed { right:2.2vw; bottom:24vh; display:flex; flex-direction:column-reverse;
   gap:.5vh; align-items:flex-end; }

@@ -1158,3 +1158,5 @@ export const CAT_SUPERBOSSES: readonly CatBoss[] = [
     adds: { types: ["spikyBlob", "rockBreaker"], every: 22, count: 2, perHero: 0.4 },
   },
 ];
+/** Имена супербоссов катакомб — оверлей спектатора ставит их панель HP вверху (у них тип «slime», не «boss»). */
+export const CAT_BOSS_NAMES: readonly string[] = CAT_SUPERBOSSES.map((b) => b.name);

@@ -15,7 +15,7 @@ import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
 import type { Room } from "colyseus.js";
 
 import { BOT, EVENT, PLAYER, SKILL, daylightAt } from "#shared/constants";
-import { BLINK, BOSS, MOB, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, SPORE } from "#shared/mobs";
+import { BLINK, BOSS, CAT_BOSS_NAMES, MOB, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, SPORE } from "#shared/mobs";
 import { TOWER, TOWER_HIDE } from "#shared/tower";
 import type { ZoneState, PlayerState } from "#shared/net/schema";
 import type { ActKind, SpecCmd } from "#shared/net/messages";
@@ -1462,7 +1462,7 @@ export class Spectator {
         if (m && !m.dead) {
           const name = m.mobName || Spectator.mobName(m.kind);
           watching = name;
-          targetHp = { frac: m.hp / (m.maxHp || 1), cur: m.hp, max: m.maxHp, name, boss: m.kind === "boss" };
+          targetHp = { frac: m.hp / (m.maxHp || 1), cur: m.hp, max: m.maxHp, name, boss: m.kind === "boss" || CAT_BOSS_NAMES.includes(name) };
         }
       }
     }
