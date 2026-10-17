@@ -41,6 +41,8 @@ export interface RedeemRule {
   cooldownSec: number;
   /** id награды: если задан, сопоставляется по нему (переименование в Twitch не ломает). */
   id?: string;
+  /** Личный кулдаун: у каждого зрителя свой отсчёт. Без флага — общий для всех (один на награду). */
+  perViewer?: boolean;
   /** Вернуть баллы зрителю, если команда не выполнилась (нужно право channel:manage:redemptions; награда — созданная этим приложением). */
   refund?: boolean;
 }
@@ -53,7 +55,7 @@ export function parseRedeemRules(raw: unknown): { rules: RedeemRule[]; errors: s
   if (!Array.isArray(list)) return { rules, errors: ["в redeems.json нет массива rewards"] };
   const titles = new Set<string>();
   for (let i = 0; i < list.length; i++) {
-    const e = (list[i] ?? {}) as { title?: unknown; command?: unknown; cooldownSec?: unknown; id?: unknown; refund?: unknown };
+    const e = (list[i] ?? {}) as { title?: unknown; command?: unknown; cooldownSec?: unknown; id?: unknown; refund?: unknown; perViewer?: unknown };
     const title = typeof e.title === "string" ? e.title.trim() : "";
     const command = typeof e.command === "string" ? e.command.trim() : "";
     if (!title) {
@@ -83,6 +85,7 @@ export function parseRedeemRules(raw: unknown): { rules: RedeemRule[]; errors: s
       cooldownSec: Math.max(0, Math.min(3600, cd)),
       id: typeof e.id === "string" && e.id ? e.id : undefined,
       refund: e.refund === true,
+      perViewer: e.perViewer === true,
     });
   }
   return { rules, errors };
@@ -248,7 +251,9 @@ export class TwitchRedeem {
       return "unknown";
     }
     const now = this.deps.now();
-    const last = this.lastUsed.get(rule.title);
+    // Личный кулдаун — ключ «зритель + награда»; общий — только название награды.
+    const key = rule.perViewer ? `${login.toLowerCase()}\u0001${rule.title}` : rule.title;
+    const last = this.lastUsed.get(key);
     const cdMs = rule.cooldownSec * 1000;
     if (last !== undefined && now - last < cdMs) {
       const left = Math.ceil((cdMs - (now - last)) / 1000);
@@ -268,7 +273,7 @@ export class TwitchRedeem {
       void this.refund(rewardId, redemptionId, `«${rule.title}»: ${login} — не выполнено`);
       return "ok";
     }
-    this.lastUsed.set(rule.title, now);
+    this.lastUsed.set(key, now);
     return "ok";
   }
 

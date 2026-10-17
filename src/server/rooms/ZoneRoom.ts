@@ -1539,6 +1539,13 @@ export class ZoneRoom extends Room<ZoneState> {
         // Служебная команда награды: камера на себя. true — выполнено, false — баллы вернутся.
         if (command === REDEEM_CAMERA_CMD) return this.redeemCamera(login);
         this.reply(`🎁 @${login} — «${reward}»`);
+        // Ульта за баллы: если сейчас не применится (герой мёртв, нет оружия, откат героя) — баллы вернутся.
+        // Причину зритель получит в чате от самой ульты.
+        if (command === "!ульта") {
+          const why = this.ultBlock(login, normNick(login));
+          this.onChat(login, command);
+          return why === null;
+        }
         this.onChat(login, command);
         return true;
       },
@@ -9002,26 +9009,30 @@ export class ZoneRoom extends Room<ZoneState> {
     }
   }
 
-  /** `!ульта` — ультимейт героя ника; откат ULT_COOLDOWN, проверяет сервер. */
-  private castUltChat(nick: string, norm: string): void {
+  /** `!ульта` — ультимейт героя ника; откат ULT_COOLDOWN, проверяет сервер. true — ульта пошла. */
+  private castUltChat(nick: string, norm: string): boolean {
+    const why = this.ultBlock(nick, norm);
+    if (why) {
+      this.reply(`@${nick} ${why}`);
+      return false;
+    }
     const t = this.findWeaponsTarget(norm);
-    if (!t || t.p.dead) {
-      this.reply(`@${nick} ульта — только когда герой в мире и жив`);
-      return;
-    }
-    const cls = classOf2(t.p.leftCls as Weapon2 | "", t.p.rightCls as Weapon2 | "");
-    if (!cls) {
-      this.reply(`@${nick} ульта — сначала возьми оружие класса`);
-      return;
-    }
-    // Админ-ник (zeprogress) — ульта без отката, для проверки.
-    const left = isAdminNick(nick) ? 0 : ULT_COOLDOWN - (this.elapsed - t.rt.ultAt);
-    if (left > 0) {
-      this.reply(`@${nick} ульта через ${Math.ceil(left / 60)} мин`);
-      return;
-    }
+    const cls = t ? classOf2(t.p.leftCls as Weapon2 | "", t.p.rightCls as Weapon2 | "") : null;
+    if (!t || !cls) return false;
     t.rt.ultAt = this.elapsed;
     this.startUlt(t.id, t.p, t.rt, cls);
+    return true;
+  }
+
+  /** Почему ульта сейчас не применится (текст для зрителя) или null — можно. Один источник для чата и наград. */
+  private ultBlock(nick: string, norm: string): string | null {
+    const t = this.findWeaponsTarget(norm);
+    if (!t || t.p.dead) return "ульта — только когда герой в мире и жив";
+    if (!classOf2(t.p.leftCls as Weapon2 | "", t.p.rightCls as Weapon2 | "")) return "ульта — сначала возьми оружие класса";
+    // Админ-ник (zeprogress) — ульта без отката, для проверки.
+    const left = isAdminNick(nick) ? 0 : ULT_COOLDOWN - (this.elapsed - t.rt.ultAt);
+    if (left > 0) return `ульта через ${Math.ceil(left / 60)} мин`;
+    return null;
   }
 
   /** Замах ультимейта: кольцо на земле видно всем в зоне, по окончании — удар. */
