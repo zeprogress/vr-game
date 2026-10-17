@@ -272,6 +272,7 @@ import { attrOf } from "#shared/attrs2";
 import { giveItems, parseTradeItem, parseTradeList, takeItems, takenName, tradeLog, tradeViewOf, TRADE_ACTS, type InvSnap, type Taken, type TradeAct, type TradeItem, type TradeSession, type TradeSide } from "../trade";
 import { KillRates } from "../sim/killRate";
 import { applyJewelOp, gemName, JEWEL_ACTS, jewelBonus, jewelOpFrom, jewelsOf, pcInvJewels, RING_LOOK, ringName, rollJewelDrop, type JewelAct, type JewelSave } from "#shared/jewels";
+import { SCRAP_DROP, scrapDropChance } from "#shared/scrapDrop";
 
 const { Room } = colyseus;
 
@@ -5187,6 +5188,16 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** Кольцо/камень с добитого моба — сразу в запись героя (не на землю: боты и игроки одинаково). */
+  /** Лом с моба: шанс 1% на 1 ур. → 50% на 53 ур. (shared/scrapDrop.ts). Падает в сумку убийцы. */
+  private scrapDrop(owner: string, level: number): void {
+    if (Math.random() >= scrapDropChance(level)) return;
+    const p = this.state.players.get(owner);
+    if (!p) return;
+    const bag = readBag(p);
+    addToBag(bag, "scrap", SCRAP_DROP.amount);
+    writeBag(p, bag);
+  }
+
   private jewelDrop(owner: string, mul: number, ringMul: number, level: number): void {
     const d = rollJewelDrop(mul, ringMul, level);
     if (!d.gem && !d.ring) return;
@@ -10264,7 +10275,10 @@ export class ZoneRoom extends Room<ZoneState> {
       const krt = this.rt.get(k.owner);
       if (krt) krt.kills++;
       this.killRates.add(k.owner, nowSec);
-      if (k.jm > 0) this.jewelDrop(k.owner, k.jm, k.jr, k.jl);
+      if (k.jm > 0) {
+        this.jewelDrop(k.owner, k.jm, k.jr, k.jl);
+        this.scrapDrop(k.owner, k.jl);
+      }
       this.chatQuestKill(k.owner, k.champ);
       if (k.campType) {
         // Охота и вожаки — всем, кто нанёс мобу урон (как делится опыт), а не только добившему. Боссы — по bossXpShare ниже.
