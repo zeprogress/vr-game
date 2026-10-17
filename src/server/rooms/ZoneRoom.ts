@@ -8270,7 +8270,8 @@ export class ZoneRoom extends Room<ZoneState> {
     let strafeZ = 0;
     if (ranged && raidGapDist < 0 && !retreat && !escape && dist <= stopAt && !emoting && bot.swingIn <= 0) {
       const s = Math.sin((this.elapsed * 0.5 + strPhase(bot.id) * 10) * Math.PI * 2);
-      const strafeSpeed = botSpeed * 0.4 * s;
+      // Боком — плавно: 20% бега (было 40%). Лучник со стрейфом давал спринт вбок.
+      const strafeSpeed = botSpeed * 0.2 * s;
       strafeX = -dz * strafeSpeed;
       strafeZ = dx * strafeSpeed;
     }
@@ -8301,8 +8302,15 @@ export class ZoneRoom extends Room<ZoneState> {
     } else bot.progAt = undefined;
     // Убегая, соседей почти не расталкиваем (иначе толкают обратно в круг) и разгоняемся вдвое резче.
     const sepK = BOT.separationForce * (escape ? 0.3 : 1);
-    const wvx = mdx * wantSpeed + sepX * sepK + strafeX;
-    const wvz = mdz * wantSpeed + sepZ * sepK + strafeZ;
+    let wvx = mdx * wantSpeed + sepX * sepK + strafeX;
+    let wvz = mdz * wantSpeed + sepZ * sepK + strafeZ;
+    // Итог не быстрее бега: расталкивание и стрейф складываются с ходьбой, и иначе лучник в толпе
+    // «спринтует» вбок (у молота стрейфа нет — и такого нет).
+    const wl = Math.hypot(wvx, wvz);
+    if (wl > botSpeed && wl > 0) {
+      wvx *= botSpeed / wl;
+      wvz *= botSpeed / wl;
+    }
     const accel = Math.min(1, dt * (escape ? 12 : 6));
     bot.vx += (wvx - bot.vx) * accel;
     bot.vz += (wvz - bot.vz) * accel;
