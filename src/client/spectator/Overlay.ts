@@ -175,9 +175,10 @@ const CSS = `
   border-left:.5vh solid #e8433f; }
 .ov-card .t s { display:block; text-decoration:none; font-weight:800; font-size:3.6vh; }
 .ov-card .t u { display:block; text-decoration:none; font-size:2vh; opacity:.8; margin-top:.5vh; }
-.ov-boss { left:50%; top:34%; transform:translate(-50%,-50%) scale(.94); text-align:center;
+/* Верхний край — на одном отступе с колонками «Топ» и «онлайн» (6.4vh), по горизонтали — по центру. */
+.ov-boss { left:50%; top:6.4vh; transform:translate(-50%,0) scale(.94); text-align:center;
   opacity:0; transition:opacity .5s ease, transform .5s ease; }
-.ov-boss.show { opacity:1; transform:translate(-50%,-50%) scale(1); }
+.ov-boss.show { opacity:1; transform:translate(-50%,0) scale(1); }
 .ov-boss s { display:block; text-decoration:none; font-weight:900; font-size:7vh;
   letter-spacing:.04em; text-transform:uppercase; }
 .ov-boss u { display:block; text-decoration:none; font-weight:600; font-size:2.4vh;
