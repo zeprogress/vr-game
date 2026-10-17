@@ -679,7 +679,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     model: "monSpider", name: "Паук", blurb: "кусает ядом, опутывает паутиной", level: 60, kind: "slime",
     hp: 14000, dmgMul: 18, xp: 8000000, scaleMul: 1.1, tint: null,
     magicMelee: true, web: true, walksOnly: true, gait: true, noSquash: true, attackClip: "Attack",
-    attackCooldown: 0.9, meleeReach: 1.8, speedMul: 1.5,
+    attackCooldown: 0.6, meleeReach: 1.8, speedMul: 1.5,
   },
   skeletonReaver: {
     model: "monSkeletonReaver", name: "Костяной жнец", blurb: "быстрый, сильные удары мечом, прикрывается щитом, магия режется на 20%, прыжок-выпад с оглушением", level: 53, kind: "slime",
@@ -775,7 +775,12 @@ export const WEB = {
   cooldown: 7,
   /** Корень — сколько секунд герой не может бежать. */
   rootSec: 2.5,
+  /** Потом (и весь срок) — сильное замедление: rootSec + 2.5 с, бег на 80% медленнее. */
+  slowSec: 5,
+  slowFrac: 0.8,
   dmgMul: 0.5,
+  /** Доля пауков-стрелков: остальные только кусают вблизи (выбирается при появлении). */
+  share: 0.5,
 };
 
 /** Костяной вождь: костяные шипы из-под героев (см. EliteMobDef.spiker). */

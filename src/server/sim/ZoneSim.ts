@@ -2269,6 +2269,8 @@ interface BallExtra {
   bleed?: { sec: number; frac: number };
   /** Паутинный сгусток: на попадание герой «в корне» на root с. (WEB). */
   root?: number;
+  /** Паутинный сгусток: сильное замедление на sec с, доля frac (WEB). */
+  slow?: { sec: number; frac: number };
   caltrops?: MobShot["caltrops"];
 }
 
@@ -2341,6 +2343,7 @@ class Ball {
           ...(ex ? { phys: true } : {}),
           ...(ex?.bleed ? { bleedSec: ex.bleed.sec, bleedFrac: ex.bleed.frac } : {}),
           ...(ex?.root ? { rootSec: ex.root } : {}),
+          ...(ex?.slow ? { slowSec: ex.slow.sec, slowFrac: ex.slow.frac } : {}),
         });
         // Копьё пробивает: летит дальше, этого героя больше не задевает.
         if (ex?.pierce) {
@@ -2413,7 +2416,7 @@ export function eliteOpts(d: EliteMobDef): NonNullable<ConstructorParameters<typ
     splitSpeedMul: d.splitSpeedMul, splitReviveSec: d.splitReviveSec, splitXp: d.splitXp, splitChildXp: d.splitChildXp,
     sporeCaster: d.sporeCaster, blinker: d.blinker, lifesteal: d.lifesteal, meleeReach: d.meleeReach, attackCooldown: d.attackCooldown,
     speedMul: d.speedMul, dodge: d.dodge, regen: d.regen, puller: d.puller, charger: d.charger, reflector: d.reflector,
-    spiker: d.spiker, healer: d.healer, freezer: d.freezer, webber: d.web, shot: d.shot, leaper: d.leaper, leapCooldown: d.leapCooldown, walksOnly: d.walksOnly, packFrenzy: d.packFrenzy,
+    spiker: d.spiker, healer: d.healer, freezer: d.freezer, webber: d.web === true && Math.random() < WEB.share, shot: d.shot, leaper: d.leaper, leapCooldown: d.leapCooldown, walksOnly: d.walksOnly, packFrenzy: d.packFrenzy,
     burrower: d.burrower, stormCaller: d.stormCaller, cloner: d.cloner, parry: d.parry, anchored: d.anchored,
   };
 }
@@ -2822,7 +2825,7 @@ export class ZoneSim {
         mob.dmgMul,
         mob.spellAoe ? MAGE_SPELL.splashRadius : 0,
         mob.spellAoe ? MAGE_SPELL.splashFrac : 0,
-        web ? { code: SHOTS.web.code, grav: SHOTS.web.grav, radius: SHOTS.web.radius, dmgMul: WEB.dmgMul, root: WEB.rootSec } : null,
+        web ? { code: SHOTS.web.code, grav: SHOTS.web.grav, radius: SHOTS.web.radius, dmgMul: WEB.dmgMul, root: WEB.rootSec, slow: { sec: WEB.slowSec, frac: WEB.slowFrac } } : null,
       );
       this.balls.set(b.id, b);
     };
