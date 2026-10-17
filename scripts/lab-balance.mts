@@ -1302,10 +1302,31 @@ if (ONLY.has("stuck")) {
   const bots = LOADOUTS.map((load, i) => {
     const x = addBot(room, `st${i}`, { lvl, load }, campType);
     put(x.bot.state, x.bot.homeX + 10 + i, x.bot.homeZ + (i % 3) * 2);
-    return { ...x, load: load.id, lastX: 0, lastZ: 0, lastDealt: 0, still: 0, episodes: 0, worst: 0, said: 0, spOn: false, spSum: 0, spN: 0, spMax: 0, fast: 0, resp: 0, prevDead: false };
+    return { ...x, load: load.id, lastX: 0, lastZ: 0, lastDealt: 0, still: 0, episodes: 0, worst: 0, said: 0, spOn: false, spSum: 0, spN: 0, spMax: 0, fast: 0, resp: 0, prevDead: false, killT: 0, postStart: 0, post: [] as number[] };
   });
+  let killed = false;
+  // Счётчик перемещений бота умением (отскок, рывок): placeBotAt — то, через что ставят бота на место скачком.
+  const origPlace = (room as any).placeBotAt.bind(room);
+  (room as any).placeBotAt = (p: any, x: number, z: number, face?: any) => {
+    (p.__places ??= []).push(t());
+    return origPlace(p, x, z, face);
+  };
   for (let i = 0; t() < SEC; i++) {
     step();
+    // Смерть мечника и лучника на 40-й секунде — как у комнаты: здоровье 0, мёртв, таймер возрождения.
+    if (!killed && t() >= 40) {
+      killed = true;
+      const { RESPAWN } = await import("../src/shared/constants.ts");
+      for (const b of bots) {
+        if (b.load !== "меч" && b.load !== "лук") continue;
+        const ps: any = b.bot.state;
+        const rt = (room as any).rt?.get(b.id);
+        ps.hp = 0;
+        ps.dead = 1;
+        if (rt) rt.respawnIn = RESPAWN.delay;
+        b.killT = t();
+      }
+    }
     if (i % 4) continue; // раз в 0.2 с
     for (const b of bots) {
       const p = b.bot.state;
@@ -1322,6 +1343,11 @@ if (ONLY.has("stuck")) {
       // Скорость за отсчёт (0.2 с): среднее, максимум и число отсчётов выше 8 м/с — живых ботов.
       if (b.spOn && !p.dead) {
         const sp = Math.hypot(p.head.x - b.lastX, p.head.z - b.lastZ) / 0.2;
+        if (b.killT && !b.postStart) b.postStart = t(); // первый живой отсчёт после смерти — возрождение
+        if (b.postStart && t() - b.postStart < 6) {
+          b.post.push(sp);
+          (b.postV ??= []).push(Math.hypot(b.bot.vx ?? 0, b.bot.vz ?? 0));
+        }
         b.spSum += sp;
         b.spN++;
         b.spMax = Math.max(b.spMax, sp);
@@ -1357,6 +1383,15 @@ if (ONLY.has("stuck")) {
   for (const b of bots) {
     if (b.still >= 3) (b.episodes++, (b.worst = Math.max(b.worst, b.still)));
     say(`  ${pad(b.load, 12)} застреваний ${b.episodes}, дольше всего ${f(b.worst, 1)} с · урон ${f(meter.dealt.get(b.id) ?? 0)} · убийств ${meter.kills.get(b.id) ?? 0}`);
+    { const ps: any = b.bot.state; const { moveSpeedFor } = await import("../src/shared/classes2.ts");
+      say(`  ${pad(b.load, 12)} ЛОВ ${ps.agi} + камни ${ps.gb?.agi ?? 0} · ур. ${ps.level} · скорость бега ${f(moveSpeedFor(ps.level, ps), 2)} м/с`); }
+    if (b.killT) {
+      const walk = b.post.filter((v: number) => v <= 20);
+      const vs: number[] = (b as any).postV ?? [];
+      say(`  ${pad(b.load, 12)} скорость в мыслях бота (bot.vx/vz) после возрождения: средняя ${f(vs.reduce((a, v) => a + v, 0) / Math.max(1, vs.length), 2)} м/с, макс ${f(Math.max(0, ...vs), 1)} м/с; поводок (mob): ${(b.bot as any).target ? 'есть' : 'нет'}`);
+      const places = ((b.bot.state as any).__places ?? []).filter((x: number) => x >= b.postStart && x < b.postStart + 6).length;
+      say(`  ${pad(b.load, 12)} после возрождения (6 с): ходьба — средняя ${f(walk.reduce((a: number, v: number) => a + v, 0) / Math.max(1, walk.length), 2)} м/с, макс ${f(Math.max(0, ...walk), 1)} м/с; телепорт (>20 м/с): ${b.post.length - walk.length} раз; перемещений умением ${places}`);
+    }
     if (b.spN) say(`  ${pad(b.load, 12)} скорость: средняя ${f(b.spSum / b.spN, 2)} м/с, макс ${f(b.spMax, 1)} м/с, выше 8 м/с: ${b.fast} раз (после смерти — ${b.resp}) из ${b.spN}`);
     if (b.episodes) anomalies.push(`лагерь ${campType}: ${b.load} застревал ${b.episodes} раз (до ${f(b.worst, 1)} с)`);
   }
