@@ -139,6 +139,7 @@ export const invHub = {
       hit = true;
     }
     if (!hit) return false;
+    console.log(`[inv] вход в инвентарь кодом из чата: ${norm}`);
     save();
     this.notify(norm);
     return true;

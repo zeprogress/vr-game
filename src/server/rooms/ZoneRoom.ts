@@ -3,6 +3,8 @@ import { invHub, type InvActKind, type InvActResult } from "../invHub";
 import { armorBonusOf, armorEnchant, armorEnchantRow, armorPcView, armorQuality, armorScrap, sanitizeArmorList, wornArmorOf, ARMOR_PARTS, type ArmorInstance, type ArmorPart } from "#shared/armor";
 import { devChat } from "../devChat";
 import type { Client } from "colyseus";
+import type { IncomingMessage } from "node:http";
+import { ipOfRequest } from "../clientIp";
 
 import {
   BallState,
@@ -1283,6 +1285,8 @@ const CAT_CMDS: readonly string[] = ["!катакомбы", "!кт", "!catacombs
 export class ZoneRoom extends Room<ZoneState> {
   private sim!: ZoneSim;
   private readonly rt = new Map<string, Runtime>();
+  /** IP сессии (для журнала действий с инвентарём и входов по нику). */
+  private readonly ipBySession = new Map<string, string>();
   /** Убийств за минуту по героям (PlayerState.kpm) — только текущее окно, без истории. */
   private readonly killRates = new KillRates();
   /** sessionId, которых мы сами выгнали (kickNick) — onLeave не должен ждать
@@ -2182,6 +2186,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const norm = normNick(p.nick);
       if (!norm) return;
       const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(msg.act === "gift" ? 99999 : 99, Math.floor(Number(msg.idx) || 0))), typeof msg.fuel === "string" ? msg.fuel : undefined);
+      console.log(`[inv] ${p.nick} ← ${msg.act} «${msg.id}» · ip ${this.ipBySession.get(client.sessionId) ?? "?"} → ${r.ok ? "ок" : "отказ"}: ${r.text}`);
       client.send(MSG.pcInvResult, r);
       this.sendPcInv(client);
     });
@@ -10919,6 +10924,11 @@ export class ZoneRoom extends Room<ZoneState> {
   private towerCamAt = 0;
   private towerCamEye = true;
 
+  override onAuth(client: Client, _options: unknown, request?: IncomingMessage): boolean {
+    this.ipBySession.set(client.sessionId, ipOfRequest(request));
+    return true;
+  }
+
   override onJoin(client: Client, options?: JoinOpts): void {
     // Диктор (voice.html): без героя, только голос. Сам звонит всем игрокам
     // и спектаторам — список шлём раз в 3 с (новые входят, старые уходят).
@@ -11154,7 +11164,8 @@ export class ZoneRoom extends Room<ZoneState> {
 
     console.log(
       `[zone] + ${client.sessionId} «${p.nick}» ур.${p.level}` +
-        `${rec ? " (загружен)" : token ? " (новый токен)" : ""} — в комнате ${this.clients.length}`,
+        `${rec ? " (загружен)" : token ? " (новый токен)" : ""} — в комнате ${this.clients.length}` +
+        ` · ip ${this.ipBySession.get(client.sessionId) ?? "?"}`,
     );
   }
 
@@ -11192,6 +11203,7 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   override async onLeave(client: Client, consented?: boolean): Promise<void> {
+    this.ipBySession.delete(client.sessionId);
     const caster = this.casters.get(client.sessionId);
     if (caster) {
       caster.clear();

@@ -5,6 +5,8 @@ import { CLASSES2, classOf2, type SkillId, type Weapon2 } from "#shared/classes2
 import { atMaxLevel, xpToNext } from "#shared/progression";
 import colyseus from "colyseus";
 import type { Client } from "colyseus";
+import type { IncomingMessage } from "node:http";
+import { ipOfRequest } from "../clientIp";
 
 import {
   affixLabel,
@@ -61,6 +63,8 @@ export class InventoryRoom extends colyseus.Room {
   private readonly who = new Map<string, { norm: string; sid: string }>();
   private unlisten: (() => void) | null = null;
   private readonly lastAct = new Map<string, number>();
+  /** IP сессии — в журнале действий со страницы !inv. */
+  private readonly ipBySession = new Map<string, string>();
 
   override onCreate(): void {
     this.autoDispose = true;
@@ -88,6 +92,7 @@ export class InventoryRoom extends colyseus.Room {
       if (now - (this.lastAct.get(client.sessionId) ?? 0) < 250) return;
       this.lastAct.set(client.sessionId, now);
       const r = invHub.act(w.norm, act as InvActKind, id, idx, typeof m?.fuel === "string" ? m.fuel : undefined);
+      console.log(`[inv] ${w.norm} ← web ${act} «${id}» · ip ${this.ipBySession.get(client.sessionId) ?? "?"} → ${r.ok ? "ок" : "отказ"}: ${r.text}`);
       client.send(r.enchant ? "enchant" : "toast", r);
     });
     this.onMessage("refresh", (client) => this.sendInv(client));
@@ -139,8 +144,14 @@ export class InventoryRoom extends colyseus.Room {
     this.unlisten?.();
   }
 
+  override onAuth(client: Client, _options: unknown, request?: IncomingMessage): boolean {
+    this.ipBySession.set(client.sessionId, ipOfRequest(request));
+    return true;
+  }
+
   override onLeave(client: Client): void {
     this.who.delete(client.sessionId);
+    this.ipBySession.delete(client.sessionId);
   }
 
   override onJoin(client: Client, options: InventoryJoinOptions): void {
