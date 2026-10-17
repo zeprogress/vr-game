@@ -1302,7 +1302,7 @@ if (ONLY.has("stuck")) {
   const bots = LOADOUTS.map((load, i) => {
     const x = addBot(room, `st${i}`, { lvl, load }, campType);
     put(x.bot.state, x.bot.homeX + 10 + i, x.bot.homeZ + (i % 3) * 2);
-    return { ...x, load: load.id, lastX: 0, lastZ: 0, lastDealt: 0, still: 0, episodes: 0, worst: 0, said: 0 };
+    return { ...x, load: load.id, lastX: 0, lastZ: 0, lastDealt: 0, still: 0, episodes: 0, worst: 0, said: 0, spOn: false, spSum: 0, spN: 0, spMax: 0, fast: 0, resp: 0, prevDead: false };
   });
   for (let i = 0; t() < SEC; i++) {
     step();
@@ -1319,6 +1319,16 @@ if (ONLY.has("stuck")) {
       }
       const moved = Math.hypot(p.head.x - b.lastX, p.head.z - b.lastZ) > 0.08;
       const hit = dealt > b.lastDealt + 0.5;
+      // Скорость за отсчёт (0.2 с): среднее, максимум и число отсчётов выше 8 м/с — живых ботов.
+      if (b.spOn && !p.dead) {
+        const sp = Math.hypot(p.head.x - b.lastX, p.head.z - b.lastZ) / 0.2;
+        b.spSum += sp;
+        b.spN++;
+        b.spMax = Math.max(b.spMax, sp);
+        if (sp > 8) (b.prevDead ? b.resp++ : b.fast++);
+      }
+      b.prevDead = !!p.dead;
+      b.spOn = true;
       b.lastX = p.head.x;
       b.lastZ = p.head.z;
       b.lastDealt = dealt;
@@ -1347,6 +1357,7 @@ if (ONLY.has("stuck")) {
   for (const b of bots) {
     if (b.still >= 3) (b.episodes++, (b.worst = Math.max(b.worst, b.still)));
     say(`  ${pad(b.load, 12)} застреваний ${b.episodes}, дольше всего ${f(b.worst, 1)} с · урон ${f(meter.dealt.get(b.id) ?? 0)} · убийств ${meter.kills.get(b.id) ?? 0}`);
+    if (b.spN) say(`  ${pad(b.load, 12)} скорость: средняя ${f(b.spSum / b.spN, 2)} м/с, макс ${f(b.spMax, 1)} м/с, выше 8 м/с: ${b.fast} раз (после смерти — ${b.resp}) из ${b.spN}`);
     if (b.episodes) anomalies.push(`лагерь ${campType}: ${b.load} застревал ${b.episodes} раз (до ${f(b.worst, 1)} с)`);
   }
 }
