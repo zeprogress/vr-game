@@ -12,6 +12,10 @@ export interface GameUpdate {
 
 export const UPDATES: readonly GameUpdate[] = [
   {
+    at: "2026-10-18 02:28",
+    items: ["Пауки: на текстуре меньше яркого красного — темнее и спокойнее"],
+  },
+  {
     at: "2026-10-18 02:27",
     items: ["Пауки бьют сильнее: урон +50%"],
   },
