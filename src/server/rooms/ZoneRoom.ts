@@ -10016,7 +10016,8 @@ export class ZoneRoom extends Room<ZoneState> {
     this.tickDungeonPortals();
     this.raid.tick(dt);
     const perfB0 = serverPerf.now();
-    this.tickBots(dt);
+    // Боты — с ограниченным шагом: тик, растянутый задержкой, не должен кидать бота на метры (см. BOT.moveDtMax).
+    this.tickBots(Math.min(dt, BOT.moveDtMax));
     serverPerf.section("bots", serverPerf.now() - perfB0);
     this.maybeSayTip(dt);
 
