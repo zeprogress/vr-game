@@ -5,6 +5,7 @@ import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { BuffOrbitFx } from "../ui/BuffOutlineFx";
 import { CLASS_CLIP_NAMES, CLASS_ONE_SHOT, classAnimSet, classClipsFor, type ClassAnimSet } from "../world/classPoses";
 import { StunStarsFx } from "../ui/StunStarsFx";
+import { WebCocoonFx } from "./WebCocoonFx";
 
 import {
   loadRig,
@@ -72,12 +73,16 @@ export class LocalAvatar {
   private xpBuff = false;
   private buffed = false;
   private readonly stunStars: StunStarsFx;
+  /** Корень паутиной (удар паука): кокон вокруг героя. */
+  private readonly webCocoon: WebCocoonFx;
+  private rooted = false;
   private stunned = false;
 
   constructor(private readonly scene: Scene) {
     this.root = new TransformNode("localAvatar", scene);
     this.buffAura = new BuffOrbitFx(scene, this.root, -0.75);
     this.stunStars = new StunStarsFx(scene, this.root, 0.4);
+    this.webCocoon = new WebCocoonFx(scene, this.root, 0.9);
     void this.reload();
   }
 
@@ -105,6 +110,11 @@ export class LocalAvatar {
   /** Оглушён (напр. волной "Чародея руин") — звёздочки над головой. */
   setStunned(on: boolean): void {
     this.stunned = on;
+  }
+
+  /** Корень паутиной (паук): кокон вокруг героя; бежать нельзя — это в PlayerController. */
+  setRooted(on: boolean): void {
+    this.rooted = on;
   }
 
   /** skin из PlayerState: 0 — базовый рыцарь, 1..N — модель из набора ботов. */
@@ -306,6 +316,8 @@ export class LocalAvatar {
     this.buffAura.update(dt);
     this.stunStars.setActive(this.stunned && !this.hidden);
     this.stunStars.update(dt);
+    this.webCocoon.setActive(this.rooted && !this.hidden);
+    this.webCocoon.update(dt);
 
     const rig = this.rig;
     if (!rig || this.hidden) return;
@@ -384,6 +396,7 @@ export class LocalAvatar {
     for (const g of this.classGroups) g.dispose();
     this.buffAura.dispose();
     this.stunStars.dispose();
+    this.webCocoon.dispose();
     this.rig?.dispose();
     this.holder?.dispose();
     this.root.dispose();

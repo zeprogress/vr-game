@@ -129,7 +129,7 @@ import { noGuard, type BlockedBy } from "#shared/combat";
 import { AEGIS_NAME, aegisTier, bothHandsCls, FAV_MAX, ITEMS, sharpPctOfText, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
 import { sharpGlowTune } from "../items/sharpGlowTune";
 import { BOT, EVENT, PLAYER, POTION_CD, RESPAWN, SKILL, isAdminNick } from "#shared/constants";
-import { BLINK, BOSS, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, WEB, SPORE } from "#shared/mobs";
+import { BLINK, BOSS, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, SPORE } from "#shared/mobs";
 import { MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
 import { TOWN_MUSIC, BOSS_MUSIC, CATACOMBS_MUSIC, CATACOMBS_BOSS_MUSIC } from "../audio/playlist";
@@ -2440,6 +2440,8 @@ export class Game {
    * Онлайн это единственный источник правды — клиент только отображает.
    */
   private serverHp = -1;
+  /** Был ли герой в корне паутиной на прошлом снимке — звук берём на фронте. */
+  private rootedWas = false;
   /** Когда последний раз сработал вампиризм у себя — чтобы не рисовать зелёные крестики поверх красных. */
   private lastVampAt = 0;
 
@@ -2471,6 +2473,10 @@ export class Game {
     this.localAvatar?.setBuffed(!inTower && (self.buffSecs ?? 0) > 0);
     this.localAvatar?.setSkillBuffs({ plague: !inTower && self.plagueSecs > 0, abyss: !inTower && self.abyssSecs > 0, smoke: !inTower && self.smokeSecs > 0 });
     this.localAvatar?.setStunned(self.stunned === 1);
+    this.localAvatar?.setRooted(self.rooted === 1);
+    this.player.setRooted(self.rooted === 1);
+    if (self.rooted === 1 && !this.rootedWas && !self.dead) this.sfx.spiderWebRoot();
+    this.rootedWas = self.rooted === 1;
     this.vrStars?.setStunned(self.stunned === 1 && !self.dead);
     if (!this.pcHud) this.hud.setBuff(self.buffSecs ?? 0); // с рамкой героя баффы — значками в ней
     // «Тепло костра» (лагерь): сообщение при получении, значок с таймером на ПК.
@@ -4138,14 +4144,6 @@ export class Game {
         break;
       case "freezeHit":
         this.skillFx.wraithPuff(x, y - 0.8, z, 1.2, true);
-        this.sfx.at({ x, y, z }, () => this.sfx.groundBash());
-        break;
-      case "webMark":
-        // Паук: паутина под героем — через d с опутает.
-        this.skillFx.stunBash(x, y, z, WEB.radius, d ?? WEB.windup);
-        break;
-      case "webHit":
-        this.skillFx.wraithPuff(x, y - 0.8, z, 1.0, true);
         this.sfx.at({ x, y, z }, () => this.sfx.groundBash());
         break;
       case "spikeMark":

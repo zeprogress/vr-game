@@ -186,6 +186,11 @@ export class NetMobs {
     spike.material = solid("shotSpikeMat", [0.92, 0.88, 0.76]);
     spike.setEnabled(false);
     this.shotProtos.set(SHOTS.spike.code, { mesh: spike, grav: SHOTS.spike.grav });
+    // Паутинный сгусток паука: белый полупрозрачный комок.
+    const web = MeshBuilder.CreateSphere("shotWeb", { diameter: 0.5, segments: 6 }, scene);
+    web.material = solid("shotWebMat", [0.92, 0.94, 0.9]);
+    web.setEnabled(false);
+    this.shotProtos.set(SHOTS.web.code, { mesh: web, grav: SHOTS.web.grav });
 
     // Огненный снаряд: раскалённое ядро (диаметр 1 — масштабируем под радиус).
     const coreMat = new StandardMaterial("boltCoreMat", scene);
@@ -412,6 +417,27 @@ export class NetMobs {
   lazy = false;
   private matT = 0;
 
+  /** Паук: укус — при смене удара (attackSeq), шаг — каждые ~0.9 м пройденного пути. */
+  private spiderSound(m: Mob, atkSeq: number, dead: number, x: number, y: number, z: number): void {
+    if (dead) return;
+    if (atkSeq !== m.soundAtkSeq) {
+      if (m.soundAtkSeq >= 0) this.sfx.at({ x, y, z }, () => this.sfx.spiderBite());
+      m.soundAtkSeq = atkSeq;
+    }
+    if (!Number.isFinite(m.stepX)) {
+      m.stepX = x;
+      m.stepZ = z;
+      return;
+    }
+    m.stepAcc += Math.hypot(x - m.stepX, z - m.stepZ);
+    m.stepX = x;
+    m.stepZ = z;
+    if (m.stepAcc >= 0.9) {
+      m.stepAcc = 0;
+      this.sfx.at({ x, y, z }, () => this.sfx.spiderStep());
+    }
+  }
+
   private createMob(id: string, s: MobState): void {
     if (this.mobs.has(id)) return;
     const m = new Mob(
@@ -588,6 +614,7 @@ export class NetMobs {
       const s = m.st;
       if (!s) return;
       secCount("#mobs.iter");
+      if (m.isSpider) this.spiderSound(m, s.attackSeq, s.dead, s.x, s.y, s.z);
       const inRange =
         this.drawRange === Infinity || (s.x - playerPos.x) ** 2 + (s.z - playerPos.z) ** 2 <= this.drawRange * this.drawRange;
       const draw = (vr ? !!s.dead || this.vrDrawSet.has(id) : true) && inRange;
@@ -650,7 +677,8 @@ export class NetMobs {
         };
         this.balls.set(id, b);
         // Новый плевок = плевун только что выстрелил — звук с той стороны.
-        this.sfx.spitterFire({ x: s.x, y: s.y, z: s.z });
+        if (s.k === SHOTS.web.code) this.sfx.at({ x: s.x, y: s.y, z: s.z }, () => this.sfx.spiderWebShot());
+        else this.sfx.spitterFire({ x: s.x, y: s.y, z: s.z });
       }
 
       // Пришёл новый патч — берём скорость сервера как есть.

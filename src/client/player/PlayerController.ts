@@ -79,9 +79,16 @@ export class PlayerController {
   dead = false;
   /** Оглушён (спец-атака моба): секунд до конца, ввод глушим так же, как у мёртвого. */
   stunnedSec = 0;
+  /** Корень паутиной (паук): бежать нельзя, бить и умения — можно. */
+  private rooted = false;
   /** Отбрасывание (спец-атака моба): затухающий импульс, м/с — не зависит от ввода. */
   private knockVX = 0;
   private knockVZ = 0;
+
+  /** Корень паутиной: с сервера, на каждом снимке. */
+  setRooted(on: boolean): void {
+    this.rooted = on;
+  }
 
   /** Оглушить на `sec` секунд (не сбрасывает более долгий текущий стан). */
   applyStun(sec: number): void {
@@ -508,8 +515,10 @@ export class PlayerController {
     if (this.stunnedSec > 0) this.stunnedSec = Math.max(0, this.stunnedSec - dt);
     if (this.slowSec > 0) this.slowSec = Math.max(0, this.slowSec - dt);
     // Мёртвый/оглушённый не ходит и не бьёт — ввод глушим целиком.
-    const inp =
+    const inp0 =
       this.dead || this.stunnedSec > 0 ? emptyInput() : (this.input?.sample() ?? emptyInput());
+    // В корне: ходьбы нет, удары и умения — остаются.
+    const inp = this.rooted ? { ...inp0, moveX: 0, moveY: 0 } : inp0;
     this.lastInput = inp;
     if (Math.abs(inp.moveX) + Math.abs(inp.moveY) > 0.05) this.manualMoveAt = performance.now();
     // Отбрасывание — независимо от ввода (даже во время стана), затухает.

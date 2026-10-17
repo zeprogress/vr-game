@@ -1089,6 +1089,71 @@ export class Sfx {
     ex.stop(t + 1.45);
   }
 
+  /** Паук: шаг — сухой щелчок лапы по камню (звать через at(pos)). */
+  spiderStep(): void {
+    if (!this.ready()) return;
+    const t = this.t;
+    const n = this.noise();
+    const hp = this.filter("highpass", 1900);
+    const g = this.env(0.2, 0.001, 0.05, t);
+    n.connect(hp).connect(g);
+    n.start(t);
+    n.stop(t + 0.1);
+  }
+
+  /** Паук: укус — треск хитина и низкий «чвак» яда. */
+  spiderBite(): void {
+    if (!this.ready()) return;
+    const t = this.t;
+    const n = this.noise();
+    const bp = this.filter("bandpass", 2300, 1.2);
+    const g = this.env(0.55, 0.001, 0.07, t);
+    n.connect(bp).connect(g);
+    n.start(t);
+    n.stop(t + 0.09);
+    const o = this.ctx!.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(110, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.2);
+    const og = this.env(0.7, 0.001, 0.2, t);
+    o.connect(og);
+    o.start(t);
+    o.stop(t + 0.25);
+  }
+
+  /** Паук: паутинный сгусток в полёте — шелест и свист. */
+  spiderWebShot(): void {
+    if (!this.ready()) return;
+    const t = this.t;
+    const n = this.noise();
+    const bp = this.filter("bandpass", 2600, 0.9);
+    bp.frequency.exponentialRampToValueAtTime(700, t + 0.28);
+    const g = this.env(0.28, 0.01, 0.25, t);
+    n.connect(bp).connect(g);
+    n.start(t);
+    n.stop(t + 0.3);
+  }
+
+  /** Герой опутан паутиной (корень) — липкий «чвак» и натянутая нить. */
+  spiderWebRoot(): void {
+    if (!this.ready()) return;
+    const t = this.t;
+    const n = this.noise();
+    const hp = this.filter("highpass", 3000);
+    const g = this.env(0.22, 0.002, 0.2, t);
+    n.connect(hp).connect(g);
+    n.start(t);
+    n.stop(t + 0.3);
+    const o = this.ctx!.createOscillator();
+    o.type = "triangle";
+    o.frequency.setValueAtTime(260, t);
+    o.frequency.exponentialRampToValueAtTime(140, t + 0.3);
+    const og = this.env(0.25, 0.002, 0.2, t);
+    o.connect(og);
+    o.start(t);
+    o.stop(t + 0.32);
+  }
+
   groundBash(): void {
     if (!this.ready()) return;
     // Никакого «замаха» в звуке — телеграф-круг уже отыграл подготовку.

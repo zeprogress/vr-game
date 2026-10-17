@@ -24,6 +24,7 @@ import { NameTag } from "../ui/NameTag";
 import { SpeechBubble } from "../ui/SpeechBubble";
 import { BuffOrbitFx } from "../ui/BuffOutlineFx";
 import { StunStarsFx } from "../ui/StunStarsFx";
+import { WebCocoonFx } from "./WebCocoonFx";
 import type { Hittable } from "../combat/Hittable";
 import { makeBotBody } from "./botModels";
 import { loadRig, recolorCharacter, BOT_SKIN_MODELS, type RigInstance, type ModelName } from "../world/models";
@@ -211,6 +212,9 @@ export class RemoteAvatar implements Hittable {
   private windBuff = false;
   private xpBuff = false;
   private readonly stunStars: StunStarsFx;
+  /** Корень паутиной (удар паука): кокон вокруг героя. */
+  private readonly webCocoon: WebCocoonFx;
+  private rooted = false;
   private stunned = false;
   private buffed = false;
   /** Пятно-тень под ногами: без неё модель читается как парящая. */
@@ -326,6 +330,7 @@ export class RemoteAvatar implements Hittable {
     this.root.rotationQuaternion = Quaternion.Identity();
     this.buffAura = new BuffOrbitFx(scene, this.root, -0.75);
     this.stunStars = new StunStarsFx(scene, this.root, 0.4);
+    this.webCocoon = new WebCocoonFx(scene, this.root, 0.9);
 
     this.mat = new StandardMaterial(`avatarMat_${id}`, scene);
     this.mat.diffuseColor = colorFor(id);
@@ -700,6 +705,7 @@ export class RemoteAvatar implements Hittable {
     this.xpBuff = !inTower && (p.scrollXpSecs ?? 0) > 0;
     this.skillBuffs = { plague: !inTower && (p.plagueSecs ?? 0) > 0, abyss: !inTower && (p.abyssSecs ?? 0) > 0, smoke: !inTower && (p.smokeSecs ?? 0) > 0 };
     this.stunned = p.stunned === 1;
+    this.rooted = p.rooted === 1;
     const wasDead = this.dead;
     this.dead = p.dead === 1;
     this.theirPvp = p.pvp === 1;
@@ -824,6 +830,8 @@ export class RemoteAvatar implements Hittable {
     this.buffAura.update(dt);
     this.stunStars.setActive(this.stunned && !this.dead);
     this.stunStars.update(dt);
+    this.webCocoon.setActive(this.rooted && !this.dead);
+    this.webCocoon.update(dt);
     this.syncBar();
     this.vrCullDraw();
     this.cullTag();
@@ -1529,6 +1537,7 @@ export class RemoteAvatar implements Hittable {
     this.nameTag.dispose();
     this.buffAura.dispose();
     this.stunStars.dispose();
+    this.webCocoon.dispose();
     this.root.dispose(false, true);
     rigMats.add(this.mat);
     const scene = this.scene;

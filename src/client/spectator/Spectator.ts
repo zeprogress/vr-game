@@ -15,7 +15,7 @@ import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
 import type { Room } from "colyseus.js";
 
 import { BOT, EVENT, PLAYER, SKILL, daylightAt } from "#shared/constants";
-import { BLINK, BOSS, CAT_BOSS_NAMES, MOB, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, WEB, SPORE } from "#shared/mobs";
+import { BLINK, BOSS, CAT_BOSS_NAMES, MOB, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, SPORE } from "#shared/mobs";
 import { TOWER, TOWER_HIDE } from "#shared/tower";
 import type { ZoneState, PlayerState } from "#shared/net/schema";
 import type { ActKind, SpecCmd } from "#shared/net/messages";
@@ -1751,14 +1751,6 @@ export class Spectator {
         break;
       case "freezeHit":
         this.skillFx.wraithPuff(x, y - 0.8, z, 1.2, true);
-        this.sfx.at({ x, y, z }, () => this.sfx.groundBash());
-        break;
-      case "webMark":
-        // Паук: паутина под героем — через d с опутает.
-        this.skillFx.stunBash(x, y, z, WEB.radius, d ?? WEB.windup);
-        break;
-      case "webHit":
-        this.skillFx.wraithPuff(x, y - 0.8, z, 1.0, true);
         this.sfx.at({ x, y, z }, () => this.sfx.groundBash());
         break;
       case "spikeMark":

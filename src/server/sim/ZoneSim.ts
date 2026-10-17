@@ -172,6 +172,8 @@ export interface PlayerHit {
   /** Замедление цели на N секунд (Ледяной демон) и его доля (0.45 — медленнее на 45%). */
   slowSec?: number;
   slowFrac?: number;
+  /** Корень (паутина): герой не может бежать rootSec секунд, бить и умения — может. */
+  rootSec?: number;
   /** Сила отбрасывания ОТ источника удара, м/с (спец-атака моба). */
   knockback?: number;
   /** Урон средой (ядовитое облако): щит/меч/уворот не спасают. */
@@ -189,7 +191,7 @@ export interface PlayerHit {
 
 /** Событие моба для визуала у клиентов (ZoneRoom рассылает как MSG.act). */
 export interface MobFx {
-  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "spikeMark" | "spikeHit" | "chiefHeal" | "freezeMark" | "freezeHit" | "webMark" | "webHit" | "leapMark" | "leapHit" | "caltrops" | "burrowDive" | "burrowTrail" | "burrowMark" | "burrowHit" | "stormMark" | "stormHit" | "stormJump" | "ninjaSmoke" | "parryOn" | "parryHit" | "pierceShot";
+  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "spikeMark" | "spikeHit" | "chiefHeal" | "freezeMark" | "freezeHit" | "leapMark" | "leapHit" | "caltrops" | "burrowDive" | "burrowTrail" | "burrowMark" | "burrowHit" | "stormMark" | "stormHit" | "stormJump" | "ninjaSmoke" | "parryOn" | "parryHit" | "pierceShot";
   /** Радиус области, м (прыжок Скалолома, колючки). */
   r?: number;
   x: number;
@@ -414,7 +416,7 @@ export class Mob {
   readonly spiker: boolean;
   readonly healer: boolean;
   readonly freezer: boolean;
-  /** Паук: плетёт паутину (WEB) — круг под героем. */
+  /** Паук: плюётся паутинным сгустком (WEB, корень на попадание). */
   readonly webber: boolean;
   /** 40 ур.: свой физический снаряд (Метатель копий, Шипохвост) — см. ZoneSim.shoot. */
   readonly shot: MobShot | null;
@@ -479,9 +481,6 @@ export class Mob {
   private freezeWindupT = 0;
   private freezeX = 0;
   private webCd = 4;
-  private webWindupT = 0;
-  private webX = 0;
-  private webZ = 0;
   private freezeZ = 0;
   private chargeCd = 3;
   private chargeWindupT = 0;
@@ -581,7 +580,7 @@ export class Mob {
    * (рейд-босс и его копии) в это время не бьют вблизи и не стреляют — их поведение сохранено как есть.
    */
   private get castingNow(): boolean {
-    return this.sporeWindupT > 0 || this.blinkFadeT > 0 || this.pullWindupT > 0 || this.chargeWindupT > 0 || this.freezeWindupT > 0 || this.webWindupT > 0 || this.leapWindupT > 0 || this.stormT > 0;
+    return this.sporeWindupT > 0 || this.blinkFadeT > 0 || this.pullWindupT > 0 || this.chargeWindupT > 0 || this.freezeWindupT > 0 || this.leapWindupT > 0 || this.stormT > 0;
   }
 
   /**
@@ -1013,7 +1012,7 @@ export class Mob {
     dt: number,
     players: SimPlayer[],
     hits: PlayerHit[],
-    spit: (mob: Mob, target: SimPlayer) => void,
+    spit: (mob: Mob, target: SimPlayer, web?: boolean) => void,
   ): void {
     if (this.hurtCd > 0) this.hurtCd -= dt;
     // Пугало: стоит столбом, не бьёт, здоровье всегда полное (урон считает ZoneSim.scare).
@@ -1636,34 +1635,12 @@ export class Mob {
         this.fx.push({ k: "freezeMark", x: np.x, z: np.z, d: FREEZE.windup });
       }
     }
-    // Паук: паутина под героем — телеграф, потом круг опутывает: герои в нём почти стоят (WEB).
+    // Паук: паутинный сгусток издалека — на попадание герой «в корне» (WEB). Укус — вблизи.
     if (this.webber) {
       if (this.webCd > 0) this.webCd -= dt;
-      if (this.webWindupT > 0) {
-        this.webWindupT -= dt;
-        if (this.webWindupT <= 0) {
-          this.swing();
-          this.fx.push({ k: "webHit", x: this.webX, z: this.webZ });
-          for (const p of players) {
-            if (Math.hypot(p.x - this.webX, p.z - this.webZ) > WEB.radius) continue;
-            hits.push({
-              target: p.sessionId,
-              dmg: MOB.attackDamage * this.dmgMul * WEB.strikeMul,
-              fromX: this.webX,
-              fromZ: this.webZ,
-              projectile: false,
-              byMob: this.id,
-              slowSec: WEB.slowSec,
-              slowFrac: WEB.slowFrac,
-            });
-          }
-        }
-      } else if (chasing && np && !busy && this.webCd <= 0 && dist < WEB.range) {
-        this.webX = np.x;
-        this.webZ = np.z;
-        this.webWindupT = WEB.windup;
+      if (chasing && np && !busy && this.webCd <= 0 && dist >= WEB.minRange && dist < WEB.range) {
         this.webCd = WEB.cooldown * (0.85 + Math.random() * 0.3);
-        this.fx.push({ k: "webMark", x: np.x, z: np.z, d: WEB.windup });
+        spit(this, np, true);
       }
     }
 
@@ -2290,6 +2267,8 @@ interface BallExtra {
   dmgMul: number;
   pierce?: boolean;
   bleed?: { sec: number; frac: number };
+  /** Паутинный сгусток: на попадание герой «в корне» на root с. (WEB). */
+  root?: number;
   caltrops?: MobShot["caltrops"];
 }
 
@@ -2361,6 +2340,7 @@ class Ball {
           byMob: this.owner || undefined,
           ...(ex ? { phys: true } : {}),
           ...(ex?.bleed ? { bleedSec: ex.bleed.sec, bleedFrac: ex.bleed.frac } : {}),
+          ...(ex?.root ? { rootSec: ex.root } : {}),
         });
         // Копьё пробивает: летит дальше, этого героя больше не задевает.
         if (ex?.pierce) {
@@ -2803,7 +2783,7 @@ export class ZoneSim {
 
   tick(dt: number, players: SimPlayer[]): PlayerHit[] {
     const hits: PlayerHit[] = [];
-    const spit = (mob: Mob, target: SimPlayer): void => {
+    const spit = (mob: Mob, target: SimPlayer, web = false): void => {
       // «Пелена смерти»: из дыма не стреляют, и в героя, стоящего в дыму, — тоже (не видят цель).
       if (this.inSmoke(mob.x, mob.z) || this.inSmoke(target.x, target.z)) return;
       if (mob.shot) {
@@ -2842,6 +2822,7 @@ export class ZoneSim {
         mob.dmgMul,
         mob.spellAoe ? MAGE_SPELL.splashRadius : 0,
         mob.spellAoe ? MAGE_SPELL.splashFrac : 0,
+        web ? { code: SHOTS.web.code, grav: SHOTS.web.grav, radius: SHOTS.web.radius, dmgMul: WEB.dmgMul, root: WEB.rootSec } : null,
       );
       this.balls.set(b.id, b);
     };

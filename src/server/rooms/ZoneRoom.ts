@@ -80,7 +80,7 @@ import {
   type AutoGoMsg,
 } from "#shared/net/messages";
 import { ADMIN_NICK, NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL } from "#shared/constants";
-import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, mobArmorBits, type CatDefense } from "#shared/mobs";
+import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, mobArmorBits, type CatDefense } from "#shared/mobs";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
 import { skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
 import { RaidFight, type RaidHost } from "./raidFight";
@@ -380,6 +380,8 @@ interface Runtime {
   /** Обморожение: до какой секунды (this.elapsed) бег медленнее на slowFrac. */
   slowUntil: number;
   slowFrac: number;
+  /** Корень паутиной: до какой секунды (this.elapsed) герой не может бежать. */
+  rootedUntil: number;
   /** Кровотечение: до какой секунды, урон в секунду, кто нанёс, накопитель тика. */
   bleedUntil: number;
   bleedDps: number;
@@ -6382,6 +6384,7 @@ export class ZoneRoom extends Room<ZoneState> {
       stunnedUntil: 0,
       slowUntil: 0,
       slowFrac: 0,
+      rootedUntil: 0,
       bleedUntil: 0,
       bleedDps: 0,
       bleedBy: "",
@@ -10087,6 +10090,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.state.players.forEach((p, id) => {
       const rt = this.rt.get(id);
       p.stunned = rt && rt.stunnedUntil > this.elapsed ? 1 : 0;
+      p.rooted = rt && rt.rootedUntil > this.elapsed ? 1 : 0;
       // Текст роллов надетого инстанса — для тултипа в инвентаре (Ф14).
       if (rt) {
         const lw = rolledIn(p, "left", rt);
@@ -10183,7 +10187,6 @@ export class ZoneRoom extends Room<ZoneState> {
           this.addDanger(f.x, f.z, f.r + 0.6, (f.d ?? 1) + 0.2, f.k === "leapMark" && inDunRegion(f.x, f.z));
         // Ледяной круг (ледяной демон, Лунный аватар) — тоже выбегают.
         if (f.k === "freezeMark") this.addDanger(f.x, f.z, FREEZE.radius + 0.6, (f.d ?? 1) + 0.2);
-        if (f.k === "webMark") this.addDanger(f.x, f.z, WEB.radius + 0.6, (f.d ?? 1) + 0.2);
       }
       m.fx.length = 0;
     }
@@ -10580,6 +10583,7 @@ export class ZoneRoom extends Room<ZoneState> {
         rt.slowUntil = this.elapsed + h.slowSec;
         rt.slowFrac = h.slowFrac ?? 0.4;
       }
+      if (h.rootSec) rt.rootedUntil = this.elapsed + h.rootSec;
       // Кровотечение (Метатель копий): доля прошедшего урона в секунду, тикает в tickBleeds.
       if (h.bleedSec && dmg > 0) {
         const still = rt.bleedUntil > this.elapsed ? rt.bleedDps : 0;
@@ -11130,6 +11134,7 @@ export class ZoneRoom extends Room<ZoneState> {
       stunnedUntil: 0,
       slowUntil: 0,
       slowFrac: 0,
+      rootedUntil: 0,
       bleedUntil: 0,
       bleedDps: 0,
       bleedBy: "",

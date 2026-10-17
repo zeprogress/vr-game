@@ -410,6 +410,16 @@ const FLAME_FIRE = new Color3(1, 0.5, 0.12);
 const FLAME_BLOOD = new Color3(0.95, 0.05, 0.05);
 
 export class Mob implements Hittable {
+  /** Паук: шаги и укусы — звуки (см. MobSystem.spiderSound). */
+  get isSpider(): boolean {
+    return this.modelName === "monSpider";
+  }
+  /** Звук паука: последний удар (attackSeq), позиция для шагов и накопленный путь. */
+  soundAtkSeq = -1;
+  stepX = NaN;
+  stepZ = NaN;
+  stepAcc = 0;
+
   /** ПК в третьем лице: плашки как в WoW (HP всегда, цвет уровня по опасности). null — как было. */
   static pcPlates: { level: number } | null = null;
 

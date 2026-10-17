@@ -197,7 +197,7 @@ export interface EliteMobDef {
   visLift?: number;
   /** Удар вблизи магический: броня от силы не гасит, защищает интеллект; фиолетовая вспышка. */
   magicMelee?: boolean;
-  /** Плетёт паутину: круг под героем (телеграф), герои в нём замедлены — см. WEB. */
+  /** Плюётся паутинным сгустком (корень на попадание) — см. WEB и SHOTS.web. */
   web?: boolean;
   /** Опустить саму модель (клиент) на эту долю высоты тела — «летает ниже». */
   modelDrop?: number;
@@ -336,6 +336,8 @@ export interface EliteMobDef {
 export const SHOTS = {
   spear: { code: 2, grav: 2.5, radius: 0.2 },
   spike: { code: 3, grav: 3, radius: 0.13 },
+  /** Паутинный сгусток паука: на попадание герой «в корне» (WEB.rootSec) — бежать не может. */
+  web: { code: 4, grav: 1.2, radius: 0.3 },
 } as const;
 
 export type ShotKind = keyof typeof SHOTS;
@@ -675,9 +677,9 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // защита режет); плетёт паутину — круг под героем, в нём герой опутан и почти стоит (WEB).
   spider: {
     model: "monSpider", name: "Паук", blurb: "кусает ядом, опутывает паутиной", level: 60, kind: "slime",
-    hp: 14000, dmgMul: 18, xp: 8000000, scaleMul: 2.2, tint: null,
+    hp: 14000, dmgMul: 18, xp: 8000000, scaleMul: 1.1, tint: null,
     magicMelee: true, web: true, walksOnly: true, gait: true, noSquash: true, attackClip: "Attack",
-    attackCooldown: 1.4, meleeReach: 2.6,
+    attackCooldown: 0.9, meleeReach: 1.8, speedMul: 1.5,
   },
   skeletonReaver: {
     model: "monSkeletonReaver", name: "Костяной жнец", blurb: "быстрый, сильные удары мечом, прикрывается щитом, магия режется на 20%, прыжок-выпад с оглушением", level: 53, kind: "slime",
@@ -764,17 +766,16 @@ export const FREEZE = {
   slowFrac: 0.45,
 };
 
-/** Паук (EliteMobDef.web): паутина под героем — телеграф, потом круг опутывает: герои в нём
- *  «в паутине» — замедлены почти до стояния (slowFrac) на slowSec секунд. Урон — слабее удара. */
+/** Паук (EliteMobDef.web): паутинный сгусток издалека — на попадание герой «в корне»: бежать не может
+ *  rootSec секунд, но может бить и использовать умения. Урон сгустка — слабее укуса. */
 export const WEB = {
-  range: 14,
-  cooldown: 10,
-  /** Телеграф: круг на земле под героем, с. */
-  windup: 1.2,
-  radius: 3.5,
-  strikeMul: 0.8,
-  slowSec: 4,
-  slowFrac: 0.8,
+  /** С каких дистанций плюется сгустком (ближе minRange — только укус). */
+  range: 12,
+  minRange: 4,
+  cooldown: 7,
+  /** Корень — сколько секунд герой не может бежать. */
+  rootSec: 2.5,
+  dmgMul: 0.5,
 };
 
 /** Костяной вождь: костяные шипы из-под героев (см. EliteMobDef.spiker). */
