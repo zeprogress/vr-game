@@ -62,11 +62,11 @@ const CSS = `
 .ov-wm i { width:1vh; height:1vh; border-radius:50%; background:#e8433f;
   box-shadow:0 0 10px #e8433f; animation:ovpulse 2s ease-in-out infinite; }
 @keyframes ovpulse { 0%,100%{opacity:1} 50%{opacity:.35} }
-.ov-clock { right:2.2vw; top:2.4vh; font-weight:700; font-size:2.3vh; letter-spacing:.06em;
+.ov-clock { right:1.6vw; top:2.4vh; font-weight:700; font-size:2.3vh; letter-spacing:.06em;
   text-align:right; }
 .ov-clock small { font-size:1.5vh; font-weight:600; opacity:.7; margin-left:.7vh;
   letter-spacing:.04em; }
-.ov-online { right:2.2vw; top:6.4vh; text-align:right; font-size:1.7vh; line-height:1.5; opacity:.9; }
+.ov-online { right:1.6vw; top:6.4vh; text-align:right; font-size:1.7vh; line-height:1.5; opacity:.9; }
 .ov-online b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
   text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
 .ov-online div { display:flex; gap:.7vh; align-items:center; justify-content:flex-end; }
@@ -75,8 +75,8 @@ const CSS = `
 .ov-top { left:1.6vw; top:6.4vh; font-size:1.7vh; line-height:1.6; }
 .ov-top b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
   text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
-.ov-top div { display:flex; gap:.9vh; align-items:center; min-height:2.9vh; }
-.ov-top .rk { flex:none; width:3vh; text-align:left; line-height:1; opacity:.7;
+.ov-top div { display:flex; gap:.6vh; align-items:center; min-height:2.9vh; }
+.ov-top .rk { flex:none; width:2.4vh; text-align:left; line-height:1; opacity:.7;
   font-size:1.7vh; font-variant-numeric:tabular-nums; }
 .ov-top .rk.medal { font-size:2.5vh; opacity:1; margin-left:-.4vh; margin-right:.4vh; }
 .ov-top .rk:not(.medal) { margin-left:.4vh; margin-right:-.4vh; }
@@ -85,8 +85,8 @@ const CSS = `
 .ov-catboard { left:1.6vw; top:23vh; font-size:1.7vh; line-height:1.6; padding-top:1.2vh; }
 .ov-catboard b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
   text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
-.ov-catboard div { display:flex; gap:.9vh; align-items:center; min-height:2.9vh; }
-.ov-catboard .rk { flex:none; width:3vh; text-align:left; line-height:1; opacity:.7;
+.ov-catboard div { display:flex; gap:.6vh; align-items:center; min-height:2.9vh; }
+.ov-catboard .rk { flex:none; width:2.4vh; text-align:left; line-height:1; opacity:.7;
   font-size:1.7vh; font-variant-numeric:tabular-nums; }
 .ov-catboard .rk.medal { font-size:2.5vh; opacity:1; margin-left:-.4vh; margin-right:.4vh; }
 .ov-catboard .rk:not(.medal) { margin-left:.4vh; margin-right:-.4vh; }
@@ -125,7 +125,7 @@ const CSS = `
 /* Панель босса (и супербосса катакомб) — вверху экрана, с отступом от края; для остальных целей — снизу. */
 .ov-hp.boss { top:2.4vh; bottom:auto; }
 .ov-hp.boss b { color:#ff9a95; }
-.ov-feed { right:2.2vw; bottom:24vh; display:flex; flex-direction:column-reverse;
+.ov-feed { right:1.6vw; bottom:24vh; display:flex; flex-direction:column-reverse;
   gap:.5vh; align-items:flex-end; }
 .ov-feed div { background:rgba(12,13,18,.62); padding:.5vh 1vh; border-radius:.5vh;
   font-size:1.7vh; font-weight:600; animation:ovfeed .3s ease; }
@@ -191,7 +191,7 @@ const CSS = `
 .ov-cattop .r .nm .rev { flex:none; }
 .ov-cattop .r.dead { opacity:.6; }
 .ov-cattop .rev { font-style:normal; color:#ffd166; font-weight:800; }
-.ov-cat { right:1.2vw; bottom:3vh; width:21vw; font-size:1.55vh; line-height:1.35; border-left:.35vh solid #9146ff; }
+.ov-cat { right:1.6vw; bottom:3vh; width:21vw; font-size:1.55vh; line-height:1.35; border-left:.35vh solid #9146ff; }
 .ov-cat b { display:block; font-weight:800; font-size:2vh; color:#d6b8ff; letter-spacing:.03em; }
 .ov-cat .st { margin:.3vh 0 .8vh; opacity:.92; font-variant-numeric:tabular-nums; }
 .ov-cat .c { display:flex; gap:.6vw; margin:.25vh 0; }
@@ -438,7 +438,7 @@ export class Overlay {
       nm.textContent = r.nick;
       const lv = document.createElement("span");
       lv.className = "lv";
-      lv.textContent = `урон ${fmtDmg(r.dmg)}${r.wins ? ` · ${r.wins}🏆` : ""}`;
+      lv.textContent = `${fmtDmg(r.dmg)}${r.wins ? ` · ${r.wins}🏆` : ""}`;
       row.append(rk, nm, lv);
       this.catBoard.appendChild(row);
     });
