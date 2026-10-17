@@ -79,6 +79,7 @@ const CSS = `
 .ov-top .rk { flex:none; width:3vh; text-align:left; line-height:1; opacity:.7;
   font-size:1.7vh; font-variant-numeric:tabular-nums; }
 .ov-top .rk.medal { font-size:2.5vh; opacity:1; margin-left:-.4vh; margin-right:.4vh; }
+.ov-top .rk:not(.medal) { margin-left:.4vh; margin-right:-.4vh; }
 .ov-top .nm { font-weight:700; }
 .ov-top .lv { opacity:.75; margin-left:.4vh; }
 .ov-catboard { left:1.6vw; top:23vh; font-size:1.7vh; line-height:1.6; padding-top:1.2vh; }
@@ -88,6 +89,7 @@ const CSS = `
 .ov-catboard .rk { flex:none; width:3vh; text-align:left; line-height:1; opacity:.7;
   font-size:1.7vh; font-variant-numeric:tabular-nums; }
 .ov-catboard .rk.medal { font-size:2.5vh; opacity:1; margin-left:-.4vh; margin-right:.4vh; }
+.ov-catboard .rk:not(.medal) { margin-left:.4vh; margin-right:-.4vh; }
 .ov-catboard .nm { font-weight:700; }
 .ov-catboard .lv { opacity:.75; margin-left:.4vh; }
 .ov-watch { left:1.6vw; bottom:3vh; }
