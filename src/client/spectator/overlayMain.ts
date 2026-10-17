@@ -19,6 +19,18 @@ const key = params.get("spectator");
 const ov = new Overlay();
 ov.setShown(false);
 
+/**
+ * Какую часть оверлея рисовать — чтобы HP боссов можно было ставить отдельным источником OBS:
+ * `part=boss` — только полоска HP босса/супербосса (без событий, часов, онлайна и т.д.);
+ * `part=main` — всё, кроме неё; без параметра — как раньше, всё вместе.
+ */
+const part = params.get("part") === "boss" ? "boss" : params.get("part") === "main" ? "main" : "all";
+const bossOnly = part === "boss";
+if (bossOnly) {
+  // Отдельный источник — только HP: остальные блоки и настройки с пульта её не трогают.
+  ov.setConfig({ wm: 0, clock: 0, online: 0, watching: 0, feed: 0, top: 0, ticker: 0, hp: 1 });
+}
+
 /** Последний кадр из рендерящего спектатора (контекст панелей и строка сверху). */
 let frame: OverlayFrame | null = null;
 let frameAt = 0;
@@ -29,18 +41,21 @@ net.onSpecCmd = (cmd: SpecCmd) => {
   if (cmd.t === "frame") {
     frame = cmd.d;
     frameAt = performance.now();
-  } else if (cmd.t === "card") ov.showCard(cmd.title, cmd.sub ?? "", cmd.secs ?? 0);
+  } else if (bossOnly) return; // отдельный источник HP: карточки и настройки с пульта не нужны
+  else if (cmd.t === "card") ov.showCard(cmd.title, cmd.sub ?? "", cmd.secs ?? 0);
   else if (cmd.t === "overlay") ov.setConfig(cmd.patch);
 };
-net.onPickupFeed = (m) => ov.pushPickup(m.nick, m.item, m.tier);
-net.onBossEvent = (kind, by, loot, lootItems) => ov.bossBanner(kind, by, loot, lootItems);
-net.onLeaderboard = (rows) => ov.setLeaderboard(rows);
-net.onCatBoard = (rows) => ov.setCatBoard(rows);
+// Событийные блоки — только в полном оверлее (в отдельном источнике HP босса их нет).
+net.onPickupFeed = (m) => { if (!bossOnly) ov.pushPickup(m.nick, m.item, m.tier); };
+net.onBossEvent = (kind, by, loot, lootItems) => { if (!bossOnly) ov.bossBanner(kind, by, loot, lootItems); };
+net.onLeaderboard = (rows) => { if (!bossOnly) ov.setLeaderboard(rows); };
+net.onCatBoard = (rows) => { if (!bossOnly) ov.setCatBoard(rows); };
 // Таблица урона в катакомбах и карточки катакомб — как в спектраторе.
-net.onCatStats = (m) => ov.setCatTop(m.rows);
-net.onCatacomb = (m) => ov.showCard(m.title, m.sub, m.secs ?? 7, m.loot);
-net.onCatReport = (m) => showCatReport(m, { delayMs: 3500, holdSec: 25 });
+net.onCatStats = (m) => { if (!bossOnly) ov.setCatTop(m.rows); };
+net.onCatacomb = (m) => { if (!bossOnly) ov.showCard(m.title, m.sub, m.secs ?? 7, m.loot); };
+net.onCatReport = (m) => { if (!bossOnly) showCatReport(m, { delayMs: 3500, holdSec: 25 }); };
 net.onWorldEvent = (phase, name, _x, _z, loot) => {
+  if (bossOnly) return;
   const hunt = name === "Охота";
   const tower = name === "Башня";
   if (phase === "start") {
@@ -99,8 +114,16 @@ const EMPTY_FRAME: OverlayFrame = {
 function tick(): void {
   // Рендерящая страница молчит дольше 8 с (перезагрузка/закрыта) — гасим то, что она считала.
   const f = frame && performance.now() - frameAt < 8000 ? frame : EMPTY_FRAME;
-  ov.setTicker(f.ticker, f.tickerKind);
-  ov.update(f);
+  const isBoss = !!f.targetHp?.boss;
+  if (bossOnly) {
+    ov.setTicker("", "news");
+    ov.update({ ...EMPTY_FRAME, targetHp: isBoss ? f.targetHp : null });
+    return;
+  }
+  // В полном оверлее босса показывает отдельный источник (part=boss) — здесь его не дублируем.
+  const view = part === "main" && isBoss ? { ...f, targetHp: null } : f;
+  ov.setTicker(view.ticker, view.tickerKind);
+  ov.update(view);
 }
 
 // Оверлею хватает 4 кадров в секунду: анимации в нём — CSS.
