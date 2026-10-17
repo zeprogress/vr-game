@@ -403,8 +403,6 @@ interface Runtime {
 
 /** Бот зрителя (Ф10): безголовый игрок, которым рулит сервер. */
 interface Bot {
-  /** До какого момента (Date.now) бот стоит на месте после возрождения, потом идёт к месту прокачки. */
-  holdUntil?: number;
   /** До какого момента (Date.now) бот бьёт пугало по !пугало. */
   testUntil?: number;
   /** Маршрут в обход крутых склонов: к какой цели, точки, когда посчитан (this.elapsed). */
@@ -608,8 +606,6 @@ function botGate(home: { x: number; z: number }): { x: number; z: number } {
  * ВЫШЕ уровня бота + 3 (челлендж чуть выше бота, а не ниже). До 5 ур. —
  * обычная поляна у спавна.
  */
-/** Сколько бот стоит в лагере после возрождения, прежде чем побежать на место прокачки (мс). */
-const BOT_RESPAWN_HOLD_MS = 2000;
 
 function botHome(level: number, pref: string | null = null, rand = 0): { x: number; z: number } {
   if (pref) {
@@ -7647,8 +7643,6 @@ export class ZoneRoom extends Room<ZoneState> {
     if (bot.inTower) return;
     // Оглушён спец-атакой моба (Чародей руин) — стоит столбом, ни шага, ни удара.
     if (bot.rt.stunnedUntil > this.elapsed) return;
-    // После возрождения — постоять в лагере (BOT_RESPAWN_HOLD_MS), потом на место прокачки.
-    if ((bot.holdUntil ?? 0) > Date.now()) return;
     bot.attackCd = Math.max(0, bot.attackCd - dt);
     bot.drinkCd = Math.max(0, bot.drinkCd - dt);
     bot.healCd = Math.max(0, bot.healCd - dt);
@@ -10819,7 +10813,6 @@ export class ZoneRoom extends Room<ZoneState> {
       const home = botHome(p.level, bot.campPref, bot.campRand);
       bot.homeX = home.x;
       bot.homeZ = home.z;
-      bot.holdUntil = Date.now() + BOT_RESPAWN_HOLD_MS;
       // Скорость и маршрут — от прошлой жизни (тик мёртвого бота их не трогает): иначе он
       // выйдет из лагеря с прежним разгоном и по старым путевым точкам.
       bot.vx = 0;
