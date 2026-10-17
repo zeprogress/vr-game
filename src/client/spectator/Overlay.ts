@@ -92,7 +92,7 @@ const CSS = `
   font-family:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
   color:#fff; text-shadow:0 2px 10px rgba(0,0,0,.55); }
 .ov .box { position:absolute; }
-.ov-wm { left:2.2vw; top:2.4vh; font-weight:800; font-size:2.1vh; letter-spacing:.14em;
+.ov-wm { left:1.6vw; top:2.4vh; font-weight:800; font-size:2.1vh; letter-spacing:.14em;
   display:flex; align-items:center; gap:.7vh; }
 .ov-wm i { width:1vh; height:1vh; border-radius:50%; background:#e8433f;
   box-shadow:0 0 10px #e8433f; animation:ovpulse 2s ease-in-out infinite; }
@@ -107,7 +107,7 @@ const CSS = `
 .ov-online div { display:flex; gap:.7vh; align-items:center; justify-content:flex-end; }
 .ov-online i.spk { width:1vh; height:1vh; border-radius:50%; background:#3ad16b;
   box-shadow:0 0 8px #3ad16b; flex:none; }
-.ov-top { left:2.2vw; top:6.4vh; font-size:1.7vh; line-height:1.6; }
+.ov-top { left:1.6vw; top:6.4vh; font-size:1.7vh; line-height:1.6; }
 .ov-top b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
   text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
 .ov-top div { display:flex; gap:.9vh; align-items:center; min-height:2.9vh; }
@@ -116,7 +116,7 @@ const CSS = `
 .ov-top .rk.medal { font-size:2.5vh; opacity:1; }
 .ov-top .nm { font-weight:700; }
 .ov-top .lv { opacity:.75; margin-left:.4vh; }
-.ov-catboard { left:2.2vw; top:23vh; font-size:1.7vh; line-height:1.6; padding-top:1.2vh; }
+.ov-catboard { left:1.6vw; top:23vh; font-size:1.7vh; line-height:1.6; padding-top:1.2vh; }
 .ov-catboard b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
   text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
 .ov-catboard div { display:flex; gap:.9vh; align-items:center; min-height:2.9vh; }
@@ -125,7 +125,7 @@ const CSS = `
 .ov-catboard .rk.medal { font-size:2.5vh; opacity:1; }
 .ov-catboard .nm { font-weight:700; }
 .ov-catboard .lv { opacity:.75; margin-left:.4vh; }
-.ov-watch { left:2.2vw; bottom:3vh; }
+.ov-watch { left:1.6vw; bottom:3vh; }
 .ov-watch b { font-size:1.4vh; letter-spacing:.2em; opacity:.7; font-weight:700;
   text-transform:uppercase; }
 .ov-watch span { display:block; font-weight:800; font-size:3.2vh; margin-top:.4vh; }
@@ -211,7 +211,7 @@ const CSS = `
   color:#fff; animation:none;
   text-shadow:0 .15vh .5vh rgba(0,0,0,.85); }
 /* Ниже рейтинга башни (тот — с 23vh, до 5 строк ≈ до 43vh), иначе перекрывал его. */
-.ov-cattop { left:1.2vw; top:12vh; width:22vw; font-size:1.65vh; border-left:.35vh solid #ff5a3c; }
+.ov-cattop { left:0.6vw; top:12vh; width:22vw; font-size:1.65vh; border-left:.35vh solid #ff5a3c; }
 .ov-cattop b { display:block; font-weight:800; font-size:1.9vh; color:#ffb199; letter-spacing:.03em; margin-bottom:.5vh; }
 .ov-cattop .hd, .ov-cattop .r { display:grid; grid-template-columns:1fr 5vw 3.6vw 2.4vw; gap:.4vw; font-variant-numeric:tabular-nums; }
 .ov-cattop .hd { opacity:.6; font-size:1.3vh; }
@@ -232,7 +232,7 @@ const CSS = `
 .ov-cq .bar { height:1.1vh; margin:.7vh 0 .4vh; background:rgba(255,255,255,.14); border-radius:1vh; overflow:hidden; }
 .ov-cq .bar i { display:block; height:100%; background:linear-gradient(90deg,#9146ff,#c79bff); border-radius:1vh; }
 .ov-cq span { opacity:.85; font-variant-numeric:tabular-nums; }
-.ov-towerstatus { left:2.2vw; top:47vh; text-align:left; font-size:1.7vh; }
+.ov-towerstatus { left:1.6vw; top:47vh; text-align:left; font-size:1.7vh; }
 .ov-towerstatus b { display:block; font-size:3.9vh; letter-spacing:.16em; opacity:.6;
   text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
 .ov-towerstatus span { display:block; font-weight:800; font-size:6.6vh; }
