@@ -408,6 +408,61 @@ function lodSphere(scene: Scene, tint: readonly [number, number, number]): Mesh[
 const FLAME_FIRE = new Color3(1, 0.5, 0.12);
 const FLAME_BLOOD = new Color3(0.95, 0.05, 0.05);
 
+/** Нижние 10% роста — «ступни»: вершины там делим на две стопы. */
+const FEET_BAND = 0.1;
+
+/**
+ * Середина между ногами: центр двух групп нижних вершин модели, в координатах корня (как след для
+ * пятна). Группы делим по самому широкому просвету по X. null — вершин нет. Звать, пока корень
+ * без масштаба и курса (как замер следа в загрузке рига).
+ */
+function feetCenter(meshes: readonly AbstractMesh[]): { x: number; z: number } | null {
+  const pts: number[] = []; // x, y, z по всем вершинам
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const m of meshes) {
+    const pos = m.getVerticesData(VertexBuffer.PositionKind);
+    if (!pos) continue;
+    const w = m.getWorldMatrix().m;
+    for (let i = 0; i < pos.length; i += 3) {
+      const px = pos[i];
+      const py = pos[i + 1];
+      const pz = pos[i + 2];
+      const y = px * w[1] + py * w[5] + pz * w[9] + w[13];
+      pts.push(px * w[0] + py * w[4] + pz * w[8] + w[12], y, px * w[2] + py * w[6] + pz * w[10] + w[14]);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+  }
+  if (!(maxY > minY)) return null;
+  const band = minY + FEET_BAND * (maxY - minY);
+  const low: number[] = []; // смещения нижних вершин в pts
+  for (let i = 0; i < pts.length; i += 3) if (pts[i + 1] <= band) low.push(i);
+  if (low.length < 2) return null;
+  low.sort((a, b) => pts[a] - pts[b]);
+  let cut = 1;
+  let gap = -Infinity;
+  for (let k = 1; k < low.length; k++) {
+    const g = pts[low[k]] - pts[low[k - 1]];
+    if (g > gap) {
+      gap = g;
+      cut = k;
+    }
+  }
+  const centre = (idx: number[]): { x: number; z: number } => {
+    let sx = 0;
+    let sz = 0;
+    for (const i of idx) {
+      sx += pts[i];
+      sz += pts[i + 2];
+    }
+    return { x: sx / idx.length, z: sz / idx.length };
+  };
+  const a = centre(low.slice(0, cut));
+  const b = centre(low.slice(cut));
+  return { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 };
+}
+
 export class Mob implements Hittable {
   /** ПК в третьем лице: плашки как в WoW (HP всегда, цвет уровня по опасности). null — как было. */
   static pcPlates: { level: number } | null = null;
@@ -854,6 +909,13 @@ export class Mob implements Hittable {
         this.footX = Math.sqrt(fx * fz);
         this.footZ = this.footX;
       }
+      if (modelLight(this.modelName).feet) {
+        const c = feetCenter(rig.meshes);
+        if (c) {
+          this.footCx = c.x;
+          this.footCz = c.z;
+        }
+      }
       this.root.scaling.copyFrom(sc0);
       this.root.rotation.y = ry0;
       this.root.computeWorldMatrix(true);
@@ -931,6 +993,9 @@ export class Mob implements Hittable {
   /** След модели (полуширина и полудлина, м при масштабе 1); 0 — модели ещё нет, пятно по радиусу тела. */
   private footX = 0;
   private footZ = 0;
+  /** Центр между ногами в координатах корня (ModelLight.feet); 0,0 — центр корня. */
+  private footCx = 0;
+  private footCz = 0;
   /** Макушка модели над корнем, локальные единицы (0 — модели нет, высота по телу слизня). */
   private modelTop = 0;
 
@@ -1063,10 +1128,16 @@ export class Mob implements Hittable {
       // Пятно — по следу модели (1 = ровно след); множитель модели — MODEL_LIGHT.shadow (панель ?moblight=1).
       const sc = this.scale;
       const k = modelLight(this.modelName).shadow ?? 1;
+      // Центр пятна — между ногами: смещение в координатах корня, повёрнутое по курсу (ось Z — вперёд).
+      const yaw = this.root.rotation.y;
+      const lx = this.footCx * sc;
+      const lz = this.footCz * sc;
+      const cx = pos.x + lx * Math.cos(yaw) + lz * Math.sin(yaw);
+      const cz = pos.z - lx * Math.sin(yaw) + lz * Math.cos(yaw);
       if (this.footX > 0) {
-        this.shadow.place(pos.x, pos.y, pos.z, this.footX * sc * k, this.footZ * sc * k, this.root.rotation.y);
+        this.shadow.place(cx, pos.y, cz, this.footX * sc * k, this.footZ * sc * k, yaw);
       } else {
-        this.shadow.place(pos.x, pos.y, pos.z, MOB.bodyRadius * sc * k, MOB.bodyRadius * sc * k, 0);
+        this.shadow.place(cx, pos.y, cz, MOB.bodyRadius * sc * k, MOB.bodyRadius * sc * k, 0);
       }
     }
     secAdd("mob.pos+view+shadow", sp);

@@ -16,6 +16,8 @@ export interface MobLightTune {
   specularMul: number;
   /** Сколько источников света считает материал (небо+солнце+факелы ботов+светлячок). */
   maxLights: number;
+  /** Непрозрачность плотного пятна вне катакомб (ModelLight.dense): тень скалолома. В катакомбах — catTune.boss. */
+  denseAlpha: number;
 }
 
 export const MOB_LIGHT_TUNE: MobLightTune = {
@@ -23,6 +25,7 @@ export const MOB_LIGHT_TUNE: MobLightTune = {
   emissiveMul: 0.5,
   specularMul: 0.75,
   maxLights: 3,
+  denseAlpha: 0.5,
 };
 
 /**
@@ -45,11 +48,14 @@ export interface ModelLight {
   shadow?: number;
   /** Плотное пятно (супербосс катакомб): в катакомбах темнее, своя непрозрачность — catTune.boss. */
   dense?: boolean;
+  /** Пятно — между ног: центр двух групп нижних вершин модели (а не центр корня). */
+  feet?: boolean;
 }
 export const MODEL_LIGHT: Record<string, ModelLight> = {
   monBee: { emissive: 0.08, diffuse: 1.6, tex: 1 },
   monOrc: { emissive: 0.2, diffuse: 1.15, tex: 1 },
-  monStoneTroll: { emissive: 0, diffuse: 1, tex: 2, shadow: 1.3 },
+  // Скалолом: пятно крупнее и плотнее, ставится между ног (замер вершин модели, см. Mob.feetCenter).
+  monStoneTroll: { emissive: 0, diffuse: 1, tex: 2, shadow: 1.3, dense: true, feet: true },
   // Рейд-босс «Лунный аватар»: светится сам — лунный свет, а не освещённый камень.
   monMoonAvatar: { emissive: 0.75, diffuse: 1.1, tex: 1.6 },
   monBogBrute: { emissive: 0.3, diffuse: 1.2, tex: 1.8 },

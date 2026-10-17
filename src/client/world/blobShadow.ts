@@ -11,6 +11,7 @@ import { CAT_FLOOR_Y, inCatRegion } from "#shared/catacombs";
 import { terrainHeight } from "#shared/terrain";
 import { groundFxThrough } from "../ui/groundFx";
 import { catTune } from "./catTune";
+import { MOB_LIGHT_TUNE } from "../combat/mobLightTune";
 
 /** Диаметр прототипа, м. Реальный размер задаётся масштабом инстанса. */
 const PROTO_SIZE = 2;
@@ -39,13 +40,16 @@ const SLOPE_D = 0.6;
  * Пятно — эллипс по следу модели: полуширина и полудлина (rx, rz) и поворот по курсу,
  * а не круг по высоте тела. Диск НАКЛОНЯЕТСЯ по нормали рельефа.
  *
- * Четыре набора пятен на сцену: наружу/катакомбы × резкое/мягкое (мягкое — у героев).
+ * Наборы пятен на сцену: наружу/катакомбы × резкое/мягкое (мягкое — у героев) × плотное (ModelLight.dense).
  * В каждом наборе — один меш с тонкими инстансами.
  */
 const SOFT_CORE = 0.4;
 const SHARP_CORE = 0.55;
 /** Наборов пятен: 2 места (наружу/катакомбы) × мягкое/резкое × плотное (супербосс). */
 const SETS = 8;
+
+/** Плотные пятна вне катакомб — их непрозрачность меняет панель ?moblight=1 (applyDenseShadowAlpha). */
+const denseOut: StandardMaterial[] = [];
 
 const batches = new WeakMap<Scene, (Batch | null)[]>();
 const mats = new WeakMap<Scene, (StandardMaterial | null)[]>();
@@ -108,7 +112,8 @@ function matFor(scene: Scene, idx: number): StandardMaterial {
   mat.disableLighting = true;
   mat.disableDepthWrite = true; // иначе пятна спорят друг с другом
   mat.backFaceCulling = false; // наклон может повернуть диск изнанкой
-  mat.alpha = cat ? (dense ? catTune.boss : catTune.shadow) : ALPHA;
+  mat.alpha = cat ? (dense ? catTune.boss : catTune.shadow) : dense ? MOB_LIGHT_TUNE.denseAlpha : ALPHA;
+  if (dense && !cat) denseOut.push(mat);
   list[idx] = mat;
   return mat;
 }
@@ -131,6 +136,11 @@ export function protoFor(scene: Scene): Mesh {
 export function setCatShadowAlpha(scene: Scene, alpha: number): void {
   matFor(scene, 1).alpha = alpha;
   matFor(scene, 3).alpha = alpha;
+}
+
+/** Плотность плотных пятен вне катакомб — сразу по всем созданным наборам (панель ?moblight=1). */
+export function applyDenseShadowAlpha(): void {
+  for (const m of denseOut) m.alpha = MOB_LIGHT_TUNE.denseAlpha;
 }
 
 /** Плотность пятна супербосса в катакомбах — отдельно от прочих (catTune.boss, панель ?cattune=1). */

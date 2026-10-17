@@ -13,6 +13,7 @@
  * куском кода для вставки в mobLightTune.ts (в дефолт MOB_LIGHT_TUNE).
  */
 import { applyMobLightTune, MOB_LIGHT_TUNE, MODEL_LIGHT, modelLight, saveMobLightTune, setModelLight, trackedModels } from "../combat/mobLightTune";
+import { applyDenseShadowAlpha } from "../world/blobShadow";
 
 const CSS = `
 #mobLightTuner{position:fixed;top:8px;right:8px;z-index:9999;width:250px;
@@ -50,13 +51,15 @@ export function mountMobLightTuner(): () => void {
     `diffuseMul: ${fmt(MOB_LIGHT_TUNE.diffuseMul)},\n` +
     `emissiveMul: ${fmt(MOB_LIGHT_TUNE.emissiveMul)},\n` +
     `specularMul: ${fmt(MOB_LIGHT_TUNE.specularMul)},\n` +
-    `maxLights: ${Math.round(MOB_LIGHT_TUNE.maxLights)},`;
+    `maxLights: ${Math.round(MOB_LIGHT_TUNE.maxLights)},\n` +
+    `denseAlpha: ${fmt(MOB_LIGHT_TUNE.denseAlpha)},`;
 
   const out = document.createElement("textarea");
   out.readOnly = true;
 
   const apply = (): void => {
     applyMobLightTune();
+    applyDenseShadowAlpha();
     saveMobLightTune();
     out.value = dump();
   };
@@ -107,6 +110,10 @@ export function mountMobLightTuner(): () => void {
   slider("diffuse", 0, 3, "any", () => MOB_LIGHT_TUNE.diffuseMul, (v) => (MOB_LIGHT_TUNE.diffuseMul = v));
   slider("emissive", 0, 3, "any", () => MOB_LIGHT_TUNE.emissiveMul, (v) => (MOB_LIGHT_TUNE.emissiveMul = v));
   slider("specular", 0, 3, "any", () => MOB_LIGHT_TUNE.specularMul, (v) => (MOB_LIGHT_TUNE.specularMul = v));
+
+  // Плотное пятно вне катакомб (тень скалолома): непрозрачность, меняется на лету.
+  section("тень");
+  slider("плотность", 0, 1, "0.01", () => MOB_LIGHT_TUNE.denseAlpha, (v) => (MOB_LIGHT_TUNE.denseAlpha = v));
 
   section("источники света");
   slider("maxLights", 0, 8, "1", () => MOB_LIGHT_TUNE.maxLights, (v) => (MOB_LIGHT_TUNE.maxLights = v));
