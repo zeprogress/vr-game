@@ -132,8 +132,8 @@ const CSS = `
 .ov-watch table.stats { border-collapse:collapse; margin-top:.6vh; }
 .ov-watch table.stats td { font-size:1.7vh; font-weight:500; padding:.15vh 0;
   letter-spacing:.02em; opacity:.92; }
-.ov-watch table.stats td.lb { opacity:.68; padding-right:1.2vh; white-space:nowrap; }
-.ov-watch table.stats td.vl { font-weight:700; text-align:right; }
+.ov-watch table.stats td.lb { opacity:.68; padding-right:.6vh; white-space:nowrap; }
+.ov-watch table.stats td.vl { font-weight:700; text-align:left; white-space:nowrap; }
 .ov-watch em.ttl { display:block; font-style:normal; font-weight:700; font-size:1.8vh; color:#c79bff; margin-top:.2vh; }
 .ov-watch span .lvl { font-size:2vh; font-weight:700; opacity:.75; margin-left:.4vh; }
 .ov-watch .buffs { display:flex; flex-direction:column; gap:.4vh; margin-top:.8vh; }
