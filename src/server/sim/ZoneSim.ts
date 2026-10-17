@@ -2575,7 +2575,7 @@ export class ZoneSim {
           champ: !!champ,
           respawnSec: champ ? CHAMP_RESPAWN : undefined,
           name: champ ? `Вожак — ${def.name}` : def.name,
-          hp: def.hp * (champ?.hpMul ?? 1),
+          hp: def.hp * (champ?.hpMul ?? 1) * (def.champHpMul ?? 1),
           dmgMul: def.dmgMul * (champ?.dmgMul ?? 1),
           scaleMul: (def.scaleMul ?? 1) * (champ ? (def.champScaleMul ?? champ.scaleMul) : 1),
           xp: def.xp * (champ?.xpMul ?? 1),

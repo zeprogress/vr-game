@@ -31,7 +31,7 @@ export const FEEDBACK_MARK_COLOR: Record<FeedbackMark, string> = { inProgress: "
 export const FEEDBACK_NO_MARK_COLOR = "#8f8a7e";
 
 /** Длина текста, символов. */
-export const FEEDBACK_TEXT_MAX = 1000;
+export const FEEDBACK_TEXT_MAX = 2000;
 /** Между отправками одного героя — не чаще раза в 20 с (от спама). */
 export const FEEDBACK_COOLDOWN_MS = 20_000;
 

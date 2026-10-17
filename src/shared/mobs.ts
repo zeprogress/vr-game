@@ -188,6 +188,8 @@ export interface EliteMobDef {
   tint: readonly [number, number, number] | null;
   /** Вожак этого вида крупнее общего вожака: множитель размера вместо QUEST.champ.scaleMul. */
   champScaleMul?: number;
+  /** Вожак: HP ×champHpMul сверх обычного множителя вожака (паук — ×2). */
+  champHpMul?: number;
   /** true — моб парит и не прыгает (пчела): плавно рулит на высоте. */
   flying?: boolean;
   /**
@@ -679,9 +681,9 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // защита режет); плетёт паутину — круг под героем, в нём герой опутан и почти стоит (WEB).
   spider: {
     model: "monSpider", name: "Паук", blurb: "кусает ядом, опутывает паутиной", level: 60, kind: "slime",
-    hp: 14000, dmgMul: 27, xp: 4000000, scaleMul: 1.1, tint: null,
+    hp: 14000, dmgMul: 40, xp: 4000000, scaleMul: 1.1, tint: null,
     magicMelee: true, quietMagic: true, web: true, walksOnly: true, gait: true, noSquash: true, attackClip: "Attack",
-    attackCooldown: 0.6, meleeReach: 1.8, speedMul: 1.5, champScaleMul: 2.4,
+    attackCooldown: 0.6, meleeReach: 1.8, speedMul: 2, champScaleMul: 2.4, champHpMul: 2,
   },
   skeletonReaver: {
     model: "monSkeletonReaver", name: "Костяной жнец", blurb: "быстрый, сильные удары мечом, прикрывается щитом, магия режется на 20%, прыжок-выпад с оглушением", level: 53, kind: "slime",
