@@ -44,15 +44,20 @@ const SLOPE_D = 0.6;
  */
 const SOFT_CORE = 0.4;
 const SHARP_CORE = 0.55;
+/** Наборов пятен: 2 места (наружу/катакомбы) × мягкое/резкое × плотное (супербосс). */
+const SETS = 8;
 
 const batches = new WeakMap<Scene, (Batch | null)[]>();
 const mats = new WeakMap<Scene, (StandardMaterial | null)[]>();
 const texs = new WeakMap<Scene, (DynamicTexture | null)[]>();
 const protos = new WeakMap<Scene, Mesh>();
 
-/** Индекс набора: 0 — наружу, 1 — катакомбы; +2 — мягкое пятно (герои). */
-function setIndex(cat: boolean, soft: boolean): number {
-  return (cat ? 1 : 0) + (soft ? 2 : 0);
+/**
+ * Индекс набора: бит 1 — катакомбы, бит 2 — мягкое пятно (герои), бит 4 — плотное пятно
+ * (супербосс катакомб: своя непрозрачность catTune.boss, см. setCatBossShadowAlpha).
+ */
+function setIndex(cat: boolean, soft: boolean, dense: boolean): number {
+  return (cat ? 1 : 0) + (soft ? 2 : 0) + (dense ? 4 : 0);
 }
 
 /**
@@ -86,14 +91,15 @@ function shadowTexture(scene: Scene, soft: boolean): DynamicTexture {
   return tex;
 }
 
-/** Материал набора. Наружу — мягче по тени земли (ALPHA), в катакомбах — catTune.shadow. */
+/** Материал набора. Наружу — мягче по тени земли (ALPHA), в катакомбах — catTune.shadow (плотное — catTune.boss). */
 function matFor(scene: Scene, idx: number): StandardMaterial {
-  const list = mats.get(scene) ?? [null, null, null, null];
+  const list = mats.get(scene) ?? new Array<StandardMaterial | null>(SETS).fill(null);
   mats.set(scene, list);
   const found = list[idx];
   if (found) return found;
   const cat = (idx & 1) === 1;
-  const soft = idx >= 2;
+  const soft = (idx & 2) === 2;
+  const dense = idx >= 4;
   const mat = new StandardMaterial(`blobShadowMat${idx}`, scene);
   mat.diffuseColor = new Color3(0, 0, 0);
   mat.emissiveColor = new Color3(0, 0, 0);
@@ -102,7 +108,7 @@ function matFor(scene: Scene, idx: number): StandardMaterial {
   mat.disableLighting = true;
   mat.disableDepthWrite = true; // иначе пятна спорят друг с другом
   mat.backFaceCulling = false; // наклон может повернуть диск изнанкой
-  mat.alpha = cat ? catTune.shadow : ALPHA;
+  mat.alpha = cat ? (dense ? catTune.boss : catTune.shadow) : ALPHA;
   list[idx] = mat;
   return mat;
 }
@@ -125,6 +131,11 @@ export function protoFor(scene: Scene): Mesh {
 export function setCatShadowAlpha(scene: Scene, alpha: number): void {
   matFor(scene, 1).alpha = alpha;
   matFor(scene, 3).alpha = alpha;
+}
+
+/** Плотность пятна супербосса в катакомбах — отдельно от прочих (catTune.boss, панель ?cattune=1). */
+export function setCatBossShadowAlpha(scene: Scene, alpha: number): void {
+  matFor(scene, 5).alpha = alpha;
 }
 
 const _n = new Vector3();
@@ -150,7 +161,7 @@ interface Batch {
 const ZERO16 = new Float32Array(16);
 
 function batchFor(scene: Scene, idx: number): Batch {
-  const list = batches.get(scene) ?? [null, null, null, null];
+  const list = batches.get(scene) ?? new Array<Batch | null>(SETS).fill(null);
   batches.set(scene, list);
   const found = list[idx];
   if (found && !found.mesh.isDisposed()) return found;
@@ -188,6 +199,7 @@ function grow(b: Batch): void {
 export class BlobShadow {
   private readonly scene: Scene;
   private readonly soft: boolean;
+  private readonly dense: boolean;
   private batch: Batch;
   private slot: number;
   /** Текущий набор (см. setIndex). */
@@ -203,11 +215,15 @@ export class BlobShadow {
   private disposed = false;
   private readonly m = new Float32Array(16);
 
-  /** soft — мягкое пятно (герои): шире по краю, без жёсткой кромки. */
-  constructor(scene: Scene, _name: string, soft = false) {
+  /**
+   * soft — мягкое пятно (герои): шире по краю, без жёсткой кромки.
+   * dense — плотное пятно (супербосс катакомб): в катакомбах темнее, см. catTune.boss.
+   */
+  constructor(scene: Scene, _name: string, soft = false, dense = false) {
     this.scene = scene;
     this.soft = soft;
-    this.idx = setIndex(false, soft);
+    this.dense = dense;
+    this.idx = setIndex(false, soft, dense);
     this.batch = batchFor(scene, this.idx);
     const b = this.batch;
     this.slot = b.free.pop() ?? b.used++;
@@ -243,7 +259,7 @@ export class BlobShadow {
   place(x: number, y: number, z: number, rx: number, rz = rx, yaw = 0): void {
     if (this.disposed) return;
     const cat = inCatRegion(x, z);
-    const idx = setIndex(cat, this.soft);
+    const idx = setIndex(cat, this.soft, this.dense);
     if (idx !== this.idx) {
       this.moveTo(idx);
       this.lx = NaN; // переехали — матрицу пересчитываем

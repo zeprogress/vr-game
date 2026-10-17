@@ -32,6 +32,7 @@ const ROWS: { key: Key; label: string; min: number; max: number; step: number }[
   { key: "wall", label: "Стены", min: 0.1, max: 1.5, step: 0.01 },
   { key: "bump", label: "Нормали", min: 0, max: 3, step: 0.05 },
   { key: "shadow", label: "Тень", min: 0, max: 1, step: 0.01 },
+  { key: "boss", label: "Тень босса", min: 0, max: 1, step: 0.01 },
 ];
 
 export function mountCatTuner(): () => void {
@@ -54,7 +55,12 @@ export function mountCatTuner(): () => void {
   title.textContent = "КАТАКОМБЫ (?cattune=1)";
   box.appendChild(title);
 
-  const vals: Record<Key, HTMLSpanElement> = { wall: document.createElement("span"), bump: document.createElement("span"), shadow: document.createElement("span") };
+  const vals: Record<Key, HTMLSpanElement> = {
+    wall: document.createElement("span"),
+    bump: document.createElement("span"),
+    shadow: document.createElement("span"),
+    boss: document.createElement("span"),
+  };
   const inputs: Partial<Record<Key, HTMLInputElement>> = {};
   for (const row of ROWS) {
     const r = document.createElement("div");
@@ -90,12 +96,12 @@ export function mountCatTuner(): () => void {
   out.readOnly = true;
 
   const codeLine = (): string =>
-    `export const CAT_TUNE_DEFAULT = { wall: ${catTune.wall.toFixed(2)}, bump: ${catTune.bump.toFixed(2)}, shadow: ${catTune.shadow.toFixed(2)} } as const;`;
+    `export const CAT_TUNE_DEFAULT = { wall: ${catTune.wall.toFixed(2)}, bump: ${catTune.bump.toFixed(2)}, shadow: ${catTune.shadow.toFixed(2)}, boss: ${catTune.boss.toFixed(2)} } as const;`;
 
   // Перерисовать подписи, сохранить и применить в катакомбах.
   const changed = (): void => {
     for (const row of ROWS) vals[row.key].textContent = catTune[row.key].toFixed(2);
-    readout.textContent = `стены ×${catTune.wall.toFixed(2)} · нормали ×${catTune.bump.toFixed(2)} · тень ${catTune.shadow.toFixed(2)}`;
+    readout.textContent = `стены ×${catTune.wall.toFixed(2)} · нормали ×${catTune.bump.toFixed(2)} · тень ${catTune.shadow.toFixed(2)} · тень босса ${catTune.boss.toFixed(2)}`;
     out.value = codeLine();
     saveCatTune();
     notifyCatTuneChanged();
@@ -125,7 +131,7 @@ export function mountCatTuner(): () => void {
 
   const hint = document.createElement("div");
   hint.className = "hint";
-  hint.textContent = "Стены — яркость камня залов; нормали — глубина рельефа; тень — пятна под героями и мобами в катакомбах.";
+  hint.textContent = "Стены — яркость камня залов; нормали — глубина рельефа; тень — пятна под героями и мобами в катакомбах; тень босса — пятно супербосса.";
   sec.appendChild(hint);
 
   changed();

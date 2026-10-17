@@ -636,7 +636,7 @@ export class Mob implements Hittable {
     // Полоса и плашка висят на отдельном узле: у босса тело крупное, а надписи
     // должны оставаться обычного размера — этот узел компенсирует масштаб.
     this.uiAnchor = new TransformNode("mobUi", scene);
-    this.shadow = new BlobShadow(scene, id);
+    this.shadow = new BlobShadow(scene, id, false, modelLight(modelName).dense === true);
     this.uiAnchor.parent = this.root;
 
     // Полоска и плашка строятся лениво (getBar/getTag): 60+ мобов на карте

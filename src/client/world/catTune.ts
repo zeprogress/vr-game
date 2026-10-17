@@ -1,12 +1,12 @@
 /**
  * Катакомбы: числа, которые подбираются на глаз. Яркость стен, сила нормалей (рельеф камня),
- * плотность пятен-теней под героями и мобами. CAT_TUNE_DEFAULT — то, что уезжает в прод.
+ * плотность пятен-теней под героями и мобами, отдельно — под супербоссом (boss). CAT_TUNE_DEFAULT — то, что уезжает в прод.
  * Панель `?cattune=1` (ui/CatTuner) двигает значения в игре; подобранное лежит в localStorage
  * и читается только при открытой панели — обычные игроки берут дефолт из исходника.
  */
-export const CAT_TUNE_DEFAULT = { wall: 0.36, bump: 2, shadow: 0.42 } as const;
+export const CAT_TUNE_DEFAULT = { wall: 0.36, bump: 2, shadow: 0.42, boss: 0.75 } as const;
 
-export const catTune: { wall: number; bump: number; shadow: number } = { ...CAT_TUNE_DEFAULT };
+export const catTune: { wall: number; bump: number; shadow: number; boss: number } = { ...CAT_TUNE_DEFAULT };
 
 const KEY = "zep.cattune";
 
@@ -19,6 +19,7 @@ export function loadCatTune(): void {
     if (typeof v.wall === "number") catTune.wall = v.wall;
     if (typeof v.bump === "number") catTune.bump = v.bump;
     if (typeof v.shadow === "number") catTune.shadow = v.shadow;
+    if (typeof v.boss === "number") catTune.boss = v.boss;
   } catch {
     /* приватный режим/битый JSON — остаются дефолты */
   }

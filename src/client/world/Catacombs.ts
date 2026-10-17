@@ -46,7 +46,7 @@ import {
 } from "#shared/catacombs";
 import { terrainHeight } from "#shared/terrain";
 import { catTune, onCatTuneChanged } from "./catTune";
-import { setCatShadowAlpha } from "./blobShadow";
+import { setCatBossShadowAlpha, setCatShadowAlpha } from "./blobShadow";
 import { makeFireMaterial } from "./FireShader";
 import { LAYER, groundLayer } from "../engine/renderLayers";
 
@@ -1457,6 +1457,7 @@ export class CatacombsFx {
   private applyTune(): void {
     for (const t of this.bumpTexs) t.level = catTune.bump;
     setCatShadowAlpha(this.scene, catTune.shadow);
+    setCatBossShadowAlpha(this.scene, catTune.boss);
     this.paintThemes();
   }
 

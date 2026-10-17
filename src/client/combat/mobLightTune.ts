@@ -43,6 +43,8 @@ export interface ModelLight {
   diffuse: number;
   tex: number;
   shadow?: number;
+  /** Плотное пятно (супербосс катакомб): в катакомбах темнее, своя непрозрачность — catTune.boss. */
+  dense?: boolean;
 }
 export const MODEL_LIGHT: Record<string, ModelLight> = {
   monBee: { emissive: 0.08, diffuse: 1.6, tex: 1 },
@@ -51,7 +53,8 @@ export const MODEL_LIGHT: Record<string, ModelLight> = {
   // Рейд-босс «Лунный аватар»: светится сам — лунный свет, а не освещённый камень.
   monMoonAvatar: { emissive: 0.75, diffuse: 1.1, tex: 1.6 },
   monBogBrute: { emissive: 0.3, diffuse: 1.2, tex: 1.8 },
-  monDragonBest: { emissive: 0, diffuse: 1, tex: 1.2 },
+  // Владыка Бездны (супербосс катакомб): единственный моб на этой модели — крупное пятно и плотное.
+  monDragonBest: { emissive: 0, diffuse: 1, tex: 1.2, shadow: 1.4, dense: true },
   // Костяной жнец: светлая кость — без сильного подъёма текстуры (подогнать в ?moblight=1).
   monSkeletonReaver: { emissive: 0.15, diffuse: 1.1, tex: 1.3 },
 };

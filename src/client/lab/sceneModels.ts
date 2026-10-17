@@ -111,7 +111,7 @@ export function build(ctx: LabCtx): void {
     const show = (): void => {
       out.textContent = `${name}: { emissive: ${f(cur.emissive)}, diffuse: ${f(cur.diffuse)}, tex: ${f(cur.tex)} },`;
     };
-    const rows: [Exclude<keyof ModelLight, "shadow">, string, number][] = [
+    const rows: [Extract<keyof ModelLight, "emissive" | "diffuse" | "tex">, string, number][] = [
       ["emissive", "свечение", 1.5],
       ["diffuse", "освещённость", 3],
       ["tex", "яркость текстуры", 3],
