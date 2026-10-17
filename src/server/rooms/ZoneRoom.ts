@@ -2596,7 +2596,7 @@ export class ZoneRoom extends Room<ZoneState> {
     let m = !inCat && rt.eventBuffUntil > now ? (which === "xp" ? EVENT.invasion.buffXpMult : EVENT.invasion.buffDmgMult) : 1;
     // «Боевой клич»/«Благословение» — +25% урона.
     if (which === "dmg" && rt.cryUntil > this.elapsed && rt.cryKind !== 2) m *= 1 + WARCRY.dmg;
-    // Свиток мудрости — бонус складывается с благословением: ×2 и ×2 → ×3.
+    // Свиток мудрости — бонус складывается с благословением: ×1.5 и ×1.5 → ×2.
     if (which === "xp" && !inCat && rt.token && (store.get(rt.token)?.scrollXpUntil ?? 0) > now) m += SCROLL.xpMul - 1;
     return m;
   }
