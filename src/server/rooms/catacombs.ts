@@ -52,6 +52,8 @@ export interface CatHost {
   sendHome(id: string): void;
   /** Поднять павшего героя (у входа в текущий зал). */
   revive(id: string): void;
+  /** Герой спускается в катакомбы с полным здоровьем. */
+  healFull(id: string): void;
   /** Итог победы: комната дополнит строки (ник, класс, урон, убийства) и разошлёт таблицу. */
   report(r: Omit<CatReportMsg, "rows">, heroes: { id: string; deaths: number; loot: LootItem[] }[]): void;
   /** Моб катакомб: тип (ключ ELITE_MOBS или slime/spitter), точка и множители. Возвращает id. */
@@ -719,6 +721,7 @@ export class CatacombDirector {
     heroes.forEach((h, i) => {
       const p = catEntry(0, i);
       this.host.warp(h.id, p.x, p.z, hall.x, hall.z);
+      this.host.healFull(h.id);
     });
     const names = heroes.map((h) => h.nick).join(", ");
     this.host.chat(`☠ Отряд спускается в катакомбы: ${names}. Удачи — у вас ${Math.round(CATACOMBS.runSec / 60)} минут.`);

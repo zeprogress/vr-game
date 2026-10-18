@@ -6623,6 +6623,10 @@ export class ZoneRoom extends Room<ZoneState> {
         const rt = this.rt.get(id);
         if (p?.dead && rt) this.respawn(id, p, rt);
       },
+      healFull: (id) => {
+        const p = this.state.players.get(id);
+        if (p && !p.dead) p.hp = p.maxHp;
+      },
       spawn: (type, x, z, o) => this.catSpawn(type, x, z, o),
       alive: (id) => {
         const m = this.sim.mobs.get(id);
