@@ -1,3 +1,4 @@
+import { SKIN_LABELS } from "#shared/skins";
 import colyseus from "colyseus";
 import { invHub, type InvActKind, type InvActResult } from "../invHub";
 import { armorBonusOf, armorEnchant, armorEnchantRow, armorPcView, armorQuality, armorScrap, sanitizeArmorList, wornArmorOf, ARMOR_PARTS, type ArmorInstance, type ArmorPart } from "#shared/armor";
@@ -5597,6 +5598,14 @@ export class ZoneRoom extends Room<ZoneState> {
       return { ok: true, text: "" };
     }
     const t = this.findWeaponsTarget(norm);
+    if (act === "skin") {
+      // Облик со страницы !inv (как панель «Внешность» в игре): сразу в мире, иначе — при следующем входе.
+      const n = Math.floor(Number(id));
+      if (!Number.isFinite(n) || n < 1 || n > BOT.skins) return { ok: false, text: "Такого облика нет." };
+      if (t?.p) t.p.skin = n;
+      store.put(t?.rt.token ?? `nick:${norm}`, { skin: n });
+      return { ok: true, text: `Облик: ${SKIN_LABELS[n - 1]}` };
+    }
     if (act === "skills") return this.chooseSkills(norm, t?.p ?? null, id.split(","));
     if (act === "unequip") {
       // Снять с руки на склад (idx 1 — левая). Правила рук — shared/hands.ts.

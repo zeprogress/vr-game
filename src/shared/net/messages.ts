@@ -399,7 +399,7 @@ export interface PcInvData {
 
 export interface PcInvActMsg {
   /** title — надеть титул (id = название, "" — снять); fav — звёздочка «избранное» у оружия id; scrapAll — разобрать всё, кроме избранного и надетого. */
-  act: "enchant" | "armorEnchant" | "stat" | "respec" | "title" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | "tradeOpen" | "tradeAdd" | "tradeRemove" | "tradeConfirm" | "tradeCancel" | "sharpen" | JewelAct;
+  act: "enchant" | "armorEnchant" | "stat" | "respec" | "title" | "skin" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | "tradeOpen" | "tradeAdd" | "tradeRemove" | "tradeConfirm" | "tradeCancel" | "sharpen" | JewelAct;
   id: string;
   idx: number;
   /** Подарок — ник получателя; обмен — список предметов. */
