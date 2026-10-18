@@ -2963,7 +2963,8 @@ export class ZoneSim {
    */
   private separateMobs(players: SimPlayer[]): void {
     const list: Mob[] = [];
-    for (const m of this.mobs.values()) if (!m.dead) list.push(m);
+    // Пугала (тренировка и напарники) — насквозь: ни толкать, ни толкаться не должны.
+    for (const m of this.mobs.values()) if (!m.dead && !m.scarecrow && !m.practice) list.push(m);
     const bodyR = (m: Mob): number =>
       MOB.bodyRadius * m.scale * m.sepMul * (m.kind === "boss" ? BOSS.bodyMult : 1);
     // Толпа не вдавливает моба в героя: герой — препятствие (см. Mob.tick), сдвиг глубже в него не делаем.

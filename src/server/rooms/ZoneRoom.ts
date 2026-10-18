@@ -8833,7 +8833,7 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private botOutOfMobs(p: PlayerState, bot?: Bot, fromX = NaN, fromZ = NaN): void {
     for (const m of this.sim.mobs.values()) {
-      if (m.dead) continue;
+      if (m.dead || m.scarecrow || m.practice) continue; // пугала — насквозь
       const body = MOB.bodyRadius * m.scale * (m.kind === "boss" ? BOSS.bodyMult : 1);
       const keep = body + PLAYER.radius + 0.05;
       const dx = p.head.x - m.x;
@@ -9000,7 +9000,7 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private botBlockedByMobs(p: PlayerState, bot: Bot, x0: number, z0: number): void {
     for (const m of this.sim.mobs.values()) {
-      if (m.dead || m.scarecrow) continue;
+      if (m.dead || m.scarecrow || m.practice) continue; // пугала — насквозь
       const keep = MOB.bodyRadius * m.scale * (m.kind === "boss" ? BOSS.bodyMult : 1) + PLAYER.radius + 0.05;
       const dx = p.head.x - m.x;
       const dz = p.head.z - m.z;
