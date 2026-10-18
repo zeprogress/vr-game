@@ -12,6 +12,10 @@ export interface GameUpdate {
 
 export const UPDATES: readonly GameUpdate[] = [
   {
+    at: "2026-10-18 19:00",
+    items: ["Молот: магическая волна слабее на 20%"],
+  },
+  {
     at: "2026-10-18 18:50",
     items: ["Молот: удар слабее на 20% (магическая волна без изменений)"],
   },
