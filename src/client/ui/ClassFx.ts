@@ -1167,12 +1167,30 @@ export function playClassAct(
       }
       return true;
     case "reflectHit": {
-      // Щит отразил удар: вспышка на щите и красный разряд от щита в моба.
+      // Щит отразил удар: яркая вспышка на щите, светящийся снаряд летит от щита в моба
+      // (не молния — прямой ряд искр) и бьёт в моба столбом света. Видно, что удар вернулся.
       const sp = (id && c.shieldPos?.(id)) || { x, y, z };
-      vfx.burst(sp.x, sp.y, sp.z, FXC.reflect, { count: 12, speed: 4, life: 0.35, grav: 0, size: 0.18 });
+      vfx.burst(sp.x, sp.y, sp.z, FXC.reflect, { count: 26, speed: 6, life: 0.45, grav: 0, size: 0.28 });
+      vfx.burst(sp.x, sp.y, sp.z, REFLECT_BOLT, { count: 12, speed: 3, life: 0.35, grav: 0, size: 0.2 });
       if (x2 !== undefined && z2 !== undefined) {
-        vfx.bolt(sp.x, sp.y, sp.z, x2, d ?? y, z2, REFLECT_BOLT, 0.22, 0.05);
-        vfx.burst(x2, d ?? y, z2, REFLECT_BOLT, { count: 8, speed: 3, life: 0.3, grav: 2, size: 0.16 });
+        const ty = d ?? y;
+        const STEPS = 7;
+        const TRAVEL = 0.4;
+        for (let i = 1; i <= STEPS; i++) {
+          const k = i / STEPS;
+          c.fx.later(TRAVEL * (k - 1 / STEPS), () => {
+            const px = sp.x + (x2 - sp.x) * k;
+            const py = sp.y + (ty - sp.y) * k;
+            const pz = sp.z + (z2 - sp.z) * k;
+            vfx.burst(px, py, pz, REFLECT_BOLT, { count: 7, speed: 1.5, life: 0.28, grav: 0, size: 0.24 });
+            vfx.burst(px, py, pz, FXC.reflect, { count: 3, speed: 1, life: 0.2, grav: 0, size: 0.14 });
+          });
+        }
+        c.fx.later(TRAVEL, () => {
+          vfx.burst(x2, ty, z2, REFLECT_BOLT, { count: 34, speed: 8, life: 0.55, grav: 3, size: 0.32 });
+          vfx.burst(x2, ty, z2, FXC.reflect, { count: 16, speed: 5, life: 0.4, grav: 0, size: 0.22 });
+          vfx.pillar(x2, ty - 1.2, z2, 0.7, 3.4, REFLECT_BOLT, 0.45);
+        });
       }
       return true;
     }
