@@ -8121,6 +8121,14 @@ export class ZoneRoom extends Room<ZoneState> {
       tz = bot.wanderZ;
     }
 
+    // Правило переходов: цель за пределами области бота (подземелье ↔ поверхность) — сперва через портал.
+    // Действует для любой цели (рейд, ивент, обычные мобы), отдельные правила на каждый случай не нужны.
+    const portalGoal = escape || catAnchor ? null : this.botPortalRoute(bot, p, tx, tz);
+    if (portalGoal) {
+      tx = portalGoal.x;
+      tz = portalGoal.z;
+    }
+
     const dxRaw = tx - p.head.x;
     const dzRaw = tz - p.head.z;
     const dist = Math.hypot(dxRaw, dzRaw) || 1e-6;
@@ -8933,6 +8941,22 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Бот и нужная ему область — по разные стороны портала подземелья: нужен переход. */
   private botDunWants(bot: Bot, p: PlayerState): boolean {
     return this.botWantsDungeon(bot) !== inDunRegion(p.head.x, p.head.z);
+  }
+
+  /**
+   * Цель через портал, если точка `tx,tz` в другой области, чем бот: из подземелья — к выходному порталу,
+   * с поверхности — к входному. null — цель в той же области, портал не нужен.
+   */
+  private botPortalRoute(bot: Bot, p: PlayerState, tx: number, tz: number): { x: number; z: number } | null {
+    const inDun = inDunRegion(p.head.x, p.head.z);
+    if (inDunRegion(tx, tz) === inDun) return null;
+    if (inDun) {
+      bot.dunTravel = "out";
+      const back = DUN_SPOTS.portals[0];
+      return dunWorld(back.u, back.v);
+    }
+    bot.dunTravel = "in";
+    return { x: DUN_PORTAL.x, z: DUN_PORTAL.z };
   }
 
   /** Бот к порталу подземелья или из него: цель перехода (portal в tickDungeonPortals переносит). null — ничего не делать. */
@@ -10171,6 +10195,7 @@ export class ZoneRoom extends Room<ZoneState> {
       s.burning = Math.min(255, Math.ceil(m.burningT));
       s.bleeding = Math.min(255, Math.ceil(m.bleedT));
       s.enraged = m.enraged ? 1 : 0; // босс и разъярённый элита события
+      s.reflecting = m.reflectT > 0 ? 1 : 0;
       if (m.scarecrow || m.practice) {
         const info = this.scarecrowText(m.id);
         if (s.info !== info) s.info = info;

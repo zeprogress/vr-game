@@ -129,7 +129,7 @@ import { noGuard, type BlockedBy } from "#shared/combat";
 import { AEGIS_NAME, aegisTier, bothHandsCls, FAV_MAX, ITEMS, sharpPctOfText, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
 import { sharpGlowTune } from "../items/sharpGlowTune";
 import { BOT, EVENT, PLAYER, POTION_CD, RESPAWN, SKILL, isAdminNick } from "#shared/constants";
-import { BLINK, BOSS, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, SPORE } from "#shared/mobs";
+import { BLINK, BOSS, PULL, CHARGE, SPIKES, CHIEF_HEAL, FREEZE, SPORE } from "#shared/mobs";
 import { MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
 import { TOWN_MUSIC, BOSS_MUSIC, CATACOMBS_MUSIC, CATACOMBS_BOSS_MUSIC } from "../audio/playlist";
@@ -4130,8 +4130,7 @@ export class Game {
         if (k === "chargeHit") this.sfx.at({ x: x2in ?? x, y, z: z2in ?? z }, () => this.sfx.groundBash());
         break;
       case "reflectOn":
-        // Ледяной демон: яркий синий щит на всё время отражения (вспышка при включении).
-        this.skillFx.reflectShield(x, y, z, d ?? REFLECT.duration);
+        // Ледяной демон: купол щита рисует сам моб (привязан к нему, см. Mob.reflectShield).
         break;
       case "chiefHeal":
         // Костяной вождь лечит себя и соседей — зелёный купол.

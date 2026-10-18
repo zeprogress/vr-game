@@ -3,6 +3,7 @@ import { secNow, secAdd, secCount } from "../engine/secProf";
 import { createPinArrows } from "./PinArrows";
 import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Constants } from "@babylonjs/core/Engines/constants";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { InstancedMesh } from "@babylonjs/core/Meshes/instancedMesh";
@@ -511,6 +512,9 @@ export class Mob implements Hittable {
   private slamRing: Mesh | null = null;
   private slamRingT = 0;
   private ragePulse = 0;
+  /** Щит отражения (Ледяной демон): купол — дочерний узел корня, едет и поворачивается вместе с мобом. */
+  private reflectShield: Mesh | null = null;
+  private reflectShieldT = 0;
 
   /** Модель из пака (если подключена): она заменяет процедурную сферу. */
   private rig: RigInstance | null = null;
@@ -1354,6 +1358,18 @@ export class Mob implements Hittable {
     }
     if (this.slamRingT > 0) this.animateSlamRing(dt);
 
+    // Щит отражения: привязан к корню моба (движется и поворачивается с ним), мерцает.
+    if (s.reflecting && !s.dead) {
+      if (!this.reflectShield) this.reflectShield = this.makeReflectShield();
+      this.reflectShield.setEnabled(true);
+      this.reflectShieldT += dt;
+      const pulse = 1 + 0.05 * Math.sin(this.reflectShieldT * 10);
+      this.reflectShield.scaling.setAll(pulse);
+      (this.reflectShield.material as StandardMaterial).alpha = 0.35 + 0.25 * Math.abs(Math.sin(this.reflectShieldT * 7));
+    } else if (this.reflectShield) {
+      this.reflectShield.setEnabled(false);
+    }
+
     // Ярость: пульсирующее багровое свечение (босс и разъярённый элита события).
     if (s.enraged && !s.dead) {
       this.ragePulse += dt * 6;
@@ -1682,7 +1698,27 @@ export class Mob implements Hittable {
     if (this.slamRingT <= 0) this.slamRing.setEnabled(false);
   }
 
+  /** Купол щита отражения: локальный радиус 1.25 — корень масштабирован ростом моба, купол растёт вместе с ним. */
+  private makeReflectShield(): Mesh {
+    const m = MeshBuilder.CreateSphere(`reflectShield_${this.id}`, { diameter: 2.5, segments: 16 }, this.scene);
+    m.parent = this.root;
+    m.position.set(0, 1.2, 0);
+    m.isPickable = false;
+    const mat = new StandardMaterial(`reflectShieldMat_${this.id}`, this.scene);
+    mat.emissiveColor = new Color3(0.5, 0.9, 1.0);
+    mat.diffuseColor = new Color3(0, 0, 0);
+    mat.specularColor = new Color3(0, 0, 0);
+    mat.disableLighting = true;
+    mat.disableDepthWrite = true;
+    mat.alphaMode = Constants.ALPHA_ADD;
+    mat.backFaceCulling = false;
+    m.material = mat;
+    return m;
+  }
+
   dispose(): void {
+    this.reflectShield?.material?.dispose();
+    this.reflectShield?.dispose();
     for (const l of this.lodSlots ?? []) l.batch.release(l.slot);
     this.lodSlots = null;
     this.shadow.dispose();

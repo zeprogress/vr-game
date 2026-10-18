@@ -15,7 +15,7 @@ import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
 import type { Room } from "colyseus.js";
 
 import { BOT, EVENT, PLAYER, SKILL, daylightAt } from "#shared/constants";
-import { BLINK, BOSS, CAT_BOSS_NAMES, MOB, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, SPORE } from "#shared/mobs";
+import { BLINK, BOSS, CAT_BOSS_NAMES, MOB, PULL, CHARGE, SPIKES, CHIEF_HEAL, FREEZE, SPORE } from "#shared/mobs";
 import { TOWER, TOWER_HIDE } from "#shared/tower";
 import type { ZoneState, PlayerState } from "#shared/net/schema";
 import type { ActKind, SpecCmd } from "#shared/net/messages";
@@ -1737,8 +1737,7 @@ export class Spectator {
         if (k === "chargeHit") this.sfx.at({ x: x2in ?? x, y, z: z2in ?? z }, () => this.sfx.groundBash());
         break;
       case "reflectOn":
-        // Ледяной демон: яркий синий щит на всё время отражения.
-        this.skillFx.reflectShield(x, y, z, d ?? REFLECT.duration);
+        // Ледяной демон: купол щита рисует сам моб (привязан к нему, см. Mob.reflectShield).
         break;
       case "chiefHeal":
         // Костяной вождь лечит себя и соседей — зелёный купол.
