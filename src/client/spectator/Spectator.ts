@@ -1737,8 +1737,8 @@ export class Spectator {
         if (k === "chargeHit") this.sfx.at({ x: x2in ?? x, y, z: z2in ?? z }, () => this.sfx.groundBash());
         break;
       case "reflectOn":
-        // Ледяной демон: синий щит на всё время отражения.
-        this.skillFx.wraithPuff(x, y + 0.6, z, d ?? REFLECT.duration, false);
+        // Ледяной демон: яркий синий щит на всё время отражения.
+        this.skillFx.reflectShield(x, y, z, d ?? REFLECT.duration);
         break;
       case "chiefHeal":
         // Костяной вождь лечит себя и соседей — зелёный купол.

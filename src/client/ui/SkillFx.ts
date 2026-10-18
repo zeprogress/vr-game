@@ -21,6 +21,8 @@ import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 const STUN = FXC.stun; // красная волна оглушения
 const SPORE_C = FXC.spore; // фиолетовые споры (Грибной колосс)
 const WRAITH_C = FXC.shadow; // серая дымка (Костяной призрак)
+/** Щит отражения (Ледяной демон): яркий холодный синий, аддитивный. */
+const REFLECT_SHIELD_C = new Color3(0.5, 0.9, 1.0);
 const SQUID_C = FXC.attack; // красное щупальце (Небесный спрут) — атака, как и все атакующие эффекты
 const BREATH_C = FXC.fire; // огонь дракона
 
@@ -213,6 +215,8 @@ export class SkillFx {
   private nextStun = 0;
   private readonly spores: Spore[] = [];
   private readonly puffs: Puff[] = [];
+  private readonly reflects: { ball: Mesh; age: number; life: number }[] = [];
+  private nextReflect = 0;
   private nextSpore = 0;
   private nextPuff = 0;
   private readonly ropes: Tentacle[] = [];
@@ -281,6 +285,13 @@ export class SkillFx {
       ball.isPickable = false;
       ball.setEnabled(false);
       this.puffs.push({ ball, age: 1, life: 1, grow: true });
+    }
+    for (let i = 0; i < 3; i++) {
+      const ball = MeshBuilder.CreateSphere(`reflectShield${i}`, { diameter: 2, segments: 16 }, scene);
+      ball.material = addMat(scene, `reflectShieldMat${i}`, REFLECT_SHIELD_C);
+      ball.isPickable = false;
+      ball.setEnabled(false);
+      this.reflects.push({ ball, age: 1, life: 1 });
     }
     for (let i = 0; i < POOL; i++) {
       const shaftMat = makeShaftMaterial(scene, `rainShaftMat${i}`);
@@ -352,6 +363,16 @@ export class SkillFx {
     pf.grow = grow;
     pf.ball.position.set(x, y + 1.35, z);
     pf.ball.setEnabled(true);
+  }
+
+  /** Щит отражения: яркий пульсирующий купол вокруг демона на `life` с (вспышка при включении). */
+  reflectShield(x: number, y: number, z: number, life: number): void {
+    const r = this.reflects[this.nextReflect];
+    this.nextReflect = (this.nextReflect + 1) % this.reflects.length;
+    r.age = 0;
+    r.life = Math.max(0.2, life);
+    r.ball.position.set(x, y + 1.3, z);
+    r.ball.setEnabled(true);
   }
 
   /** Конус дыхания от (x,z) к (x2,z2): hit=false — телеграф на `life` с, true — вспышка огня. */
@@ -453,6 +474,20 @@ export class SkillFx {
       sp.puffs.rotation.y += dt * 0.6;
       (sp.puffs.material as StandardMaterial).alpha = 0.12 * fade; // было 0.3
     }
+    for (const r of this.reflects) {
+      if (r.age >= r.life) continue;
+      r.age += dt;
+      if (r.age >= r.life) {
+        r.ball.setEnabled(false);
+        continue;
+      }
+      const t = r.age / r.life;
+      // Вспышка в начале, затем быстрое мерцание; к концу гаснет.
+      const flash = Math.max(0, 1 - r.age * 4);
+      r.ball.scaling.setAll(2.3 + 0.12 * Math.sin(r.age * 18) + 0.6 * flash);
+      (r.ball.material as StandardMaterial).alpha = (0.35 + 0.35 * Math.abs(Math.sin(r.age * 14)) + flash) * (1 - 0.5 * t);
+    }
+
     for (const pf of this.puffs) {
       if (pf.age >= pf.life) continue;
       pf.age += dt;
@@ -508,6 +543,10 @@ export class SkillFx {
         m.material?.dispose();
         m.dispose();
       }
+    }
+    for (const r of this.reflects) {
+      r.ball.material?.dispose();
+      r.ball.dispose();
     }
     for (const pf of this.puffs) {
       pf.ball.material?.dispose();
