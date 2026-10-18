@@ -106,10 +106,10 @@ let pcInv: PcInventory | null = null;
 let heldHands: NonNullable<InvMsg["heldHands"]> = { left: null, right: null };
 
 /**
- * Фон страницы (public/inv/bg.webp): горы и камень. Середину верха камня (доли картинки) ставим
+ * Фон страницы (public/inv/bg.webp): горы, водопад и каменный уступ. Середину верха камня (доли картинки) ставим
  * под ноги героя на вкладке «Снаряжение»; картинка не меньше ширины страницы, ниже — плавно в тёмное.
  */
-const BG = { w: 1248, h: 832, fx: 650 / 1248, fy: 690 / 832 };
+const BG = { w: 1536, h: 920, fx: 768 / 1536, fy: 607 / 920 };
 const bgEl = document.getElementById("invBg");
 function placeBg(): void {
   if (!bgEl) return;
