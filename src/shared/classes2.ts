@@ -217,7 +217,8 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   },
   // Молот: тяжёлый физический удар + магическая волна вокруг цели (HAMMER). Удар +12% урона (2026-10-15).
   hammer: {
-    name: WEAPON_NOUN.hammer.name, dmg: 2.8 * 1.12 * 1.2 * 0.9, interval: 1.1, tempoSoft: 1, reach: 2.6, pierce: 1,
+    // Удар −20% (2026-10-18).
+    name: WEAPON_NOUN.hammer.name, dmg: 2.8 * 1.12 * 1.2 * 0.9 * 0.8, interval: 1.1, tempoSoft: 1, reach: 2.6, pierce: 1,
     critBase: 0.05, critMult: 1.5, twoHanded: true, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Лук: стрела 1.75 (как сейчас), но масштаб — от СИЛ, темп — от ЛОВ.
