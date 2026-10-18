@@ -4,7 +4,7 @@ import { AFFIX, BOW, COMBAT, DROP_CHANCE, WEAPON_DROP_MUL, UNIQUE_DROP_MUL, gold
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { RAID } from "#shared/raid";
 import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, WEB, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
-import { DUN_MOB_CAMPS, dunProject, dunWorld, inDunRegion } from "#shared/dungeon";
+import { DUN_MOB_CAMPS, DUN_X, DUN_Z, dunFloorLocal, dunProject, dunWorld, inDunRegion } from "#shared/dungeon";
 import { ARMOR_DROP, ARMOR_PARTS, armorBaseLevelMul, armorGoldDropChance, armorLegendaryDropChance, armorLevelMul, ARMOR_LEVEL_GATE, levelFadeMul, rollArmor, type ArmorInstance } from "#shared/armor";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
 import { PLAGUE } from "#shared/classes2";
@@ -2863,6 +2863,17 @@ export class ZoneSim {
     // Катакомбы: моб знает открытые залы (таран и рывок не уводят его за стены).
     for (const m of this.mobs.values()) m.catHalls = this.catMobs.has(m.id) ? this.catOpen : null;
     if (this.mobsEnabled) for (const m of this.mobs.values()) m.tick(dt, players, hits, spit);
+    // Упавший моб: сорвался с уступа подземелья и застрял в провале — ниже поверхности больше чем на 50 м
+    // и не на полу (ни вне подземелья, ни в его зале/коридоре). Такой моб не виден игрокам и не возвращается —
+    // отправляем его домой, в свой лагерь.
+    for (const m of this.mobs.values()) {
+      if (m.dead || m.y > -50 || this.catMobs.has(m.id)) continue;
+      if (inDunRegion(m.x, m.z) && dunFloorLocal(m.x - DUN_X, m.z - DUN_Z, MOB.bodyRadius * m.scale) !== null) continue;
+      m.x = m.homeX;
+      m.z = m.homeZ;
+      m.y = terrainHeight(m.x, m.z) + 5;
+      m.vx = m.vy = m.vz = 0;
+    }
     // Подземелье: мобы не уходят за ограду (край моста, уступа, стена провала) — та же граница, что у героев.
     for (const m of this.mobs.values()) {
       if (m.dead || !inDunRegion(m.x, m.z)) continue;
