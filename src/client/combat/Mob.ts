@@ -1804,9 +1804,12 @@ export class Mob implements Hittable {
     if (this.slamRingT <= 0) this.slamRing.setEnabled(false);
   }
 
-  /** Купол щита отражения: локальный радиус 0.875 (было 1.25) — корень масштабирован ростом моба, купол растёт вместе с ним. */
+  /**
+   * Купол щита отражения: локальный радиус 0.65 (2026-10-19; было 1.25 → 0.875) — чуть больше модели (рост ≈0.96
+   * при центре на 0.55); корень масштабирован ростом моба, купол растёт вместе с ним.
+   */
   private makeReflectShield(): Mesh {
-    const m = MeshBuilder.CreateSphere(`reflectShield_${this.id}`, { diameter: 1.75, segments: 16 }, this.scene);
+    const m = MeshBuilder.CreateSphere(`reflectShield_${this.id}`, { diameter: 1.3, segments: 16 }, this.scene);
     m.parent = this.root;
     // Центр тела — та же точка, что у прицела и попаданий (MOB.bodyRadius над подошвой).
     m.position.set(0, MOB.bodyRadius, 0);
