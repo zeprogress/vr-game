@@ -2016,10 +2016,20 @@ export class PcInventory {
 
     // ---- центр: кузница — цепочка «Основа → Материал → Катализатор → Метод» и наковальня ----
     const stage = div("pcinv-fg-stage");
+    // Анимации идут с отрицательной задержкой «сколько уже прошло»: перерисовка (итог, данные с сервера, таймеры)
+    // продолжает их с того же места, а не запускает заново — иначе итог мигал несколько раз.
     const since = performance.now() - this.craftHitAt;
-    if (since < 700) stage.classList.add("hit");
+    if (since < 700) {
+      stage.classList.add("hit");
+      stage.style.setProperty("--th", `${-Math.round(since)}ms`);
+    }
     const res = this.craftRes;
-    if (res?.at && Date.now() - res.at < 1500) stage.classList.add(res.outcome > 0 ? "done" : "fail");
+    const resAge = res?.at ? Date.now() - res.at : Infinity;
+    if (res && resAge < 1500) {
+      stage.classList.add(res.outcome > 0 ? "done" : "fail");
+      stage.style.setProperty("--t", `${-Math.round(resAge)}ms`);
+      stage.style.setProperty("--oc", (CRAFT_OUTCOMES[res.outcome] ?? CRAFT_OUTCOMES[0]).color);
+    }
     const chain = div("pcinv-fg-chain");
     const slot = (head: string, box: HTMLElement, name: string, sub: string, help: string, filled: boolean, onClick?: () => void): HTMLDivElement => {
       const s = div(`pcinv-fg-slot${filled ? " full" : ""}`);
@@ -2250,11 +2260,60 @@ export class PcInventory {
   }
 
   /** Итог крафта — окном посередине кузницы: исход, оружие подробно (роллы с очками, «Мастерство», атака) и «Закрыть». */
+  /**
+   * Эффекты итога крафта — по исходу, по нарастающей: провал — дым; обычный — белые искры; хороший — зелёный
+   * всплеск и кольца; отличный — синие лучи; редкий — золотая вспышка, лучи и две волны искр.
+   * Разброс искр — от времени итога (seed), чтобы перерисовка не меняла картинку.
+   */
+  private craftFx(outcome: number, seed: number): HTMLDivElement {
+    let x = seed >>> 0 || 1;
+    const rnd = (): number => {
+      x = (x + 0x6d2b79f5) >>> 0;
+      let t = Math.imul(x ^ (x >>> 15), x | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const fx = div("pcinv-fg-fx");
+    const el = (cls: string, vars: Record<string, string>): void => {
+      const e = document.createElement("i");
+      e.className = cls;
+      for (const [k, v] of Object.entries(vars)) e.style.setProperty(k, v);
+      fx.append(e);
+    };
+    if (outcome <= 0) {
+      for (let i = 0; i < 10; i++) el("puff", { "--x": `${Math.round((rnd() - 0.5) * 170)}px`, "--s": `${Math.round(60 + rnd() * 70)}px`, "--d": `${Math.round(rnd() * 420)}ms` });
+      return fx;
+    }
+    if (outcome >= 4) el("flash", {});
+    if (outcome >= 3) el("rays", {});
+    el("ring", {});
+    if (outcome >= 2) el("ring", { "--d": "180ms" });
+    if (outcome >= 4) el("ring", { "--d": "360ms" });
+    const n = [0, 12, 18, 28, 42][Math.min(4, outcome)];
+    const reach = 90 + outcome * 35;
+    for (let i = 0; i < n; i++) {
+      const wave = outcome >= 4 && i >= n / 2 ? 420 : 0;
+      el("spark", {
+        "--a": `${Math.round(rnd() * 360)}deg`,
+        "--r": `${Math.round(reach * (0.55 + rnd() * 0.6))}px`,
+        "--s": `${(2.5 + rnd() * (2 + outcome)).toFixed(1)}px`,
+        "--d": `${Math.round(wave + rnd() * 160)}ms`,
+        "--l": `${Math.round(650 + rnd() * 500)}ms`,
+      });
+    }
+    return fx;
+  }
+
   private craftReveal(d: PcInvData, res: NonNullable<typeof this.craftRes>): HTMLDivElement {
     const o = CRAFT_OUTCOMES[res.outcome] ?? CRAFT_OUTCOMES[0];
     const w = res.id ? d.weapons.find((x) => x.id === res.id) : undefined;
     const rc = res.found ? CRAFT_RECIPES.find((r) => r.id === res.found) : undefined;
-    const wrap = div(`pcinv-fg-reveal${res.outcome > 0 ? "" : " fail"}`);
+    // Исход — класс o0…o4: чем лучше, тем ярче (дым → искры → кольца → лучи → золотая вспышка).
+    const wrap = div(`pcinv-fg-reveal o${res.outcome}${res.outcome > 0 ? "" : " fail"}${rc ? " found" : ""}`);
+    // Сколько уже идёт анимация — перерисовка продолжает её с этого места (без мигания).
+    wrap.style.setProperty("--t", `${-Math.round(Math.max(0, Date.now() - (res.at ?? Date.now())))}ms`);
+    wrap.style.setProperty("--oc", o.color);
+    wrap.append(this.craftFx(res.outcome, res.at ?? 1));
     const card = div("pcinv-fg-rcard");
     const head = div("pcinv-fg-rhead", res.outcome > 0 ? `${o.name} исход!` : "Провал");
     head.style.color = o.color;
@@ -2262,7 +2321,7 @@ export class PcInventory {
     if (rc) card.append(div("pcinv-fg-rfound", `📜 Найден скрытый рецепт «${rc.name}»`));
     if (w) {
       const top = div("pcinv-fg-rtop");
-      const ico = div(`pcinv-cell huge t-${w.tier}`);
+      const ico = div(`pcinv-cell huge t-${w.tier} pcinv-fg-rico`);
       setIcon(ico, w.cls, w.name, w.tier);
       const info = div("pcinv-fg-rinfo");
       info.append(div(`pcinv-card-name t-${w.tier}`, w.name));
@@ -3039,9 +3098,10 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-root.tab-craft:not(.page) .pcinv-win { background:#120a05 url(/icons/craft/forge_hall.jpg) center 64%/cover no-repeat; }
 .pcinv-fg-stage { grid-area:stage; position:relative; aspect-ratio:1/1; width:100%; max-width:var(--fg-h); justify-self:center; overflow:hidden; }
 .pcinv-fg-stage::after { content:""; position:absolute; left:50%; top:74%; width:70%; height:40%; transform:translate(-50%,-50%); pointer-events:none; opacity:0; background:radial-gradient(ellipse at center,rgba(255,170,60,.85),rgba(255,90,10,.35) 40%,transparent 70%); mix-blend-mode:screen; }
-.pcinv-fg-stage.hit::after { animation:pcinvFgHit .7s ease-out; }
-.pcinv-fg-stage.done::after { animation:pcinvFgDone 1.4s ease-out; }
-.pcinv-fg-stage.fail::after { background:radial-gradient(ellipse at center,rgba(180,180,190,.6),rgba(60,60,70,.3) 45%,transparent 70%); mix-blend-mode:normal; animation:pcinvFgDone 1.4s ease-out; }
+/* Вспышки на наковальне идут с отрицательной задержкой (--th/--t = сколько прошло): перерисовка их не перезапускает. */
+.pcinv-fg-stage.hit::after { animation:pcinvFgHit .7s ease-out both; animation-delay:var(--th,0ms); }
+.pcinv-fg-stage.done::after { background:radial-gradient(ellipse at center,color-mix(in srgb,var(--oc,#ffaa3c) 85%,#fff),color-mix(in srgb,var(--oc,#ff5a0a) 40%,transparent) 40%,transparent 70%); animation:pcinvFgDone 1.4s ease-out both; animation-delay:var(--t,0ms); }
+.pcinv-fg-stage.fail::after { background:radial-gradient(ellipse at center,rgba(180,180,190,.6),rgba(60,60,70,.3) 45%,transparent 70%); mix-blend-mode:normal; animation:pcinvFgDone 1.4s ease-out both; animation-delay:var(--t,0ms); }
 @keyframes pcinvFgHit { 0% { opacity:0; } 12% { opacity:1; transform:translate(-50%,-50%) scale(.6); } 100% { opacity:0; transform:translate(-50%,-50%) scale(1.3); } }
 @keyframes pcinvFgDone { 0% { opacity:1; transform:translate(-50%,-50%) scale(.8); } 100% { opacity:0; transform:translate(-50%,-50%) scale(1.6); } }
 .pcinv-fg-chain { position:absolute; left:3%; right:3%; top:27%; display:flex; align-items:center; gap:1.2%; }
@@ -3069,12 +3129,13 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-fg-go::after { content:""; position:absolute; inset:2px; z-index:-1; background:linear-gradient(180deg,#2b2418,#110c07); clip-path:${HEX("17px")}; }
 .pcinv-fg-go:hover:not(:disabled) { filter:drop-shadow(0 0 16px rgba(255,170,70,.75)); color:#fff; }
 .pcinv-fg-go:disabled { opacity:.55; cursor:default; filter:grayscale(.6); }
-.pcinv-fg-go.busy { animation:pcinvFgShake .35s ease-out; }
+.pcinv-fg-go.busy { animation:pcinvFgShake .35s ease-out; animation-delay:var(--th,0ms); }
 @keyframes pcinvFgShake { 0%,100% { transform:translate(-50%,-50%); } 30% { transform:translate(-50%,-46%); } 60% { transform:translate(-50%,-52%); } }
 .pcinv-fg-goic { width:28px; height:28px; display:flex; }
 .pcinv-fg-goic .gico { width:28px; height:28px; }
 /* справа: карточка оружия и необходимые материалы */
-.pcinv-fg-card { position:relative; display:flex; flex-direction:column; gap:6px; padding:12px 14px; border:1px solid #2f4664; background:linear-gradient(180deg,rgba(9,19,34,.94),rgba(5,11,21,.94)); clip-path:${CUT("9px")}; animation:pcinvToast .2s ease-out; }
+/* Без анимации появления: окно перерисовывается при каждом изменении — анимация запускалась бы заново (мигание). */
+.pcinv-fg-card { position:relative; display:flex; flex-direction:column; gap:6px; padding:12px 14px; border:1px solid #2f4664; background:linear-gradient(180deg,rgba(9,19,34,.94),rgba(5,11,21,.94)); clip-path:${CUT("9px")}; }
 .pcinv-fg-cname { font:700 19px/1.15 "Iowan Old Style",Georgia,serif; color:#eef3f9; }
 .pcinv-fg-rar { font-weight:700; font-size:13px; }
 .pcinv-fg-cbody { display:flex; gap:10px; align-items:flex-start; }
@@ -3131,20 +3192,76 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-fg-mcell:not(.full) { color:#6f86a6; font:700 20px system-ui; cursor:pointer; }
 .pcinv-fg-mcell:not(.full):hover { color:#e8c27a; border-color:#e8c27a; }
 .pcinv-fg-pick { position:absolute; left:4%; right:4%; top:59%; bottom:3%; z-index:3; display:flex; flex-direction:column; gap:6px; padding:8px 10px; overflow:hidden;
-  border:1px solid #c8a35e; background:linear-gradient(180deg,#0a1220,#060a12); box-shadow:0 10px 30px rgba(0,0,0,.6); animation:pcinvToast .15s ease-out; }
+  border:1px solid #c8a35e; background:linear-gradient(180deg,#0a1220,#060a12); box-shadow:0 10px 30px rgba(0,0,0,.6); }
 .pcinv-fg-pickh { display:flex; align-items:center; justify-content:space-between; gap:8px; font:600 14px "Iowan Old Style",Georgia,serif; color:#eadcc2; }
 .pcinv-fg-pickx { min-height:26px !important; padding:2px 10px !important; }
 .pcinv-fg-items.wrap { flex-wrap:wrap; overflow-x:hidden; overflow-y:auto; min-height:0; flex:1; align-content:flex-start; }
 .pcinv-fg-pick > .pcinv-btn { align-self:flex-end; }
 .pcinv-fg-none { color:#7f8ea4; font:700 24px system-ui; }
 /* итог крафта — окном посередине кузницы */
-.pcinv-fg-reveal { position:absolute; inset:0; z-index:5; display:flex; align-items:center; justify-content:center; padding:4%; background:rgba(4,6,10,.62); animation:pcinvFgFade .25s ease-out; }
+/* Все анимации итога — с задержкой calc(--t + --d): --t отрицательная «сколько уже прошло», поэтому перерисовка
+   окна продолжает их с того же места. Сила эффектов — по исходу (o0 провал … o4 редкий), цвет — --oc исхода. */
+.pcinv-fg-reveal { position:absolute; inset:0; z-index:5; display:flex; align-items:center; justify-content:center; padding:4%; overflow:hidden;
+  background:radial-gradient(ellipse at 50% 50%,color-mix(in srgb,var(--oc) 22%,rgba(4,6,10,.55)),rgba(4,6,10,.78) 70%);
+  animation:pcinvFgFade .3s ease-out both; animation-delay:var(--t,0ms); }
+.pcinv-fg-reveal.fail { background:rgba(8,8,10,.72); }
+/* !important — правила ниже задают animation сокращённо (оно сбросило бы задержку). Псевдоэлементы сюда не попадают. */
+.pcinv-fg-reveal * { animation-delay:calc(var(--t,0ms) + var(--d,0ms)) !important; }
 @keyframes pcinvFgFade { from { opacity:0; } to { opacity:1; } }
-.pcinv-fg-rcard { width:min(100%,430px); max-height:100%; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding:14px 16px; border:1px solid var(--tier-craft);
-  background:linear-gradient(180deg,rgba(28,18,10,.97),rgba(10,8,6,.97)); box-shadow:0 0 30px rgba(240,131,42,.35),0 14px 40px rgba(0,0,0,.7); animation:pcinvFgPop .35s cubic-bezier(.2,1.4,.4,1); scrollbar-width:thin; }
-.pcinv-fg-reveal.fail .pcinv-fg-rcard { border-color:#8a4038; box-shadow:0 14px 40px rgba(0,0,0,.7); }
-@keyframes pcinvFgPop { from { opacity:0; transform:scale(.85); } to { opacity:1; transform:none; } }
+.pcinv-fg-fx { position:absolute; left:50%; top:50%; width:0; height:0; pointer-events:none; }
+.pcinv-fg-fx > i { position:absolute; left:0; top:0; display:block; }
+/* искры: летят из центра по лучу --a на --r */
+.pcinv-fg-fx .spark { width:var(--s); height:var(--s); margin:calc(var(--s) / -2); border-radius:50%; background:#fff;
+  box-shadow:0 0 6px 2px var(--oc),0 0 14px 4px color-mix(in srgb,var(--oc) 60%,transparent); opacity:0;
+  animation:pcinvFgSpark var(--l,900ms) cubic-bezier(.1,.7,.3,1) both; }
+@keyframes pcinvFgSpark { 0% { opacity:1; transform:rotate(var(--a)) translateX(0) scale(1.3); } 70% { opacity:.9; } 100% { opacity:0; transform:rotate(var(--a)) translateX(var(--r)) scale(.3); } }
+/* кольцо-волна */
+.pcinv-fg-fx .ring { width:40px; height:40px; margin:-20px; border-radius:50%; border:3px solid var(--oc); box-shadow:0 0 18px var(--oc),inset 0 0 12px var(--oc); opacity:0;
+  animation:pcinvFgRing .9s ease-out both; }
+@keyframes pcinvFgRing { 0% { opacity:.95; transform:scale(.3); } 100% { opacity:0; transform:scale(9); } }
+/* лучи (отличный, редкий): вращаются за карточкой */
+.pcinv-fg-fx .rays { width:900px; height:900px; margin:-450px; border-radius:50%; opacity:0;
+  background:repeating-conic-gradient(from 0deg,color-mix(in srgb,var(--oc) 38%,transparent) 0deg 7deg,transparent 7deg 22deg);
+  -webkit-mask-image:radial-gradient(circle,#000 8%,transparent 62%); mask-image:radial-gradient(circle,#000 8%,transparent 62%);
+  animation:pcinvFgRaysIn .8s ease-out both,pcinvFgSpin 14s linear infinite; }
+.pcinv-fg-reveal.o4 .pcinv-fg-fx .rays { background:repeating-conic-gradient(from 0deg,rgba(255,214,120,.45) 0deg 6deg,transparent 6deg 16deg); }
+@keyframes pcinvFgRaysIn { from { opacity:0; transform:scale(.4); } to { opacity:1; transform:none; } }
+@keyframes pcinvFgSpin { from { rotate:0deg; } to { rotate:360deg; } }
+/* вспышка (редкий): весь экран кузницы */
+.pcinv-fg-fx .flash { left:-2000px; top:-2000px; width:4000px; height:4000px; background:radial-gradient(circle,rgba(255,236,190,.95),rgba(255,170,60,.5) 25%,transparent 55%);
+  opacity:0; animation:pcinvFgFlash .9s ease-out both; }
+@keyframes pcinvFgFlash { 0% { opacity:0; } 15% { opacity:1; } 100% { opacity:0; } }
+/* дым (провал) */
+.pcinv-fg-fx .puff { width:var(--s); height:var(--s); margin:calc(var(--s) / -2); left:var(--x); border-radius:50%; opacity:0;
+  background:radial-gradient(circle,rgba(170,170,180,.55),rgba(90,90,100,.25) 55%,transparent 70%); animation:pcinvFgPuff 1.6s ease-out both; }
+@keyframes pcinvFgPuff { 0% { opacity:.8; transform:translateY(30px) scale(.4); } 100% { opacity:0; transform:translateY(-150px) scale(1.8); } }
+/* карточка: появляется после вспышки, по исходу — сила свечения */
+.pcinv-fg-rcard { position:relative; width:min(100%,430px); max-height:100%; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding:14px 16px; border:1px solid var(--oc);
+  background:linear-gradient(180deg,rgba(28,18,10,.97),rgba(10,8,6,.97)); box-shadow:0 0 30px color-mix(in srgb,var(--oc) 45%,transparent),0 14px 40px rgba(0,0,0,.7);
+  animation:pcinvFgPop .45s cubic-bezier(.2,1.4,.4,1) both; --d:120ms; scrollbar-width:thin; }
+.pcinv-fg-reveal.o3 .pcinv-fg-rcard { box-shadow:0 0 44px color-mix(in srgb,var(--oc) 60%,transparent),0 14px 40px rgba(0,0,0,.7); }
+.pcinv-fg-reveal.o4 .pcinv-fg-rcard { border-color:#ffd27a; box-shadow:0 0 60px rgba(255,190,90,.7),0 0 0 1px rgba(255,220,150,.6),0 14px 40px rgba(0,0,0,.7); --d:260ms; }
+.pcinv-fg-reveal.fail .pcinv-fg-rcard { border-color:#8a4038; box-shadow:0 14px 40px rgba(0,0,0,.7); animation:pcinvFgPop .4s ease-out both,pcinvFgShakeX .5s ease-in-out both; --d:200ms; }
+@keyframes pcinvFgPop { from { opacity:0; transform:scale(.8); } to { opacity:1; transform:none; } }
+@keyframes pcinvFgShakeX { 0%,100% { translate:0; } 20% { translate:-9px; } 40% { translate:8px; } 60% { translate:-5px; } 80% { translate:3px; } }
+/* блик по карточке (отличный, редкий) */
+.pcinv-fg-reveal.o3 .pcinv-fg-rcard::after, .pcinv-fg-reveal.o4 .pcinv-fg-rcard::after { content:""; position:absolute; inset:0; pointer-events:none;
+  background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.22) 50%,transparent 65%); background-size:250% 100%;
+  animation:pcinvFgSheen 1.1s ease-out both; animation-delay:calc(var(--t,0ms) + 500ms); }
+@keyframes pcinvFgSheen { from { background-position:120% 0; } to { background-position:-120% 0; } }
 .pcinv-fg-rhead { text-align:center; font:700 26px/1.1 "Iowan Old Style",Georgia,serif; text-shadow:0 0 14px currentColor; }
+.pcinv-fg-reveal.o3 .pcinv-fg-rhead { font-size:29px; }
+/* редкий: переливающееся золотом название */
+.pcinv-fg-reveal.o4 .pcinv-fg-rhead { font-size:32px; color:transparent !important; text-shadow:none; filter:drop-shadow(0 0 10px rgba(255,190,90,.8));
+  background:linear-gradient(90deg,#ffb347,#fff3c4,#ffb347,#ffe08a,#ffb347); background-size:300% 100%; -webkit-background-clip:text; background-clip:text;
+  animation:pcinvFgGold 2.4s linear infinite; }
+@keyframes pcinvFgGold { from { background-position:0% 0; } to { background-position:300% 0; } }
+/* оружие в карточке: свечение по исходу, у редкого — пульс */
+.pcinv-fg-reveal .pcinv-fg-rico { box-shadow:0 0 calc(8px + var(--glow,1) * 8px) color-mix(in srgb,var(--oc) 70%,transparent) !important; }
+.pcinv-fg-reveal.o2 { --glow:1.5; } .pcinv-fg-reveal.o3 { --glow:2.2; } .pcinv-fg-reveal.o4 { --glow:3; }
+.pcinv-fg-reveal.o4 .pcinv-fg-rico { animation:pcinvFgPulse 1.6s ease-in-out infinite; }
+@keyframes pcinvFgPulse { 0%,100% { filter:brightness(1); } 50% { filter:brightness(1.35) drop-shadow(0 0 10px rgba(255,200,100,.8)); } }
+.pcinv-fg-reveal.found .pcinv-fg-rfound { animation:pcinvFgPop .5s cubic-bezier(.2,1.4,.4,1) both; --d:700ms; text-shadow:0 0 12px rgba(255,200,100,.7); }
 .pcinv-fg-rfound { text-align:center; color:#ffd38a; font-weight:700; }
 .pcinv-fg-rtop { display:flex; align-items:center; gap:12px; }
 .pcinv-fg-rtop .pcinv-cell.huge { flex:none; box-shadow:0 0 18px rgba(240,131,42,.45); }
