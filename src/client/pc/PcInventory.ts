@@ -3200,12 +3200,14 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-fg-card { position:relative; display:flex; flex-direction:column; gap:6px; padding:12px 14px; border:1px solid #2f4664; background:linear-gradient(180deg,rgba(9,19,34,.94),rgba(5,11,21,.94)); clip-path:${CUT("9px")}; }
 .pcinv-fg-cname { font:700 19px/1.15 "Iowan Old Style",Georgia,serif; color:#eef3f9; }
 .pcinv-fg-rar { font-weight:700; font-size:13px; }
-.pcinv-fg-cbody { display:flex; gap:10px; align-items:flex-start; }
-.pcinv-fg-cimg { width:80px; height:80px; flex:none; display:flex; align-items:center; justify-content:center; border:1px solid #7a6440; background:radial-gradient(ellipse at 50% 40%,#2a1a10,#0b0806 80%); font-size:34px; }
-.pcinv-fg-cimg .gico { width:72px; height:72px; }
+.pcinv-fg-cbody { display:flex; gap:8px; align-items:flex-start; }
+.pcinv-fg-cimg { width:58px; height:58px; flex:none; display:flex; align-items:center; justify-content:center; border:1px solid #7a6440; background:radial-gradient(ellipse at 50% 40%,#2a1a10,#0b0806 80%); font-size:26px; }
+.pcinv-fg-cimg .gico { width:52px; height:52px; }
 .pcinv-fg-rows { flex:1; min-width:0; display:flex; flex-direction:column; }
-.pcinv-fg-stat { display:flex; justify-content:space-between; gap:6px; padding:4px 0; border-bottom:1px solid #1d2d43; font-size:12.5px; color:#dbe6f2; }
-.pcinv-fg-stat > span:last-child { color:#9aa8ba; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pcinv-fg-stat { display:flex; justify-content:space-between; align-items:baseline; gap:4px; padding:4px 0; border-bottom:1px solid #1d2d43; font-size:12.5px; color:#dbe6f2; }
+/* Имя ролла может сократиться многоточием, а метка потолка («▲ +30%») — никогда. */
+.pcinv-fg-stat > span:first-child { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pcinv-fg-stat > span:last-child { flex:none; color:#9aa8ba; text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
 .pcinv-fg-stat.up > span:last-child { color:#7fe08a; }
 .pcinv-fg-capnote { flex-basis:100%; font-size:11px; color:#9aa8ba; }
 .pcinv-fg-stat.down > span:last-child { color:#ff9a7a; }

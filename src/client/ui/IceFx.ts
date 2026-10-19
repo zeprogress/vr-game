@@ -707,7 +707,7 @@ export class IceFx {
         snow.wantSpin = fury ? 1.6 : 0.35;
         snow.wantAlpha = active ? (fury ? 0.95 : 0.6) : 0.35;
         snow.mat.setFloat("uR", r * (fury ? 1 : 0.85));
-        snow.mat.setFloat("uH", fury ? 9 : 7);
+        snow.mat.setFloat("uH", fury ? 16 : 13);
         snow.mat.setFloat("uFall", fury ? 3.5 : 1.2);
         snow.mat.setFloat("uSize", fury ? 0.2 : 0.14);
         if (!on) {

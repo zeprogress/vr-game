@@ -718,7 +718,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     ringMul: 10, // кольца: ×10 сверх элиты (2026-10-14)
     sepMul: 0.5, // расталкивание: тело жнеца ≈0.6 м вместо ≈1.2 м (только толпа; удар не меняется)
   },
-  // Ледяной гигант 70 ур. (2026-10-19; был 57): редкий танк для толпы — ≈5.8 м, ходит за героями и бьёт вблизи
+  // Ледяной гигант 70 ур. (2026-10-19; был 57): редкий танк для толпы — ≈11.5 м, ходит за героями и бьёт вблизи
   // (размах когтями по дуге), замедляет всех: аура «Стужа», стаки «Обморожения» → «Ледяная глыба».
   // Дальних достаёт броском глыбы и разломом, толпу вокруг — «Ледяным расколом». Механики — ICE_GIANT.
   // Модель: art/models/IceGiant.json + tools/blender/icegiant_anim.py → public/models/gen/IceGiant.glb.
@@ -726,12 +726,14 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     model: "monIceGiant", name: "Ледяной гигант",
     blurb: "аура холода и обморожение (5 стаков — вмерзаешь в лёд), раскол вокруг себя, глыба и разлом по дальним",
     level: 70, kind: "slime",
-    hp: 260000, dmgMul: 32, xp: 800000000, scaleMul: 6, tint: null,
+    // 2026-10-19: HP ×5 (260 000 → 1 300 000), урон ×1.5 (32 → 48), размер ×2 (≈11.5 м); опыт — за 125
+    // убийств своего уровня (было 25: ×5 по HP), xp по кривой здоровья.
+    hp: 1300000, dmgMul: 48, xp: 51200000000, scaleMul: 12, tint: null,
     physArmor: 0.2, magicVulnMul: 1.2, // кристаллы держат удар; огонь магии их топит
-    attackCooldown: 2, meleeReach: 4.8, speedMul: 0.8, sepMul: 0.6,
+    attackCooldown: 2, meleeReach: 9, speedMul: 1, sepMul: 0.6,
     iceGiant: true, walksOnly: true, gait: true, noSquash: true, blendAnims: true,
-    strikeDelay: 0.6, attackSec: 1.3, walkClipSpeed: 1.2, runClipSpeed: 2.9,
-    killXpMul: 25, respawnSec: 120, legendaryChance: 0.12, ringMul: 6,
+    strikeDelay: 0.6, attackSec: 1.3, walkClipSpeed: 2.4, runClipSpeed: 5.8,
+    killXpMul: 125, respawnSec: 30, legendaryChance: 0.12, ringMul: 6,
   },
 };
 
@@ -741,7 +743,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
  */
 export const ICE_GIANT = {
   /** «Стужа»: в бою раз в tick с всем героям в радиусе — замедление (урона нет; щит и уворот не спасают). */
-  aura: { radius: 9, tick: 1, slowSec: 1.4, slowFrac: 0.2 },
+  aura: { radius: 15, tick: 1, slowSec: 1.4, slowFrac: 0.2 }, // радиусы умений — под размер ×2 (2026-10-19)
   /**
    * «Обморожение»: удары гиганта (размах, раскол, глыба, разлом) кладут стаки, каждый — ещё perStack
    * замедления, живут stackSec с после последнего. На maxStacks — «Ледяная глыба»: герой вмерзает
@@ -751,14 +753,14 @@ export const ICE_GIANT = {
   /** «Ледяной размах» (обычный удар): все герои в дуге ±cleaveHalf рад перед гигантом. */
   cleaveHalf: 1.05,
   /** «Ледяной раскол»: двумя руками оземь — круг вокруг себя, шипы, отбрасывание. Нужно minHeroes героев рядом. */
-  slam: { cooldown: 15, windup: 1.3, radius: 9, dmgMul: 2, knockback: 10, stacks: 2, minHeroes: 2 },
+  slam: { cooldown: 15, windup: 1.3, radius: 15, dmgMul: 2, knockback: 12, stacks: 2, minHeroes: 2 },
   /** «Ледяная глыба»: в дальнего героя — круг на земле, удар по кругу и наледь (замедляет, пока стоишь). */
   throw: {
-    cooldown: 11, windup: 1.35, flight: 1.05, minDist: 11, maxDist: 32, radius: 4, dmgMul: 1.8, stacks: 1,
-    patchSec: 8, patchR: 4.5, patchSlow: 0.5,
+    cooldown: 11, windup: 1.35, flight: 1.2, minDist: 18, maxDist: 40, radius: 5, dmgMul: 1.8, stacks: 1,
+    patchSec: 8, patchR: 6, patchSlow: 0.5,
   },
   /** «Ледяной разлом»: кулак в землю — гряда шипов бежит к герою по прямой (полуширина halfWidth). */
-  fissure: { cooldown: 9, windup: 0.85, minDist: 7, maxDist: 24, len: 26, speed: 16, halfWidth: 1.7, dmgMul: 1.4, stunSec: 0.7, stacks: 1 },
+  fissure: { cooldown: 9, windup: 0.85, minDist: 12, maxDist: 34, len: 36, speed: 18, halfWidth: 2.2, dmgMul: 1.4, stunSec: 0.7, stacks: 1 },
   /** «Ледяная ярость»: на доле HP at — рёв; аура шире, умения чаще. */
   fury: { at: 0.3, auraMul: 1.35, cdMul: 0.7, roarSec: 2.2 },
   /** Пауза между умениями, с — между ними он бьёт когтями. */

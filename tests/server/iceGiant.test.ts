@@ -5,6 +5,8 @@ import { ELITE_MOBS, ICE_GIANT } from "../../src/shared/mobs";
 import { terrainHeight } from "../../src/shared/terrain";
 
 const DT = 1 / 30;
+/** Дистанция кайтящего лучника: дальше броска глыбы (minDist), в пределах разлома (maxDist). */
+const KITE = 24;
 
 function giant(): Mob {
   const d = ELITE_MOBS.iceGiant;
@@ -29,7 +31,7 @@ function run(m: Mob, players: SimPlayer[], sec: number, move?: (t: number) => vo
 
 test("Ледяной гигант: толпа рядом — «Ледяной раскол» по кругу (2 стака, отброс) и размах по дуге (стак каждому)", () => {
   const m = giant();
-  const ps = [hero("a", 0, 5), hero("b", 3, 4), hero("c", -3, 4)];
+  const ps = [hero("a", 0, 9), hero("b", 4, 8), hero("c", -4, 8)];
   const { hits, fx } = run(m, ps, 14);
   assert.ok(fx.some((f) => f.k === "giantSlam"), "телеграф раскола");
   const slam = fx.find((f) => f.k === "giantSlamHit");
@@ -44,15 +46,16 @@ test("Ледяной гигант: толпа рядом — «Ледяной р
 
 test("Ледяной гигант: дальнего героя достаёт глыбой (круг → полёт → удар и наледь) и разломом (оглушение)", () => {
   const m = giant();
-  const p = hero("archer", 0, 14);
-  // Лучник держит дистанцию 14 м от гиганта (кайтит) — гигант не дотягивается когтями.
+  const p = hero("archer", 0, KITE);
+  // Лучник держит дистанцию KITE м от гиганта (кайтит и стреляет — агр держится) — когтями не дотянуться.
   const { hits, fx } = run(m, [p], 30, () => {
     const dx = p.x - m.x;
     const dz = p.z - m.z;
     const d = Math.hypot(dx, dz) || 1;
-    p.x = m.x + (dx / d) * 14;
-    p.z = m.z + (dz / d) * 14;
+    p.x = m.x + (dx / d) * KITE;
+    p.z = m.z + (dz / d) * KITE;
     p.y = terrainHeight(p.x, p.z) + 1.6;
+    m.forceAggroIfIdle();
   });
   const kinds = new Set(fx.map((f) => f.k));
   for (const k of ["giantThrowMark", "giantThrowFly", "giantThrowHit", "giantFissure", "giantFissureGo"] as const) assert.ok(kinds.has(k), k);
@@ -64,15 +67,16 @@ test("Ледяной гигант: дальнего героя достаёт г
 
 test("Ледяной гигант: наледь замедляет, пока стоишь на ней (урона нет)", () => {
   const m = giant();
-  const p = hero("archer", 0, 14);
+  const p = hero("archer", 0, KITE);
   // Кайтим, пока глыба не упадёт (наледь живёт patchSec — дальше не ждём).
   let land: MobFx | undefined;
   for (let t = 0; t < 30 && !land; t += DT) {
     const dx = p.x - m.x;
     const dz = p.z - m.z;
     const d = Math.hypot(dx, dz) || 1;
-    p.x = m.x + (dx / d) * 14;
-    p.z = m.z + (dz / d) * 14;
+    p.x = m.x + (dx / d) * KITE;
+    p.z = m.z + (dz / d) * KITE;
+    m.forceAggroIfIdle();
     m.tick(DT, [p], [], () => {});
     land = m.fx.find((f) => f.k === "giantThrowHit");
   }
@@ -84,7 +88,7 @@ test("Ледяной гигант: наледь замедляет, пока с�
 
 test("Ледяной гигант: «Ледяная ярость» на 30% HP — рёв один раз, оглушение срывает раскол", () => {
   const m = giant();
-  const ps = [hero("a", 0, 5), hero("b", 3, 4)];
+  const ps = [hero("a", 0, 9), hero("b", 4, 8)];
   run(m, ps, 1);
   m.hp = m.maxHp * (ICE_GIANT.fury.at - 0.01);
   const { fx } = run(m, ps, 0.5);
@@ -95,7 +99,7 @@ test("Ледяной гигант: «Ледяная ярость» на 30% HP �
   // Оглушили на замахе раскола — удара нет.
   const m2 = giant();
   let stunned = false;
-  const r = run(m2, [hero("a", 0, 5), hero("b", 3, 4)], 14, () => {
+  const r = run(m2, [hero("a", 0, 9), hero("b", 4, 8)], 14, () => {
     if (!stunned && m2.fx.some((f) => f.k === "giantSlam")) {
       m2.stun(1.5);
       stunned = true;

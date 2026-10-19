@@ -317,6 +317,8 @@ export class Mob {
   hitCounter = false;
   /** Фаза дракона охоты (1..4), 0 — не он. */
   huntPhase = 0;
+  /** Кто уже бил дракона охоты: каждый новый бьющий добавляет EVENT.eliteHunt.hitsPerHero ударов. */
+  readonly hitters = new Set<string>();
   private readonly dmgLog: { t: number; d: number }[] = [];
 
   /** Запомнить урон по счётчику ударов (мс — Date.now()). */
@@ -1460,11 +1462,12 @@ export class Mob {
     }
 
     const isBoss = this.kind === "boss";
-    const aggroRange = isBoss
+    // Ледяной гигант огромный (тело ≈6.6 м): агр — от края тела, а не от центра, иначе он «не видел» героя в 10 м от себя.
+    const aggroRange = (isBoss
       ? BOSS.aggroRange
       : this.ranged
         ? SPITTER.aggroRange
-        : MOB.aggroRange;
+        : MOB.aggroRange) + (this.iceGiant ? MOB.bodyRadius * this.scale : 0);
     if (dist < aggroRange || (this.kind === "shard" && np)) {
       this.aggroed = true;
       this.outOfRange = 0;
@@ -3559,6 +3562,14 @@ export class ZoneSim {
     if (m.vulnT > 0 && attacker && this.hammerHit?.(attacker)) dmg *= m.vulnMul; // «Цепная молния»: по молоту — больше
     // Вклад считаем по ФАКТИЧЕСКИ снятому HP: оверкилл сверх остатка не должен раздувать долю.
     // Дракон охоты (hitCounter): здоровье — удары, попадание снимает одно; вклад, цифры и DPS — по урону.
+    if (m.hitCounter && attacker && !m.dead && !m.hitters.has(attacker)) {
+      // Новый бьющий — дракону ещё доля ударов (первый бьющий — уже в запасе при появлении).
+      if (m.hitters.size > 0) {
+        m.maxHp += EVENT.eliteHunt.hitsPerHero;
+        m.hp += EVENT.eliteHunt.hitsPerHero;
+      }
+      m.hitters.add(attacker);
+    }
     const hpBefore = m.hp;
     const killed = m.applyHit(m.hitCounter ? (dot ? 0 : 1) : dmg, dx, dz, dot);
     const dealt = m.hitCounter ? (hpBefore > 0 ? Math.max(0, dmg) : 0) : Math.max(0, hpBefore - m.hp);

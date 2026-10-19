@@ -35,7 +35,7 @@ const flying = new Map<string, ShardGroup>();
 
 const G = ICE_GIANT;
 /** Глыба: кристаллы во все стороны (радиус сдвига, длина кристалла, сколько, оборотов в секунду). */
-const BOULDER = { r: 0.9, size: 1.25, count: 18, spin: 1.5 };
+const BOULDER = { r: 1.7, size: 2.3, count: 20, spin: 1.2 };
 
 export function playIceGiantAct(
   ctx: IceGiantCtx, k: ActKind, x: number, y: number, z: number, id: string,
@@ -52,8 +52,8 @@ export function playIceGiantAct(
       break;
     case "giantSlamHit": {
       const R = r ?? G.slam.radius;
-      ice.shards(SHARD.ring, at, { r: R * 0.9, hold: 1.1, size: 2.8 });
-      ice.shards(SHARD.crater, at, { r: 3.4, hold: 0.9, size: 1.6, count: 24 });
+      ice.shards(SHARD.ring, at, { r: R * 0.9, hold: 1.1, size: 4.2 });
+      ice.shards(SHARD.crater, at, { r: 6, hold: 0.9, size: 2.6, count: 28 });
       ice.decal(DECAL.wave, x, y, z, R * 1.05, 0.55);
       ice.decal(DECAL.frost, x, y, z, R * 0.8, 3.5, 0.85);
       const a0 = Math.random() * Math.PI;
@@ -96,7 +96,7 @@ export function playIceGiantAct(
       held.delete(id);
       const from: P = gr
         ? { x: gr.a.x, y: gr.a.y, z: gr.a.z }
-        : (ctx.bone(id, "Hand.R") ?? { x: x2 ?? x, y: ctx.ground(x2 ?? x, z2 ?? z) + 4.5, z: z2 ?? z });
+        : (ctx.bone(id, "Hand.R") ?? { x: x2 ?? x, y: ctx.ground(x2 ?? x, z2 ?? z) + 9, z: z2 ?? z });
       const arc = Math.max(3, Math.hypot(to.x - from.x, to.z - from.z) * 0.3);
       const t0 = ice.clock;
       const path = (): P => {
@@ -123,8 +123,8 @@ export function playIceGiantAct(
       const gr = flying.get(id);
       flying.delete(id);
       if (gr) ice.end(gr);
-      ice.shards(SHARD.crater, at, { r: 2.6, hold: 1.0, size: 1.7, count: 26 });
-      ice.shards(SHARD.ring, at, { r: G.throw.radius * 0.8, hold: 0.8, size: 1.3, count: 18 });
+      ice.shards(SHARD.crater, at, { r: 3.6, hold: 1.0, size: 2.4, count: 26 });
+      ice.shards(SHARD.ring, at, { r: G.throw.radius * 0.8, hold: 0.8, size: 1.8, count: 20 });
       ice.decal(DECAL.wave, x, y, z, G.throw.radius * 1.2, 0.5);
       ice.decal(DECAL.frost, x, y, z, r ?? G.throw.patchR, d ?? G.throw.patchSec, 0.95); // наледь
       ice.burst(x, y + 1, z, FXC.iceRim, { count: 28, speed: 8, life: 0.9, grav: 9, size: 0.35 });
@@ -142,7 +142,7 @@ export function playIceGiantAct(
       const ey = ctx.ground(ex, ez);
       const len = Math.hypot(ex - x, ez - z);
       const speed = len / Math.max(0.1, d ?? G.fissure.len / G.fissure.speed);
-      ice.shards(SHARD.line, at, { b: { x: ex, y: ey, z: ez }, w: r ?? G.fissure.halfWidth, speed, hold: 0.9, size: 3.1 });
+      ice.shards(SHARD.line, at, { b: { x: ex, y: ey, z: ez }, w: r ?? G.fissure.halfWidth, speed, hold: 0.9, size: 4.2 });
       ice.decal(DECAL.wave, x, y, z, 3, 0.4);
       sfx.at(at, () => sfx.ice("spikes", 0.9));
       // По пути — искры и треск там, где сейчас фронт.
@@ -162,7 +162,7 @@ export function playIceGiantAct(
     }
     case "giantFury":
       // «Ледяная ярость»: рёв (клип Roar раскрывается на 0.4 с), волна холода, вихрь снега; дальше — метель (аура).
-      ice.decal(DECAL.wave, x, y, z, 14, 0.9);
+      ice.decal(DECAL.wave, x, y, z, 24, 0.9);
       ice.after(0.4, () => ice.burst(x, y + 3, z, FXC.frost, { count: 28, speed: 10, life: 1.4, grav: 2, size: 0.5 }));
       sfx.at(at, () => sfx.ice("roar", 1.1, 0.02, 0.35));
       break;

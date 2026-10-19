@@ -502,6 +502,8 @@ interface Bot {
   campPref: string | null;
   /** Закреплённый случайный выбор среди равных по уровню лагерей (0..1). */
   campRand: number;
+  /** Свой лагерь опустел (все убиты) — бот ушёл на эту стоянку того же вида (индекс CAMP_SPOTS), пока там живы. */
+  altSpot?: number;
   /** !рыбачить: идёт к озеру и рыбачит вместо обычного боя, пока не отменят. */
   fishing: boolean;
   /** Катакомбы: приказы зрителя (живут, пока не сменят — задержка стрима не мешает). */
@@ -601,6 +603,11 @@ const CAMP_SPOTS: { x: number; z: number; type: keyof typeof ELITE_MOBS }[] = [
     return { x: c.x, z: c.z, type: d.type };
   }),
 ];
+
+/** Моб «живёт» на стоянке CAMP_SPOTS, если его точка появления не дальше этого, м (у залов подземелья — центр зала). */
+const CAMP_ALIVE_R = 45;
+/** Стоянка опустела, если на ней никого живого дольше этого, мс — бот успевает подобрать добычу и уходит. */
+const CAMP_EMPTY_MS = 5000;
 
 /** Лагеря мобов по возрастанию силы (уровня их мобов) — расселение ботов. */
 const CAMPS_BY_POWER = [...CAMP_SPOTS].sort(
@@ -3048,7 +3055,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.huntBossId = this.sim.spawnEventMob(e.kind, spot.x, spot.z, {
         ...eliteMobOpts(e),
         boss: true,
-        hp: eh.hits,
+        hp: eh.hitsPerHero,
         dmgMul: e.dmgMul * dmgMul,
       });
       const hb = this.sim.mobs.get(this.huntBossId);
@@ -7814,7 +7821,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // деплоя — у уже прокачанных ботов дом иначе не пересчитать). Дёшево —
     // сверяем каждый тик, двигаем только при реальной смене.
     {
-      const home = botHome(p.level, bot.campPref, bot.campRand);
+      const home = this.botLiveHome(bot, p);
       if (home.x !== bot.homeX || home.z !== bot.homeZ) {
         bot.homeX = home.x;
         bot.homeZ = home.z;
@@ -9061,6 +9068,63 @@ export class ZoneRoom extends Room<ZoneState> {
       if (normNick(ps.nick) === bot.followNorm) return ps.head;
     }
     return null;
+  }
+
+  /** С какого момента (мс) на стоянке CAMP_SPOTS никого живого; 0 — кто-то жив. Пересчёт раз в секунду (botLiveHome). */
+  private campDeadSince: number[] = CAMP_SPOTS.map(() => 0);
+  private campAliveAt = 0;
+
+  private refreshCampAlive(): void {
+    const now = Date.now();
+    if (now < this.campAliveAt) return;
+    this.campAliveAt = now + 1000;
+    const alive = CAMP_SPOTS.map(() => false);
+    for (const m of this.sim.mobs.values()) {
+      if (m.dead || !m.campType) continue;
+      CAMP_SPOTS.forEach((c, i) => {
+        if (!alive[i] && c.type === m.campType && Math.hypot(m.homeX - c.x, m.homeZ - c.z) < CAMP_ALIVE_R) alive[i] = true;
+      });
+    }
+    this.campDeadSince = alive.map((a, i) => (a ? 0 : this.campDeadSince[i] || now));
+  }
+
+  /** Стоянка опустела: никого живого дольше CAMP_EMPTY_MS. */
+  private campEmpty(i: number): boolean {
+    const t = this.campDeadSince[i];
+    return t > 0 && Date.now() - t >= CAMP_EMPTY_MS;
+  }
+
+  /**
+   * Дом бота: его лагерь (botHome), а если там все убиты (дольше CAMP_EMPTY_MS — добычу успел подобрать) —
+   * ближайшая стоянка того же вида, где кто-то жив (бот не стоит на пустой точке — Ледяной гигант один на зал,
+   * возрождается через 30 с). На новой стоянке остаётся, пока и она не опустеет; живых нет нигде — ждёт у своей.
+   */
+  private botLiveHome(bot: Bot, p: PlayerState): { x: number; z: number } {
+    const base = botHome(p.level, bot.campPref, bot.campRand);
+    const i0 = CAMP_SPOTS.findIndex((c) => c.x === base.x && c.z === base.z);
+    if (i0 < 0) {
+      bot.altSpot = undefined; // поляна у спавна — не лагерь
+      return base;
+    }
+    this.refreshCampAlive();
+    const type = CAMP_SPOTS[i0].type;
+    const alt = bot.altSpot;
+    if (alt !== undefined && CAMP_SPOTS[alt]?.type === type && !this.campEmpty(alt)) return CAMP_SPOTS[alt];
+    bot.altSpot = undefined;
+    if (!this.campEmpty(i0)) return base;
+    let best = -1;
+    let bd = Infinity;
+    CAMP_SPOTS.forEach((c, i) => {
+      if (c.type !== type || this.campDeadSince[i] > 0) return;
+      const d = Math.hypot(c.x - p.head.x, c.z - p.head.z);
+      if (d < bd) {
+        bd = d;
+        best = i;
+      }
+    });
+    if (best < 0) return base;
+    bot.altSpot = best;
+    return CAMP_SPOTS[best];
   }
 
   /** Бот должен быть в подземелье: за ним идёт (!follow) герой — там, где герой; иначе — там, где дом. */
@@ -11060,7 +11124,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // по уровню, может смениться лагерь — уровень мог вырасти).
     const bot = id.startsWith("bot:") ? this.bots.get(id.slice(4)) : undefined;
     if (bot) {
-      const home = botHome(p.level, bot.campPref, bot.campRand);
+      const home = this.botLiveHome(bot, p);
       bot.homeX = home.x;
       bot.homeZ = home.z;
       // Скорость и маршрут — от прошлой жизни (тик мёртвого бота их не трогает): иначе он

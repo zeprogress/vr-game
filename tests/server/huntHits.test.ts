@@ -10,29 +10,34 @@ test("охота на элиту: фаза по общему DPS — порог�
   for (const [dps, ph] of cases) assert.equal(huntPhaseFor(dps), ph, `DPS ${dps}`);
 });
 
-test("охота на элиту: здоровье — удары; попадание снимает одно при любом уроне, тик — нет; урон идёт в DPS и вклад", () => {
+test("охота на элиту: удары — по доле на каждого бьющего; попадание снимает одно при любом уроне, тик — нет; урон идёт в DPS", () => {
   const sim = new ZoneSim();
   const e = ELITE_MOBS[EVENT.eliteHunt.eliteKey];
-  const id = sim.spawnEventMob(e.kind, 0, 0, { ...eliteOpts(e), boss: true, hp: EVENT.eliteHunt.hits });
+  const per = EVENT.eliteHunt.hitsPerHero;
+  const id = sim.spawnEventMob(e.kind, 0, 0, { ...eliteOpts(e), boss: true, hp: per });
   const m = sim.mobs.get(id)!;
   m.hitCounter = true;
   m.huntPhase = 1;
-  assert.equal(m.hp, 1000);
+  assert.equal(m.hp, per);
   sim.hitMob(id, 5000, 0, 1, "hero-a");
-  assert.equal(m.hp, 999, "удар в 5000 — минус один удар");
+  assert.equal(m.hp, per - 1, "удар в 5000 — минус один удар; первый бьющий — запас не растёт");
   sim.hitMob(id, 3, 0, 1, "hero-b");
-  assert.equal(m.hp, 998, "удар в 3 — тоже минус один");
+  assert.equal(m.maxHp, 2 * per, "второй бьющий — ещё доля ударов");
+  assert.equal(m.hp, 2 * per - 2, "удар в 3 — тоже минус один");
   sim.hitMob(id, 700, 0, 1, "hero-a", false, true);
-  assert.equal(m.hp, 998, "тик горения ударом не считается");
+  assert.equal(m.hp, 2 * per - 2, "тик горения ударом не считается");
+  sim.hitMob(id, 10, 0, 1, "hero-a");
+  assert.equal(m.maxHp, 2 * per, "тот же бьющий — запас не растёт");
   const dps = m.dpsAt(Date.now(), EVENT.eliteHunt.dpsWindow);
-  assert.ok(Math.abs(dps - (5000 + 3 + 700) / EVENT.eliteHunt.dpsWindow) < 1e-6, `DPS ${dps}`);
+  assert.ok(Math.abs(dps - (5000 + 3 + 700 + 10) / EVENT.eliteHunt.dpsWindow) < 1e-6, `DPS ${dps}`);
   assert.equal(huntPhaseFor(dps), 1);
   // Цифры урона над драконом — настоящий урон, а не «1».
   assert.ok(sim.dmgHits.some((h) => h.dmg === 5000));
-  // Добиваем: ровно на тысячном попадании.
-  for (let k = 0; k < 997; k++) sim.hitMob(id, 10, 0, 1, "hero-b");
+  // Добиваем: ровно на последнем ударе запаса.
+  const left = m.hp;
+  for (let k = 0; k < left - 1; k++) sim.hitMob(id, 10, 0, 1, "hero-b");
   assert.equal(m.hp, 1);
   assert.ok(!m.dead);
   sim.hitMob(id, 10, 0, 1, "hero-b");
-  assert.ok(m.dead, "тысячный удар — повержен");
+  assert.ok(m.dead, "последний удар — повержен");
 });

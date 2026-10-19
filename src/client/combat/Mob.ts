@@ -1627,9 +1627,9 @@ export class Mob implements Hittable {
     this.playIfNear(playerPos, () => this.sfx.at(p, () => this.sfx.ice("death")), 60);
     const ice = IceFx.of(this.scene);
     ice.after(1.85, () => {
-      ice.shards(SHARD.crater, p, { r: 4, hold: 1.4, size: 2, count: 30 });
-      ice.decal(DECAL.wave, p.x, p.y, p.z, 8, 0.6);
-      ice.decal(DECAL.frost, p.x, p.y, p.z, 6, 7, 0.9);
+      ice.shards(SHARD.crater, p, { r: 0.7 * k, hold: 1.4, size: 0.35 * k, count: 32 });
+      ice.decal(DECAL.wave, p.x, p.y, p.z, 1.4 * k, 0.6);
+      ice.decal(DECAL.frost, p.x, p.y, p.z, 1.05 * k, 7, 0.9);
       ice.burst(p.x, p.y + 1.2, p.z, FXC.iceRim, { count: 28, speed: 9, life: 1.1, grav: 9, size: 0.4 });
       ice.burst(p.x, p.y + 0.6, p.z, FXC.frost, { count: 24, speed: 5, life: 1.6, grav: 1, size: 0.7 });
     });
