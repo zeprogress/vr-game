@@ -3491,8 +3491,9 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-root.page .pcinv-charpnl .pcinv-atc { flex-direction:column; justify-content:center; height:52px; gap:2px; padding:0; }
 .pcinv-root.page .pcinv-charpnl .pcinv-atc .gico { width:22px; height:22px; }
 .pcinv-root.page .pcinv-charpnl .pcinv-row { font-size:13.5px; min-height:23px; }
-.pcinv-stage { position:absolute; inset:0; pointer-events:none; }
-.pcinv-skinpick { position:absolute; left:50%; bottom:-46px; transform:translateX(-50%); pointer-events:auto; }
+/* Герой стоит над полоской 44 px: выбор облика — внутри панели героя, под куклой (не на кнопках страницы). */
+.pcinv-stage { position:absolute; inset:0 0 44px 0; pointer-events:none; }
+.pcinv-skinpick { position:absolute; left:50%; bottom:-40px; transform:translateX(-50%); pointer-events:auto; }
 .pcinv-skinsel { font:inherit; font-size:14px; padding:6px 10px; border-radius:8px; background:#16202e; color:#e8eef8; border:1px solid #2c3e57; max-width:70vw; }
 .pcinv-heroimg { position:absolute; left:50%; bottom:var(--feet,4%); height:96%; transform:translateX(-50%); filter:drop-shadow(0 8px 14px rgba(0,0,0,.5)); }
 .pcinv-heroshadow { position:absolute; left:50%; bottom:calc(var(--feet,4%) - 10px); width:46%; height:22px; transform:translateX(-50%); border-radius:50%;
