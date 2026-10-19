@@ -5393,15 +5393,16 @@ export class ZoneRoom extends Room<ZoneState> {
   private openInv(token: string): InvSnap | null {
     const live = this.liveByToken(token);
     const rec = store.get(token);
-    if (live) return { weapons: live.rt.weapons, heldIds: this.liveHeldIds(live.p, live.rt), bag: readBag(live.p), jewels: jewelsOf(rec ?? {}), armor: live.rt.armor, armorWorn: { ...live.rt.armorWorn } };
+    // Материалы крафта — в записи героя и у живого (как камни).
+    if (live) return { weapons: live.rt.weapons, heldIds: this.liveHeldIds(live.p, live.rt), bag: readBag(live.p), jewels: jewelsOf(rec ?? {}), armor: live.rt.armor, armorWorn: { ...live.rt.armorWorn }, mats: craftStockOf(rec?.mats) };
     if (!rec) return null;
     const arm = armorFromRec(rec);
-    return { weapons: [...(rec.weapons ?? [])], heldIds: recHeldIds(rec), bag: restoreBag(rec.bag), jewels: jewelsOf(rec), armor: arm.armor, armorWorn: arm.armorWorn };
+    return { weapons: [...(rec.weapons ?? [])], heldIds: recHeldIds(rec), bag: restoreBag(rec.bag), jewels: jewelsOf(rec), armor: arm.armor, armorWorn: arm.armorWorn, mats: craftStockOf(rec.mats) };
   }
 
   /** Записать снимок обратно (живому — в мир и сохранение, иначе — в сохранение). */
   private commitInv(token: string, snap: InvSnap): void {
-    const j = { rings: snap.jewels.rings, ringOn: snap.jewels.ringOn, gems: snap.jewels.gems };
+    const j = { rings: snap.jewels.rings, ringOn: snap.jewels.ringOn, gems: snap.jewels.gems, mats: snap.mats };
     const live = this.liveByToken(token);
     if (!live) {
       store.put(token, { weapons: snap.weapons, bag: snap.bag, ...j, armor: snap.armor, armorWorn: snap.armorWorn });
@@ -5544,6 +5545,13 @@ export class ZoneRoom extends Room<ZoneState> {
   private addToSide(side: TradeSide, t: Taken): void {
     if (t.k === "gem") {
       const e = side.items.find((x): x is Extract<Taken, { k: "gem" }> => x.k === "gem" && x.key === t.key);
+      if (e) {
+        e.n += t.n;
+        return;
+      }
+    }
+    if (t.k === "mat") {
+      const e = side.items.find((x): x is Extract<Taken, { k: "mat" }> => x.k === "mat" && x.id === t.id);
       if (e) {
         e.n += t.n;
         return;

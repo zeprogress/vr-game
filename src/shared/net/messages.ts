@@ -321,7 +321,7 @@ export interface QuestData {
 
 /** Предмет в окне обмена: что за предмет (для иконки), сколько (стопка — число, у остального 1). */
 export interface TradeItemView {
-  k: "weapon" | "ring" | "gem" | "bag" | "armor";
+  k: "weapon" | "ring" | "gem" | "bag" | "armor" | "mat";
   name: string;
   n: number;
   cls?: string;
@@ -331,6 +331,8 @@ export interface TradeItemView {
   item?: string;
   /** Для брони — часть (иконка). */
   part?: "helm" | "chest" | "gloves" | "legs" | "boots";
+  /** Материал или особый катализатор крафта (shared/craft.ts CraftItemId) — иконка. */
+  mat?: string;
 }
 
 /** Рубиновое на складе, которое можно обменять на другой класс (по строке на оружие). */

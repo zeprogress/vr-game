@@ -621,6 +621,8 @@ export class PcInventory {
       }
       for (const [gk, n] of j.gems) out.push({ code: `g:${gk}`, label: gemName(gk), max: n, stack: true, view: { k: "gem", name: gemName(gk), n, key: gk } });
     }
+    // Материалы и особые катализаторы крафта — стопками, как камни.
+    for (const [id, n] of d.craft?.stock ?? []) out.push({ code: `m:${id}`, label: CRAFT_ITEMS[id].name, max: n, stack: true, view: { k: "mat", name: CRAFT_ITEMS[id].name, n, mat: id } });
     if (d.scrap) out.push({ code: "b:scrap", label: "Лом", max: d.scrap, stack: true, view: { k: "bag", name: "Лом", n: d.scrap, item: "scrap" } });
     if (d.potions) out.push({ code: "b:potion", label: "Зелья лечения", max: d.potions, stack: true, view: { k: "bag", name: "Зелья лечения", n: d.potions, item: "potion" } });
     if (d.fish) out.push({ code: "b:fish", label: "Рыба", max: d.fish, stack: true, view: { k: "bag", name: "Рыба", n: d.fish, item: "fish" } });
@@ -639,6 +641,7 @@ export class PcInventory {
     if (it.k === "weapon") setIconEl(box, weaponIcon(it.cls ?? "sword", false, it.tier ?? "base"));
     else if (it.k === "ring") box.innerHTML = ringHtml((it.tier ?? "base") as RingTier, it.gems ?? []);
     else if (it.k === "gem") box.innerHTML = gemHtml(it.key ?? "");
+    else if (it.k === "mat") box.innerHTML = iconHtml(`m.${it.mat ?? "alloy"}` as IconKey);
     else if (it.k === "armor" && it.part) setIconEl(box, armorIconKey(it.part, it.tier));
     else box.innerHTML = iconHtml(`i.${it.item ?? "scrap"}` as Parameters<typeof iconHtml>[0]);
     return box;
@@ -1035,6 +1038,8 @@ export class PcInventory {
     const shown = bag.filter((e) => f === "all" || (f === "fav" && favOf(e)) || (f === "weapon" && "w" in e) || (f === "ring" && "r" in e) || (f === "armor" && "a" in e));
     if (f !== "gem" && f !== "misc") for (const e of shown) cells.push(this.entryCell(e));
     if (f === "all" || f === "gem") for (const [gk, n] of j.gems) cells.push(this.gemCell(gk, n, d));
+    // Материалы и особые катализаторы крафта — стопками, в «Прочем» (и во «Всех»).
+    if (f === "all" || f === "misc") for (const [id, n] of d.craft?.stock ?? []) cells.push(this.matCell(id, n));
     if (f === "all" || f === "misc") cells.push(...this.consCells(d));
     // Пустые ячейки — до полной сетки (минимум несколько рядов, всегда есть свободный ряд).
     const cols = this.hooks.page ? 6 : this.hooks.touch ? 8 : 7;
@@ -1225,6 +1230,40 @@ export class PcInventory {
       out.push(c);
     }
     return out;
+  }
+
+  /** Материал или особый катализатор крафта в сумке: сколько, что даёт; нажатие — меню (в крафт, подарить). */
+  private matCell(id: CraftItemId, n: number): HTMLDivElement {
+    const def = CRAFT_ITEMS[id];
+    const c = countCell(iconHtml(`m.${id}` as IconKey), n);
+    c.classList.add("click", "pcinv-mat");
+    const what = def.kind === "cat" ? `Особый катализатор: ролл «${AFFIX_NAME[id === "frost" ? "chill" : "venom"]}» (возвращается после крафта).` : `Материал крафта: ролл «${AFFIX_NAME[matRoll(id as CraftMatId, "sword")]}»${id === "bone" ? " (на луке — Пронзание, на посохе — Поджог)" : ""}.`;
+    const body = `${what} Откуда: ${def.src}. Нажми — в крафт или подарить.`;
+    c.addEventListener("mouseenter", () => this.textTip(c, `${def.name} ×${n}`, body));
+    c.addEventListener("mouseleave", () => this.hideTip());
+    c.onclick = () => {
+      const sel = this.craftSel;
+      const used = sel.mats.filter((m) => m === id).length;
+      const acts: [string, () => void, boolean?][] = [];
+      if (def.kind === "cat") {
+        acts.push([`⚒ В крафт — катализатором`, () => this.toCraft(() => (sel.cat = id))]);
+      } else if (sel.mats.length < CRAFT.maxMats && used < n) {
+        acts.push([`⚒ В крафт — материалом (${sel.mats.length + 1} из ${CRAFT.maxMats})`, () => this.toCraft(() => sel.mats.push(id as CraftMatId))]);
+      } else acts.push(["⚒ Открыть крафт", () => this.toCraft(() => undefined)]);
+      acts.push(["🎁 Подарить…", () => this.askGift(def.name, `m:${id}`, n)]);
+      this.menu(c, `${def.name} ×${n}`, acts);
+    };
+    return c;
+  }
+
+  /** Перейти во вкладку «Крафт», положив предмет в цепочку. */
+  private toCraft(put: () => void): void {
+    put();
+    this.craftRes = null;
+    this.craftPick = null;
+    this.tab = "craft";
+    this.card = null;
+    this.render();
   }
 
   /** Камень в сумке: уровень и сколько; нажатие — меню (вставить в открытое кольцо, соединить, разделить, подарить). */
