@@ -5,7 +5,7 @@ import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
 import { ensureIconCss, iconHtml, setIconEl } from "../ui/icons";
 import type { IconKey } from "#shared/icons";
-import { AEGIS_NAME, AFFIX_NAME, craftPow, weaponName, ATTACK_CLASSES, WEAPON_NOUN, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, qualityStarsShort, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, AFFIX_NAME, craftPow, isCraftRare, weaponName, ATTACK_CLASSES, WEAPON_NOUN, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, qualityStarsShort, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcEnchRow, PcInvActMsg, PcInvArmor, PcInvData, PcInvResult, PcInvWeapon, TradeItemView } from "#shared/net/messages";
 import { SKIN_LABELS, skinPicture } from "#shared/skins";
 import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type PcInvJewels, type RingTier } from "#shared/jewels";
@@ -491,6 +491,8 @@ export class PcInventory {
 
   private render(): void {
     this.syncTradePoll();
+    // Бесконечные анимации (свечение рамки редкого мастерского) — с фазой от часов: перерисовка их не дёргает.
+    this.root.style.setProperty("--now", `${-Math.round(performance.now() % 2200)}ms`);
     const top = this.win.scrollTop;
     // Списки выбора прокручиваются сами — их позицию тоже сохраняем (иначе после нажатия сбрасывались наверх).
     const lists = [...this.win.querySelectorAll<HTMLElement>(".pcinv-tpick")].map((e) => e.scrollTop);
@@ -1307,6 +1309,7 @@ export class PcInventory {
     if (held && held.cls) {
       const tier = (w?.tier ?? held.tier) as WeaponTier;
       cell.classList.add(`t-${tier}`);
+      if (isCraftRare(w)) cell.classList.add("craft-rare");
       if (this.card?.kind === "hand" && this.card.side === side) cell.classList.add("sel");
       setIcon(cell, held.cls, w?.name, tier);
       if (w?.affixes.length) cell.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
@@ -1423,7 +1426,7 @@ export class PcInventory {
   }
 
   private itemCell(w: PcInvWeapon): HTMLDivElement {
-    const c = div(`pcinv-cell t-${w.tier}${this.card?.kind === "bag" && this.card.id === w.id ? " sel" : ""}`);
+    const c = div(`pcinv-cell t-${w.tier}${isCraftRare(w) ? " craft-rare" : ""}${this.card?.kind === "bag" && this.card.id === w.id ? " sel" : ""}`);
     setIcon(c, w.cls, w.name, w.tier);
     c.style.position = "relative";
     if (w.affixes.length) c.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
@@ -1533,7 +1536,7 @@ export class PcInventory {
     const tier = (w?.tier ?? held?.tier ?? "base") as WeaponTier;
     const name = w?.name ?? weaponDef(cls, tier).name;
     const inHand = !!side || (!!w && (d.equipped.left === w.id || d.equipped.right === w.id));
-    const ico = div(`pcinv-cell huge t-${tier}`);
+    const ico = div(`pcinv-cell huge t-${tier}${isCraftRare(w) ? " craft-rare" : ""}`);
     setIcon(ico, cls, name, tier);
     if (w && attackPoints(w) > 0) ico.append(div("pcinv-sb", `+${attackPoints(w)}`));
     const q = w?.affixes.length ? qualityStarsShort(w.quality, w.affixes.length) : "";
@@ -2321,7 +2324,7 @@ export class PcInventory {
     if (rc) card.append(div("pcinv-fg-rfound", `📜 Найден скрытый рецепт «${rc.name}»`));
     if (w) {
       const top = div("pcinv-fg-rtop");
-      const ico = div(`pcinv-cell huge t-${w.tier} pcinv-fg-rico`);
+      const ico = div(`pcinv-cell huge t-${w.tier}${isCraftRare(w) ? " craft-rare" : ""} pcinv-fg-rico`);
       setIcon(ico, w.cls, w.name, w.tier);
       const info = div("pcinv-fg-rinfo");
       info.append(div(`pcinv-card-name t-${w.tier}`, w.name));
@@ -2851,6 +2854,12 @@ function injectInvStyle(): void {
 .pcinv-cell[draggable="true"], .pcinv-cell.click, .pcinv-cell.pcinv-jw { cursor:pointer; }
 .pcinv-cell.t-base { --e:linear-gradient(180deg,#7a8ca3,#3e4c60); }
 ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
+/* Редкое мастерское (исход крафта «редкий»): цвет тира тот же, рамка толще, светится и пульсирует. */
+.pcinv-cell.craft-rare { --bw:3px; --e:linear-gradient(180deg,color-mix(in srgb,var(--tier-craft) 40%,#fff),var(--tier-craft) 50%,color-mix(in srgb,var(--tier-craft) 70%,#fff));
+  animation:pcinvRareGlow 2.2s ease-in-out infinite; animation-delay:var(--now,0ms); }
+@keyframes pcinvRareGlow { 0%,100% { filter:drop-shadow(0 0 5px var(--tier-craft)); } 50% { filter:drop-shadow(0 0 7px var(--tier-craft)); } }
+/* Само оружие на значке слегка светится цветом тира. */
+.pcinv-cell.craft-rare > .gico { filter:drop-shadow(0 0 3px var(--tier-craft)) drop-shadow(0 0 7px color-mix(in srgb,var(--tier-craft) 65%,transparent)) brightness(1.08); }
 .pcinv-cell.empty { --e:#1c2a3c; --f:linear-gradient(180deg,#08111e,#060d18); color:#2b3e58; }
 .pcinv-cell.locked > * { opacity:.16; filter:grayscale(1) brightness(1.6); }
 .pcinv-cell.sel { --e:linear-gradient(180deg,#e8fbff,#7fd2ff 40%,#2f8fe0); --bw:2px; filter:drop-shadow(0 0 4px rgba(70,180,255,.95)) drop-shadow(0 0 10px rgba(40,140,240,.5)); }

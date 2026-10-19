@@ -19,7 +19,7 @@
  * Результат — мастерское оружие (тир `craft`, тёмно-оранжевое): обычный экземпляр со своими роллами,
  * точится, передаётся и разбирается как остальное оружие.
  */
-import { ATTACK_CLASSES, affixAtPoints, affixOverCap, AFFIX_NAME, isMeleeClass, LOOT_VER, POINTS_MAX, rollableSubs, shortId, sortAffixes, WEAPON_NOUN, type AffixSub, type RolledAffix, type WeaponClass, type WeaponInstance } from "./items";
+import { ATTACK_CLASSES, CRAFT_RARE_POW, affixAtPoints, affixOverCap, AFFIX_NAME, isMeleeClass, LOOT_VER, POINTS_MAX, rollableSubs, shortId, sortAffixes, WEAPON_NOUN, type AffixSub, type RolledAffix, type WeaponClass, type WeaponInstance } from "./items";
 import { GEM_LOOK, parseGem, type GemAttr } from "./jewels";
 
 // ---------------------------------------------------------------- материалы и катализаторы
@@ -134,7 +134,7 @@ export const CRAFT_OUTCOMES: readonly CraftOutcomeDef[] = [
   { name: "Обычный", rolls: 2, pow: 0, floor: 1, color: "#e6e0d0" },
   { name: "Хороший", rolls: 3, pow: 0.15, floor: 6, color: "#7fe08a" },
   { name: "Отличный", rolls: 3, pow: 0.25, floor: 12, color: "#6fc3ff" },
-  { name: "Редкий", rolls: 4, pow: 0.38, floor: 18, color: "#ffb347" },
+  { name: "Редкий", rolls: 4, pow: CRAFT_RARE_POW, floor: 18, color: "#ffb347" },
 ];
 
 export const CRAFT = {

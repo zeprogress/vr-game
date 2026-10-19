@@ -11,7 +11,7 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
-import { AEGIS_NAME, AFFIX_NAME, ATTACK_CLASSES, WEAPON_NOUN, attackPoints, bothHandsCls, bothHandsNote, FAV_MAX, qualityStars, qualityStarsShort, craftPow, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, AFFIX_NAME, ATTACK_CLASSES, WEAPON_NOUN, attackPoints, isCraftRare, bothHandsCls, bothHandsNote, FAV_MAX, qualityStars, qualityStarsShort, craftPow, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { skillDamageText } from "#shared/skillDamage";
 import { armorIconKey, glyph, itemIcon, weaponIcon, type IconKey } from "#shared/icons";
 import { ARMOR_PART_NAME, ARMOR_PARTS, type ArmorPart } from "#shared/armor";
@@ -1575,10 +1575,22 @@ export class WristMenu {
     const st = this.styleFor(wd);
     ctx.fillStyle = st.fill || TIER_BG[wp.tier];
     ctx.fillRect(x, y, w, h);
+    // Редкое мастерское — цвет тира тот же, рамка толще и со свечением.
+    const rare = isCraftRare(wp);
     ctx.strokeStyle = st.stroke || TIER_COLOR[wp.tier];
-    ctx.lineWidth = st.stroke ? st.lw : 1.5;
+    ctx.lineWidth = st.stroke ? st.lw : rare ? 3 : 1.5;
+    if (rare && !st.stroke) {
+      ctx.shadowColor = TIER_COLOR[wp.tier];
+      ctx.shadowBlur = 14;
+    }
     ctx.strokeRect(x, y, w, h);
+    // Само оружие на значке тоже слегка светится.
+    if (rare) {
+      ctx.shadowColor = TIER_COLOR[wp.tier];
+      ctx.shadowBlur = 10;
+    }
     this.drawIconAt(ctx, weaponIcon(wp.cls, wp.name === AEGIS_NAME, wp.tier), x + 6, y + 22, 52, TIER_COLOR[wp.tier]);
+    ctx.shadowBlur = 0;
     ctx.font = "bold 17px system-ui, sans-serif";
     ctx.fillStyle = TIER_COLOR[wp.tier];
     ctx.fillText(this.shortName(name), x + 62, y + 8);

@@ -1221,6 +1221,14 @@ export function attackPointEligible(w: { cls: string; tier: string }): boolean {
   return w.cls !== "shield" && (w.tier === "legendary" || w.tier === "ruby" || w.tier === "craft");
 }
 
+/** «Мастерство» редкого исхода крафта (≈ рубиновое + 20%) — по нему редкое мастерское узнают везде (рамка со свечением). */
+export const CRAFT_RARE_POW = 0.38;
+
+/** Мастерское оружие редкого исхода крафта. */
+export function isCraftRare(w: { tier: string; cp?: number } | null | undefined): boolean {
+  return !!w && w.tier === "craft" && (w.cp ?? 0) >= CRAFT_RARE_POW - 1e-9;
+}
+
 /** «Мастерство» крафтового экземпляра (доля, 0 — нет): прибавка к урону от исхода крафта. */
 export function craftPow(w: { tier: string; cp?: number } | null | undefined): number {
   return w && w.tier === "craft" ? Math.max(0, Math.min(1, w.cp ?? 0)) : 0;

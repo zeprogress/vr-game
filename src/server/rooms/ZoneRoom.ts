@@ -10847,6 +10847,7 @@ export class ZoneRoom extends Room<ZoneState> {
         quality: weaponQuality(w),
         atkSpd: affixSum(w.affixes, "atkSpeedPct"),
         sharp: attackPoints(w),
+        ...(w.cp ? { cp: w.cp } : {}),
         fav: !!w.fav,
         scrap: scrapValue(w),
       })),
