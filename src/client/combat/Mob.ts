@@ -1702,7 +1702,8 @@ export class Mob implements Hittable {
   private makeReflectShield(): Mesh {
     const m = MeshBuilder.CreateSphere(`reflectShield_${this.id}`, { diameter: 1.75, segments: 16 }, this.scene);
     m.parent = this.root;
-    m.position.set(0, 1.2, 0);
+    // Центр тела — та же точка, что у прицела и попаданий (MOB.bodyRadius над подошвой).
+    m.position.set(0, MOB.bodyRadius, 0);
     m.isPickable = false;
     const mat = new StandardMaterial(`reflectShieldMat_${this.id}`, this.scene);
     mat.emissiveColor = new Color3(0.5, 0.9, 1.0);
