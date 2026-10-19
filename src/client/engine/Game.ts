@@ -132,7 +132,8 @@ import { BOT, EVENT, PLAYER, POTION_CD, RESPAWN, SKILL, isAdminNick } from "#sha
 import { BLINK, BOSS, PULL, CHARGE, SPIKES, CHIEF_HEAL, FREEZE, SPORE } from "#shared/mobs";
 import { MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
-import { TOWN_MUSIC, BOSS_MUSIC, CATACOMBS_MUSIC, CATACOMBS_BOSS_MUSIC } from "../audio/playlist";
+import { TOWN_MUSIC, BOSS_MUSIC, CATACOMBS_MUSIC, CATACOMBS_BOSS_MUSIC, DUNGEON_MUSIC } from "../audio/playlist";
+import { inDunRegion } from "#shared/dungeon";
 import { CAT_PHASE, CATACOMBS, inCatRegion } from "#shared/catacombs";
 import { type CatacombsFx, type CatView, catViewOf } from "../world/Catacombs";
 import { DungeonFx } from "../world/DungeonFx";
@@ -2590,7 +2591,7 @@ export class Game {
   private catFx: CatacombsFx | null = null;
   private dunFx: DungeonFx | null = null;
   private raidFx: RaidArenaFx | null = null;
-  /** Какая музыка сейчас: town / boss / cat / catBoss / raid. */
+  /** Какая музыка сейчас: town / boss / cat / catBoss / raid / dun. */
   private musicKind = "town";
 
   /** Рядом с живым боссом играет boss.mp3, в катакомбах — свои треки, вдали / после смерти — обычная. */
@@ -2615,7 +2616,16 @@ export class Game {
       }
       return;
     }
-    if (this.musicKind === "cat" || this.musicKind === "catBoss" || this.musicKind === "raid") {
+    // Подземелье «Глубинный храм» — своя тема, пока герой внутри.
+    if (inDunRegion(pp.x, pp.z)) {
+      if (this.musicKind !== "dun") {
+        this.musicKind = "dun";
+        this.bossMusicOn = false;
+        this.sfx.setMusic(DUNGEON_MUSIC, 0.085);
+      }
+      return;
+    }
+    if (this.musicKind === "cat" || this.musicKind === "catBoss" || this.musicKind === "raid" || this.musicKind === "dun") {
       this.musicKind = "town";
       this.bossMusicOn = !this.bossMusicOn; // ниже переключит обратно на нужную
     }

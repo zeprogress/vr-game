@@ -41,7 +41,8 @@ import { FreeCamControl } from "./FreeCamControl";
 import { BOT_TORCHES } from "../world/Fireflies";
 import { RELIGHT_STATS } from "../world/Fireflies";
 import { Sfx } from "../audio/Sfx";
-import { TOWN_MUSIC, BOSS_MUSIC, CATACOMBS_MUSIC, CATACOMBS_BOSS_MUSIC } from "../audio/playlist";
+import { TOWN_MUSIC, BOSS_MUSIC, CATACOMBS_MUSIC, CATACOMBS_BOSS_MUSIC, DUNGEON_MUSIC } from "../audio/playlist";
+import { inDunRegion } from "#shared/dungeon";
 import { CAT_HALLS, CAT_PHASE, CAT_STEPS, catOpen, catParseRoute, inCatRegion } from "#shared/catacombs";
 import { type CatacombsFx, catViewOf } from "../world/Catacombs";
 import { DungeonFx } from "../world/DungeonFx";
@@ -1609,6 +1610,15 @@ export class Spectator {
         this.catMusic = "raid";
         this.bossMusicOn = false;
         this.sfx.setMusic(CATACOMBS_BOSS_MUSIC, 0.12);
+      }
+      return;
+    }
+    // Камера в подземелье «Глубинный храм» — его тема.
+    if (inDunRegion(cp.x, cp.z)) {
+      if (this.catMusic !== "dun") {
+        this.catMusic = "dun";
+        this.bossMusicOn = false;
+        this.sfx.setMusic(DUNGEON_MUSIC, 0.09);
       }
       return;
     }
