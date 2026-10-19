@@ -111,25 +111,37 @@ let heldHands: NonNullable<InvMsg["heldHands"]> = { left: null, right: null };
  * под ноги героя на вкладке «Снаряжение»; картинка не меньше ширины страницы, ниже — плавно в тёмное.
  */
 const BG = { w: 1536, h: 920, fx: 768 / 1536, fy: 607 / 920 };
+/** «Крафт»: кузница у горного замка; середина наковальни (доли картинки) — под кнопкой «Создать». */
+const FORGE = { w: 1536, h: 1024, fx: 762 / 1536, fy: 690 / 1024 };
 const bgEl = document.getElementById("invBg");
 function placeBg(): void {
   if (!bgEl) return;
   const W = document.documentElement.clientWidth;
-  // «Крафт» — фон страницы меняется на кузницу у горного замка (inv.html #invBg.forge) и прокручивается со страницей:
-  // широкая страница — на всю её высоту, узкая (длинная колонка) — на экран и плавно в тёмное.
+  // «Крафт» — фон страницы меняется на кузницу у горного замка (inv.html #invBg.forge) и прокручивается со страницей.
+  // Как с героем на «Снаряжении»: середина наковальни — под кнопкой «Создать», картинка не уже страницы,
+  // ниже — плавно в тёмное. На узком экране у кузницы свой фон — страница просто во весь экран сверху.
   const forge = !!document.querySelector(".pcinv-smithy");
   bgEl.classList.toggle("forge", forge);
   if (forge) {
-    bgEl.style.backgroundSize = "";
-    bgEl.style.backgroundPosition = "";
-    bgEl.style.height = "";
-    const narrow = W <= 900;
-    bgEl.classList.toggle("short", narrow);
-    const docH = Math.max(document.documentElement.scrollHeight, window.innerHeight);
-    bgEl.style.height = `${narrow ? window.innerHeight : docH}px`;
+    const go = document.querySelector<HTMLElement>(".pcinv-fg-go");
+    const stage = document.querySelector<HTMLElement>(".pcinv-fg-stage");
+    const own = !stage || getComputedStyle(stage).backgroundImage !== "none";
+    let gx = W / 2;
+    let gy = window.innerHeight * 0.66;
+    if (go && !own) {
+      const r = go.getBoundingClientRect();
+      gx = r.left + r.width / 2 + window.scrollX;
+      gy = r.top + r.height / 2 + window.scrollY;
+    }
+    const k = Math.max(W / FORGE.w, window.innerHeight / FORGE.h, gx / (FORGE.fx * FORGE.w), (W - gx) / ((1 - FORGE.fx) * FORGE.w), gy / (FORGE.fy * FORGE.h));
+    const iw = FORGE.w * k;
+    const ih = FORGE.h * k;
+    const top = gy - FORGE.fy * ih;
+    bgEl.style.backgroundSize = `${iw.toFixed(1)}px ${ih.toFixed(1)}px`;
+    bgEl.style.backgroundPosition = `${(gx - FORGE.fx * iw).toFixed(1)}px ${top.toFixed(1)}px`;
+    bgEl.style.height = `${Math.ceil(top + ih)}px`;
     return;
   }
-  bgEl.classList.remove("short");
   const st = document.querySelector<HTMLElement>(".pcinv-stage");
   let fx = W / 2;
   let fy = Math.min(window.innerHeight * 0.8, 720);
