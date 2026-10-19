@@ -2153,17 +2153,38 @@ export class PcInventory {
       const left2 = have - used(m);
       const full = sel.mats.length >= CRAFT.maxMats;
       item(matsRow, iconHtml(`m.${m}` as IconKey), CRAFT_ITEMS[m].name, String(have), left2 > 0 && !full ? (used(m) ? "on" : "") : "off",
-        `${CRAFT_ITEMS[m].name} → ${AFFIX_NAME[matRoll(m, sel.cls)]}. Есть ${have}. Откуда: ${CRAFT_ITEMS[m].src}.${full ? " Ячейки полны — убери материал." : ""}`,
+        `${CRAFT_ITEMS[m].name} → ${AFFIX_NAME[matRoll(m, sel.cls)]}. Есть ${have}. Откуда: ${CRAFT_ITEMS[m].src}.${m === "alloy" ? ` Сплав делается из лома — «Переплавка лома» рядом.` : ""}${full ? " Ячейки полны — убери материал." : ""}`,
         () => {
           sel.mats.push(m);
           redraw();
         });
     }
-    // Переплавка: лом → сплав (рядом с материалами).
-    item(matsRow, `${iconHtml("i.scrap")}`, `В сплав`, `${CRAFT_SMELT}`, d.scrap >= CRAFT_SMELT ? "" : "off", `Переплавить ${CRAFT_SMELT} лома в ${CRAFT_ITEMS.alloy.name} (×1). Есть лома: ${d.scrap.toLocaleString("ru-RU")}.`, () =>
-      this.hooks.act({ act: "smelt", id: "alloy", idx: 1 }),
-    );
+    // Переплавка лома в сплав — отдельный блок с формулой «лом → сплав» и кнопками количества.
+    const sg = div("pcinv-fg-grp pcinv-fg-smelt");
+    sg.append(div("pcinv-fg-gt", "Переплавка лома"));
+    const eq = div("pcinv-fg-eq");
+    const eqIc = (k: IconKey, n: string): HTMLDivElement => {
+      const b = div("pcinv-fg-itic");
+      b.innerHTML = iconHtml(k);
+      b.append(div("pcinv-fg-cnt", n));
+      return b;
+    };
+    eq.append(eqIc("i.scrap", String(CRAFT_SMELT)), div("pcinv-fg-eqar", "→"), eqIc("m.alloy", "1"));
+    const btns = div("pcinv-fg-smb");
+    for (const n of [1, 5, 10]) {
+      const b = button(`×${n}`, () => this.hooks.act({ act: "smelt", id: "alloy", idx: n }));
+      b.disabled = d.scrap < n * CRAFT_SMELT;
+      b.title = `Переплавить ${n * CRAFT_SMELT} лома → ${CRAFT_ITEMS.alloy.name} ×${n}`;
+      hint(b, b.title + (b.disabled ? ` — не хватает лома (есть ${d.scrap.toLocaleString("ru-RU")})` : ""));
+      btns.append(b);
+    }
+    eq.append(btns);
+    sg.append(eq, div("pcinv-small", `${CRAFT_ITEMS.alloy.name} — материал на ролл «Урон». Лома: ${d.scrap.toLocaleString("ru-RU")}`));
+    // Итог переплавки (в игре — сюда же, на странице !inv — всплывашкой).
+    if (this.lastResult?.text.startsWith("Переплавлено")) sg.append(div(`pcinv-fg-smres${this.lastResult.up ? "" : " bad"}`, this.lastResult.text));
+    shelf.append(sg);
     const catsRow = group("Катализаторы");
+    catsRow.parentElement?.classList.add("cats");
     for (const k of CRAFT_CATS) {
       const have = stock.get(k) ?? 0;
       if (have <= 0) continue;
@@ -2630,7 +2651,8 @@ function injectInvStyle(): void {
   box-shadow:0 0 0 1px rgba(0,0,0,.6),0 18px 60px rgba(0,0,0,.6); user-select:none; -webkit-user-select:none; scrollbar-width:thin; scrollbar-color:#2c3e57 transparent; }
 .pcinv-head { position:sticky; top:0; z-index:6; display:flex; align-items:stretch; gap:6px; height:46px; padding:0 4px 0 12px; cursor:move;
   background:linear-gradient(180deg,rgba(14,28,46,.98),rgba(8,18,32,.98)); border-bottom:1px solid var(--line); }
-.pcinv-tabs { display:flex; gap:2px; flex:1; min-width:0; }
+.pcinv-tabs { display:flex; gap:2px; flex:1; min-width:0; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; }
+.pcinv-tabs::-webkit-scrollbar { display:none; }
 .pcinv-tab { position:relative; display:flex; align-items:center; gap:7px; padding:0 18px; font-size:14.5px; color:#a7b3c3; cursor:pointer; white-space:nowrap; }
 .pcinv-tab:hover { color:#dbe6f2; }
 .pcinv-tab.on { color:#fff; font-weight:600;
@@ -2978,7 +3000,7 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 /* внизу: полки */
 .pcinv-fg-shelf { grid-area:shelf; display:flex; gap:10px; padding:8px 10px; border:1px solid #2f4664; background:linear-gradient(180deg,rgba(9,19,34,.92),rgba(5,11,21,.92)); }
 .pcinv-fg-grp { display:flex; flex-direction:column; gap:4px; min-width:0; }
-.pcinv-fg-grp:nth-child(2) { flex:1; }
+.pcinv-fg-grp.cats { flex:1 1 auto; }
 .pcinv-fg-grp + .pcinv-fg-grp { padding-left:10px; border-left:1px solid #1d2d43; }
 .pcinv-fg-gt { font-size:12.5px; color:#7fb2e6; }
 .pcinv-fg-items { display:flex; gap:6px; overflow-x:auto; scrollbar-width:thin; scrollbar-color:#2c3e57 transparent; padding-bottom:2px; }
@@ -2991,6 +3013,13 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-fg-itic > span { width:44px !important; height:44px !important; }
 .pcinv-fg-cnt { position:absolute; right:-2px; bottom:-2px; padding:0 3px; font:700 11px system-ui; color:#fff; background:rgba(0,0,0,.65); border-radius:3px; }
 .pcinv-fg-itl { font-size:11px; color:#c3cedb; text-align:center; line-height:1.15; max-width:64px; }
+.pcinv-fg-smelt { flex:none; }
+.pcinv-fg-eq { display:flex; align-items:center; gap:6px; }
+.pcinv-fg-eqar { color:#e8c27a; font:700 22px system-ui; text-shadow:0 0 8px rgba(255,160,60,.5); }
+.pcinv-fg-smb { display:flex; gap:4px; margin-left:4px; }
+.pcinv-fg-smb .pcinv-ebtn { min-height:30px; padding:4px 10px; font-size:12px; }
+.pcinv-fg-smres { font-size:12px; color:#a9f0b4; }
+.pcinv-fg-smres.bad { color:#ffb0a6; }
 .pcinv-fg-hint { grid-area:hint; min-height:20px; padding:2px 4px; font-size:12.5px; color:#c9b48c; }
 /* узкое окно и телефон: одна колонка — кузница, итог, полки, рецепты */
 @media (max-width: 900px) {
@@ -3165,6 +3194,9 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
   .pcinv-root.page .pcinv-charpnl .pcinv-stats { display:grid; grid-template-columns:1fr 1fr; column-gap:24px; }
 }
 @media (max-width: 979px) {
+  /* Пять вкладок и валюты не помещаются в шапку: вкладки плотнее, ник — в заголовке страницы. */
+  .pcinv-root.page .pcinv-tab { padding:0 11px; }
+  .pcinv-root.page .pcinv-curnick { display:none; }
   .pcinv-root.page .pcinv-gear { grid-template-columns:minmax(0,1fr); grid-template-areas:"hero" "bag" "char"; }
   .pcinv-root.page .pcinv-bagpnl { --cols:6; }
   .pcinv-root.page .pcinv-bagpnl .pcinv-grid { grid-template-columns:repeat(6,minmax(0,1fr)); }
