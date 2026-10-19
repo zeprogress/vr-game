@@ -483,7 +483,7 @@ export const CRAFT_DROPS: Partial<Record<string, readonly { id: CraftItemId; cha
   skeletonReaver: [{ id: "bone", chance: 0.25 }],
   boneWraith: [{ id: "bone", chance: 0.2 }],
   boneChief: [{ id: "bone", chance: 0.2 }],
-  frostDemon: [{ id: "frost", chance: 0.01 }],
+  frostDemon: [{ id: "frost", chance: 0.001 }], // 2026-10-19: было 0.01 (катализатор не тратится)
   worldElite: [{ id: "scale", chance: 1, n: 3 }],
   catDragon: [{ id: "scale", chance: 1, n: 3 }],
 };
