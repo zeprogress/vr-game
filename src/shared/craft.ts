@@ -4,7 +4,8 @@
  * берут числа и подписи отсюда.
  *
  * Крафт = ОСНОВА (класс оружия) + 1–3 МАТЕРИАЛА + КАТАЛИЗАТОР (необязательно) + МЕТОД.
- *  - Материал задаёт ролл: разные материалы — разные роллы, одинаковые — тот же ролл выше по очкам.
+ *  - Материал задаёт ролл: разные материалы — разные роллы; одинаковые — потолок их ролла выше
+ *    (+15% за копию), остальные роллы его оплачивают (craftCaps, сумма потолков та же).
  *  - Катализатор возвращается. Камень любого вида улучшает шансы (сильнее с уровнем); особый
  *    катализатор (Ледяное сердце, Ядовитое жало) даёт особый ролл, которого у обычного оружия нет.
  *  - Метод — лом и характер: ковка надёжна, закалка поднимает роллы, резьба добавляет ролл,
@@ -19,7 +20,7 @@
  * Результат — мастерское оружие (тир `craft`, тёмно-оранжевое): обычный экземпляр со своими роллами,
  * точится, передаётся и разбирается как остальное оружие.
  */
-import { ATTACK_CLASSES, CRAFT_RARE_POW, affixAtPoints, affixOverCap, AFFIX_NAME, isMeleeClass, LOOT_VER, POINTS_MAX, rollableSubs, shortId, sortAffixes, WEAPON_NOUN, type AffixSub, type RolledAffix, type WeaponClass, type WeaponInstance } from "./items";
+import { ATTACK_CLASSES, CRAFT_RARE_POW, STAR_CAP, affixAtPoints, affixOverCap, AFFIX_NAME, isMeleeClass, LOOT_VER, POINTS_MAX, rollableSubs, shortId, sortAffixes, WEAPON_NOUN, type AffixSub, type RolledAffix, type WeaponClass, type WeaponInstance } from "./items";
 import { GEM_LOOK, parseGem, type GemAttr } from "./jewels";
 
 // ---------------------------------------------------------------- материалы и катализаторы
@@ -142,8 +143,11 @@ export const CRAFT = {
   maxMats: 3,
   /** Роллов у оружия — не больше. */
   maxRolls: 4,
-  /** Каждая копия материала сверх первой — к нижней границе очков его ролла. */
-  copyFloor: 8,
+  /**
+   * Каждая копия материала сверх первой — потолок его ролла +capStep (×1.15, ×1.30); эту прибавку
+   * оплачивают остальные роллы поровну — сумма потолков на оружии та же (2026-10-19, вместо «+8 очков к минимуму»).
+   */
+  capStep: 0.15,
   /** Камень-катализатор: уровни сверх этого шансы не улучшают. */
   gemLvCap: 5,
   /** Камень за уровень: −2 к провалу, +1 к отличному, +1 к редкому (веса до нормировки). */
@@ -152,7 +156,7 @@ export const CRAFT = {
   /** Провал: возвращается эта доля лома метода (материалы пропадают, катализатор цел). */
   failRefund: 0.5,
   /** Скрытый рецепт: ролл-звезда — максимум вида × это. */
-  starMul: 1.5,
+  starMul: STAR_CAP,
 } as const;
 
 // ---------------------------------------------------------------- мастерство кузнеца
@@ -313,6 +317,35 @@ export function plannedRolls(i: CraftInput): { sub: AffixSub; copies: number; fr
   return out;
 }
 
+/**
+ * Потолки роллов по копиям материалов (сумма потолков сохраняется): у ролла с c копиями — +capStep·(c−1),
+ * эту прибавку остальные роллы оплачивают поровну. copies[k] — копий у k-го ролла (случайный и особый — 0/1).
+ */
+export function craftCaps(copies: readonly number[]): number[] {
+  const n = copies.length;
+  const bonus = copies.map((c) => CRAFT.capStep * Math.max(0, c - 1));
+  const total = bonus.reduce((a, b) => a + b, 0);
+  return bonus.map((b) => (n > 1 ? 1 + b - (total - b) / (n - 1) : 1 + b));
+}
+
+/**
+ * Потолки для предпросмотра в кузнице при n роллах: у каждого ролла из материалов/катализатора и у
+ * случайных (other). Разница исходов: при 2 роллах остальные платят больше, при 4 — меньше.
+ */
+export function plannedCaps(i: CraftInput, n: number): { caps: number[]; other: number } {
+  const plan = plannedRolls(i).slice(0, n);
+  const copies = plan.map((r) => r.copies);
+  while (copies.length < n) copies.push(0);
+  const all = craftCaps(copies);
+  return { caps: all.slice(0, plan.length), other: plan.length < n ? all[n - 1] : 1 };
+}
+
+/** Метка потолка для окон кузницы: «▲ +30%», «▼ −15%»; пусто — обычный. */
+export function capTag(cap: number): string {
+  const d = Math.round((cap - 1) * 100);
+  return d > 0 ? `▲ +${d}%` : d < 0 ? `▼ −${-d}%` : "";
+}
+
 /** Роллов при исходе `o` с этим методом. */
 export function rollsFor(o: number, method: CraftMethodId): number {
   return o <= 0 ? 0 : Math.min(CRAFT.maxRolls, CRAFT_OUTCOMES[o].rolls + CRAFT_METHODS[method].rollAdd);
@@ -415,25 +448,28 @@ export function craftWeapon(
     const l = Math.max(1, Math.min(POINTS_MAX, lo));
     return l + Math.floor(rnd() * (POINTS_MAX - l + 1));
   };
-  const affixes: RolledAffix[] = [];
+  // Роллы: из материалов и особого катализатора (по важности), остальные места — случайные роллы класса.
+  const rolls: { sub: AffixSub; copies: number }[] = [];
   const used = new Set<AffixSub>();
   for (const r of plannedRolls(i)) {
-    if (affixes.length >= n) break;
+    if (rolls.length >= n) break;
     used.add(r.sub);
-    affixes.push(affixAtPoints(r.sub, pts(floor + CRAFT.copyFloor * (r.copies - 1))));
+    rolls.push({ sub: r.sub, copies: r.copies });
   }
-  // Остальные места — случайные роллы класса (не повторяясь).
-  while (affixes.length < n) {
+  while (rolls.length < n) {
     const pool = rollableSubs(i.cls).filter((s) => !used.has(s));
     if (!pool.length) break;
     const sub = pool[Math.floor(rnd() * pool.length)];
     used.add(sub);
-    affixes.push(affixAtPoints(sub, pts(floor)));
+    rolls.push({ sub, copies: 0 });
   }
-  // Скрытый рецепт: ролл-звезда сверх предела (если такого вида нет — встаёт вместо последнего).
+  // Очки — от исхода; потолки — от копий материалов (craftCaps).
+  const caps = craftCaps(rolls.map((r) => r.copies));
+  const affixes: RolledAffix[] = rolls.map((r, k) => affixAtPoints(r.sub, pts(floor), caps[k]));
+  // Скрытый рецепт: ролл-звезда — потолок ×starMul, сразу на максимуме (если такого вида нет — встаёт вместо последнего).
   if (recipe) {
-    const star = affixOverCap(recipe.star, CRAFT.starMul);
     const at = affixes.findIndex((a) => a.sub === recipe.star);
+    const star = affixOverCap(recipe.star, Math.max(CRAFT.starMul, at >= 0 ? caps[at] : 1));
     if (at >= 0) affixes[at] = star;
     else affixes[affixes.length - 1] = star;
   }

@@ -7,6 +7,7 @@ import {
   CRAFT_RECIPES,
   craftCode,
   craftOdds,
+  craftCaps,
   craftWeapon,
   matchRecipe,
   parseCraftCode,
@@ -16,7 +17,7 @@ import {
   type CraftInput,
   type CraftStock,
 } from "../../src/shared/craft";
-import { affixPoints, affixRange, attackPointMul, enchantInfo, heldAffixText, scrapValue, weaponQuality } from "../../src/shared/items";
+import { STAR_CAP, affixCapNote, affixLabel, affixPoints, affixRange, attackPointMul, enchantApply, enchantInfo, heldAffixText, scrapValue, weaponQuality } from "../../src/shared/items";
 import { seeded, close } from "./rng";
 
 const RICH: CraftStock = { alloy: 99, web: 99, scale: 99, bone: 99, frost: 1, sting: 1 };
@@ -97,21 +98,60 @@ test("крафт: роллы от материалов, число роллов 
   assert.deepEqual([...seen].sort(), [0, 1, 2, 3, 4], "все исходы встречаются");
 });
 
-test("одинаковые материалы поднимают нижнюю границу ролла; закалка — тоже; резьба добавляет ролл", () => {
+test("потолки роллов: копии материала поднимают свой, остальные платят поровну (сумма та же)", () => {
+  const near = (a: number[], b: number[]): void => a.forEach((x, k) => assert.ok(close(x, b[k]), `${a} ≠ ${b}`));
+  near(craftCaps([3, 0, 0]), [1.3, 0.85, 0.85]);
+  near(craftCaps([2, 1, 0]), [1.15, 0.925, 0.925]);
+  near(craftCaps([3, 0]), [1.3, 0.7]);
+  near(craftCaps([3, 0, 0, 0]), [1.3, 0.9, 0.9, 0.9]);
+  near(craftCaps([1, 1, 1]), [1, 1, 1]);
+  near(craftCaps([1, 1, 0]), [1, 1, 1]); // особый катализатор и разные материалы — без прибавки
+});
+
+test("3 одинаковых материала: ролл ▲ (заточка доводит до нового максимума), остальные ▼; закалка — минимум; резьба — ролл", () => {
   const rnd = seeded(11);
   for (let k = 0; k < 200; k++) {
     const r = craftWeapon({ cls: "dagger", mats: ["web", "web", "web"], cat: null, method: "temper" }, have(), "т", rnd);
     if (!r.ok || !r.weapon) continue;
-    const a = r.weapon.affixes.find((x) => x.sub === "atkSpeedPct")!;
-    const floor = CRAFT_OUTCOMES[r.outcome].floor + CRAFT_METHODS.temper.floorAdd + 2 * CRAFT.copyFloor;
-    assert.ok(affixPoints(a, r.weapon) >= Math.min(33, floor));
+    const w = r.weapon;
+    const n = w.affixes.length;
+    const a = w.affixes.find((x) => x.sub === "atkSpeedPct")!;
+    assert.ok(close(a.cap ?? 1, 1.3), "свой ролл ×1.30");
+    for (const o of w.affixes) if (o !== a) assert.ok(close(o.cap ?? 1, 1 - 0.3 / (n - 1)), `${o.sub} ×${o.cap}`);
+    // Очки — только от исхода и метода (копии их больше не поднимают).
+    for (const o of w.affixes) assert.ok(affixPoints(o, w) >= Math.min(33, CRAFT_OUTCOMES[r.outcome].floor + CRAFT_METHODS.temper.floorAdd));
+    assert.match(affixLabel(a), /▲$/);
   }
+  // Заточка до 33 очков — ровно новый потолок (Скорость 5–15% ×1.3 → 19.5%).
+  let r = craftWeapon({ cls: "dagger", mats: ["web", "web", "web"], cat: null, method: "temper" }, have(), "т", rnd);
+  while (!(r.ok && r.weapon)) r = craftWeapon({ cls: "dagger", mats: ["web", "web", "web"], cat: null, method: "temper" }, have(), "т", rnd);
+  const w = r.weapon!;
+  const idx = w.affixes.findIndex((x) => x.sub === "atkSpeedPct");
+  enchantApply(w, idx, 33);
+  assert.equal(affixPoints(w.affixes[idx], w), 33);
+  assert.ok(close(w.affixes[idx].value, affixRange("atkSpeedPct", w)[1] * 1.3));
+  assert.match(affixCapNote(w.affixes[idx], w), /макс 19\.5% \(▲ \+30%\)/);
   for (let k = 0; k < 200; k++) {
-    const r = craftWeapon({ cls: "spear", mats: ["bone"], cat: null, method: "carve" }, have(), "т", rnd);
-    if (!r.ok || !r.weapon) continue;
-    assert.equal(r.weapon.affixes.length, Math.min(CRAFT.maxRolls, CRAFT_OUTCOMES[r.outcome].rolls + 1));
-    assert.ok(r.weapon.affixes.some((x) => x.sub === "vamp"), "кость на копье — вампиризм");
+    const r2 = craftWeapon({ cls: "spear", mats: ["bone"], cat: null, method: "carve" }, have(), "т", rnd);
+    if (!r2.ok || !r2.weapon) continue;
+    assert.equal(r2.weapon.affixes.length, Math.min(CRAFT.maxRolls, CRAFT_OUTCOMES[r2.outcome].rolls + 1));
+    assert.ok(r2.weapon.affixes.some((x) => x.sub === "vamp"), "кость на копье — вампиризм");
+    assert.ok(r2.weapon.affixes.every((x) => (x.cap ?? 1) === 1), "один материал — потолки обычные");
   }
+});
+
+test("скрытый рецепт: ролл-звезда — потолок ×1.5 сразу на максимуме, остальные платят за копии", () => {
+  const rnd = seeded(5);
+  const crusher = CRAFT_RECIPES.find((x) => x.id === "crusher")!;
+  let r = craftWeapon({ cls: crusher.cls, mats: [...crusher.mats], cat: "str:2", method: crusher.method }, have(), "т", rnd);
+  while (!(r.ok && r.weapon)) r = craftWeapon({ cls: crusher.cls, mats: [...crusher.mats], cat: "str:2", method: crusher.method }, have(), "т", rnd);
+  const w = r.weapon!;
+  const star = w.affixes.find((a) => a.sub === crusher.star)!;
+  assert.equal(star.cap, STAR_CAP);
+  assert.equal(affixPoints(star, w), 33, "сразу на максимуме — точить нечего");
+  assert.ok(close(star.value, affixRange(crusher.star, w)[1] * STAR_CAP));
+  assert.match(affixLabel(star), /★$/);
+  for (const o of w.affixes) if (o !== star) assert.ok((o.cap ?? 1) < 1, `${o.sub}: остальные ▼`);
 });
 
 test("кость на луке — пронзание, на посохе — поджог; особый катализатор — свой ролл", () => {

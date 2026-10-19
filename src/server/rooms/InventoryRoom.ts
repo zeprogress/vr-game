@@ -11,6 +11,7 @@ import { ipOfRequest } from "../clientIp";
 
 import {
   affixLabel,
+  affixCapNote,
   instanceLabels,
   heldAffixText,
   instanceEffects,
@@ -51,7 +52,7 @@ type InvAct = { act?: unknown; id?: unknown; idx?: unknown; fuel?: unknown };
 
 /** Для окна заточки: по каждому аффиксу — очки, max, шанс и цена. */
 function enchDetails(w: WeaponInstance): PcInvWeapon["ench"] {
-  return w.affixes.map((a, i) => ({ label: affixLabel(a), ...enchantInfo(w, i)! }));
+  return w.affixes.map((a, i) => ({ label: affixLabel(a), ...(affixCapNote(a, w) ? { capNote: affixCapNote(a, w) } : {}), ...enchantInfo(w, i)! }));
 }
 
 /**

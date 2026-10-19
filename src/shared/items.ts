@@ -534,6 +534,11 @@ export interface RolledAffix {
   value: number;
   /** Колода заточки этого ролла (см. enchantRoll). */
   ench?: EnchantDeck;
+  /**
+   * Потолок ролла (крафт, shared/craft.ts): максимум вида × cap, минимум прежний. Шкала очков та же
+   * (1..33) — заточка доводит до нового потолка. Нет поля — ×1. ▲ > 1, ▼ < 1, ★ — скрытый рецепт.
+   */
+  cap?: number;
 }
 
 /** Инстанс сдропанного оружия — конкретный, со своими роллами (в отличие от WeaponDef — общего шаблона тира). */
@@ -640,9 +645,17 @@ const V6_RANGES = {
 /** Старый диапазон Блока (до 2026-10-02) — для пересчёта уже выпавших щитов. */
 const OLD_BLOCK_RANGE = [0.02, 0.06] as const;
 
-/** Диапазон ролла вида `sub` на предмете (у Эгиды свой). */
-function rangeFor(sub: AffixSub, aegis: boolean): readonly [number, number] {
-  return (aegis && AEGIS_RANGES[sub]) || AFFIX_RANGES[sub];
+/** Ролл скрытого рецепта крафта — потолок ×STAR_CAP («сверх предела»), сразу на максимуме. */
+export const STAR_CAP = 1.5;
+/** Роллы-шансы: потолок не выше 100%. */
+const CHANCE_SUBS: ReadonlySet<AffixSub> = new Set<AffixSub>(["pierce", "ignite", "chill", "venom"]);
+
+/** Диапазон ролла вида `sub` на предмете (у Эгиды свой); cap — потолок ролла (крафт): максимум × cap. */
+function rangeFor(sub: AffixSub, aegis: boolean, cap = 1): readonly [number, number] {
+  const r = (aegis && AEGIS_RANGES[sub]) || AFFIX_RANGES[sub];
+  if (cap === 1) return r;
+  const hi = Math.max(r[0] + 1e-6, r[1] * cap);
+  return [r[0], CHANCE_SUBS.has(sub) ? Math.min(1, hi) : hi];
 }
 /** Сила крита у ролла Крит: растёт вместе с шансом, от +0.3 (5%) до +1 (15%). */
 const CRIT_ROLL_MULT = [0.15, 0.5] as const; // 2026-10-02: было +0.3..+1 — ролл Крит был в 2–3 раза сильнее Урона (лаборатория баланса)
@@ -650,12 +663,12 @@ const CRIT_ROLL_MULT = [0.15, 0.5] as const; // 2026-10-02: было +0.3..+1 �
 const OLD_CRIT_MULT_HI = 0.8;
 
 /** Доля ролла от минимума к максимуму своего вида (0..1). */
-function rollT(sub: AffixSub, value: number, aegis = false): number {
-  const [lo, hi] = rangeFor(sub, aegis);
+function rollT(sub: AffixSub, value: number, aegis = false, cap = 1): number {
+  const [lo, hi] = rangeFor(sub, aegis, cap);
   return hi > lo ? Math.max(0, Math.min(1, (value - lo) / (hi - lo))) : 1;
 }
-function atT(sub: AffixSub, t: number, aegis = false): number {
-  const [lo, hi] = rangeFor(sub, aegis);
+function atT(sub: AffixSub, t: number, aegis = false, cap = 1): number {
+  const [lo, hi] = rangeFor(sub, aegis, cap);
   return lo + t * (hi - lo);
 }
 
@@ -721,6 +734,22 @@ export const AFFIX_NAME: Record<AffixSub, string> = {
 
 /** Текст ролла для тултипа/чата: «Урон +12%», «Крит +9%», «Вампиризм +5%». */
 export function affixLabel(a: RolledAffix): string {
+  const c = a.cap ?? 1;
+  const mark = c >= STAR_CAP - 1e-6 ? " ★" : c > 1.0005 ? " ▲" : c < 0.9995 ? " ▼" : "";
+  return affixLabelBare(a) + mark;
+}
+
+/** Потолок ролла для подсказки: «макс 19.5% (▲ +30%)»; пусто — обычный потолок. */
+export function affixCapNote(a: RolledAffix, w: Pick<WeaponInstance, "cls" | "nm">): string {
+  const c = a.cap ?? 1;
+  if (Math.abs(c - 1) < 0.0005) return "";
+  const hi = affixRange(a.sub, w, c)[1];
+  const max = a.sub === "critMult" ? `${Math.round(hi * 100) / 100}` : a.sub === "regen" ? `${Math.round(hi * 10000) / 100}%` : `${Math.round(hi * 1000) / 10}%`;
+  const d = Math.round((c - 1) * 100);
+  return `макс ${max} (${c >= STAR_CAP - 1e-6 ? "★" : d > 0 ? "▲" : "▼"} ${d > 0 ? "+" : "−"}${Math.abs(d)}%)`;
+}
+
+function affixLabelBare(a: RolledAffix): string {
   // Точность не грубее шага заточки (1 очко ≈ 0.2–0.4%) — иначе удачная
   // заточка не меняла бы подпись. Хвостовые нули срезаем: 12.0% → 12%.
   if (a.sub === "critMult") return `Крит, сила +${Math.round(a.value * 100) / 100}`;
@@ -746,29 +775,29 @@ function rollAffix(rnd: () => number, cls: WeaponClass, used: ReadonlySet<AffixS
   return { kind: SUB_KIND[sub], sub, value: atT(sub, Math.floor(rnd() * POINTS_MAX) / 32, aegis) };
 }
 
-/** Ролл вида `sub` ровно на очках `pts` (1..33) — крафт ставит роллы сам (shared/craft.ts). */
-export function affixAtPoints(sub: AffixSub, pts: number): RolledAffix {
+/** Ролл вида `sub` ровно на очках `pts` (1..33) с потолком cap — крафт ставит роллы сам (shared/craft.ts). */
+export function affixAtPoints(sub: AffixSub, pts: number, cap = 1): RolledAffix {
   const p = Math.max(1, Math.min(POINTS_MAX, Math.round(pts)));
-  return { kind: SUB_KIND[sub], sub, value: atT(sub, (p - 1) / 32) };
+  const c = Math.round(cap * 1000) / 1000;
+  return { kind: SUB_KIND[sub], sub, value: atT(sub, (p - 1) / 32, false, c), ...(c !== 1 ? { cap: c } : {}) };
 }
 
-/** Ролл «сверх предела» (скрытый рецепт крафта): максимум вида × mul; шанс — не выше 100%. Очки — 33, заточке не поддаётся. */
+/** Ролл «сверх предела» (скрытый рецепт крафта): потолок ×mul, сразу на максимуме (33 очка — заточке не поддаётся); шанс — не выше 100%. */
 export function affixOverCap(sub: AffixSub, mul: number): RolledAffix {
-  const hi = AFFIX_RANGES[sub][1];
-  return { kind: SUB_KIND[sub], sub, value: Math.min(sub === "pierce" || sub === "ignite" || sub === "chill" || sub === "venom" ? 1 : Infinity, Math.round(hi * mul * 1000) / 1000) };
+  return affixAtPoints(sub, POINTS_MAX, mul);
 }
 
 /** Привязать ролл к ближайшему целому очку (миграция lv 9 и после заточки). Вне диапазона — не трогаем. */
 function snapToPoint(a: RolledAffix, aegis: boolean): void {
-  const [lo, hi] = rangeFor(a.sub, aegis);
+  const [lo, hi] = rangeFor(a.sub, aegis, a.cap ?? 1);
   if (!(hi > lo) || a.value < lo - 1e-9 || a.value > hi + 1e-9) return;
-  a.value = atT(a.sub, Math.round(((a.value - lo) / (hi - lo)) * 32) / 32, aegis);
+  a.value = atT(a.sub, Math.round(((a.value - lo) / (hi - lo)) * 32) / 32, aegis, a.cap ?? 1);
 }
 
 /** Очки одного ролла: от 1 (самый низкий) до 33 (самый высокий) линейно по диапазону вида. */
 export function affixPoints(a: RolledAffix, w: Pick<WeaponInstance, "cls" | "nm">): number {
   // Роллы стоят на целых очках (lv 9); округление гасит погрешность чисел с плавающей точкой.
-  return Math.round(1 + 32 * rollT(a.sub, a.value, isAegis(w)));
+  return Math.round(1 + 32 * rollT(a.sub, a.value, isAegis(w), a.cap ?? 1));
 }
 
 /**
@@ -935,8 +964,8 @@ export function takeFromBag(bag: Slot[], id: ItemId, count: number): boolean {
 }
 
 /** Диапазон ролла [мин, макс] на этом предмете (у Эгиды свой) — и для лаборатории баланса. */
-export function affixRange(sub: AffixSub, w: Pick<WeaponInstance, "cls" | "nm">): readonly [number, number] {
-  return rangeFor(sub, isAegis(w));
+export function affixRange(sub: AffixSub, w: Pick<WeaponInstance, "cls" | "nm">, cap = 1): readonly [number, number] {
+  return rangeFor(sub, isAegis(w), cap);
 }
 
 /**
@@ -1374,7 +1403,7 @@ export function enchantApply(w: WeaponInstance, idx: number, gain: number): void
   const a = w.affixes[idx];
   if (!a) return;
   const pts = Math.min(POINTS_MAX, affixPoints(a, w) + gain);
-  a.value = atT(a.sub, (pts - 1) / 32, isAegis(w));
+  a.value = atT(a.sub, (pts - 1) / 32, isAegis(w), a.cap ?? 1);
 }
 
 /**

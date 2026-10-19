@@ -27,6 +27,8 @@ import {
   matchRecipe,
   matRoll,
   plannedRolls,
+  plannedCaps,
+  capTag,
   isCraftItem,
   recipeText,
   rollsFor,
@@ -1529,6 +1531,7 @@ export class PcInventory {
       const row = div("pcinv-erow");
       const lab = div("pcinv-elabel");
       lab.append(span(texts[i] ?? a.label), span(`${a.points} / ${a.of}`));
+      if (a.capNote) lab.title = `Потолок ролла (крафт): ${a.capNote} — заточка доводит до него.`;
       const bar = div("pcinv-ebar");
       const fill = div("pcinv-efill");
       fill.style.width = `${Math.round((a.points / a.of) * 100)}%`;
@@ -2120,7 +2123,7 @@ export class PcInventory {
         matBox,
         sel.mats.length ? `${sel.mats.length} из ${CRAFT.maxMats}` : "пусто",
         matRolls.length ? matRolls.map((r) => `${AFFIX_NAME[r.sub]}${r.copies > 1 ? ` ×${r.copies}` : ""}`).join(", ") : "нажми «+»",
-        "Материалы задают роллы: разные — разные роллы, одинаковые — тот же ролл выше. Тратятся. «+» — добавить, нажми на материал — убрать.",
+        "Материалы задают роллы: разные — разные роллы; одинаковые — потолок их ролла выше (+15% за копию), а у остальных роллов ниже. Тратятся. «+» — добавить, нажми на материал — убрать.",
         sel.mats.length > 0,
         () => pickOpen("mat"),
       ),
@@ -2204,10 +2207,20 @@ export class PcInventory {
       const big = div("pcinv-fg-cimg");
       setIcon(big, sel.cls, undefined, "craft");
       const rows = div("pcinv-fg-rows");
-      for (const r of plan.slice(0, CRAFT.maxRolls)) {
+      // Потолки — при 3 роллах (хороший/отличный исход); при 2 остальные платят больше, при 4 — меньше.
+      const pc = plannedCaps(sel, 3);
+      const capsAt = (n: number): string => plannedCaps(sel, n).caps.map((cp, k) => `${AFFIX_NAME[plan[k].sub]} ×${cp.toFixed(2)}`).join(", ");
+      plan.slice(0, CRAFT.maxRolls).forEach((r, k) => {
         const st = div("pcinv-fg-stat");
-        st.append(span(AFFIX_NAME[r.sub]), span(r.copies > 1 ? `×${r.copies}` : ""));
-        st.title = r.copies > 1 ? `${r.from} ×${r.copies} — ролл выше` : r.from;
+        const tag = k < pc.caps.length ? capTag(pc.caps[k]) : "";
+        st.append(span(`${AFFIX_NAME[r.sub]}${r.copies > 1 ? ` ×${r.copies}` : ""}`), span(tag));
+        if (tag) st.classList.add(tag.startsWith("▲") ? "up" : "down");
+        st.title = `${r.from}. Потолок ролла (максимум при заточке): при 2 роллах — ${capsAt(2)}; при 3 — ${capsAt(3)}; при 4 — ${capsAt(4)}.`;
+        rows.append(st);
+      });
+      if (pc.other < 0.9995 && plan.length < 3) {
+        const st = div("pcinv-fg-stat down");
+        st.append(span("случайные роллы"), span(capTag(pc.other)));
         rows.append(st);
       }
       if (known) rows.append(div("pcinv-fg-stat eff", `★ ${AFFIX_NAME[known.star]} сверх предела`));
@@ -2381,6 +2394,7 @@ export class PcInventory {
         const row = div("pcinv-fg-rroll");
         const lab = div("pcinv-elabel");
         lab.append(span(label), span(e ? `${e.points} / ${e.of}` : ""));
+        if (e?.capNote) lab.append(div("pcinv-fg-capnote", e.capNote));
         const bar = div("pcinv-ebar");
         const fill = div("pcinv-efill");
         fill.style.width = e ? `${Math.round((e.points / e.of) * 100)}%` : "0";
@@ -3192,6 +3206,9 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-fg-rows { flex:1; min-width:0; display:flex; flex-direction:column; }
 .pcinv-fg-stat { display:flex; justify-content:space-between; gap:6px; padding:4px 0; border-bottom:1px solid #1d2d43; font-size:12.5px; color:#dbe6f2; }
 .pcinv-fg-stat > span:last-child { color:#9aa8ba; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pcinv-fg-stat.up > span:last-child { color:#7fe08a; }
+.pcinv-fg-capnote { flex-basis:100%; font-size:11px; color:#9aa8ba; }
+.pcinv-fg-stat.down > span:last-child { color:#ff9a7a; }
 .pcinv-fg-stat.eff { color:#ffd38a; }
 .pcinv-fg-stat.dim { color:#9aa8ba; border-bottom:none; }
 .pcinv-fg-lore { font-size:12px; color:#b7c2d0; font-style:italic; line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }

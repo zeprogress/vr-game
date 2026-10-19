@@ -212,6 +212,8 @@ export interface ArmorActMsg {
 /** Строка заточки (одна на ролл у оружия, одна на часть брони): очки, максимум, шанс и цена попытки в ломе. */
 export interface PcEnchRow {
   label: string;
+  /** Потолок ролла крафта: «макс 19.5% (▲ +30%)»; нет — обычный (affixCapNote). */
+  capNote?: string;
   points: number;
   of: number;
   max: boolean;

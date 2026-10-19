@@ -37,6 +37,8 @@ import {
   matchRecipe,
   matRoll,
   plannedRolls,
+  plannedCaps,
+  capTag,
   recipeText,
   rollsFor,
   smithLevel,
@@ -2166,7 +2168,7 @@ export class WristMenu {
       known
         ? `📜 «${known.name}»: исход не ниже хорошего, ★ ${AFFIX_NAME[known.star]} сверх предела`
         : sel.mats.length
-          ? `Роллы: ${plan.map((r) => `${AFFIX_NAME[r.sub]}${r.copies > 1 ? ` ×${r.copies}` : ""}`).join(", ")} · встанет ${rollsFor(1, sel.method)}–${rollsFor(4, sel.method)} по исходу`
+          ? `Роллы: ${plan.map((r, k) => `${AFFIX_NAME[r.sub]}${r.copies > 1 ? ` ×${r.copies}` : ""}${capTag(plannedCaps(sel, 3).caps[k] ?? 1) ? ` ${capTag(plannedCaps(sel, 3).caps[k] ?? 1)}` : ""}`).join(", ")} · встанет ${rollsFor(1, sel.method)}–${rollsFor(4, sel.method)} по исходу`
           : "Положи хотя бы один материал",
       X, y, TEX_W - 48, 22, 1,
     );
