@@ -275,6 +275,7 @@ import { randomUUID } from "node:crypto";
 import { attrOf } from "#shared/attrs2";
 import { giveItems, parseTradeItem, parseTradeList, takeItems, takenName, tradeLog, tradeViewOf, TRADE_ACTS, type InvSnap, type Taken, type TradeAct, type TradeItem, type TradeSession, type TradeSide } from "../trade";
 import { KillRates } from "../sim/killRate";
+import { addStock, CRAFT_ITEMS, CRAFT_PROC, CRAFT_SMELT, craftStockOf, craftWeapon, parseCraftCode, pcInvCraft, recipeBookOf, rollCraftDrop, smithLevel } from "#shared/craft";
 import { applyJewelOp, gemName, JEWEL_ACTS, jewelBonus, jewelOpFrom, jewelsOf, pcInvJewels, RING_LOOK, ringName, rollJewelDrop, type JewelAct, type JewelSave } from "#shared/jewels";
 import { SCRAP_DROP, scrapDropChance } from "#shared/scrapDrop";
 
@@ -561,7 +562,9 @@ function botReachMul(cls: string): number {
   return cls === "spear" ? 2.2 : cls === "hammer" ? 1.2 : 1;
 }
 
-const TIER_RANK: Record<WeaponTier, number> = { base: 0, gold: 1, legendary: 2, ruby: 3 };
+const TIER_RANK: Record<WeaponTier, number> = { base: 0, gold: 1, legendary: 2, craft: 3, ruby: 3 };
+/** Ключ ELITE_MOBS по имени моба — для добычи крафта с мобов без лагеря (катакомбы, охота). */
+const ELITE_KEY_BY_NAME = new Map(Object.entries(ELITE_MOBS).map(([k, d]) => [d.name, k] as const));
 
 /**
  * Лучший тир класса `cls`, который герой КОГДА-ЛИБО честно поднимал —
@@ -976,7 +979,7 @@ function rolledCrit(
 
 /** Ранг тира для сравнения апгрейдов: base < gold < legendary. */
 function tierRank(t: WeaponTier | string): number {
-  return t === "ruby" ? 3 : t === "legendary" ? 2 : t === "gold" ? 1 : 0;
+  return t === "ruby" || t === "craft" ? 3 : t === "legendary" ? 2 : t === "gold" ? 1 : 0;
 }
 
 /**
@@ -1467,6 +1470,8 @@ export class ZoneRoom extends Room<ZoneState> {
       const ch = this.heroRoll(id, "pierce");
       return ch > 0 && Math.random() < ch;
     };
+    // Особые роллы крафта (Холод, Яд) — при каждом попадании героя.
+    this.sim.onHeroHit = (id, mobId, dealt) => this.craftProc(id, mobId, dealt);
 
     // Схема мобов/кукол создаётся один раз — дальше только обновляем поля.
     for (const m of this.sim.mobs.values()) {
@@ -2191,7 +2196,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sendQuests(client);
         return;
       }
-      if (msg.act !== "enchant" && msg.act !== "sharpen" && msg.act !== "armorEnchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && !(JEWEL_ACTS as readonly string[]).includes(msg.act) && !(TRADE_ACTS as readonly string[]).includes(msg.act)) return;
+      if (msg.act !== "enchant" && msg.act !== "sharpen" && msg.act !== "armorEnchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && msg.act !== "craft" && msg.act !== "smelt" && !(JEWEL_ACTS as readonly string[]).includes(msg.act) && !(TRADE_ACTS as readonly string[]).includes(msg.act)) return;
       const norm = normNick(p.nick);
       if (!norm) return;
       const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(msg.act === "gift" ? 99999 : 99, Math.floor(Number(msg.idx) || 0))), typeof msg.fuel === "string" ? msg.fuel : undefined);
@@ -4919,6 +4924,7 @@ export class ZoneRoom extends Room<ZoneState> {
         scrap: scrapValue(w),
         ench: w.affixes.map((a, i) => ({ label: affixLabel(a), ...enchantInfo(w, i)! })),
         sharp: attackPoints(w),
+        ...(w.cp ? { cp: w.cp } : {}),
         fav: !!w.fav,
       })),
       // Что реально считается в руке (закреплённое или лучший экземпляр того же вида) —
@@ -4942,6 +4948,7 @@ export class ZoneRoom extends Room<ZoneState> {
         chosen: [p.skill1, p.skill2].filter(Boolean),
       },
       jewels: pcInvJewels(this.jewelsFor(rt.token ?? `nick:${normNick(p.nick)}`)),
+      craft: pcInvCraft(store.get(rt.token ?? `nick:${normNick(p.nick)}`) ?? {}),
       giftNotes: store.get(rt.token ?? `nick:${normNick(p.nick)}`)?.giftNotes ?? [],
       trade: tradeViewOf(store.get(rt.token ?? `nick:${normNick(p.nick)}`), rt.token ?? `nick:${normNick(p.nick)}`),
       partners: this.exchangePartnerNicks(normNick(p.nick)),
@@ -5267,6 +5274,96 @@ export class ZoneRoom extends Room<ZoneState> {
     return { ok: true, text: r.text };
   }
 
+  // ---------------------------------------------------------------- крафт (shared/craft.ts)
+
+  /**
+   * Крафт оружия (окно инвентаря на всех платформах и страница !inv). Материалы, рецепты и опыт кузнеца —
+   * в записи героя (как камни), лом — в сумке; новое оружие — на склад (живому — в мир, иначе — в сохранение).
+   */
+  private craftAct(norm: string, code: string): InvActResult {
+    const input = parseCraftCode(code);
+    if (!input) return { ok: false, text: "Не понял состав крафта." };
+    const t = this.findWeaponsTarget(norm);
+    const token = t?.rt.token ?? `nick:${norm}`;
+    const rec = store.get(token);
+    if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
+    const stock = craftStockOf(rec.mats);
+    const bag = t ? readBag(t.p) : restoreBag(rec.bag);
+    const book = recipeBookOf(rec.recipes);
+    const xp0 = rec.smithXp ?? 0;
+    const r = craftWeapon(input, { stock, gems: jewelsOf(rec).gems, scrap: bagCount(bag, "scrap"), book, smithXp: xp0 }, t?.p.nick || rec.nick || norm);
+    if (!r.ok) return r;
+    for (const m of input.mats) addStock(stock, m, -1);
+    takeFromBag(bag, "scrap", r.cost);
+    if (r.refund) addToBag(bag, "scrap", r.refund);
+    const patch: Partial<PlayerRecord> = { mats: stock, smithXp: xp0 + r.xp };
+    if (r.found) patch.recipes = [...book, r.found.id];
+    if (r.weapon) {
+      if (t) t.rt.weapons.push(r.weapon);
+      else patch.weapons = [...(rec.weapons ?? []), r.weapon];
+    }
+    if (t) writeBag(t.p, bag);
+    else patch.bag = bag;
+    store.put(token, patch);
+    if (t) {
+      this.persistNick(norm);
+      if (!t.id.startsWith("bot:")) this.syncWarehouse(t.id, t.rt);
+    }
+    const lv0 = smithLevel(xp0).lv;
+    const lv1 = smithLevel(xp0 + r.xp).lv;
+    const up = lv1 > lv0 ? ` · Кузнец ${lv1} ур.!` : "";
+    console.log(`[craft] ${rec.nick || norm}: ${code} → исход ${r.outcome}${r.weapon ? ` (${r.weapon.id})` : ""}${r.found ? `, рецепт ${r.found.id}` : ""}`);
+    return { ok: true, text: r.text + up, craft: { outcome: r.outcome, ...(r.weapon ? { id: r.weapon.id } : {}), ...(r.found ? { found: r.found.id } : {}) } };
+  }
+
+  /** Переплавка лома в сплав: `count` штук по CRAFT_SMELT лома. */
+  private smeltAct(norm: string, count: number): InvActResult {
+    const n = Math.max(1, Math.min(99, Math.floor(count) || 1));
+    const t = this.findWeaponsTarget(norm);
+    const token = t?.rt.token ?? `nick:${norm}`;
+    const rec = store.get(token);
+    if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
+    const bag = t ? readBag(t.p) : restoreBag(rec.bag);
+    const need = n * CRAFT_SMELT;
+    if (!takeFromBag(bag, "scrap", need)) return { ok: false, text: `Нужно лома: ${need} (есть ${bagCount(bag, "scrap")}).` };
+    const stock = craftStockOf(rec.mats);
+    addStock(stock, "alloy", n);
+    if (t) writeBag(t.p, bag);
+    store.put(token, { mats: stock, ...(t ? {} : { bag }) });
+    if (t) this.persistNick(norm);
+    return { ok: true, text: `Переплавлено: лом −${need} → ${CRAFT_ITEMS.alloy.name} +${n}` };
+  }
+
+  /** Материалы крафта с убитого элитного моба — убийце в запись (как камни). Лагерь — по campType, катакомбы — по имени. */
+  private craftDrop(owner: string, campType: string, name: string, champ: boolean): void {
+    const key = campType || ELITE_KEY_BY_NAME.get(name.replace(/^Вожак — /, "")) || "";
+    if (!key) return;
+    const got = rollCraftDrop(key, champ);
+    if (!got.length) return;
+    const p = this.state.players.get(owner);
+    const rt = this.rt.get(owner) ?? (owner.startsWith("bot:") ? this.bots.get(owner.slice(4))?.rt : undefined);
+    if (!p || !rt) return;
+    const token = rt.token ?? `nick:${normNick(p.nick)}`;
+    const rec = store.get(token);
+    if (!rec) return;
+    const stock = craftStockOf(rec.mats);
+    for (const g of got) addStock(stock, g.id, g.n);
+    store.put(token, { mats: stock });
+    const text = got.map((g) => `${CRAFT_ITEMS[g.id].name}${g.n > 1 ? ` ×${g.n}` : ""}`).join(", ");
+    this.clientOf(owner)?.send(MSG.jewelGot, { text });
+  }
+
+  /**
+   * Особые роллы крафта при попадании героя (не тики): Холод — замедление цели, Яд — стак яда
+   * (правила «Чумного клинка»). Шанс — ролл того, что в руках (лучший из двух рук).
+   */
+  private craftProc(attacker: string, mobId: string, dealt: number): void {
+    const chill = this.heroRoll(attacker, "chill");
+    if (chill > 0 && Math.random() < chill) this.sim.slowMob(mobId, CRAFT_PROC.chill.sec, CRAFT_PROC.chill.mul);
+    const venom = this.heroRoll(attacker, "venom");
+    if (venom > 0 && Math.random() < venom) this.sim.poisonMob(mobId, dealt * CRAFT_PROC.venom.tickFrac, dealt * CRAFT_PROC.venom.burstFrac, attacker);
+  }
+
   // ---------------------------------------------------------------- подарки (server/trade.ts — основа и для обмена)
 
   /** Живой герой с этой записью (токен): id в state.players, или null — героя нет в мире. */
@@ -5590,6 +5687,8 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private invAct(norm: string, act: InvActKind, id: string, idx: number, fuel?: string): InvActResult {
     if ((JEWEL_ACTS as readonly string[]).includes(act)) return this.jewelAct(norm, act as JewelAct, id, idx, fuel);
+    if (act === "craft") return this.craftAct(norm, id);
+    if (act === "smelt") return this.smeltAct(norm, idx);
     if (act === "gift") return this.giftAct(norm, id, idx, fuel ?? "");
     if ((TRADE_ACTS as readonly string[]).includes(act)) return this.tradeAct(norm, act as TradeAct, id, idx, fuel ?? "");
     if (act === "giftSeen") {
@@ -5725,8 +5824,8 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       if (t) {
         const held = this.liveHeldIds(t.p, t.rt);
-        // Рубиновые массовой разборкой не трогаем — только поштучно.
-        const ws = kinds.w ? t.rt.weapons.filter((w) => !w.fav && w.tier !== "ruby" && !held.has(w.id)) : [];
+        // Рубиновые и мастерские (крафт) массовой разборкой не трогаем — только поштучно.
+        const ws = kinds.w ? t.rt.weapons.filter((w) => !w.fav && w.tier !== "ruby" && w.tier !== "craft" && !held.has(w.id)) : [];
         const worn = new Set(Object.values(t.rt.armorWorn));
         const as = kinds.a ? t.rt.armor.filter((x) => !x.fav && !worn.has(x.id)) : [];
         if (!ws.length && !as.length && !ringCount) return none;
@@ -5744,7 +5843,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
       const weapons = rec.weapons ?? [];
       const held = recHeldIds(rec);
-      const ws = kinds.w ? weapons.filter((w) => !w.fav && w.tier !== "ruby" && !held.has(w.id)) : [];
+      const ws = kinds.w ? weapons.filter((w) => !w.fav && w.tier !== "ruby" && w.tier !== "craft" && !held.has(w.id)) : [];
       const { armor, armorWorn } = armorFromRec(rec);
       const worn = new Set(Object.values(armorWorn));
       const as = kinds.a ? armor.filter((x) => !x.fav && !worn.has(x.id)) : [];
@@ -7486,7 +7585,7 @@ export class ZoneRoom extends Room<ZoneState> {
         ...new Set([
           ...(Array.isArray(prev?.owned) ? prev!.owned : []),
           ...bot.rt.owned,
-          ...(p.rightTier === "gold" || p.rightTier === "legendary" || p.rightTier === "ruby"
+          ...(p.rightTier === "gold" || p.rightTier === "legendary" || p.rightTier === "ruby" || p.rightTier === "craft"
             ? [weaponKey(p.rightCls as WeaponClass, p.rightTier as WeaponTier)]
             : []),
           ...(p.leftCls === "shield" && p.leftTier === "legendary"
@@ -10344,6 +10443,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.jewelDrop(k.owner, k.jm, k.jr, k.jl);
         this.scrapDrop(k.owner, k.jl);
       }
+      this.craftDrop(k.owner, k.campType, k.name, k.champ);
       this.chatQuestKill(k.owner, k.champ);
       if (k.campType) {
         // Охота и вожаки — всем, кто нанёс мобу урон (как делится опыт), а не только добившему. Боссы — по bossXpShare ниже.

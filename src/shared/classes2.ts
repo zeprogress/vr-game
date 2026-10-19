@@ -239,7 +239,8 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
 /** Множитель магии от тира посоха (раньше тир посоха на огнешар не влиял — маг отставал). */
 export function staffMagicTier(tier: string): number {
   const t = WEAPONS2.staff.tiers;
-  return tier === "ruby" ? t[2] * RUBY.powerMul : tier === "legendary" ? t[2] : tier === "gold" ? t[1] : t[0];
+  // Мастерское (крафт) — как уникальное; прибавка исхода крафта — «Мастерство» экземпляра (attackPointMul).
+  return tier === "ruby" ? t[2] * RUBY.powerMul : tier === "legendary" || tier === "craft" ? t[2] : tier === "gold" ? t[1] : t[0];
 }
 
 /**

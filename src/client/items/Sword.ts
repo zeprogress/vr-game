@@ -2,7 +2,7 @@ import type { Scene } from "@babylonjs/core/scene";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { type WeaponTier } from "#shared/items";
-import { attachLegendaryGlow, spawnWeaponModel, tierTint } from "./weaponModels";
+import { attachLegendaryGlow, isGlowTier, spawnWeaponModel, tierTint } from "./weaponModels";
 
 /**
  * Меч — модель из пака (Ultimate RPG Items Pack). Начало координат — в рукояти,
@@ -20,6 +20,6 @@ export function createSword(scene: Scene, tier: WeaponTier = "base"): Mesh {
     tint: tierTint("sword", tier),
   });
   // Свечение — на середине клинка (от гарды ~0.1 до кончика 1.02).
-  if (tier === "legendary" || tier === "ruby") attachLegendaryGlow(scene, m, 0.275, 0.5, tier, new Vector3(0, 0.56, 0));
+  if (isGlowTier(tier)) attachLegendaryGlow(scene, m, 0.275, 0.5, tier, new Vector3(0, 0.56, 0));
   return m;
 }

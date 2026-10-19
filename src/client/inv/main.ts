@@ -10,7 +10,8 @@ import { UPDATES } from "#shared/updates";
 import { FEEDBACK_KIND_INFO, FEEDBACK_KINDS, FEEDBACK_MARKS, FEEDBACK_MARK_COLOR, FEEDBACK_NO_MARK_COLOR, FEEDBACK_TEXT_MAX, type FeedbackKind, type FeedbackView } from "#shared/feedback";
 import { respecCostFor } from "#shared/constants";
 import { ELITE_MOBS, MOB_CAMPS } from "#shared/mobs";
-import { BAG, RUBY } from "#shared/items";
+import { AFFIX_NAME, BAG, RUBY } from "#shared/items";
+import { CRAFT, CRAFT_CATS, CRAFT_ITEMS, CRAFT_MATS, CRAFT_METHOD_IDS, CRAFT_METHODS, matRoll } from "#shared/craft";
 import { QUEST } from "#shared/quests";
 
 // Переменные общего вида (цвета тиров, оценки) — до первой отрисовки страницы.
@@ -220,7 +221,8 @@ function connect(attempt = 0): void {
       joined = true;
       room = r;
       r.onMessage("sid", (sid: string) => saveSid(sid));
-      r.onMessage("toast", (m: { ok: boolean; text: string }) => m.text && toast(m.text, m.ok));
+      // Итог крафта — во вкладку «Крафт» окна (исход крупно), остальное — всплывашкой.
+      r.onMessage("toast", (m: { ok: boolean; text: string; craft?: unknown }) => (m.craft ? pcInv?.onResult(m as never) : m.text && toast(m.text, m.ok)));
       r.onMessage("enchant", (m: unknown) => pcInv?.onResult(m as never));
       r.onMessage("feedback", (m: FeedbackReply) => onFeedback(m));
       r.onMessage("inv", (msg: InvMsg) => {
@@ -296,6 +298,16 @@ ${MECH_CLASSES_HTML}
 <p>Щит блокирует удар целиком с шансом от ролла Блок (врождённого блока нет). У щита роллы <b>Физ. защита</b> (−урон от ударов) и <b>Маг. защита</b> (−урон магии и снарядов); их можно точить за лом. <b>Эгида</b> вместо Маг. защиты имеет <b>Отражение</b> (часть урона уходит обратно атакующему) и врождённый «Оплот»: каждый блок лечит 10% здоровья.</p>
 <p><b>Оценка</b> («оценка 47») — сумма силы роллов, до 99: чем больше, тем лучше предмет. Ненужное — <b>на лом</b> (больше за оценку). Лом тратится на <b>заточку</b> ролла: чем он ближе к максимуму, тем дороже и меньше шанс; при неудаче лом сгорает.</p>
 <p><b>Рубиновое</b> — заточка такая же, как у обычного оружия: шанс и прирост те же, но цена в ломе ×${RUBY.enchantCostMul}.</p>
+
+<h2>Крафт</h2>
+<p>Вкладка «Крафт» в инвентаре. <span class="tier-craft">Мастерское</span> оружие собирается из четырёх частей: <b>основа</b> (класс оружия), <b>1–3 материала</b> (тратятся), <b>катализатор</b> (необязательно, возвращается) и <b>метод</b> (стоит лома).</p>
+<ul><li><b>Материалы</b> задают роллы: ${CRAFT_MATS.map((m) => `${CRAFT_ITEMS[m].name} — ${AFFIX_NAME[matRoll(m, "sword")]}`).join(", ")} (кость на луке — Пронзание, на посохе — Поджог). Одинаковые материалы — тот же ролл выше.</li>
+<li><b>Катализатор</b>: камень любого вида улучшает шансы (сильнее с уровнем камня, до ${CRAFT.gemLvCap}); особый — ${CRAFT_CATS.map((k) => `${CRAFT_ITEMS[k].name} (${AFFIX_NAME[k === "frost" ? "chill" : "venom"]})`).join(", ")} — даёт особый ролл, которого нет у другого оружия.</li>
+<li><b>Методы</b>: ${CRAFT_METHOD_IDS.map((k) => `${CRAFT_METHODS[k].name} — ${CRAFT_METHODS[k].note} (${CRAFT_METHODS[k].cost} лома, с ${CRAFT_METHODS[k].lv} ур. кузнеца)`).join("; ")}.</li>
+<li><b>Исход</b> случаен: провал (материалы сгорают, половина лома возвращается), обычный — сила уникального, хороший — Мастерство +15%, отличный — +25%, редкий — +38% и 4 ролла.</li>
+<li><b>Кузнец</b>: опыт за каждый крафт; с уровнем реже провал, чаще отличный и редкий, открываются методы.</li>
+<li><b>Скрытые рецепты</b> — точные сочетания, находятся только опытом: именное оружие, исход не ниже хорошего и ролл сверх предела. Найденные — в книге рецептов.</li></ul>
+<p>Мастерское точится, передаётся и разбирается как остальное оружие. Откуда материалы: ${[...CRAFT_MATS, ...CRAFT_CATS].map((k) => `${CRAFT_ITEMS[k].name} — ${CRAFT_ITEMS[k].src}`).join("; ")}.</p>
 
 <h2>Лут</h2>
 <p>Оружие падает с мобов лагерей; у <b>вожаков лагерей</b> (крупнее, «Вожак — …» над головой) шанс в ${QUEST.champ.dropMul} раза выше. Мировой босс Багровый слизень — щедрее всех. Трофей ${BAG.lootOwnerSec} секунд принадлежит тому, кто добил, на земле оружие лежит ${Math.round(BAG.weaponDropLife / 60)} минут, броня — ${Math.round(BAG.armorDropLife / 60)} минут.</p>

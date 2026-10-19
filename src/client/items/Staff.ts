@@ -38,9 +38,12 @@ export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   const gold = tier === "gold";
   const storm = tier === "legendary"; // «Посох бури» — фиолетовый
   const ruby = tier === "ruby"; // рубиновый — алый
+  const craft = tier === "craft"; // мастерский (крафт) — тёмно-оранжевый
 
   const wood = new StandardMaterial("staffWood", scene);
-  wood.diffuseColor = ruby
+  wood.diffuseColor = craft
+    ? new Color3(0.5, 0.2, 0.04)
+    : ruby
     ? new Color3(0.5, 0.12, 0.16)
     : storm
     ? new Color3(0.42, 0.32, 0.6)
@@ -57,7 +60,9 @@ export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   cloth.maxSimultaneousLights = 1;
 
   const metal = new StandardMaterial("staffFerrule", scene);
-  metal.diffuseColor = ruby
+  metal.diffuseColor = craft
+    ? new Color3(1, 0.62, 0.28)
+    : ruby
     ? new Color3(1, 0.78, 0.4)
     : storm
     ? new Color3(0.6, 0.5, 0.85)
@@ -131,14 +136,14 @@ export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   if (!staff) throw new Error("не удалось собрать посох");
   staff.name = "staff";
 
-  attachGem(scene, staff, gold, storm, ruby);
+  attachGem(scene, staff, gold, storm, ruby, craft);
   // Свечение — на камне наверху (центр кристалла, см. attachGem).
-  if (storm || ruby) attachLegendaryGlow(scene, staff, 0.375, 0.5, ruby ? "ruby" : "legendary", new Vector3(0, TOP + 0.13, 0));
+  if (storm || ruby || craft) attachLegendaryGlow(scene, staff, 0.375, 0.5, craft ? "craft" : ruby ? "ruby" : "legendary", new Vector3(0, TOP + 0.13, 0));
   return staff;
 }
 
 /** Кристалл на верхушке — грузится асинхронно и подвешивается на посох. */
-function attachGem(scene: Scene, staff: Mesh, gold: boolean, storm = false, ruby = false): void {
+function attachGem(scene: Scene, staff: Mesh, gold: boolean, storm = false, ruby = false, craft = false): void {
   void containerFor(scene, "/models/weapons/crystal.glb").then((c) => {
     if (staff.isDisposed()) return;
     const inst = c.instantiateModelsToScene((n) => n, false);
@@ -153,7 +158,9 @@ function attachGem(scene: Scene, staff: Mesh, gold: boolean, storm = false, ruby
     for (const m of src.getChildMeshes(false)) {
       const mat = m.material as StandardMaterial | null;
       if (mat && "emissiveColor" in mat) {
-        const glow = ruby
+        const glow = craft
+          ? new Color3(1, 0.42, 0.06)
+          : ruby
           ? new Color3(1, 0.18, 0.28)
           : storm
           ? new Color3(0.7, 0.5, 1)

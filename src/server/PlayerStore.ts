@@ -102,6 +102,11 @@ export interface PlayerRecord extends SaveMsg, Progress {
   rings?: RingInst[];
   ringOn?: [string | null, string | null];
   gems?: Record<string, number>;
+  /** Крафт (shared/craft.ts): материалы и особые катализаторы (id → сколько), найденные скрытые рецепты. */
+  mats?: Record<string, number>;
+  recipes?: string[];
+  /** Опыт кузнеца (уровень — smithLevel в shared/craft.ts). */
+  smithXp?: number;
   /** Непрочитанные подарки (server/trade.ts): показываются в инвентаре, пока не нажмут «Понятно». */
   giftNotes?: { from: string; text: string; at: number }[];
   /** Обмен: окна с другими героями (общие для обоих); предметы каждого — в окне до подтверждения. */

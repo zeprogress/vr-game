@@ -1359,7 +1359,7 @@ export class Spectator {
 
   /** Ярлык оружия/щита в руке для панели «HP цели». */
   private static weaponLabel(cls: string, tier: string): string | null {
-    if (tier === "legendary" || tier === "ruby") return weaponDef(cls as WeaponClass, tier).name.toLowerCase();
+    if (tier === "legendary" || tier === "ruby" || tier === "craft") return weaponDef(cls as WeaponClass, tier).name.toLowerCase();
     if (cls === "shield") return "щит";
     const base =
       cls === "sword" ? "меч" : cls === "bow" ? "лук" : cls === "staff" ? "посох" : null;

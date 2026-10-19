@@ -63,6 +63,12 @@ export const WEAPON_DROP: Partial<Record<string, ItemId>> = {
   "dagger:ruby": "ruby_dagger",
   "spear:ruby": "ruby_spear",
   "hammer:ruby": "ruby_hammer",
+  "sword:craft": "craft_sword",
+  "bow:craft": "craft_bow",
+  "staff:craft": "craft_staff",
+  "dagger:craft": "craft_dagger",
+  "spear:craft": "craft_spear",
+  "hammer:craft": "craft_hammer",
 };
 const GOLD_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff", "shield", "dagger", "spear", "hammer"];
 const LEGENDARY_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff", "shield", "dagger", "spear", "hammer"];
@@ -2497,6 +2503,8 @@ export class ZoneSim {
   getIgnite: (id: string) => number = () => 0;
   /** Пронзание: выпало ли стреле бойца `id` пройти насквозь (ролл лука «Пронзание»). Решает комната. */
   rollPierce: (id: string) => boolean = () => false;
+  /** Попадание героя по мобу (не тик): комната применяет особые роллы крафта (Холод, Яд). */
+  onHeroHit: ((attacker: string, mobId: string, dealt: number) => void) | null = null;
 
   /**
    * Пронзание: ближайший моб ПОЗАДИ цели — в конусе ±BOW.pierceHalfAngle от направления выстрела
@@ -3290,6 +3298,7 @@ export class ZoneSim {
     if (attacker && dealt > 0) {
       m.bump(attacker, "dmg", dealt, this.elapsed);
       if (this.eventMobs.has(id)) this.eventDamagers.add(attacker);
+      if (!dot && !m.dead) this.onHeroHit?.(attacker, id, dealt);
     }
     if (dealt > 0 && !dot) {
       this.dmgHits.push({

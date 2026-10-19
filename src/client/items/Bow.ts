@@ -3,7 +3,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { type WeaponTier } from "#shared/items";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import { attachLegendaryGlow, forgetSharpGlow, spawnWeaponModel, tierTint } from "./weaponModels";
+import { attachLegendaryGlow, forgetSharpGlow, isGlowTier, spawnWeaponModel, tierTint, type GlowTier } from "./weaponModels";
 
 export interface BowParts {
   mesh: Mesh;
@@ -47,7 +47,7 @@ export function createBow(scene: Scene, tier: WeaponTier = "base"): BowParts {
   gold.name = "bow_gold";
   gold.parent = root;
   // Уникальный/рубиновый лук — золотая модель в цвете тира (та же геометрия, своя перекраска).
-  if (tier === "legendary" || tier === "ruby") makeLegendModel(scene, root, tier);
+  if (isGlowTier(tier)) makeLegendModel(scene, root, tier);
 
   applyBowTier(root, tier);
 
@@ -80,7 +80,7 @@ function placeString(parts: BowParts, tier: WeaponTier): void {
   parts.nockRest.set(0, 0, a.z);
 }
 
-function makeLegendModel(scene: Scene, root: Mesh, tier: "legendary" | "ruby"): void {
+function makeLegendModel(scene: Scene, root: Mesh, tier: GlowTier): void {
   const legend = spawnWeaponModel(
     scene,
     "bow_gold",
@@ -93,7 +93,7 @@ function makeLegendModel(scene: Scene, root: Mesh, tier: "legendary" | "ruby"): 
 
 function applyBowTier(root: Mesh, tier: WeaponTier): void {
   // Лук в руках создаётся обычным, поэтому модель уникального/рубинового собираем при первой надобности.
-  const glowing = tier === "legendary" || tier === "ruby";
+  const glowing = isGlowTier(tier);
   if (glowing && !root.getChildren().some((n) => n.name === `bow_${tier}`)) makeLegendModel(root.getScene(), root, tier);
   // Свечение своего цвета у каждого тира: создаём при первой надобности, у остальных гасим.
   for (const n of root.getChildren()) {
@@ -109,6 +109,7 @@ function applyBowTier(root: Mesh, tier: WeaponTier): void {
     else if (n.name === "bow_gold") n.setEnabled(tier === "gold");
     else if (n.name === "bow_legendary") n.setEnabled(tier === "legendary");
     else if (n.name === "bow_ruby") n.setEnabled(tier === "ruby");
+    else if (n.name === "bow_craft") n.setEnabled(tier === "craft");
   }
 }
 

@@ -1,4 +1,5 @@
 import { JEWEL_ACTS, jewelBonus, jewelsOf, pcInvJewels } from "#shared/jewels";
+import { pcInvCraft } from "#shared/craft";
 import { TRADE_ACTS, tradeViewOf } from "../trade";
 // colyseus 0.15 — CJS-пакет без ESM-exports, поэтому default-импорт (как в index.ts/ZoneRoom.ts).
 import { CLASSES2, classOf2, type SkillId, type Weapon2 } from "#shared/classes2";
@@ -81,7 +82,7 @@ export class InventoryRoom extends colyseus.Room {
         return;
       }
       const act =
-        m?.act === "equip" || m?.act === "unequip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "sharpen" || m?.act === "stat" || m?.act === "respec" || m?.act === "scroll" || m?.act === "title" || m?.act === "skin" || m?.act === "skills" || m?.act === "fav" || m?.act === "scrapAll" || m?.act === "gift" || m?.act === "giftSeen" || m?.act === "armorWear" || m?.act === "armorUnwear" || m?.act === "armorScrap" || m?.act === "armorFav" || m?.act === "armorEnchant" || (JEWEL_ACTS as readonly unknown[]).includes(m?.act) || (TRADE_ACTS as readonly unknown[]).includes(m?.act)
+        m?.act === "equip" || m?.act === "unequip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "sharpen" || m?.act === "stat" || m?.act === "respec" || m?.act === "scroll" || m?.act === "title" || m?.act === "skin" || m?.act === "skills" || m?.act === "fav" || m?.act === "scrapAll" || m?.act === "gift" || m?.act === "giftSeen" || m?.act === "armorWear" || m?.act === "armorUnwear" || m?.act === "armorScrap" || m?.act === "armorFav" || m?.act === "armorEnchant" || m?.act === "craft" || m?.act === "smelt" || (JEWEL_ACTS as readonly unknown[]).includes(m?.act) || (TRADE_ACTS as readonly unknown[]).includes(m?.act)
           ? m.act
           : null;
       const id = typeof m?.id === "string" ? m.id : act === "respec" ? "-" : "";
@@ -271,6 +272,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
       scrap: scrapValue(w),
       ench: enchDetails(w),
       sharp: attackPoints(w),
+      ...(w.cp ? { cp: w.cp } : {}),
       fav: !!w.fav,
     })),
     equipped: { left: leftInst && leftInst !== rightInst ? leftInst.id : null, right: rightInst?.id ?? null },
@@ -289,6 +291,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     stats,
     skills: skillsOf(rec),
     jewels: pcInvJewels(jewels),
+    craft: pcInvCraft(rec),
     giftNotes: rec.giftNotes ?? [],
     trade: tradeViewOf(rec, rec.token),
   };

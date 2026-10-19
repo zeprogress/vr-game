@@ -23,6 +23,12 @@ export type ItemId =
   | "ruby_dagger"
   | "ruby_spear"
   | "ruby_hammer"
+  | "craft_sword"
+  | "craft_bow"
+  | "craft_staff"
+  | "craft_dagger"
+  | "craft_spear"
+  | "craft_hammer"
   | "scrap"
   | "fish"
   | "scroll_xp"
@@ -56,9 +62,11 @@ export function isTwoHandedMelee(cls: string): boolean {
  * самого начала; `gold` — золотой вариант (редкая добыча с босса, просто ×урон);
  * `legendary` — именное оружие с механическим аффиксом (см. `affix`);
  * `ruby` — рубиновое (2026-10-06): выше уникального (RUBY.powerMul), 4 ролла, только с
- * супербоссов катакомб; точится как обычное — за лом, цена ×RUBY.enchantCostMul (2026-10-12).
+ * супербоссов катакомб; точится как обычное — за лом, цена ×RUBY.enchantCostMul (2026-10-12);
+ * `craft` — мастерское (2026-10-19): только из крафта (shared/craft.ts), тёмно-оранжевое; сила — как у
+ * уникального × «Мастерство» экземпляра (WeaponInstance.cp), точится как уникальное.
  */
-export type WeaponTier = "base" | "gold" | "legendary" | "ruby";
+export type WeaponTier = "base" | "gold" | "legendary" | "ruby" | "craft";
 
 /**
  * Рубиновое оружие. Заточка ролла — та же, что у обычного (шанс и прирост), но цена в ломе ×enchantCostMul.
@@ -75,6 +83,9 @@ export const RUBY = {
   /** Заточка рубинового: цена в ломе — как у обычной заточки этого ролла, × это (2026-10-12: ×20, было ×100 — в 5 раз дешевле). */
   enchantCostMul: 20,
 } as const;
+
+/** Цвет мастерского (крафтового) оружия — тёмно-оранжевый (модели, свечение). */
+export const CRAFT_TINT = [0.86, 0.34, 0.03] as const;
 
 /** Эффект СТАРЫХ уникальных типов — теперь только для миграции в обычный ролл (см. migrateLoot). */
 export type WeaponAffix = "vamp" | "crit" | "guard" | "storm";
@@ -112,6 +123,7 @@ const TIER_ADJ: Record<Exclude<WeaponTier, "base">, { m: string; n: string; shor
   gold: { m: "Золотой", n: "Золотое", short: "Зол." },
   legendary: { m: "Уникальный", n: "Уникальное", short: "Уник." },
   ruby: { m: "Рубиновый", n: "Рубиновое", short: "Руб." },
+  craft: { m: "Мастерский", n: "Мастерское", short: "Маст." },
 };
 
 /** Полное имя оружия тира: «Меч», «Золотой меч», «Уникальное копьё». */
@@ -161,6 +173,8 @@ export const WEAPONS: Partial<Record<WeaponKey, WeaponDef>> = {
 for (const cls of ["sword", "bow", "staff", "dagger", "spear", "hammer"] as const) {
   const leg = WEAPONS[`${cls}:legendary`]!;
   WEAPONS[`${cls}:ruby`] = { cls, tier: "ruby", name: weaponName(cls, "ruby"), mult: Math.round(leg.mult * RUBY.powerMul * 100) / 100, tint: [1, 0.12, 0.25] };
+  // Мастерское (крафт) — сила уникального; прибавка исхода крафта — у экземпляра (cp). Тёмно-оранжевое.
+  WEAPONS[`${cls}:craft`] = { cls, tier: "craft", name: weaponName(cls, "craft"), mult: leg.mult, tint: CRAFT_TINT };
 }
 
 /**
@@ -195,7 +209,7 @@ export function isWeaponClass(v: unknown): v is WeaponClass {
 }
 
 export function isWeaponTier(v: unknown): v is WeaponTier {
-  return v === "base" || v === "gold" || v === "legendary" || v === "ruby";
+  return v === "base" || v === "gold" || v === "legendary" || v === "ruby" || v === "craft";
 }
 
 
@@ -265,10 +279,16 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   ruby_dagger: weaponItem("dagger", "ruby"),
   ruby_spear: weaponItem("spear", "ruby"),
   ruby_hammer: weaponItem("hammer", "ruby"),
+  craft_sword: weaponItem("sword", "craft"),
+  craft_bow: weaponItem("bow", "craft"),
+  craft_staff: weaponItem("staff", "craft"),
+  craft_dagger: weaponItem("dagger", "craft"),
+  craft_spear: weaponItem("spear", "craft"),
+  craft_hammer: weaponItem("hammer", "craft"),
   scrap: {
     name: "Лом оружия",
     short: "Лом",
-    hint: "переработка оружия — задел под будущий крафт",
+    hint: "переработка оружия — заточка и крафт",
     stack: BIG_STACK,
     heal: 0,
     healFrac: 0,
@@ -325,7 +345,9 @@ function weaponItem(cls: WeaponClass, tier: WeaponTier): ItemDef {
           : tier === "gold"
             ? "золотой щит · 1–2 ролла"
             : "уникальный щит · 2–3 ролла"
-        : tier === "ruby"
+        : tier === "craft"
+          ? "мастерское · из крафта · 2–4 ролла"
+          : tier === "ruby"
           ? `рубиновое · 4 ролла · заточка за лом ×${RUBY.enchantCostMul}`
           : tier === "legendary"
           ? "уникальное · 2–3 ролла"
@@ -478,17 +500,17 @@ export function takeOne(bag: Slot[], index: number): ItemId | null {
 
 // ---- Роллы оружия: 5 видов — Урон, Скорость атаки, Крит, Вампиризм, Блок ----
 
-export type AffixKind = "dmg" | "atkSpeed" | "crit" | "vamp" | "block" | "reflect" | "physDef" | "magDef" | "regen" | "pierce" | "ignite";
+export type AffixKind = "dmg" | "atkSpeed" | "crit" | "vamp" | "block" | "reflect" | "physDef" | "magDef" | "regen" | "pierce" | "ignite" | "chill" | "venom";
 /**
  * Под-вид ролла. Выпадают: dmgFlat (Урон), atkSpeedPct (Скорость атаки),
  * critChance (Крит — шанс И сила, см. critRollMult), vamp (Вампиризм, ближний
  * бой), block (Блок, только щит). dmgPct — старый «Урон 8–20%», остаётся у
  * уже выпавших. critMult — старый вид, переводится в Крит миграцией.
  */
-export type AffixSub = "dmgFlat" | "dmgPct" | "atkSpeedPct" | "critChance" | "critMult" | "vamp" | "block" | "reflect" | "physDef" | "magDef" | "regen" | "pierce" | "ignite";
+export type AffixSub = "dmgFlat" | "dmgPct" | "atkSpeedPct" | "critChance" | "critMult" | "vamp" | "block" | "reflect" | "physDef" | "magDef" | "regen" | "pierce" | "ignite" | "chill" | "venom";
 
 /** Постоянный порядок роллов на предмете — одинаковый у всего оружия и щитов, чтобы было проще сравнивать. */
-export const AFFIX_ORDER: readonly AffixSub[] = ["dmgFlat", "dmgPct", "atkSpeedPct", "critChance", "critMult", "pierce", "ignite", "vamp", "regen", "block", "physDef", "magDef", "reflect"];
+export const AFFIX_ORDER: readonly AffixSub[] = ["dmgFlat", "dmgPct", "atkSpeedPct", "critChance", "critMult", "pierce", "ignite", "chill", "venom", "vamp", "regen", "block", "physDef", "magDef", "reflect"];
 
 /** Роллы по AFFIX_ORDER (на месте). */
 export function sortAffixes(list: RolledAffix[]): void {
@@ -528,8 +550,14 @@ export interface WeaponInstance {
   lv?: number;
   /** ★ Избранное (звёздочка в инвентаре): не разбирается на лом; на земле — снимается. */
   fav?: boolean;
-  /** Удачных точек атаки за лом (уникальное и рубиновое; см. ATTACK_POINT). */
+  /** Удачных точек атаки за лом (уникальное, рубиновое и мастерское; см. ATTACK_POINT). */
   sharp?: number;
+  /** Мастерское (крафт): «Мастерство» — прибавка к урону от исхода крафта (доля: 0.15 = +15%), см. CRAFT_OUTCOMES. */
+  cp?: number;
+  /** Мастерское: кто создал (ник) — строка «Создал: …» в карточке. */
+  by?: string;
+  /** Мастерское по скрытому рецепту: id рецепта (CRAFT_RECIPES). */
+  rc?: string;
 }
 
 /**
@@ -539,7 +567,7 @@ export interface WeaponInstance {
 export const FAV_MAX = 24;
 
 /** Текущая версия формата роллов (WeaponInstance.lv). */
-const LOOT_VER = 11;
+export const LOOT_VER = 11;
 
 /** Оружие ближнего боя — только на нём выпадает вампиризм. */
 export function isMeleeClass(cls: string): boolean {
@@ -550,7 +578,7 @@ export function isMeleeClass(cls: string): boolean {
  * Какие роллы могут выпасть на предмете этого класса (вид на предмете не повторяется).
  * Круглый щит: Блок, Физ. защита, Маг. защита, Регенерация. Эгида: Блок, Физ. защита, Отражение, Регенерация.
  */
-function rollableSubs(cls: WeaponClass, aegis = false): AffixSub[] {
+export function rollableSubs(cls: WeaponClass, aegis = false): AffixSub[] {
   if (cls === "shield") return aegis ? ["block", "physDef", "reflect", "regen"] : ["block", "physDef", "magDef", "regen"];
   const out: AffixSub[] = ["dmgFlat", "atkSpeedPct", "critChance"];
   if (isMeleeClass(cls)) out.push("vamp");
@@ -573,6 +601,8 @@ const SUB_KIND: Record<AffixSub, AffixKind> = {
   regen: "regen",
   pierce: "pierce",
   ignite: "ignite",
+  chill: "chill",
+  venom: "venom",
 };
 
 const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
@@ -592,6 +622,10 @@ const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
   pierce: [0.05, 0.4], // 2026-10-07: потолок шанса 25% → 40%
   /** Поджог (посох): шанс поджечь цель огнешаром (горение — от ИНТ, как прежний врождённый поджог). */
   ignite: [0.3, 1],
+  /** Холод (только крафт, катализатор «Ледяное сердце»): шанс удара замедлить цель (CRAFT_PROC.chill). */
+  chill: [0.05, 0.25],
+  /** Яд (только крафт, катализатор «Ядовитое жало»): шанс удара наложить стак яда (CRAFT_PROC.venom). */
+  venom: [0.05, 0.25],
 };
 /** Диапазоны роллов Эгиды, где они свои (макс.: Блок 20% — как у щита, Отражение 10%, Физ. защита 15%). */
 const AEGIS_RANGES: Partial<Record<AffixSub, readonly [number, number]>> = {
@@ -662,6 +696,8 @@ const OLD_STAFF_RANGE_HI_MUL: Record<AffixSub, number> = {
   regen: 1,
   pierce: 1,
   ignite: 1,
+  chill: 1,
+  venom: 1,
 };
 
 /** Название вида ролла — одно слово-два, как видит игрок. */
@@ -679,6 +715,8 @@ export const AFFIX_NAME: Record<AffixSub, string> = {
   regen: "Регенерация",
   pierce: "Пронзание",
   ignite: "Поджог",
+  chill: "Холод",
+  venom: "Яд",
 };
 
 /** Текст ролла для тултипа/чата: «Урон +12%», «Крит +9%», «Вампиризм +5%». */
@@ -690,6 +728,8 @@ export function affixLabel(a: RolledAffix): string {
   if (a.sub === "regen") return `Регенерация +${Math.round(a.value * 10000) / 100}% HP/с`;
   if (a.sub === "pierce") return `Пронзание ${Math.round(a.value * 1000) / 10}%`;
   if (a.sub === "ignite") return `Поджог ${Math.round(a.value * 1000) / 10}%`;
+  if (a.sub === "chill") return `Холод ${Math.round(a.value * 1000) / 10}%`;
+  if (a.sub === "venom") return `Яд ${Math.round(a.value * 1000) / 10}%`;
   return `${AFFIX_NAME[a.sub]} +${Math.round(a.value * 1000) / 10}%`;
 }
 
@@ -704,6 +744,18 @@ function rollAffix(rnd: () => number, cls: WeaponClass, used: ReadonlySet<AffixS
   const sub = subs[Math.floor(rnd() * subs.length)];
   // Ролл — ровно на целом очке (1..33): иначе 32.6 очка показывались «32», а значение уже как у максимума.
   return { kind: SUB_KIND[sub], sub, value: atT(sub, Math.floor(rnd() * POINTS_MAX) / 32, aegis) };
+}
+
+/** Ролл вида `sub` ровно на очках `pts` (1..33) — крафт ставит роллы сам (shared/craft.ts). */
+export function affixAtPoints(sub: AffixSub, pts: number): RolledAffix {
+  const p = Math.max(1, Math.min(POINTS_MAX, Math.round(pts)));
+  return { kind: SUB_KIND[sub], sub, value: atT(sub, (p - 1) / 32) };
+}
+
+/** Ролл «сверх предела» (скрытый рецепт крафта): максимум вида × mul; шанс — не выше 100%. Очки — 33, заточке не поддаётся. */
+export function affixOverCap(sub: AffixSub, mul: number): RolledAffix {
+  const hi = AFFIX_RANGES[sub][1];
+  return { kind: SUB_KIND[sub], sub, value: Math.min(sub === "pierce" || sub === "ignite" || sub === "chill" || sub === "venom" ? 1 : Infinity, Math.round(hi * mul * 1000) / 1000) };
 }
 
 /** Привязать ролл к ближайшему целому очку (миграция lv 9 и после заточки). Вне диапазона — не трогаем. */
@@ -754,7 +806,7 @@ function rollAffixCount(tier: WeaponTier, rnd: () => number): number {
   return rnd() < 0.4 ? 3 : 2; // legendary
 }
 
-function shortId(rnd: () => number): string {
+export function shortId(rnd: () => number): string {
   const chars = "0123456789abcdefghijklmnopqrstuvwxyz";
   let out = "";
   for (let i = 0; i < 8; i++) out += chars[Math.floor(rnd() * chars.length)];
@@ -836,6 +888,7 @@ export function affixSum(affixes: RolledAffix[], sub: AffixSub): number {
  * Рубиновое — × RUBY.scrapMul (×100): оценка 50 → 5000, 132 → 13200.
  */
 export function scrapValue(w: WeaponInstance): number {
+  // Мастерское — как уникальное (×1): иначе крафт рубинового уровня стал бы «печатным станком» лома.
   const tierMul = w.tier === "ruby" ? RUBY.scrapMul : 1;
   return Math.max(1, Math.round(weaponQuality(w) * tierMul));
 }
@@ -942,6 +995,12 @@ export const AEGIS_LABEL = `Оплот: блок удара вблизи леч�
 
 /** Свойства предмета помимо роллов — строки для инвентаря (сейчас у щитов: блок, отражение, «Оплот»). */
 export function instanceEffects(w: WeaponInstance): string[] {
+  if (w.tier === "craft") {
+    const out: string[] = [];
+    if (craftPow(w) > 0) out.push(`Мастерство +${Math.round(craftPow(w) * 100)}% к урону`);
+    if (w.by) out.push(`Создал: ${w.by}`);
+    return out;
+  }
   if (w.cls !== "shield") return [];
   // Блок — только ролл (он и так в списке роллов): отдельной строкой не дублируем.
   const out: string[] = [];
@@ -961,7 +1020,14 @@ export function aegisTier(cls: string, tier: string, affix: string | undefined):
 export function heldAffixText(w: WeaponInstance | null | undefined): string {
   if (!w) return "";
   const sharp = attackPointEligible(w) ? attackPoints(w) : 0;
-  return [...(isAegis(w) ? [AEGIS_LABEL] : []), ...instanceLabels(w), ...(sharp > 0 ? [`Точка атаки +${(attackPointBonus(sharp) * 100).toFixed(1)}%`] : [])].join(", ");
+  const cp = craftPow(w);
+  return [
+    ...(isAegis(w) ? [AEGIS_LABEL] : []),
+    ...instanceLabels(w),
+    ...(sharp > 0 ? [`Точка атаки +${(attackPointBonus(sharp) * 100).toFixed(1)}%`] : []),
+    // «Мастерство» крафта — множитель урона, как точка атаки (клиент читает обе строки: powerMulOfText).
+    ...(cp > 0 ? [`Мастерство +${Math.round(cp * 1000) / 10}%`] : []),
+  ].join(", ");
 }
 
 /** Доля урона, возвращаемая как HP (ролл Вампиризм). Только ближний бой. */
@@ -1150,9 +1216,14 @@ export const ATTACK_POINT = {
 /** Предел суммарной прибавки к урону от точек (доля): gain0 / (1 − gainDecay) = +80%. */
 export const ATTACK_POINT_CAP = ATTACK_POINT.gain0 / (1 - ATTACK_POINT.gainDecay);
 
-/** Точить можно уникальное и рубиновое оружие; щит не атакует — нет. */
+/** Точить можно уникальное, рубиновое и мастерское оружие; щит не атакует — нет. */
 export function attackPointEligible(w: { cls: string; tier: string }): boolean {
-  return w.cls !== "shield" && (w.tier === "legendary" || w.tier === "ruby");
+  return w.cls !== "shield" && (w.tier === "legendary" || w.tier === "ruby" || w.tier === "craft");
+}
+
+/** «Мастерство» крафтового экземпляра (доля, 0 — нет): прибавка к урону от исхода крафта. */
+export function craftPow(w: { tier: string; cp?: number } | null | undefined): number {
+  return w && w.tier === "craft" ? Math.max(0, Math.min(1, w.cp ?? 0)) : 0;
 }
 
 /** Сколько удачных точек у экземпляра. */
@@ -1189,15 +1260,26 @@ export function sharpGlowMul(pct: number, k: number): number {
   return pct > 0 ? (pct / SHARP_GLOW_REF_PCT) ** k : 0;
 }
 
-/** Множитель урона от точек одного оружия (1 — точек нет или оружие не точится). */
-export function attackPointMul(w: { cls: string; tier: string; sharp?: number } | null | undefined): number {
-  return w && attackPointEligible(w) ? 1 + attackPointBonus(attackPoints(w)) : 1;
+/** Множитель урона экземпляра сверх тира: точки атаки × «Мастерство» крафта (1 — ничего нет). */
+export function attackPointMul(w: { cls: string; tier: string; sharp?: number; cp?: number } | null | undefined): number {
+  return w && attackPointEligible(w) ? (1 + attackPointBonus(attackPoints(w))) * (1 + craftPow(w)) : 1;
+}
+
+/** «Мастерство» в процентах из строки роллов в руке («… Мастерство +15%»); строки нет — 0. */
+export function craftPctOfText(text: string | undefined): number {
+  const m = text?.match(/Мастерство \+([\d.]+)%/);
+  return m ? Number(m[1]) : 0;
+}
+
+/** Множитель урона из строки роллов в руке: точка атаки × «Мастерство» (как attackPointMul на сервере). */
+export function powerMulOfText(text: string | undefined): number {
+  return (1 + sharpPctOfText(text) / 100) * (1 + craftPctOfText(text) / 100);
 }
 
 /** Лучший из двух рук — как роллы «Урон» (см. handsRoll). */
 export function attackPointBest(
-  a: { cls: string; tier: string; sharp?: number } | null | undefined,
-  b: { cls: string; tier: string; sharp?: number } | null | undefined,
+  a: { cls: string; tier: string; sharp?: number; cp?: number } | null | undefined,
+  b: { cls: string; tier: string; sharp?: number; cp?: number } | null | undefined,
 ): number {
   return Math.max(attackPointMul(a), attackPointMul(b));
 }
@@ -1273,7 +1355,8 @@ export function enchantInfo(w: WeaponInstance, idx: number): EnchantInfo | null 
   const pts = affixPoints(a, w);
   const max = pts >= POINTS_MAX;
   const q = w.affixes.length ? weaponQuality(w) / (POINTS_MAX * w.affixes.length) : 0;
-  const { chance, cost } = enchantCurve(pts, q, w.tier === "legendary" ? ENCHANT.legendaryMul : 1);
+  // Мастерское точится по цене уникального.
+  const { chance, cost } = enchantCurve(pts, q, w.tier === "legendary" || w.tier === "craft" ? ENCHANT.legendaryMul : 1);
   // Рубиновое — та же заточка за лом, только в RUBY.enchantCostMul раз дороже.
   return { points: pts, of: POINTS_MAX, max, chance, cost: w.tier === "ruby" ? cost * RUBY.enchantCostMul : cost };
 }

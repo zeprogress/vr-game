@@ -26,6 +26,7 @@ const SHIELD_COLORS: Record<WeaponTier, { body: [number, number, number]; metal:
   gold: { body: [0.85, 0.64, 0.18], metal: [1, 0.86, 0.4], glow: 0.18 },
   legendary: { body: [0.42, 0.18, 0.72], metal: [1, 0.84, 0.36], glow: 0.3 },
   ruby: { body: [0.72, 0.06, 0.14], metal: [1, 0.84, 0.36], glow: 0.35 }, // рубиновых щитов нет — на всякий
+  craft: { body: [0.7, 0.28, 0.03], metal: [1, 0.84, 0.36], glow: 0.35 }, // мастерских щитов нет — на всякий
 };
 
 export function createShield(scene: Scene, tier: WeaponTier = "base", aegis = false): Mesh {

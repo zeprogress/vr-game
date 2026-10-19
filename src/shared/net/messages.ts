@@ -1,5 +1,6 @@
 import type { OverlayFrame } from "./overlayFrame";
 import type { JewelAct, PcInvJewels } from "../jewels";
+import type { PcInvCraft } from "../craft";
 import type { SkillId } from "../classes2";
 import type { GuardState, WeaponKind, BlockedBy } from "../combat";
 import type { ItemId, WeaponClass, WeaponTier } from "../items";
@@ -251,8 +252,10 @@ export interface PcInvWeapon {
   scrap: number;
   /** По каждому аффиксу: очки, максимум ли, шанс и цена заточки в ломе (у рубинового — × RUBY.enchantCostMul). */
   ench: PcEnchRow[];
-  /** Удачных точек атаки за лом (уникальное и рубиновое). */
+  /** Удачных точек атаки за лом (уникальное, рубиновое и мастерское). */
   sharp?: number;
+  /** Мастерское (крафт): «Мастерство» — прибавка к урону (доля). */
+  cp?: number;
   /** ★ Избранное — не разбирается. */
   fav?: boolean;
 }
@@ -389,6 +392,8 @@ export interface PcInvData {
   skills?: { cls: string; chosen: string[] };
   /** Кольца и камни (shared/jewels.ts). */
   jewels?: PcInvJewels;
+  /** Крафт: материалы, особые катализаторы и книга рецептов (shared/craft.ts). */
+  craft?: PcInvCraft;
   /** Непрочитанные подарки: от кого и что. */
   giftNotes?: { from: string; text: string; at: number }[];
   /** Кому можно предложить обмен: кто в игре сейчас и писавшие в чат за час (герои, без ботов и себя). */
@@ -399,10 +404,10 @@ export interface PcInvData {
 
 export interface PcInvActMsg {
   /** title — надеть титул (id = название, "" — снять); fav — звёздочка «избранное» у оружия id; scrapAll — разобрать всё, кроме избранного и надетого. */
-  act: "enchant" | "armorEnchant" | "stat" | "respec" | "title" | "skin" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | "tradeOpen" | "tradeAdd" | "tradeRemove" | "tradeConfirm" | "tradeCancel" | "sharpen" | JewelAct;
+  act: "enchant" | "armorEnchant" | "stat" | "respec" | "title" | "skin" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | "tradeOpen" | "tradeAdd" | "tradeRemove" | "tradeConfirm" | "tradeCancel" | "sharpen" | "craft" | "smelt" | JewelAct;
   id: string;
   idx: number;
-  /** Подарок — ник получателя; обмен — список предметов. */
+  /** Подарок — ник получателя; обмен — список предметов; крафт — состав (craftCode). */
   fuel?: string;
 }
 
@@ -410,6 +415,8 @@ export interface PcInvResult {
   ok: boolean;
   text: string;
   enchant?: { id: string; idx: number; up: boolean; gain: number; cost: number; label: string };
+  /** Крафт: исход (CRAFT_OUTCOMES, 0 — провал), id нового оружия, найденный рецепт. */
+  craft?: { outcome: number; id?: string; found?: string };
 }
 
 export interface ChatLineMsg {

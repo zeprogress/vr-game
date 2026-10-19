@@ -8,7 +8,7 @@ import { ATTR2, attrOf, invested } from "./attrs2";
 import { DAGGER, DUAL, HAMMER, isDualPair, SMOKE, staffMagicTier, WARCRY, WEAPONS2, type AttrsIn } from "./classes2";
 import { magicPowerFor, magicResistFrac } from "./magic";
 import { weaponDamage } from "./combat";
-import { critRollMult, isMeleeClass, shieldBlockChance, weaponDef, type WeaponClass, type WeaponTier } from "./items";
+import { critRollMult, isMeleeClass, powerMulOfText, shieldBlockChance, weaponDef, type WeaponClass, type WeaponTier } from "./items";
 
 /**
  * Сколько атак в секунду реально делает герой этим оружием — та же пауза, что в бою у всех
@@ -58,21 +58,22 @@ export function dmgRollOfText(text: string | undefined): number {
  * что строка «Урон» в характеристиках: урон героя растёт от этой базы с уровнем, атрибутами, роллами
  * и баффами — поэтому «Атака» никогда не больше «Урона». null — оружие не бьёт (щит).
  */
-export function attackValue(cls: string, tier: string, sharpPct = 0): { total: number; add: number } | null {
-  const base = weaponHitDamage(cls, tier, 1, BASE_ATTRS);
+export function attackValue(cls: string, tier: string, sharpPct = 0, craftPct = 0): { total: number; add: number } | null {
+  // «Мастерство» крафта — часть силы самого оружия (база), заточка — сверху.
+  const base = weaponHitDamage(cls, tier, 1, BASE_ATTRS) * (1 + craftPct / 100);
   if (base <= 0) return null;
   const total = base * (1 + sharpPct / 100);
   return { total, add: total - base };
 }
 
 /** Прибавка «Атаки» от заточки — в единицах урона (как attackValue). */
-export function sharpAttackAdd(cls: string, tier: string, sharpPct: number): number {
-  return attackValue(cls, tier, sharpPct)?.add ?? 0;
+export function sharpAttackAdd(cls: string, tier: string, sharpPct: number, craftPct = 0): number {
+  return attackValue(cls, tier, sharpPct, craftPct)?.add ?? 0;
 }
 
 /** Подпись «Атака 9.4»; с заточкой — «Атака 10.3 (+0.9 от заточки)». Щит — пусто. */
-export function attackLabel(cls: string, tier: string, sharpPct = 0): string {
-  const v = attackValue(cls, tier, sharpPct);
+export function attackLabel(cls: string, tier: string, sharpPct = 0, craftPct = 0): string {
+  const v = attackValue(cls, tier, sharpPct, craftPct);
   if (!v) return "";
   return v.add >= 0.05 ? `Атака ${v.total.toFixed(1)} (+${v.add.toFixed(1)} от заточки)` : `Атака ${v.total.toFixed(1)}`;
 }
@@ -181,9 +182,8 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const dmgBonus = affixNum2("Урон");
   // Удар — та же формула, что «Атака» у оружия (weaponHitDamage); без оружия — как меч базового тира.
   const dual = isDualPair(p.leftCls, p.rightCls) ? DUAL.dmg : 1;
-  // Точка атаки за лом (уникальное и рубиновое): такая же прибавка к урону, как у роллов, — лучшая из двух рук.
-  // affixNum уже в долях («Точка атаки +27.5%» → 0.275); раньше делили на 100 ещё раз — заточка в таблице почти не видна.
-  const sharpMul = 1 + affixNum2("Точка атаки");
+  // Точка атаки за лом и «Мастерство» крафта: множитель урона предмета — лучший из двух рук (как attackPointBest на сервере).
+  const sharpMul = Math.max(powerMulOfText(weaponAffix), otherAffix ? powerMulOfText(otherAffix) : 1);
   const hit = weaponHitDamage(cls || "sword", tier, p.level, p, dmgBonus) * dual * bm.dmg * sharpMul;
   rows.push({ label: "Урон", value: hit.toFixed(1) + (bm.dmg > 1 ? UP : "") });
   if (cls === "hammer") {

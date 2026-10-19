@@ -3739,6 +3739,7 @@ export class Game {
       this.pcInvData = d;
       this.pcInv?.setData(d);
       this.wristPanel?.setJewels(d.jewels, d.scrap);
+      this.wristPanel?.setCraft(d.craft);
       this.wristPanel?.setArmor(d.armor ?? [], d.armorWorn ?? {});
       this.vrEnchPanel?.markDirty();
     };
@@ -3783,6 +3784,7 @@ export class Game {
     if (this.questWin) window.setTimeout(() => net.sendQuestOpen(), 1500);
     net.onPcInvResult = (r) => {
       this.pcInv?.onResult(r);
+      if (r.craft) this.wristPanel?.craftResult(r.craft.outcome, r.text);
       // VR: итог действия с кольцами/камнями — всплывашкой (окна инвентаря в шлеме нет).
       if (this.player.inVR && !r.enchant && r.text) this.notifyToast(r.text);
       if (r.enchant && this.vrEnchId) {

@@ -69,8 +69,13 @@ void main() {
 
 const glowMats = new WeakMap<Scene, Map<string, ShaderMaterial>>();
 
-/** Цвет свечения по тиру: уникальное — фиолетовое, рубиновое — алое. */
-const GLOW_COL = { legendary: new Color3(0.6, 0.22, 1), ruby: new Color3(1, 0.1, 0.22) } as const;
+/** Цвет свечения по тиру: уникальное — фиолетовое, рубиновое — алое, мастерское (крафт) — тёмно-оранжевое. */
+const GLOW_COL = { legendary: new Color3(0.6, 0.22, 1), ruby: new Color3(1, 0.1, 0.22), craft: new Color3(1, 0.38, 0.02) } as const;
+/** Тир со свечением (уникальное, рубиновое, мастерское). */
+export type GlowTier = keyof typeof GLOW_COL;
+export function isGlowTier(t: string): t is GlowTier {
+  return t in GLOW_COL;
+}
 
 function glowMaterial(scene: Scene, amp: number, col: Color3 = GLOW_COL.legendary): ShaderMaterial {
   let byAmp = glowMats.get(scene);
@@ -108,13 +113,13 @@ export function attachLegendaryGlow(
   radius = 0.6,
   /** Множитель яркости — не размера. Оружие ×0.5, Эгида ×(1/1.5) по просьбе. */
   intensity = 1,
-  /** Тир свечения: уникальное — фиолетовое, рубиновое — алое и ярче. */
-  tier: "legendary" | "ruby" = "legendary",
+  /** Тир свечения: уникальное — фиолетовое, рубиновое — алое и ярче, мастерское — тёмно-оранжевое. */
+  tier: GlowTier = "legendary",
   /** Где светит: точка в системе хоста (у оружия — на клинке, наконечнике, камне; по умолчанию — в руке). */
   at: Vector3 = Vector3.Zero(),
 ): void {
   const shell = MeshBuilder.CreatePlane("legGlow", { size: radius * 2 }, scene);
-  const amp = Math.round(intensity * (tier === "ruby" ? 1.4 : 1) * 1000) / 1000;
+  const amp = Math.round(intensity * (tier === "ruby" ? 1.4 : tier === "craft" ? 1.2 : 1) * 1000) / 1000;
   shell.material = glowMaterial(scene, amp, GLOW_COL[tier]);
   glowBase.set(shell, { amp, col: GLOW_COL[tier] });
   shell.isPickable = false;
@@ -157,7 +162,7 @@ export function applySharpGlow(root: TransformNode, pct: number): void {
  * legendary — цвет аффикса (огонь / охота / эгида / буря), из WeaponDef.tint.
  */
 export function tierTint(cls: WeaponClass, tier: WeaponTier): Color3 | undefined {
-  if (tier !== "legendary" && tier !== "ruby") return undefined;
+  if (!isGlowTier(tier)) return undefined;
   const t = weaponDef(cls, tier).tint;
   return new Color3(t[0], t[1], t[2]);
 }

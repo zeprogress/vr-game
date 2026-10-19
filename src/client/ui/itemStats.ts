@@ -1,4 +1,4 @@
-import { fmtPct, sharpPctOfText, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { craftPctOfText, fmtPct, powerMulOfText, sharpPctOfText, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { attackSpeedFor } from "#shared/progression";
 import { attacksPerSec, dmgRollOfText, sharpAttackAdd, weaponHitDamage } from "#shared/heroStats";
 import { magicPowerFor } from "#shared/magic";
@@ -41,9 +41,11 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
   const d = weaponDef(w.cls, w.tier);
   const spd = attackSpeedFor(s.level, s);
   const out: [string, string][] = [];
-  // Точка атаки за лом: удар сильнее на её прибавку — та же формула, что в бою (heroStats).
+  // Точка атаки за лом и «Мастерство» крафта: удар сильнее на их прибавку — та же формула, что в бою (heroStats).
   const sharp = sharpPctOfText(w.affix);
-  const hit = (): number => heldAttack(w, s) * (1 + sharp / 100);
+  const craft = craftPctOfText(w.affix);
+  const pow = powerMulOfText(w.affix);
+  const hit = (): number => heldAttack(w, s) * pow;
 
   if (w.cls === "sword") {
     const dmg = hit();
@@ -89,7 +91,8 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
     out.push(["Щит", "блок, защита, отражение и регенерация — от роллов"]);
   }
   // Точка атаки — сразу за ударом: прибавка в процентах и в «Атаке» (та же прибавка, что в подписи на складе).
-  if (sharp > 0) out.splice(1, 0, ["Точка атаки", `+${fmtPct(sharp)}% · +${sharpAttackAdd(w.cls, w.tier, sharp).toFixed(1)} к атаке`]);
+  if (sharp > 0) out.splice(1, 0, ["Точка атаки", `+${fmtPct(sharp)}% · +${sharpAttackAdd(w.cls, w.tier, sharp, craft).toFixed(1)} к атаке`]);
+  if (craft > 0) out.splice(1, 0, ["Мастерство", `+${fmtPct(craft)}% к урону`]);
   // Свойство Эгиды идёт в тексте первым («Оплот: …») — отдельной строкой, не роллом.
   const parts = (w.affix ?? "").split(", ").filter(Boolean);
   const aegis = parts.find((t) => t.startsWith("Оплот"));

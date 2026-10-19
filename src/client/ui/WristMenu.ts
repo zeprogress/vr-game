@@ -11,7 +11,7 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
-import { AEGIS_NAME, attackPoints, bothHandsCls, bothHandsNote, FAV_MAX, qualityStars, qualityStarsShort, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, AFFIX_NAME, ATTACK_CLASSES, WEAPON_NOUN, attackPoints, bothHandsCls, bothHandsNote, FAV_MAX, qualityStars, qualityStarsShort, craftPow, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { skillDamageText } from "#shared/skillDamage";
 import { armorIconKey, glyph, itemIcon, weaponIcon, type IconKey } from "#shared/icons";
 import { ARMOR_PART_NAME, ARMOR_PARTS, type ArmorPart } from "#shared/armor";
@@ -22,6 +22,30 @@ import type { PcInvActMsg, PcInvArmor, QuestData, WarehouseWeapon } from "#share
 import { ATTR_SHORT, GEM_LOOK, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type PcInvJewels } from "#shared/jewels";
 import { BAG_SORTS, bagPickItem, nextBagSort, sortBag, type BagSort } from "#shared/bagSort";
 import { gemArt, RING_SLOT_SVG, ringArt, socketSpot } from "#shared/jewelIcons";
+import {
+  CRAFT,
+  CRAFT_CATS,
+  CRAFT_ITEMS,
+  CRAFT_MATS,
+  CRAFT_METHOD_IDS,
+  CRAFT_METHODS,
+  CRAFT_OUTCOMES,
+  CRAFT_RECIPES,
+  CRAFT_SMELT,
+  craftCode,
+  craftOdds,
+  matchRecipe,
+  matRoll,
+  plannedRolls,
+  recipeHint,
+  recipeText,
+  rollsFor,
+  smithLevel,
+  type CraftInput,
+  type CraftItemId,
+  type CraftMatId,
+  type PcInvCraft,
+} from "#shared/craft";
 import { trackItems, type TrackItem } from "./QuestWindow";
 
 import { STAT_LABELS, type Progression, type StatName } from "../player/Progression";
@@ -89,7 +113,7 @@ const WH_PER_PAGE = WH_COLS * WH_ROWS;
 const TIER_COLOR = Object.fromEntries(Object.entries(TIER_LOOK).map(([t, l]) => [t, l.color])) as Record<WeaponTier, string>;
 const TIER_BG = Object.fromEntries(Object.entries(TIER_LOOK).map(([t, l]) => [t, l.bg])) as Record<WeaponTier, string>;
 
-type Tab = "char" | "rings" | "chat" | "quest" | "skills" | "set";
+type Tab = "char" | "rings" | "craft" | "chat" | "quest" | "skills" | "set";
 type Kind = "tab" | "button" | "cell" | "card" | "toggle" | "slider";
 type Side = "left" | "right";
 
@@ -268,6 +292,26 @@ export class WristMenu {
   setJewels(j: PcInvJewels | undefined, scrap: number): void {
     this.jewels = j ?? null;
     this.jewelScrap = scrap;
+    this.dirty = true;
+  }
+
+  // ---- крафт (вкладка «Крафт», те же действия, что в окне инвентаря) ----
+
+  private craft: PcInvCraft | null = null;
+  private craftSel: CraftInput = { cls: "sword", mats: [], cat: null, method: "forge" };
+  /** Книга рецептов вместо сборки. */
+  private craftBook = false;
+  private craftRes: { outcome: number; text: string } | null = null;
+
+  /** Материалы, книга и опыт кузнеца (из данных окна инвентаря). */
+  setCraft(c: PcInvCraft | undefined): void {
+    this.craft = c ?? null;
+    this.dirty = true;
+  }
+
+  /** Итог крафта — строкой во вкладке (исход цветом). */
+  craftResult(outcome: number, text: string): void {
+    this.craftRes = { outcome, text };
     this.dirty = true;
   }
 
@@ -715,7 +759,7 @@ export class WristMenu {
   private switchTab(t: Tab): void {
     if (this.tab === t) return;
     this.tab = t;
-    if (t === "rings") this.onRingsOpen?.();
+    if (t === "rings" || t === "craft") this.onRingsOpen?.();
     this.focusId = `tab:${t}`;
     this.dirty = true;
     this.lastDraw = 0;
@@ -803,6 +847,7 @@ export class WristMenu {
 
     if (this.tab === "char") this.drawCharacter(ctx);
     else if (this.tab === "rings") this.drawRings(ctx);
+    else if (this.tab === "craft") this.drawCraft(ctx);
     else if (this.tab === "chat") this.drawChat(ctx);
     else if (this.tab === "quest") this.drawQuests(ctx);
     else if (this.tab === "skills") this.drawSkills(ctx);
@@ -835,6 +880,7 @@ export class WristMenu {
     const tabs: [Tab, string][] = [
       ["char", "Персонаж"],
       ["rings", "Кольца"],
+      ["craft", "Крафт"],
       ["chat", "Чат"],
       ["quest", "Задания"],
       ["skills", "Умения"],
@@ -1523,7 +1569,7 @@ export class WristMenu {
       id: `wh:${wp.id}`, x, y, w, h, kind: "cell",
       info: [
         `${wp.fav ? `${glyph("ui.fav")} ` : ""}${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""} — нажми: действия`,
-        [attackLabel(wp.cls, wp.tier, sharpPctOf(wp)), ...(wp.effects ?? []), ...wp.affixes].filter(Boolean).join(", ") || "без роллов",
+        [attackLabel(wp.cls, wp.tier, sharpPctOf(wp), craftPow(wp) * 100), ...(wp.effects ?? []), ...wp.affixes].filter(Boolean).join(", ") || "без роллов",
       ],
       act: () => this.openWarehousePopup(wp),
     });
@@ -1689,7 +1735,7 @@ export class WristMenu {
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
     this.popup = {
       title: `${wp.fav ? `${glyph("ui.fav")} ` : ""}${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""}`,
-      sub: [attackLabel(wp.cls, wp.tier, sharpPctOf(wp)), ...(wp.effects ?? []), ...wp.affixes].filter(Boolean).join(", ") || "без роллов",
+      sub: [attackLabel(wp.cls, wp.tier, sharpPctOf(wp), craftPow(wp) * 100), ...(wp.effects ?? []), ...wp.affixes].filter(Boolean).join(", ") || "без роллов",
       color: TIER_COLOR[wp.tier],
       buttons,
     };
@@ -1943,6 +1989,182 @@ export class WristMenu {
       ctx.font = "20px system-ui, sans-serif";
       ctx.fillStyle = "#7c88a4";
       ctx.fillText("Камней нет — падают с мобов (1 уровня)", 24, y + 6);
+    }
+  }
+
+  /** Вкладка «Крафт»: основа, материалы, катализатор, метод, шансы и «Создать»; книга рецептов — отдельным видом. */
+  private drawCraft(ctx: CanvasRenderingContext2D): void {
+    const c = this.craft;
+    ctx.textAlign = "left";
+    if (!c) {
+      ctx.font = "26px system-ui, sans-serif";
+      ctx.fillStyle = "#a9a498";
+      ctx.fillText("Загрузка…", 24, VIEW_Y + 20);
+      return;
+    }
+    const X = 24;
+    const sel = this.craftSel;
+    const stock = new Map<CraftItemId, number>(c.stock);
+    const gems = [...(this.jewels?.gems ?? [])].sort((a, b) => parseGem(b[0])!.lv - parseGem(a[0])!.lv);
+    const smith = smithLevel(c.xp);
+    const scrap = this.jewelScrap;
+    if (CRAFT_METHODS[sel.method].lv > smith.lv) sel.method = "forge";
+    if (sel.cat && !(stock.get(sel.cat as CraftItemId) ?? 0) && !gems.some(([k]) => k === sel.cat)) sel.cat = null;
+    const used = (m: CraftMatId): number => sel.mats.filter((x) => x === m).length;
+    while (sel.mats.some((m) => used(m) > (stock.get(m) ?? 0))) sel.mats.splice(sel.mats.findIndex((m) => used(m) > (stock.get(m) ?? 0)), 1);
+    const orange = TIER_COLOR.craft;
+    /** Кнопка-плашка: заголовок и подпись; on — выбрана (оранжевая рамка), off — недоступна. */
+    const chip = (id: string, x: number, y: number, w: number, h: number, title: string, sub: string, on: boolean, off: boolean, info: [string, string], act: () => void, color?: string): void => {
+      const wd = this.add({ id, x, y, w, h, kind: "button", info, act: () => !off && act() });
+      const st = this.styleFor(wd);
+      ctx.fillStyle = st.fill || (on ? "#3a2410" : "#1d1c25");
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = st.stroke || (on ? orange : "#3a3e48");
+      ctx.lineWidth = st.stroke ? st.lw : on ? 3 : 2;
+      ctx.strokeRect(x, y, w, h);
+      ctx.globalAlpha = off ? 0.4 : 1;
+      ctx.fillStyle = color ?? (on ? "#ffd9b0" : "#e6e0d0");
+      ctx.font = "bold 21px system-ui, sans-serif";
+      ctx.fillText(title, x + 10, y + (sub ? 6 : (h - 22) / 2));
+      if (sub) {
+        ctx.font = "17px system-ui, sans-serif";
+        ctx.fillStyle = "#a9a498";
+        ctx.fillText(sub, x + 10, y + 32);
+      }
+      ctx.globalAlpha = 1;
+    };
+    const label = (t: string, y: number): void => {
+      ctx.font = "bold 22px system-ui, sans-serif";
+      ctx.fillStyle = "#9fb3cc";
+      ctx.fillText(t, X, y);
+    };
+    let y = VIEW_Y + 6;
+    // Кузнец и книга.
+    ctx.font = "bold 26px system-ui, sans-serif";
+    ctx.fillStyle = orange;
+    ctx.fillText(`⚒ Кузнец ${smith.lv} ур.`, X, y);
+    ctx.font = "19px system-ui, sans-serif";
+    ctx.fillStyle = "#a9a498";
+    ctx.fillText(`${smith.maxed ? "максимум" : `опыт ${smith.have}/${smith.need}`} · лом ${scrap}`, X + 230, y + 5);
+    chip("cr:book", TEX_W - 24 - 300, y - 4, 300, 40, this.craftBook ? "← К крафту" : `📜 Рецепты ${c.book.length}/${CRAFT_RECIPES.length}`, "", this.craftBook, false, ["Книга рецептов", "скрытые сочетания: находят только опытом"], () => (this.craftBook = !this.craftBook));
+    y += 46;
+    if (this.craftBook) {
+      for (const rc of CRAFT_RECIPES) {
+        const found = c.book.includes(rc.id);
+        ctx.font = "bold 24px system-ui, sans-serif";
+        ctx.fillStyle = found ? orange : "#7c88a4";
+        ctx.fillText(found ? rc.name : "???", X, y);
+        ctx.font = "19px system-ui, sans-serif";
+        ctx.fillStyle = "#c9c3b4";
+        this.wrapText(ctx, found ? recipeText(rc) : recipeHint(rc), X + 20, y + 30, TEX_W - 80, 24, 2);
+        y += 92;
+      }
+      return;
+    }
+    // 1. Основа.
+    label("1. Основа", y);
+    y += 30;
+    const cw = Math.floor((TEX_W - 48 - 5 * 8) / 6);
+    ATTACK_CLASSES.forEach((cls, i) => {
+      chip(`cr:c:${cls}`, X + i * (cw + 8), y, cw, 42, WEAPON_NOUN[cls].name, "", sel.cls === cls, false, ["Основа", `${WEAPON_NOUN[cls].name}: роллы — по материалам`], () => {
+        sel.cls = cls;
+        this.craftRes = null;
+      });
+    });
+    y += 52;
+    // 2. Материалы: гнёзда + запас.
+    label(`2. Материалы — до ${CRAFT.maxMats} (тратятся)`, y);
+    y += 30;
+    const sw = 180;
+    for (let i = 0; i < CRAFT.maxMats; i++) {
+      const m = sel.mats[i];
+      chip(`cr:s:${i}`, X + i * (sw + 8), y, sw, 54, m ? CRAFT_ITEMS[m].name : "пусто", m ? "нажми — убрать" : "", !!m, !m, ["Гнездо материала", m ? "убрать из крафта" : "выбери материал справа"], () => {
+        sel.mats.splice(i, 1);
+        this.craftRes = null;
+      }, m ? CRAFT_ITEMS[m].color : undefined);
+    }
+    const mx = X + CRAFT.maxMats * (sw + 8) + 8;
+    const mw = Math.floor((TEX_W - 24 - mx - 3 * 8) / 4);
+    CRAFT_MATS.forEach((m, i) => {
+      const have = stock.get(m) ?? 0;
+      const can = have - used(m) > 0 && sel.mats.length < CRAFT.maxMats;
+      chip(`cr:m:${m}`, mx + i * (mw + 8), y, mw, 54, `${CRAFT_ITEMS[m].name} ${have}`, `→ ${AFFIX_NAME[matRoll(m, sel.cls)]}`, false, !can, [`${CRAFT_ITEMS[m].name}: ${have}`, `откуда: ${CRAFT_ITEMS[m].src}`], () => {
+        sel.mats.push(m);
+        this.craftRes = null;
+      }, CRAFT_ITEMS[m].color);
+    });
+    y += 64;
+    // 3. Катализатор.
+    label("3. Катализатор (возвращается): камень — шансы, особый — особый ролл", y);
+    y += 30;
+    const cats: { key: string | null; title: string; sub: string; color?: string }[] = [{ key: null, title: "Без катализатора", sub: "шансы метода" }];
+    for (const k of CRAFT_CATS) {
+      const have = stock.get(k) ?? 0;
+      if (have > 0) cats.push({ key: k, title: `${CRAFT_ITEMS[k].name} ${have}`, sub: `→ ${AFFIX_NAME[k === "frost" ? "chill" : "venom"]}`, color: CRAFT_ITEMS[k].color });
+    }
+    for (const [k, n] of gems) {
+      const g = parseGem(k)!;
+      const lv = Math.min(CRAFT.gemLvCap, g.lv);
+      cats.push({ key: k, title: `${gemName(k)} ×${n}`, sub: `провал −${CRAFT.gemFail * lv}, лучшие +${CRAFT.gemUp * lv}`, color: GEM_LOOK[g.attr].c });
+    }
+    const kw = Math.floor((TEX_W - 48 - 3 * 8) / 4);
+    cats.slice(0, 8).forEach((k, i) => {
+      chip(`cr:k:${k.key ?? "-"}`, X + (i % 4) * (kw + 8), y + Math.floor(i / 4) * 62, kw, 54, k.title, k.sub, sel.cat === k.key, false, ["Катализатор", k.sub], () => {
+        sel.cat = k.key;
+        this.craftRes = null;
+      }, k.color);
+    });
+    y += cats.length > 4 ? 126 : 64;
+    // 4. Метод.
+    label("4. Метод", y);
+    y += 30;
+    const ww = Math.floor((TEX_W - 48 - 3 * 8) / 4);
+    CRAFT_METHOD_IDS.forEach((k, i) => {
+      const m = CRAFT_METHODS[k];
+      const locked = m.lv > smith.lv;
+      chip(`cr:w:${k}`, X + i * (ww + 8), y, ww, 54, `${m.name} · ${m.cost}`, locked ? `с ${m.lv} ур. кузнеца` : m.note, sel.method === k, locked, [m.name, m.note], () => {
+        sel.method = k;
+        this.craftRes = null;
+      });
+    });
+    y += 64;
+    // Шансы, роллы, кнопки.
+    const recipe = sel.mats.length ? matchRecipe(sel) : null;
+    const known = recipe && c.book.includes(recipe.id) ? recipe : null;
+    const odds = craftOdds(sel, smith.lv, !!known);
+    let ox = X;
+    CRAFT_OUTCOMES.forEach((o, i) => {
+      ctx.fillStyle = o.color;
+      ctx.font = "bold 19px system-ui, sans-serif";
+      const t = `${o.name} ${odds[i] < 10 ? odds[i].toFixed(1) : Math.round(odds[i])}%`;
+      ctx.fillText(t, ox, y);
+      ox += ctx.measureText(t).width + 18;
+    });
+    y += 28;
+    ctx.font = "18px system-ui, sans-serif";
+    ctx.fillStyle = known ? "#ffd38a" : "#a9a498";
+    const plan = plannedRolls(sel);
+    this.wrapText(
+      ctx,
+      known
+        ? `📜 «${known.name}»: исход не ниже хорошего, ★ ${AFFIX_NAME[known.star]} сверх предела`
+        : sel.mats.length
+          ? `Роллы: ${plan.map((r) => `${AFFIX_NAME[r.sub]}${r.copies > 1 ? ` ×${r.copies}` : ""}`).join(", ")} · встанет ${rollsFor(1, sel.method)}–${rollsFor(4, sel.method)} по исходу`
+          : "Положи хотя бы один материал",
+      X, y, TEX_W - 48, 22, 1,
+    );
+    y += 28;
+    const cost = CRAFT_METHODS[sel.method].cost;
+    chip("cr:go", X, y, 380, 52, `⚒ Создать — ${cost} лома`, "", true, !sel.mats.length || scrap < cost, ["Создать", scrap < cost ? `не хватает лома: есть ${scrap}` : "материалы тратятся, катализатор вернётся"], () => {
+      this.craftRes = null;
+      this.onJewelAct?.({ act: "craft", id: craftCode(sel), idx: 0 });
+    }, "#ffd38a");
+    chip("cr:smelt", X + 392, y, 360, 52, `Переплавить ${CRAFT_SMELT} лома`, `→ ${CRAFT_ITEMS.alloy.name} ×1`, false, scrap < CRAFT_SMELT, ["Переплавка", `${CRAFT_SMELT} лома → ${CRAFT_ITEMS.alloy.name}`], () => this.onJewelAct?.({ act: "smelt", id: "alloy", idx: 1 }));
+    if (this.craftRes) {
+      const o = CRAFT_OUTCOMES[this.craftRes.outcome] ?? CRAFT_OUTCOMES[0];
+      ctx.font = "bold 20px system-ui, sans-serif";
+      ctx.fillStyle = o.color;
+      this.wrapText(ctx, this.craftRes.text, X + 770, y, TEX_W - 24 - (X + 770), 22, 3);
     }
   }
 

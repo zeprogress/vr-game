@@ -60,6 +60,13 @@ export const ICONS = {
   "w.aegis.gold": { emoji: "🛡️", img: "gear/aegis_gold.png" },
   "w.aegis.legendary": { emoji: "🛡️", img: "gear/aegis_legendary.png" },
   "w.aegis.ruby": { emoji: "🛡️", img: "gear/aegis_ruby.png" },
+  // Мастерское (крафт) — тёмно-оранжевое: перекраска рубиновых картинок (временно, до своих).
+  "w.sword.craft": { emoji: "🗡️", img: "gear/sword_craft.png" },
+  "w.dagger.craft": { emoji: "🔪", img: "gear/dagger_craft.png" },
+  "w.spear.craft": { emoji: "🔱", img: "gear/spear_craft.png" },
+  "w.hammer.craft": { emoji: "🔨", img: "gear/hammer_craft.png" },
+  "w.staff.craft": { emoji: "🪄", img: "gear/staff_craft.png" },
+  "w.bow.craft": { emoji: "🏹", img: "gear/bow_craft.png" },
   /** Пустые руки. */
   "w.fist": {
     emoji: "✊",
@@ -107,6 +114,13 @@ export const ICONS = {
   "i.scroll_wind": { emoji: "🪶" },
   /** Жетоны заданий. */
   "i.token": { emoji: "◈" },
+  // ---- крафт: материалы и особые катализаторы (shared/craft.ts) — временные значки ----
+  "m.alloy": { emoji: "🧱" },
+  "m.web": { emoji: "🕸️" },
+  "m.scale": { emoji: "🐉" },
+  "m.bone": { emoji: "🦴" },
+  "m.frost": { emoji: "❄️" },
+  "m.sting": { emoji: "🦂" },
 
   // ---- классы ----
   "c.warrior": { emoji: "⚔️" },

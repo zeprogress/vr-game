@@ -4,11 +4,12 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
 import { attachLegendaryGlow, spawnWeaponModel } from "./weaponModels";
+import { CRAFT_TINT } from "#shared/items";
 
 /**
  * Оружие новых классов: кинжал (ассасин), копьё (копейщик), молот (боевой
  * маг). Как у меча — начало координат в рукояти, клинок/боёк по +Y.
- * tier: 0 обычное, 1 золото, 2 уникальное (фиолетовое со свечением), 3 рубиновое (алое).
+ * tier: 0 обычное, 1 золото, 2 уникальное (фиолетовое со свечением), 3 рубиновое (алое), 4 мастерское (тёмно-оранжевое, крафт).
  */
 export type NewWeapon = "dagger" | "spear" | "hammer";
 
@@ -21,6 +22,7 @@ export const NEW_WEAPON_SCALE: Record<NewWeapon, number> = {
 
 const LEGEND_TINT = new Color3(0.62, 0.3, 1);
 const RUBY_TINT = new Color3(1, 0.12, 0.25);
+const CRAFT_COL = new Color3(CRAFT_TINT[0], CRAFT_TINT[1], CRAFT_TINT[2]);
 
 /** Точка свечения в системе оружия (у модели из пака, см. замер в корне): кинжал — середина лезвия, копьё — наконечник, молот — набалдажник. */
 const GLOW_AT: Record<NewWeapon, Vector3> = {
@@ -29,12 +31,12 @@ const GLOW_AT: Record<NewWeapon, Vector3> = {
   hammer: new Vector3(0, 0.72, 0),
 };
 
-export function createClassWeapon(scene: Scene, w: NewWeapon, tier: 0 | 1 | 2 | 3 = 0): Mesh {
+export function createClassWeapon(scene: Scene, w: NewWeapon, tier: 0 | 1 | 2 | 3 | 4 = 0): Mesh {
   const m = spawnWeaponModel(scene, tier === 1 ? `${w}_gold` : w, {
     scale: NEW_WEAPON_SCALE[w],
-    tint: tier === 2 ? LEGEND_TINT : tier === 3 ? RUBY_TINT : undefined,
+    tint: tier === 2 ? LEGEND_TINT : tier === 3 ? RUBY_TINT : tier === 4 ? CRAFT_COL : undefined,
   });
   // Свечение — там, где у оружия главная часть: клинок кинжала, наконечник копья, набалдажник молота.
-  if (tier >= 2) attachLegendaryGlow(scene, m, w === "dagger" ? 0.2 : 0.35, 0.5, tier === 3 ? "ruby" : "legendary", GLOW_AT[w]);
+  if (tier >= 2) attachLegendaryGlow(scene, m, w === "dagger" ? 0.2 : 0.35, 0.5, tier === 3 ? "ruby" : tier === 4 ? "craft" : "legendary", GLOW_AT[w]);
   return m;
 }
