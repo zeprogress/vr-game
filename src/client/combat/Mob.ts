@@ -28,7 +28,9 @@ import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
-import { ELITE_MOBS, FLYER_HIT_BONUS, MAGE_NOVA, MOB, MOB_SWING, SHARD_CFG } from "#shared/mobs";
+import { ELITE_MOBS, FLYER_HIT_BONUS, ICE_GIANT, MAGE_NOVA, MOB, MOB_SWING, SHARD_CFG, type EliteMobDef } from "#shared/mobs";
+import { DECAL, IceFx, SHARD, type IceAura } from "../ui/IceFx";
+import { FXC } from "../ui/fxColors";
 import type { MobKind, MobState } from "#shared/net/schema";
 import type { RigInstance, ModelName } from "../world/models";
 import { HealthBar3D } from "../ui/HealthBar3D";
@@ -61,6 +63,12 @@ const SWING_ANIM: Record<number, { clip: string; sec: number }> = {
   [MOB_SWING.breath]: { clip: "attackbreath", sec: 2 },
   [MOB_SWING.wings]: { clip: "attackwings", sec: 1.8 },
   [MOB_SWING.magic]: { clip: "magiccharge", sec: 2 },
+  // Ледяной гигант (ICE_GIANT): удар левой, раскол, бросок глыбы, разлом, рёв.
+  [MOB_SWING.swipe2]: { clip: "attack2", sec: ICE_GIANT.clipSec.attack },
+  [MOB_SWING.slam]: { clip: "slam", sec: ICE_GIANT.clipSec.slam },
+  [MOB_SWING.throw]: { clip: "throw", sec: ICE_GIANT.clipSec.throw },
+  [MOB_SWING.fissure]: { clip: "fissure", sec: ICE_GIANT.clipSec.fissure },
+  [MOB_SWING.roar]: { clip: "roar", sec: ICE_GIANT.clipSec.roar },
 };
 /** EliteMobDef.gait: медленнее — стойка (Idle), быстрее — бег (Run), между — шаг (Walk), м/с. */
 const GAIT_IDLE_SPEED = 0.5;
@@ -520,6 +528,14 @@ export class Mob implements Hittable {
   private rig: RigInstance | null = null;
   /** Клип «движение/прыжок» найденной модели (имя зависит от пака). */
   private moveAnim: AnimationGroup | null = null;
+  /** Описание элитного моба этой модели (после загрузки рига). */
+  private eliteDef: EliteMobDef | undefined;
+  /** Ледяной гигант: кольцо «Стужи» и снег; сколько секунд без ударов (в бою ли); фаза шага (звук и иней на касание). */
+  private iceAura: IceAura | null = null;
+  private giantIdleT = 99;
+  private stepU = -1;
+  /** Узлы костей модели по имени (рука с глыбой гиганта). */
+  private readonly boneNodes = new Map<string, TransformNode | null>();
   /** Клип броска/удара (мобы 40 ур. с анимацией Weapon/Punch) и сколько ещё его держать, с. */
   private atkClip: AnimationGroup | null = null;
   /** Без сжатия/растяжения тела (EliteMobDef.noSquash). */
@@ -914,13 +930,22 @@ export class Mob implements Hittable {
       this.atkClip = rig.anims.get("weapon") ?? rig.anims.get("punch") ?? rig.anims.get("attack") ?? null;
     if (eliteDef?.attackClip) this.atkClip = rig.anims.get(eliteDef.attackClip) ?? this.atkClip;
     this.noSquash = !!eliteDef?.noSquash;
+    this.eliteDef = eliteDef;
+    // Плавные переходы между клипами (гигант: удар → шаг без рывка позы).
+    if (eliteDef?.blendAnims) {
+      for (const g of rig.anims.values()) {
+        g.enableBlending = true;
+        g.blendingSpeed = 0.07;
+      }
+    }
+    if (eliteDef?.iceGiant) this.sfx.preloadIceGiant();
     // Клипы видов замаха босса (MOB_SWING), если они есть в модели.
     this.swingAnims = {};
     for (const [kind, v] of Object.entries(SWING_ANIM)) {
       const a = rig.anims.get(v.clip);
       if (a) this.swingAnims[Number(kind)] = a;
     }
-    if (Object.keys(this.swingAnims).length) this.sfx.preloadDragon();
+    if ([MOB_SWING.claw, MOB_SWING.tail, MOB_SWING.breath, MOB_SWING.wings].some((k) => this.swingAnims[k])) this.sfx.preloadDragon();
     if (eliteDef?.gait) {
       this.gaitIdle = rig.anims.get("idle") ?? null;
       this.gaitRun = rig.anims.get("run") ?? null;
@@ -1078,7 +1103,12 @@ export class Mob implements Hittable {
       pos.y += (ty - pos.y) * k;
       pos.z += (tz - pos.z) * k;
     }
-    this.root.rotation.y = s.yaw;
+    if (this.eliteDef?.blendAnims && !far) {
+      // Тяжёлый (гигант): разворот плавный, а не рывком за курсом сервера.
+      let dy = s.yaw - this.root.rotation.y;
+      dy = (((dy + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+      this.root.rotation.y += dy * (1 - Math.exp(-dt * 7));
+    } else this.root.rotation.y = s.yaw;
     // Моб за спиной камеры / вне кадра: выключаем его узлы целиком (Babylon не
     // обходит их для отсечения/матриц) и не двигаем тень. Запас по радиусу
     // большой — камера успевает довернуть, пока план кадра отстаёт на кадр.
@@ -1108,6 +1138,7 @@ export class Mob implements Hittable {
       }
     }
     secAdd("mob.pos+view+shadow", sp);
+    if (this.eliteDef?.iceGiant) this.updateIceAura(s, inView, pos, dt);
 
     // Невидимый живой моб (вне лимита/за спиной/далеко): ни эффектов, ни анимации,
     // ни плашки — только держим счётчики событий в актуальном виде, чтобы при
@@ -1140,7 +1171,12 @@ export class Mob implements Hittable {
       // Вид замаха босса: свой клип и его длительность; укус (0) — обычный atkClip.
       const sw = s.attackKind ? this.swingAnims[s.attackKind] : undefined;
       this.atkNow = sw ?? this.atkClip;
-      this.atkNowSec = sw ? SWING_ANIM[s.attackKind].sec : 0.8;
+      this.atkNowSec = sw ? SWING_ANIM[s.attackKind].sec : (this.eliteDef?.attackSec ?? 0.8);
+      if (this.eliteDef?.iceGiant) {
+        this.giantIdleT = 0;
+        if (!this.dead && (s.attackKind === 0 || s.attackKind === MOB_SWING.swipe2))
+          this.playIfNear(playerPos, () => this.sfx.at(pos, () => this.sfx.ice("swipe", 1, 0.06)), 45);
+      }
       if (!this.dead && this.atkNow) {
         // Перезапуск клипа броска с начала (playAnim не перезапускает тот же клип).
         if (this.curAnim === this.atkNow) {
@@ -1181,6 +1217,7 @@ export class Mob implements Hittable {
     if (s.hurtSeq !== this.lastHurtSeq) {
       this.lastHurtSeq = s.hurtSeq;
       this.flash = 1;
+      this.giantIdleT = 0;
       // ПК: здоровье — в самой плашке над мобом, отдельная полоска не нужна.
       if (!this.lean && !Mob.pcPlates) {
         this.barTimer = 3;
@@ -1240,7 +1277,8 @@ export class Mob implements Hittable {
       this.shadow.setEnabled(false);
       this.setFarLod(false);
       if (this.rig) this.playAnim(this.rig.anims.get("death"), false);
-      this.playIfNear(playerPos, () => this.sfx.mobDie(pos));
+      if (this.eliteDef?.iceGiant) this.giantDeath(pos, playerPos);
+      else this.playIfNear(playerPos, () => this.sfx.mobDie(pos));
     } else if (!s.dead && this.dead) {
       this.dead = false;
       if (this.deadHidden) {
@@ -1337,8 +1375,11 @@ export class Mob implements Hittable {
         const clip =
           this.moveSpd < GAIT_IDLE_SPEED ? this.gaitIdle : this.moveSpd > GAIT_RUN_SPEED && this.gaitRun ? this.gaitRun : this.moveAnim;
         // Темп бега — от скорости моба, чтобы ноги не скользили по земле.
-        if (clip === this.gaitRun && clip) clip.speedRatio = Math.min(2, Math.max(0.5, this.moveSpd / RUN_CLIP_SPEED));
+        const def = this.eliteDef;
+        if (clip === this.gaitRun && clip) clip.speedRatio = Math.min(2, Math.max(0.5, this.moveSpd / (def?.runClipSpeed ?? RUN_CLIP_SPEED)));
+        else if (clip === this.moveAnim && clip && def?.walkClipSpeed) clip.speedRatio = Math.min(1.6, Math.max(0.6, this.moveSpd / def.walkClipSpeed));
         this.playAnim(clip, true);
+        if (def?.iceGiant) this.giantSteps(clip, pos, playerPos);
       } else if (seen && (s.grounded === 0 || flyer)) this.playAnim(this.moveAnim, true);
       else this.stopAnim();
     }
@@ -1527,6 +1568,71 @@ export class Mob implements Hittable {
       if (p.normal.x * pos.x + p.normal.y * y + p.normal.z * pos.z + p.d < -r) return false;
     }
     return true;
+  }
+
+  /** Мировая точка кости модели (по имени узла glTF); null — модели нет, она скрыта или моб мёртв. */
+  boneWorld(name: string): { x: number; y: number; z: number } | null {
+    if (!this.rig || this.viewHidden || this.dead) return null;
+    let n = this.boneNodes.get(name);
+    if (n === undefined) {
+      n = (this.rig.root.getDescendants(false).find((d) => d.name === name || d.name.endsWith(name)) as TransformNode | undefined) ?? null;
+      this.boneNodes.set(name, n);
+    }
+    if (!n) return null;
+    const p = n.getAbsolutePosition();
+    return { x: p.x, y: p.y, z: p.z };
+  }
+
+  /** Ледяной гигант: кольцо «Стужи» и снег вокруг, пока он виден и жив; в бою — гуще, в ярости — метель. */
+  private updateIceAura(s: MobState, inView: boolean, pos: Vector3, dt: number): void {
+    this.giantIdleT += dt;
+    if (!inView || this.dead || s.dead) {
+      this.iceAura?.release();
+      this.iceAura = null;
+      return;
+    }
+    this.iceAura ??= IceFx.of(this.scene).aura();
+    const fury = s.enraged === 1;
+    const r = ICE_GIANT.aura.radius * (fury ? ICE_GIANT.fury.auraMul : 1);
+    this.iceAura?.place(pos.x, pos.y, pos.z, r, fury, this.giantIdleT < 8);
+  }
+
+  /** Шаги гиганта: на касании стопы (доли клипа 0 и 0.5) — тяжёлый удар со звоном льда и иней у ноги. */
+  private giantSteps(clip: AnimationGroup | null, pos: Vector3, playerPos: Vector3): void {
+    const an = clip?.animatables[0];
+    if (!clip || !an || clip.to <= clip.from) return;
+    const u = (((an.masterFrame - clip.from) / (clip.to - clip.from)) % 1 + 1) % 1;
+    const prev = this.stepU;
+    this.stepU = u;
+    if (prev < 0) return;
+    const crossed = (c: number): boolean => (prev <= u ? prev < c && u >= c : prev < c || u >= c);
+    // Левая стопа (касание в начале клипа) — слева, т.е. к −X модели, смотрящей на +Z.
+    const side = crossed(0.04) ? -1 : crossed(0.54) ? 1 : 0;
+    if (!side) return;
+    const k = (MOB.bodyRadius * 1.75 * this.scale) / 2; // метры мира на метр модели (модель — 2 м)
+    const yaw = this.root.rotation.y;
+    const fx = pos.x + Math.cos(yaw) * side * 0.27 * k;
+    const fz = pos.z - Math.sin(yaw) * side * 0.27 * k;
+    this.playIfNear(playerPos, () => {
+      this.sfx.at({ x: fx, y: pos.y, z: fz }, () => this.sfx.ice("step", 0.85, 0.08));
+      IceFx.of(this.scene).burst(fx, pos.y + 0.3, fz, FXC.frost, { count: 8, speed: 2, life: 0.6, grav: 1, size: 0.5 });
+    }, 45);
+  }
+
+  /** Смерть гиганта: стон и грохот; когда тело рухнуло — лёд разлетается и земля покрывается инеем. */
+  private giantDeath(pos: Vector3, playerPos: Vector3): void {
+    const yaw = this.root.rotation.y;
+    const k = (MOB.bodyRadius * 1.75 * this.scale) / 2;
+    const p = { x: pos.x + Math.sin(yaw) * 0.9 * k, y: pos.y, z: pos.z + Math.cos(yaw) * 0.9 * k };
+    this.playIfNear(playerPos, () => this.sfx.at(p, () => this.sfx.ice("death")), 60);
+    const ice = IceFx.of(this.scene);
+    ice.after(1.85, () => {
+      ice.shards(SHARD.crater, p, { r: 4, hold: 1.4, size: 2, count: 30 });
+      ice.decal(DECAL.wave, p.x, p.y, p.z, 8, 0.6);
+      ice.decal(DECAL.frost, p.x, p.y, p.z, 6, 7, 0.9);
+      ice.burst(p.x, p.y + 1.2, p.z, FXC.iceRim, { count: 28, speed: 9, life: 1.1, grav: 9, size: 0.4 });
+      ice.burst(p.x, p.y + 0.6, p.z, FXC.frost, { count: 24, speed: 5, life: 1.6, grav: 1, size: 0.7 });
+    });
   }
 
   private playIfNear(playerPos: Vector3, fn: () => void, range = 28): void {
@@ -1718,6 +1824,8 @@ export class Mob implements Hittable {
   }
 
   dispose(): void {
+    this.iceAura?.release();
+    this.iceAura = null;
     this.reflectShield?.material?.dispose();
     this.reflectShield?.dispose();
     for (const l of this.lodSlots ?? []) l.batch.release(l.slot);

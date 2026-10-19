@@ -81,7 +81,7 @@ import {
   type AutoGoMsg,
 } from "#shared/net/messages";
 import { ADMIN_NICK, NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL } from "#shared/constants";
-import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, mobArmorBits, type CatDefense } from "#shared/mobs";
+import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, ICE_GIANT, mobArmorBits, type CatDefense } from "#shared/mobs";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
 import { skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
 import { RaidFight, type RaidHost } from "./raidFight";
@@ -387,6 +387,10 @@ interface Runtime {
   /** Паутина: стаки (1..WEB.maxStacks) и до какой секунды они живут. */
   webStacks: number;
   webStackUntil: number;
+  /** «Обморожение» Ледяного гиганта: стаки, до какой секунды живут и до какой новые не копятся (после «Ледяной глыбы»). */
+  frostStacks: number;
+  frostUntil: number;
+  frostImmuneUntil: number;
   /** Кровотечение: до какой секунды, урон в секунду, кто нанёс, накопитель тика. */
   bleedUntil: number;
   bleedDps: number;
@@ -6506,6 +6510,9 @@ export class ZoneRoom extends Room<ZoneState> {
       rootedUntil: 0,
       webStacks: 0,
       webStackUntil: 0,
+      frostStacks: 0,
+      frostUntil: 0,
+      frostImmuneUntil: 0,
       bleedUntil: 0,
       bleedDps: 0,
       bleedBy: "",
@@ -10305,7 +10312,7 @@ export class ZoneRoom extends Room<ZoneState> {
       s.under = m.underground ? 1 : 0;
       s.burning = Math.min(255, Math.ceil(m.burningT));
       s.bleeding = Math.min(255, Math.ceil(m.bleedT));
-      s.enraged = m.enraged ? 1 : 0; // босс и разъярённый элита события
+      s.enraged = m.enraged || m.giantFury ? 1 : 0; // босс, разъярённый элита события, «Ледяная ярость» гиганта
       s.reflecting = m.reflectT > 0 ? 1 : 0;
       if (m.scarecrow || m.practice) {
         const info = this.scarecrowText(m.id);
@@ -10337,6 +10344,15 @@ export class ZoneRoom extends Room<ZoneState> {
           this.addDanger(f.x, f.z, f.r + 0.6, (f.d ?? 1) + 0.2, f.k === "leapMark" && inDunRegion(f.x, f.z));
         // Ледяной круг (ледяной демон, Лунный аватар) — тоже выбегают.
         if (f.k === "freezeMark") this.addDanger(f.x, f.z, FREEZE.radius + 0.6, (f.d ?? 1) + 0.2);
+        // Ледяной гигант: круг раскола, место падения глыбы и полоса разлома (кругами вдоль неё).
+        if ((f.k === "giantSlam" || f.k === "giantThrowMark") && f.r) this.addDanger(f.x, f.z, f.r + 0.8, (f.d ?? 1) + 0.2);
+        if (f.k === "giantFissure" && f.r && f.x2 !== undefined && f.z2 !== undefined) {
+          const G = ICE_GIANT.fissure;
+          for (let k = 0; k <= 6; k++) {
+            const u = k / 6;
+            this.addDanger(f.x + (f.x2 - f.x) * u, f.z + (f.z2 - f.z) * u, f.r + 1.2, (f.d ?? 1) + (G.len * u) / G.speed + 0.3);
+          }
+        }
       }
       m.fx.length = 0;
     }
@@ -10735,11 +10751,36 @@ export class ZoneRoom extends Room<ZoneState> {
       rt.webStackUntil = this.elapsed + WEB.stackSec;
       h = { ...h, slowSec: WEB.stackSec, slowFrac: rt.webStacks * WEB.perStack };
     }
-    if (!dodged && !(block.by === 1 && block.mult === 0)) {
+    // «Обморожение» (Ледяной гигант): стаки копятся, каждый замедляет сильнее; на maxStacks — «Ледяная глыба».
+    const landed = !dodged && !(block.by === 1 && block.mult === 0);
+    if (h.frost && landed && rt.frostImmuneUntil <= this.elapsed) {
+      const F = ICE_GIANT.frost;
+      if (rt.frostUntil < this.elapsed) rt.frostStacks = 0;
+      rt.frostStacks += h.frost;
+      if (rt.frostStacks >= F.maxStacks) {
+        rt.frostStacks = 0;
+        rt.frostUntil = 0;
+        rt.frostImmuneUntil = this.elapsed + F.freezeSec + F.immuneSec;
+        h = { ...h, stunSec: Math.max(h.stunSec ?? 0, F.freezeSec) };
+        this.broadcast(MSG.act, { k: "iceEncase", id: h.target, x: p.head.x, y: p.head.y, z: p.head.z, d: F.freezeSec } satisfies ActRelay);
+      } else {
+        rt.frostUntil = this.elapsed + F.stackSec;
+        this.broadcast(MSG.act, { k: "frostStack", id: h.target, x: p.head.x, y: p.head.y, z: p.head.z, d: rt.frostStacks } satisfies ActRelay);
+      }
+    }
+    // Пока висят стаки обморожения — любое замедление (и аура «Стужа») не слабее, чем от стаков.
+    if (rt.frostUntil > this.elapsed && rt.frostStacks > 0) {
+      const frac = rt.frostStacks * ICE_GIANT.frost.perStack;
+      const left = rt.frostUntil - this.elapsed;
+      h = { ...h, slowSec: Math.max(h.slowSec ?? 0, left), slowFrac: Math.max(h.slowSec ? (h.slowFrac ?? 0.4) : 0, frac) };
+    }
+    if (landed) {
       if (h.stunSec) rt.stunnedUntil = this.elapsed + h.stunSec;
       if (h.slowSec) {
-        rt.slowUntil = this.elapsed + h.slowSec;
-        rt.slowFrac = h.slowFrac ?? 0.4;
+        // Замедления не перебивают друг друга: пока прежнее действует, берём сильнейшее.
+        const still = rt.slowUntil > this.elapsed;
+        rt.slowFrac = still ? Math.max(rt.slowFrac, h.slowFrac ?? 0.4) : (h.slowFrac ?? 0.4);
+        rt.slowUntil = Math.max(rt.slowUntil, this.elapsed + h.slowSec);
       }
       if (h.rootSec) rt.rootedUntil = this.elapsed + h.rootSec;
       // Кровотечение (Метатель копий): доля прошедшего урона в секунду, тикает в tickBleeds.
@@ -10795,7 +10836,8 @@ export class ZoneRoom extends Room<ZoneState> {
       z: relayZ,
       mobId: block.by === 3 ? h.byMob : undefined,
     };
-    this.broadcast(MSG.act, relay, { except: this.clientOf(h.target) });
+    // Наледь и аура «Стужа» (урона нет — только замедление) соседям не слышны.
+    if (h.dmg > 0) this.broadcast(MSG.act, relay, { except: this.clientOf(h.target) });
 
     if (p.hp <= 0) {
       p.dead = 1;
@@ -11296,6 +11338,9 @@ export class ZoneRoom extends Room<ZoneState> {
       rootedUntil: 0,
       webStacks: 0,
       webStackUntil: 0,
+      frostStacks: 0,
+      frostUntil: 0,
+      frostImmuneUntil: 0,
       bleedUntil: 0,
       bleedDps: 0,
       bleedBy: "",

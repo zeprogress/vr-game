@@ -3,7 +3,7 @@ import { QUEST } from "#shared/quests";
 import { AFFIX, BOW, COMBAT, DROP_CHANCE, WEAPON_DROP_MUL, UNIQUE_DROP_MUL, goldDropMulForLevel, WORLD, PLAYER } from "#shared/constants";
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { RAID } from "#shared/raid";
-import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, WEB, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
+import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, WEB, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER, ICE_GIANT, MOB_SWING } from "#shared/mobs";
 import { DUN_MOB_CAMPS, DUN_X, DUN_Z, dunFloorLocal, dunProject, dunWorld, inDunRegion } from "#shared/dungeon";
 import { ARMOR_DROP, ARMOR_PARTS, armorBaseLevelMul, armorGoldDropChance, armorLegendaryDropChance, armorLevelMul, ARMOR_LEVEL_GATE, levelFadeMul, rollArmor, type ArmorInstance } from "#shared/armor";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
@@ -182,6 +182,8 @@ export interface PlayerHit {
   rootSec?: number;
   /** Паутина (паук): +1 стак на попадание; замедление считает сервер по числу стаков. */
   webStack?: boolean;
+  /** «Обморожение» Ледяного гиганта: сколько стаков кладёт попадание (ICE_GIANT.frost, считает комната). */
+  frost?: number;
   /** Сила отбрасывания ОТ источника удара, м/с (спец-атака моба). */
   knockback?: number;
   /** Урон средой (ядовитое облако): щит/меч/уворот не спасают. */
@@ -199,7 +201,8 @@ export interface PlayerHit {
 
 /** Событие моба для визуала у клиентов (ZoneRoom рассылает как MSG.act). */
 export interface MobFx {
-  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "spikeMark" | "spikeHit" | "chiefHeal" | "freezeMark" | "freezeHit" | "leapMark" | "leapHit" | "caltrops" | "burrowDive" | "burrowTrail" | "burrowMark" | "burrowHit" | "stormMark" | "stormHit" | "stormJump" | "ninjaSmoke" | "parryOn" | "parryHit" | "pierceShot";
+  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "spikeMark" | "spikeHit" | "chiefHeal" | "freezeMark" | "freezeHit" | "leapMark" | "leapHit" | "caltrops" | "burrowDive" | "burrowTrail" | "burrowMark" | "burrowHit" | "stormMark" | "stormHit" | "stormJump" | "ninjaSmoke" | "parryOn" | "parryHit" | "pierceShot"
+    | "giantSlam" | "giantSlamHit" | "giantThrowMark" | "giantThrowFly" | "giantThrowHit" | "giantFissure" | "giantFissureGo" | "giantFury";
   /** Радиус области, м (прыжок Скалолома, колючки). */
   r?: number;
   x: number;
@@ -275,6 +278,40 @@ export class Mob {
   private strikeT = 0;
   private strikeTo: string | null = null;
   private strikeDmg = 0;
+  /** От замаха до урона ближнего удара, с (EliteMobDef.strikeDelay; иначе MOB.strikeDelay). */
+  private readonly strikeDelay: number;
+  /** Ледяной гигант (ICE_GIANT): умения и их таймеры. */
+  readonly iceGiant: boolean;
+  /** Опыт за убийство — во столько «убийств своего уровня» (EliteMobDef.killXpMul). */
+  readonly killXpMul: number;
+  private giantAuraT = 0;
+  /** Сколько ещё стоит на месте, доигрывая клип умения (раскол, бросок, разлом, рёв). */
+  private giantCastT = 0;
+  private giantYaw = 0;
+  /** Последний удар вблизи — левой (чередование клипов Attack / Attack2). */
+  private giantLeft = false;
+  /** Пауза между умениями, чтобы между ними он ещё и бил когтями. */
+  private giantGapT = 3;
+  private giantSlamCd = 6;
+  private giantSlamT = 0;
+  private giantThrowCd = 4;
+  private giantThrowT = 0;
+  private giantFlyT = 0;
+  private giantThrowX = 0;
+  private giantThrowZ = 0;
+  private giantFissureCd = 5;
+  private giantFissureT = 0;
+  /** Бегущий разлом: начало, направление, пройдено (м; <0 — не бежит) и кого уже задел. */
+  private giantFisX = 0;
+  private giantFisZ = 0;
+  private giantFisDx = 0;
+  private giantFisDz = 1;
+  private giantFisRun = -1;
+  private readonly giantFisHit = new Set<string>();
+  /** «Ледяная ярость» включилась (один раз за жизнь). */
+  giantFury = false;
+  /** Наледь от упавших глыб: замедляет, пока стоишь (переживает смерть гиганта до истечения). */
+  private readonly icePatches: { x: number; z: number; t: number; tickT: number }[] = [];
   /** Плевун: сколько уже пятится и сколько ещё нельзя пятиться. */
   private retreatT = 0;
   private restT = 0;
@@ -666,6 +703,7 @@ export class Mob {
    * Прыгун, ждущий готовности LEAP, стоит на дистанции прыжка. Без погони — бродит без пауз.
    */
   private walkDir(chasing: boolean, dist: number, dx: number, dz: number): [number, number] {
+    if (this.giantCastT > 0) return [0, 0]; // Ледяной гигант доигрывает умение
     if (chasing) {
       // Стрелок (webber): встаёт на дистанции выстрела и плюётся сгустками; подошёл герой вплотную — бьёт вблизи.
       if (this.ranged) {
@@ -688,6 +726,185 @@ export class Mob {
   swing(kind = 0): void {
     this.attackKind = kind;
     this.attackSeq = (this.attackSeq + 1) & 0xffff;
+  }
+
+  /** Ледяной гигант доигрывает клип умения: стоит на месте и когтями не бьёт. */
+  get giantCasting(): boolean {
+    return this.giantCastT > 0;
+  }
+
+  /** Сорвать замах умения гиганта (оглушили, ярость). Летящая глыба и бегущий разлом — уже не остановить. */
+  private cancelGiantCast(): void {
+    this.giantSlamT = 0;
+    this.giantThrowT = 0;
+    this.giantFissureT = 0;
+    this.giantCastT = 0;
+  }
+
+  /**
+   * Ледяной гигант (ICE_GIANT): аура «Стужа», «Ледяная ярость», умения — раскол (толпа вокруг), глыба и разлом
+   * (по дальним). Умения не накладываются: пока доигрывается клип одного, гигант стоит и когтями не бьёт.
+   */
+  private tickGiant(
+    dt: number, players: SimPlayer[], hits: PlayerHit[], chasing: boolean, np: SimPlayer | null, busy: boolean,
+  ): void {
+    const G = ICE_GIANT;
+    const base = MOB.attackDamage * this.dmgMul;
+    const cdK = this.giantFury ? G.fury.cdMul : 1;
+    const cdRnd = (): number => cdK * (0.85 + Math.random() * 0.3);
+    // «Ледяная ярость»: на пороге HP ревёт (стоит) — дальше аура шире и умения чаще.
+    if (!this.giantFury && this.hp / this.maxHp < G.fury.at) {
+      this.giantFury = true;
+      this.cancelGiantCast();
+      this.giantCastT = G.fury.roarSec;
+      this.giantYaw = this.yaw;
+      this.swing(MOB_SWING.roar);
+      this.fx.push({ k: "giantFury", x: this.x, z: this.z, d: G.fury.roarSec });
+    }
+    // «Стужа»: в бою раз в tick — замедление всем в радиусе (урона нет).
+    this.giantAuraT -= dt;
+    if (this.giantAuraT <= 0) {
+      this.giantAuraT += G.aura.tick;
+      if (this.aggroed) {
+        const r = G.aura.radius * (this.giantFury ? G.fury.auraMul : 1);
+        for (const p of players) {
+          if (Math.hypot(p.x - this.x, p.z - this.z) > r) continue;
+          hits.push({
+            target: p.sessionId, dmg: 0, fromX: this.x, fromZ: this.z, projectile: false, byMob: this.id,
+            dot: true, slowSec: G.aura.slowSec, slowFrac: G.aura.slowFrac,
+          });
+        }
+      }
+    }
+    if (this.giantSlamCd > 0) this.giantSlamCd -= dt;
+    if (this.giantThrowCd > 0) this.giantThrowCd -= dt;
+    if (this.giantFissureCd > 0) this.giantFissureCd -= dt;
+    if (this.giantGapT > 0) this.giantGapT -= dt;
+    if (this.giantCastT > 0) this.giantCastT -= dt;
+    // Оглушили посреди замаха — умение сорвано (контрплей воину).
+    if (busy && (this.giantSlamT > 0 || this.giantThrowT > 0 || this.giantFissureT > 0)) this.cancelGiantCast();
+
+    // «Ледяной раскол»: двумя руками оземь — удар по кругу вокруг себя, отброс, 2 стака.
+    if (this.giantSlamT > 0) {
+      this.giantSlamT -= dt;
+      if (this.giantSlamT <= 0) {
+        this.fx.push({ k: "giantSlamHit", x: this.x, z: this.z, r: G.slam.radius });
+        for (const p of players) {
+          if (Math.hypot(p.x - this.x, p.z - this.z) > G.slam.radius) continue;
+          hits.push({
+            target: p.sessionId, dmg: base * G.slam.dmgMul, fromX: this.x, fromZ: this.z, projectile: false, byMob: this.id,
+            knockback: G.slam.knockback, frost: G.slam.stacks,
+          });
+        }
+      }
+    }
+    // «Ледяная глыба»: замах → бросок (глыба летит flight с) → удар по кругу и наледь на земле.
+    if (this.giantThrowT > 0) {
+      this.giantThrowT -= dt;
+      if (this.giantThrowT <= 0) {
+        this.giantFlyT = G.throw.flight;
+        this.fx.push({ k: "giantThrowFly", x: this.giantThrowX, z: this.giantThrowZ, x2: this.x, z2: this.z, d: G.throw.flight });
+      }
+    } else if (this.giantFlyT > 0) {
+      this.giantFlyT -= dt;
+      if (this.giantFlyT <= 0) {
+        const tx = this.giantThrowX;
+        const tz = this.giantThrowZ;
+        this.fx.push({ k: "giantThrowHit", x: tx, z: tz, r: G.throw.patchR, d: G.throw.patchSec });
+        this.icePatches.push({ x: tx, z: tz, t: G.throw.patchSec, tickT: 0.3 });
+        for (const p of players) {
+          if (Math.hypot(p.x - tx, p.z - tz) > G.throw.radius) continue;
+          hits.push({
+            target: p.sessionId, dmg: base * G.throw.dmgMul, fromX: tx, fromZ: tz, projectile: false, phys: true, byMob: this.id,
+            frost: G.throw.stacks,
+          });
+        }
+      }
+    }
+    // «Ледяной разлом»: замах → гряда шипов бежит по прямой со скоростью speed; задевает каждого раз.
+    if (this.giantFissureT > 0) {
+      this.giantFissureT -= dt;
+      if (this.giantFissureT <= 0) {
+        this.giantFisRun = 0;
+        this.giantFisHit.clear();
+        this.fx.push({
+          k: "giantFissureGo", x: this.giantFisX, z: this.giantFisZ,
+          x2: this.giantFisX + this.giantFisDx * G.fissure.len, z2: this.giantFisZ + this.giantFisDz * G.fissure.len,
+          d: G.fissure.len / G.fissure.speed, r: G.fissure.halfWidth,
+        });
+      }
+    }
+    if (this.giantFisRun >= 0) {
+      const from = this.giantFisRun;
+      this.giantFisRun = Math.min(G.fissure.len, from + G.fissure.speed * dt);
+      for (const p of players) {
+        if (this.giantFisHit.has(p.sessionId)) continue;
+        const rx = p.x - this.giantFisX;
+        const rz = p.z - this.giantFisZ;
+        const along = rx * this.giantFisDx + rz * this.giantFisDz;
+        if (along < from - 0.6 || along > this.giantFisRun) continue;
+        if (Math.abs(rx * this.giantFisDz - rz * this.giantFisDx) > G.fissure.halfWidth + PLAYER.radius) continue;
+        this.giantFisHit.add(p.sessionId);
+        hits.push({
+          target: p.sessionId, dmg: base * G.fissure.dmgMul, fromX: p.x - this.giantFisDx, fromZ: p.z - this.giantFisDz,
+          projectile: false, byMob: this.id, stunSec: G.fissure.stunSec, frost: G.fissure.stacks,
+        });
+      }
+      if (this.giantFisRun >= G.fissure.len) this.giantFisRun = -1;
+    }
+
+    // Новое умение: только в погоне, не оглушён, клип прошлого доигран и выдержана пауза.
+    if (!chasing || !np || busy || this.giantCastT > 0 || this.giantGapT > 0) return;
+    let near = 0;
+    let far: SimPlayer | null = null;
+    let farD = 0;
+    for (const p of players) {
+      const d = Math.hypot(p.x - this.x, p.z - this.z);
+      if (d < G.slam.radius * 0.8) near++;
+      if (d > farD && d <= G.throw.maxDist) {
+        farD = d;
+        far = p;
+      }
+    }
+    const start = (kind: number, clip: number, yaw: number): void => {
+      this.giantCastT = clip - 0.25;
+      this.giantGapT = G.gap + clip;
+      this.giantYaw = yaw;
+      this.swing(kind);
+    };
+    if (this.giantSlamCd <= 0 && near >= (this.giantFury ? 1 : G.slam.minHeroes)) {
+      this.giantSlamT = G.slam.windup;
+      this.giantSlamCd = G.slam.cooldown * cdRnd();
+      start(MOB_SWING.slam, G.clipSec.slam, this.yaw);
+      this.fx.push({ k: "giantSlam", x: this.x, z: this.z, r: G.slam.radius, d: G.slam.windup });
+      return;
+    }
+    if (!far || farD < 1e-3) return;
+    const fx = (far.x - this.x) / farD;
+    const fz = (far.z - this.z) / farD;
+    if (this.giantThrowCd <= 0 && farD >= G.throw.minDist) {
+      this.giantThrowT = G.throw.windup;
+      this.giantThrowCd = G.throw.cooldown * cdRnd();
+      this.giantThrowX = far.x;
+      this.giantThrowZ = far.z;
+      start(MOB_SWING.throw, G.clipSec.throw, Math.atan2(fx, fz));
+      this.fx.push({ k: "giantThrowMark", x: far.x, z: far.z, r: G.throw.radius, d: G.throw.windup + G.throw.flight });
+      return;
+    }
+    if (this.giantFissureCd <= 0 && farD >= G.fissure.minDist && farD <= G.fissure.maxDist) {
+      const off = MOB.bodyRadius * this.scale * 0.6;
+      this.giantFisDx = fx;
+      this.giantFisDz = fz;
+      this.giantFisX = this.x + fx * off;
+      this.giantFisZ = this.z + fz * off;
+      this.giantFissureT = G.fissure.windup;
+      this.giantFissureCd = G.fissure.cooldown * cdRnd();
+      start(MOB_SWING.fissure, G.clipSec.fissure, Math.atan2(fx, fz));
+      this.fx.push({
+        k: "giantFissure", x: this.giantFisX, z: this.giantFisZ,
+        x2: this.giantFisX + fx * G.fissure.len, z2: this.giantFisZ + fz * G.fissure.len, d: G.fissure.windup, r: G.fissure.halfWidth,
+      });
+    }
   }
 
   constructor(
@@ -763,8 +980,14 @@ export class Mob {
       /** Вожак лагеря (задание «Вожак»): сильнее, крупнее, реже возрождается. */
       champ?: boolean;
       respawnSec?: number;
+      iceGiant?: boolean;
+      strikeDelay?: number;
+      killXpMul?: number;
     } = {},
   ) {
+    this.iceGiant = opts.iceGiant ?? false;
+    this.strikeDelay = opts.strikeDelay ?? MOB.strikeDelay;
+    this.killXpMul = opts.killXpMul ?? 1;
     this.campType = opts.campType ?? "";
     this.champ = opts.champ ?? false;
     this.respawnSec = opts.respawnSec ?? MOB.respawn;
@@ -1106,6 +1329,23 @@ export class Mob {
       }
       if (zn.t <= 0) this.sporeZones.splice(i, 1);
     }
+    // Наледь Ледяного гиганта: стоишь на ней — бег медленнее (урона нет); живёт и после его смерти.
+    for (let i = this.icePatches.length - 1; i >= 0; i--) {
+      const ip = this.icePatches[i];
+      ip.t -= dt;
+      ip.tickT -= dt;
+      if (ip.tickT <= 0) {
+        ip.tickT += 0.5;
+        for (const p of players) {
+          if (Math.hypot(p.x - ip.x, p.z - ip.z) > ICE_GIANT.throw.patchR) continue;
+          hits.push({
+            target: p.sessionId, dmg: 0, fromX: ip.x, fromZ: ip.z, projectile: false, byMob: this.id, dot: true,
+            slowSec: 0.7, slowFrac: ICE_GIANT.throw.patchSlow,
+          });
+        }
+      }
+      if (ip.t <= 0) this.icePatches.splice(i, 1);
+    }
     if (this.stunnedT > 0) this.stunnedT = Math.max(0, this.stunnedT - dt);
     // Плевун: отход выдыхается, потом пауза, в которую его можно догнать.
     if (this.restT > 0) {
@@ -1252,6 +1492,7 @@ export class Mob {
 
     const busy = this.stunnedT > 0 || this.rootedT > 0;
     const rage45 = this.enraged ? BOSS.rageDamageMult : 1;
+    if (this.iceGiant) this.tickGiant(dt, players, hits, chasing, np, busy);
     // 45 ур. Землерой: ныряет, под землёй неуязвим и ползёт к герою, круг под ним — и выныривает.
     if (this.burrower) {
       if (this.burrowCd > 0) this.burrowCd -= dt;
@@ -2114,6 +2355,7 @@ export class Mob {
     }
 
     if (chasing && !bossFacingMeadow) this.yaw = Math.atan2(dx, dz);
+    if (this.giantCastT > 0) this.yaw = this.giantYaw; // раскол, бросок, разлом — лицом к цели умения
     if (bossFacingMeadow) {
       let dyaw = this.restYaw - this.yaw;
       while (dyaw > Math.PI) dyaw -= Math.PI * 2;
@@ -2128,7 +2370,22 @@ export class Mob {
         this.strikeT = 0;
         const tp = this.strikeTo ? players.find((q) => q.sessionId === this.strikeTo) : undefined;
         this.strikeTo = null;
-        if (tp && !this.dead && Math.hypot(tp.x - this.x, tp.z - this.z) < this.hitReach() + 0.6) {
+        if (this.iceGiant && !this.dead) {
+          // «Ледяной размах»: когти по дуге перед собой — все герои в ней, каждому стак «Обморожения».
+          const fx = Math.sin(this.yaw);
+          const fz = Math.cos(this.yaw);
+          const reach = this.hitReach() + 0.6;
+          const cosHalf = Math.cos(ICE_GIANT.cleaveHalf);
+          for (const q of players) {
+            const qx = q.x - this.x;
+            const qz = q.z - this.z;
+            const qd = Math.hypot(qx, qz);
+            if (qd > reach || (qd > 1e-3 && (qx * fx + qz * fz) / qd < cosHalf)) continue;
+            hits.push({
+              target: q.sessionId, dmg: this.strikeDmg, fromX: this.x, fromZ: this.z, projectile: false, byMob: this.id, frost: 1,
+            });
+          }
+        } else if (tp && !this.dead && Math.hypot(tp.x - this.x, tp.z - this.z) < this.hitReach() + 0.6) {
           hits.push({
             target: tp.sessionId,
             dmg: this.strikeDmg,
@@ -2149,11 +2406,13 @@ export class Mob {
           this.swing();
           spit(this, np);
         }
-      } else if (dist < this.hitReach() && this.attackCd <= 0) {
+      } else if (dist < this.hitReach() && this.attackCd <= 0 && !this.giantCasting) {
         this.attackCd = this.atkCooldown;
-        this.swing();
+        // Ледяной гигант чередует лапы: правой (Attack) и левой (Attack2).
+        if (this.iceGiant) this.giantLeft = !this.giantLeft;
+        this.swing(this.iceGiant && this.giantLeft ? MOB_SWING.swipe2 : 0);
         // Урон — не сейчас, а в момент удара на экране (после замаха); см. MOB.strikeDelay.
-        this.strikeT = MOB.strikeDelay;
+        this.strikeT = this.strikeDelay;
         this.strikeTo = np.sessionId;
         this.strikeDmg = MOB.attackDamage * this.dmgMul * rageDmg;
         this.strikePhys = this.physEvery > 0 && ++this.strikeN % this.physEvery === 0;
@@ -2202,6 +2461,16 @@ export class Mob {
     this.immune = false;
     this.stormT = 0;
     this.cloneStep = 0;
+    if (this.iceGiant) {
+      this.giantFury = false;
+      this.cancelGiantCast();
+      this.giantFlyT = 0;
+      this.giantFisRun = -1;
+      this.giantGapT = 3;
+      this.giantSlamCd = 6;
+      this.giantThrowCd = 4;
+      this.giantFissureCd = 5;
+    }
     this.vx = this.vy = this.vz = 0;
     this.grounded = false;
     if (this.faceRest) this.yaw = this.restYaw;
@@ -2445,6 +2714,7 @@ export function eliteOpts(d: EliteMobDef): NonNullable<ConstructorParameters<typ
     speedMul: d.speedMul, dodge: d.dodge, regen: d.regen, puller: d.puller, charger: d.charger, reflector: d.reflector,
     spiker: d.spiker, healer: d.healer, freezer: d.freezer, webber: d.web === true && Math.random() < WEB.share, quietMagic: d.quietMagic, shot: d.shot, leaper: d.leaper, leapCooldown: d.leapCooldown, walksOnly: d.walksOnly, packFrenzy: d.packFrenzy,
     burrower: d.burrower, stormCaller: d.stormCaller, cloner: d.cloner, parry: d.parry, anchored: d.anchored,
+    iceGiant: d.iceGiant, strikeDelay: d.strikeDelay, killXpMul: d.killXpMul, respawnSec: d.respawnSec,
   };
 }
 
@@ -2570,7 +2840,7 @@ export class ZoneSim {
     const dunCamps: (typeof MOB_CAMPS)[number][] = DUN_MOB_CAMPS.map((d) => {
       const w = dunWorld(d.u, d.v);
       // Вожак есть и в подземелье: первый моб каждой группы (как в лагерях мира).
-      return { x: w.x, z: w.z, type: d.type, count: d.count, spread: d.spread };
+      return { x: w.x, z: w.z, type: d.type, count: d.count, spread: d.spread, noChamp: d.noChamp };
     });
     for (const camp of [...MOB_CAMPS, ...dunCamps]) {
       const def = ELITE_MOBS[camp.type];
@@ -2589,7 +2859,7 @@ export class ZoneSim {
           ...eliteOpts(def),
           campType: camp.type,
           champ: !!champ,
-          respawnSec: champ ? CHAMP_RESPAWN : undefined,
+          respawnSec: champ ? CHAMP_RESPAWN : def.respawnSec,
           name: champ ? `Вожак — ${def.name}` : def.name,
           hp: def.hp * (champ?.hpMul ?? 1) * (def.champHpMul ?? 1),
           dmgMul: def.dmgMul * (champ?.dmgMul ?? 1),
@@ -3572,7 +3842,7 @@ export class ZoneSim {
     if (total <= 0 || pool <= 0) return;
     // Опыт — доля одного убийства (killXp), делится по вкладу; уровень моба — для соразмерности.
     for (const [owner, d] of parts) {
-      this.mobXpShare.push({ owner, frac: d / total, lvl: m.eliteLevel });
+      this.mobXpShare.push({ owner, frac: (d / total) * m.killXpMul, lvl: m.eliteLevel });
     }
   }
 

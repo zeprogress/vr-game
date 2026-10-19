@@ -9,8 +9,14 @@ import { WORLD } from "./constants";
 /** Добавка к радиусу попадания для мелких летающих мобов (пчёлы): по ним трудно попасть снарядом/стрелой. */
 export const FLYER_HIT_BONUS = 0.35;
 
-/** Вид замаха моба (MobState.attackKind): укус — по умолчанию, остальное — свой клип босса на клиенте. */
-export const MOB_SWING = { bite: 0, claw: 1, tail: 2, breath: 3, wings: 4, magic: 5 } as const;
+/**
+ * Вид замаха моба (MobState.attackKind): укус — по умолчанию, остальное — свой клип босса на клиенте.
+ * 6–10 — Ледяной гигант (ICE_GIANT): удар левой, «Ледяной раскол», бросок глыбы, «Ледяной разлом», рёв.
+ */
+export const MOB_SWING = {
+  bite: 0, claw: 1, tail: 2, breath: 3, wings: 4, magic: 5,
+  swipe2: 6, slam: 7, throw: 8, fissure: 9, roar: 10,
+} as const;
 
 export const MOB = {
   /** Общий множитель урона всех мобов и боссов по героям (2026-10-13: +10%). Применяется в ZoneRoom.hurtPlayer и TowerRoom.hurtHero. */
@@ -332,6 +338,21 @@ export interface EliteMobDef {
   attackClip?: string;
   /** Без сжатия/растяжения тела (прыжок, замах, телеграф): у модели свои клипы. Скалолом, Владыка. */
   noSquash?: boolean;
+  /** Ледяной гигант: аура холода, стаки обморожения, раскол, бросок глыбы, разлом, ярость (см. ICE_GIANT). */
+  iceGiant?: boolean;
+  /** Ближний удар: от замаха до урона, с (по клипу модели; без него — MOB.strikeDelay). */
+  strikeDelay?: number;
+  /** Сколько длится клип удара вблизи, с (клиент держит его поверх шага; без него — 0.8). */
+  attackSec?: number;
+  /** Скорость моба (м/с в мире), при которой клипы шага и бега идут в своём темпе — ноги не скользят. */
+  walkClipSpeed?: number;
+  runClipSpeed?: number;
+  /** Плавный переход между клипами модели (без рывка позы). */
+  blendAnims?: boolean;
+  /** Опыт за убийство — во столько «убийств своего уровня» (делится по вкладу). Танк для толпы — щедрее. */
+  killXpMul?: number;
+  /** Возрождение, с (по умолчанию MOB.respawn) — редкие крупные мобы возвращаются не сразу. */
+  respawnSec?: number;
 }
 
 /**
@@ -697,6 +718,53 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     ringMul: 10, // кольца: ×10 сверх элиты (2026-10-14)
     sepMul: 0.5, // расталкивание: тело жнеца ≈0.6 м вместо ≈1.2 м (только толпа; удар не меняется)
   },
+  // Ледяной гигант 57 ур. (2026-10-19): редкий танк для толпы — ≈5.8 м, ходит за героями и бьёт вблизи
+  // (размах когтями по дуге), замедляет всех: аура «Стужа», стаки «Обморожения» → «Ледяная глыба».
+  // Дальних достаёт броском глыбы и разломом, толпу вокруг — «Ледяным расколом». Механики — ICE_GIANT.
+  // Модель: art/models/IceGiant.json + tools/blender/icegiant_anim.py → public/models/gen/IceGiant.glb.
+  iceGiant: {
+    model: "monIceGiant", name: "Ледяной гигант",
+    blurb: "аура холода и обморожение (5 стаков — вмерзаешь в лёд), раскол вокруг себя, глыба и разлом по дальним",
+    level: 57, kind: "slime",
+    hp: 260000, dmgMul: 32, xp: 800000000, scaleMul: 6, tint: null,
+    physArmor: 0.2, magicVulnMul: 1.2, // кристаллы держат удар; огонь магии их топит
+    attackCooldown: 2, meleeReach: 4.8, speedMul: 0.8, sepMul: 0.6,
+    iceGiant: true, walksOnly: true, gait: true, noSquash: true, blendAnims: true,
+    strikeDelay: 0.6, attackSec: 1.3, walkClipSpeed: 1.2, runClipSpeed: 2.9,
+    killXpMul: 25, respawnSec: 120, legendaryChance: 0.12, ringMul: 6,
+  },
+};
+
+/**
+ * Ледяной гигант (EliteMobDef.iceGiant). Урон умений — доли обычного удара (MOB.attackDamage · dmgMul).
+ * Все круги и линии — с телеграфом (клип гиганта и знак на земле): из-под удара можно уйти.
+ */
+export const ICE_GIANT = {
+  /** «Стужа»: в бою раз в tick с всем героям в радиусе — замедление (урона нет; щит и уворот не спасают). */
+  aura: { radius: 9, tick: 1, slowSec: 1.4, slowFrac: 0.2 },
+  /**
+   * «Обморожение»: удары гиганта (размах, раскол, глыба, разлом) кладут стаки, каждый — ещё perStack
+   * замедления, живут stackSec с после последнего. На maxStacks — «Ледяная глыба»: герой вмерзает
+   * (оглушение freezeSec), стаки сгорают, immuneSec с новые не копятся.
+   */
+  frost: { perStack: 0.1, maxStacks: 5, stackSec: 7, freezeSec: 2, immuneSec: 5 },
+  /** «Ледяной размах» (обычный удар): все герои в дуге ±cleaveHalf рад перед гигантом. */
+  cleaveHalf: 1.05,
+  /** «Ледяной раскол»: двумя руками оземь — круг вокруг себя, шипы, отбрасывание. Нужно minHeroes героев рядом. */
+  slam: { cooldown: 15, windup: 1.3, radius: 9, dmgMul: 2, knockback: 10, stacks: 2, minHeroes: 2 },
+  /** «Ледяная глыба»: в дальнего героя — круг на земле, удар по кругу и наледь (замедляет, пока стоишь). */
+  throw: {
+    cooldown: 11, windup: 1.35, flight: 1.05, minDist: 11, maxDist: 32, radius: 4, dmgMul: 1.8, stacks: 1,
+    patchSec: 8, patchR: 4.5, patchSlow: 0.5,
+  },
+  /** «Ледяной разлом»: кулак в землю — гряда шипов бежит к герою по прямой (полуширина halfWidth). */
+  fissure: { cooldown: 9, windup: 0.85, minDist: 7, maxDist: 24, len: 26, speed: 16, halfWidth: 1.7, dmgMul: 1.4, stunSec: 0.7, stacks: 1 },
+  /** «Ледяная ярость»: на доле HP at — рёв; аура шире, умения чаще. */
+  fury: { at: 0.3, auraMul: 1.35, cdMul: 0.7, roarSec: 2.2 },
+  /** Пауза между умениями, с — между ними он бьёт когтями. */
+  gap: 2.5,
+  /** Длительность клипов модели (tools/blender/icegiant_anim.py), с: пока клип умения идёт, гигант стоит. */
+  clipSec: { attack: 1.3, slam: 2.4, throw: 2.3, fissure: 1.8, roar: 2.2 },
 };
 
 /**

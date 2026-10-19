@@ -2,6 +2,7 @@ import { capWebGpuLights } from "../engine/webgpu";
 import { showCatReport } from "../ui/CatReport";
 import { ClassFx, playClassAct, type ClassActCtx } from "../ui/ClassFx";
 import { SkillVfx } from "../ui/SkillVfx";
+import { playIceGiantAct, type IceGiantCtx } from "../ui/IceGiantAct";
 import { prewarmClassClips } from "../world/classPoses";
 import { BOT_SKIN_MODELS } from "../world/models";
 import { LightFocus } from "../world/lightFocus";
@@ -108,6 +109,8 @@ export class Spectator {
   private readonly classCtx: ClassActCtx;
   /** GPU-эффекты умений (волны, искры, молнии, столбы, зоны). */
   private readonly skillVfx: SkillVfx;
+  /** События Ледяного гиганта → лёд и звук (общий обработчик, ui/IceGiantAct.ts). */
+  private readonly iceCtx: IceGiantCtx;
   private readonly eventBeacon: EventBeacon;
   /** Гасилка ближних деревьев — приезжает вместе с модулем леса. */
   private fadeTrees: ((x: number, z: number) => void) | null = null;
@@ -314,6 +317,13 @@ export class Spectator {
     this.skillVfx.follow = (kind, fid) => this.fxFollow(kind, fid);
     // Клипы классов для всех внешностей — заранее, в фоне (без рывка при появлении ботов).
     setTimeout(() => void prewarmClassClips(this.scene, [...BOT_SKIN_MODELS]), 5000);
+    this.iceCtx = {
+      scene: this.scene,
+      sfx: this.sfx,
+      follow: (kind, fid) => this.fxFollow(kind, fid),
+      bone: (mid, bone) => this.netMobs.getMob(mid)?.boneWorld(bone) ?? null,
+      ground: (gx, gz) => this.groundHeight(gx, gz),
+    };
     this.classCtx = {
       raidTide: () => this.raidFx?.tide(),
       raidFlash: () => this.raidFx?.flash(),
@@ -1680,6 +1690,7 @@ export class Spectator {
     if (Math.hypot(x - cp.x, z - cp.z) > SPEC_RANGE) return;
     const at = { x, y, z };
     if (playClassAct(this.classCtx, k, x, y, z, id, d, x2in, z2in, v, r, mobId)) return;
+    if (playIceGiantAct(this.iceCtx, k, x, y, z, id, d, x2in, z2in, r)) return;
     switch (k) {
       case "swing":
         this.sfx.swordSwing(at);

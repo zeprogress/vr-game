@@ -3,6 +3,7 @@ import { TIER_LOOK } from "#shared/look";
 import { showCatReport } from "../ui/CatReport";
 import { ClassFx, playClassAct, type ClassActCtx } from "../ui/ClassFx";
 import { SkillVfx } from "../ui/SkillVfx";
+import { playIceGiantAct, type IceGiantCtx } from "../ui/IceGiantAct";
 import { iconHtml } from "../ui/icons";
 import { glyph } from "#shared/icons";
 import { prewarmClassClips } from "../world/classPoses";
@@ -223,6 +224,8 @@ export class Game {
   private readonly classCtx: ClassActCtx;
   /** GPU-эффекты умений (волны, искры, молнии, столбы, зоны). */
   private readonly skillVfx: SkillVfx;
+  /** События Ледяного гиганта → лёд и звук (общий обработчик, ui/IceGiantAct.ts). */
+  private readonly iceCtx: IceGiantCtx;
   private fxGround: (x: number, z: number) => number = () => 0;
   /** Метка камеры стрима в мире (Ф10) — видна, пока specActive и specVisible. */
   private specMarker: SpecCamMarker | null = null;
@@ -460,6 +463,13 @@ export class Game {
     this.skillVfx = new SkillVfx(this.scene);
     this.classFx.vfx = this.skillVfx;
     this.skillVfx.follow = (kind, fid) => this.fxFollow(kind, fid);
+    this.iceCtx = {
+      scene: this.scene,
+      sfx: this.sfx,
+      follow: (kind, fid) => this.fxFollow(kind, fid),
+      bone: (mid, bone) => this.netMobs.getMob(mid)?.boneWorld(bone) ?? null,
+      ground: (gx, gz) => this.fxGround(gx, gz),
+    };
     this.classCtx = {
       raidTide: () => this.raidFx?.tide(),
       raidFlash: () => this.raidFx?.flash(),
@@ -4073,6 +4083,7 @@ export class Game {
     // Свой герой (человек) во время замаха ульты стоит на месте.
     if (k === "ultWarn" && id === this.net?.sessionId) this.player.applyStun(d ?? 0);
     if (playClassAct(this.classCtx, k, x, y, z, id, d, x2in, z2in, v, r, mobId)) return;
+    if (playIceGiantAct(this.iceCtx, k, x, y, z, id, d, x2in, z2in, r)) return;
     switch (k) {
       case "swing":
         this.sfx.swordSwing(at);

@@ -12,6 +12,9 @@ export interface SoundAt {
  * Часть звуков объёмная: если передать точку `at`, звук идёт через PannerNode
  * и слышен с той стороны, где источник (моб, взмах, плевок).
  */
+/** Звуки Ледяного гиганта (Sfx.ice). */
+export type IceSound = "step" | "swipe" | "slam" | "spikes" | "roar" | "throw" | "impact" | "freeze" | "shatter" | "death" | "stack";
+
 /** Играющий трек: буфер-источник + свой gain (для кроссфейда). */
 interface MusicVoice {
   src: AudioBufferSourceNode;
@@ -76,6 +79,25 @@ export class Sfx {
   private dragonBreathBuf: AudioBuffer | null = null;
   private dragonRoarBuf: AudioBuffer | null = null;
   private dragonLoading = false;
+  /**
+   * Ледяной гигант (tools/sfx/ice_giant_sfx.py — синтез; рёв и стон — из рёва ASSETS/SFX, ниже тоном):
+   * короткие боевые — WAV (атака в момент вызова), рёв и смерть — MP3.
+   */
+  private static readonly ICE_SFX = {
+    step: "/sfx/giant-step.wav",
+    swipe: "/sfx/giant-swipe.wav",
+    slam: "/sfx/giant-slam.wav",
+    spikes: "/sfx/ice-spikes.wav",
+    roar: "/sfx/giant-roar.mp3",
+    throw: "/sfx/giant-throw.wav",
+    impact: "/sfx/ice-impact.wav",
+    freeze: "/sfx/ice-freeze.wav",
+    shatter: "/sfx/ice-shatter.wav",
+    death: "/sfx/giant-death.mp3",
+    stack: "/sfx/frost-stack.wav",
+  } as const;
+  private readonly iceBufs: Partial<Record<IceSound, AudioBuffer>> = {};
+  private iceLoading = false;
   /** Общая «ручка громкости» музыки → destination. */
   private musicBus: GainNode | null = null;
   /** Множитель громкости 0..1 (слайдер в меню). <0.03 — полная тишина. */
@@ -908,6 +930,38 @@ export class Sfx {
     const play = () => this.playSample(this.dragonRoarBuf!, 1);
     if (at) this.at(at, play);
     else play();
+  }
+
+  /** Один раз подгрузить звуки Ледяного гиганта (зовёт моб при появлении — к первому удару готово). */
+  preloadIceGiant(): void {
+    if (this.iceLoading || !this.ctx) return;
+    this.iceLoading = true;
+    for (const [k, url] of Object.entries(Sfx.ICE_SFX) as [IceSound, string][]) {
+      fetch(url)
+        .then((r) => r.arrayBuffer())
+        .then((a) => new Promise<AudioBuffer>((res, rej) => this.ctx!.decodeAudioData(a, res, rej)))
+        .then((b) => (this.iceBufs[k] = b))
+        .catch(() => {});
+    }
+  }
+
+  /**
+   * Звук Ледяного гиганта (объёмно, если вызван внутри at()). rate — темп/тон (разброс ±jitter, чтобы
+   * повторы — шаги, удары — не звучали одинаково); delay — через сколько секунд (точно по часам звука).
+   */
+  ice(kind: IceSound, gain = 1, jitter = 0.05, delay = 0): void {
+    if (!this.ready()) return;
+    this.preloadIceGiant();
+    const buf = this.iceBufs[kind];
+    if (!buf) return;
+    const src = this.ctx!.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = 1 + (Math.random() * 2 - 1) * jitter;
+    const g = this.ctx!.createGain();
+    g.gain.value = gain;
+    src.connect(g);
+    g.connect(this.spatialAt ? this.panAt(this.spatialAt) : this.master!);
+    src.start(this.t + Math.max(0, delay));
   }
 
   /** Лязг блока. strength: 1 — щит (звонко), <1 — меч (глуше). */
