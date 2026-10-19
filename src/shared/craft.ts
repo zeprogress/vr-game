@@ -477,7 +477,7 @@ export function pcInvCraft(rec: { mats?: unknown; recipes?: unknown; smithXp?: u
 /** Что падает с элитных мобов (ключ ELITE_MOBS): шанс за убийство и сколько штук. Вожак — × CRAFT_DROP_CHAMP. */
 export const CRAFT_DROPS: Partial<Record<string, readonly { id: CraftItemId; chance: number; n?: number }[]>> = {
   spider: [
-    { id: "web", chance: 0.03 }, // 2026-10-19: было 0.25 (пауков много — паутины было слишком много)
+    { id: "web", chance: 0.01 }, // 2026-10-19: было 0.25, потом 0.03 (пауков много — паутины было слишком много)
     { id: "sting", chance: 0.004 },
   ],
   skeletonReaver: [{ id: "bone", chance: 0.25 }],
