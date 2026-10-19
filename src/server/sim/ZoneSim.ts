@@ -2870,7 +2870,7 @@ export class ZoneSim {
     const dunCamps: (typeof MOB_CAMPS)[number][] = DUN_MOB_CAMPS.map((d) => {
       const w = dunWorld(d.u, d.v);
       // Вожак есть и в подземелье: первый моб каждой группы (как в лагерях мира).
-      return { x: w.x, z: w.z, type: d.type, count: d.count, spread: d.spread, noChamp: d.noChamp };
+      return { x: w.x, z: w.z, type: d.type, count: d.count, spread: d.spread, noChamp: d.noChamp, ring: d.ring };
     });
     for (const camp of [...MOB_CAMPS, ...dunCamps]) {
       const def = ELITE_MOBS[camp.type];

@@ -413,7 +413,7 @@ export const DUN_SPOTS = {
  * Лагеря мобов подземелья — в начальных залах (u, v зоны). Отдельно от MOB_CAMPS: боты и задания
  * лагеря мира не выбирают, а этот — внутри подземелья. Спавн — ZoneSim (как у лагерей мира).
  */
-export const DUN_MOB_CAMPS: readonly { u: number; v: number; type: keyof typeof ELITE_MOBS; count: number; spread: number; noChamp?: boolean }[] = [
+export const DUN_MOB_CAMPS: readonly { u: number; v: number; type: keyof typeof ELITE_MOBS; count: number; spread: number; noChamp?: boolean; ring?: number }[] = [
   // Зал руин (B): три плотные группы — запад, восток и дальняя стена; в центре зала — свободно,
   // боты приходят к центру (см. ZoneRoom CAMP_SPOTS) и достают жнецов со всех сторон.
   // Не у края провала (провал — у северной стены, v≈−116), от портала ~74 м.
@@ -425,13 +425,13 @@ export const DUN_MOB_CAMPS: readonly { u: number; v: number; type: keyof typeof 
   { u: 0, v: 10, type: "spider", count: 18, spread: 6 },
   { u: -20, v: -10, type: "spider", count: 18, spread: 6 },
   { u: 0, v: -80, type: "spider", count: 12, spread: 8 },
-  // Ледяной гигант 70 ур. (2026-10-19): только в подземелье, по одному в залах вокруг пауков — в 50–86 м от их
+  // Ледяной гигант 70 ур. (2026-10-19): только в подземелье, по три в залах вокруг пауков (кольцом ~7 м, чтобы не слипались) — в 50–86 м от их
   // лагерей и не ближе 84 м друг к другу: Затопленные ступени (S), Каменный лес (Q), Преддверие храма (G),
   // Кристальная пещера (D). Залы просторные (пол на 16 м вокруг), свод от 22 м — гигант ≈11.5 м.
-  { u: -80, v: 4, type: "iceGiant", count: 1, spread: 2, noChamp: true },
-  { u: 82, v: -6, type: "iceGiant", count: 1, spread: 2, noChamp: true },
-  { u: 0, v: 60, type: "iceGiant", count: 1, spread: 2, noChamp: true },
-  { u: -86, v: -80, type: "iceGiant", count: 1, spread: 2, noChamp: true },
+  { u: -80, v: 4, type: "iceGiant", count: 3, spread: 12, ring: 0.6, noChamp: true },
+  { u: 82, v: -6, type: "iceGiant", count: 3, spread: 12, ring: 0.6, noChamp: true },
+  { u: 0, v: 60, type: "iceGiant", count: 3, spread: 12, ring: 0.6, noChamp: true },
+  { u: -86, v: -80, type: "iceGiant", count: 3, spread: 12, ring: 0.6, noChamp: true },
 ];
 
 // ---------------------------------------------------------------------------
