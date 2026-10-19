@@ -12,6 +12,10 @@ export interface GameUpdate {
 
 export const UPDATES: readonly GameUpdate[] = [
   {
+    at: "2026-10-19 13:00",
+    items: ["Щит отражения у мобов меньше по размеру, отражает 35% урона"],
+  },
+  {
     at: "2026-10-19 12:00",
     items: ["Лук: стрела бьёт сильнее на 10%"],
   },
