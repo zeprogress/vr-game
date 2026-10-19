@@ -199,6 +199,8 @@ export interface EliteMobDef {
   visLift?: number;
   /** Удар вблизи магический: броня от силы не гасит, защищает интеллект; фиолетовая вспышка. */
   magicMelee?: boolean;
+  /** Удар вблизи — магия, но каждый N-й удар физический (броня от силы гасит). */
+  physEvery?: number;
   /** Плюётся паутинным сгустком (корень на попадание) — см. WEB и SHOTS.web. */
   web?: boolean;
   /** Магический удар без белой вспышки над героем (паук: удары вблизи — тихие). */
@@ -682,7 +684,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   spider: {
     model: "monSpider", name: "Паук", blurb: "кусает ядом, опутывает паутиной", level: 60, kind: "slime",
     hp: 14000, dmgMul: 40, xp: 4000000, scaleMul: 1.1, tint: null,
-    magicMelee: true, quietMagic: true, web: true, walksOnly: true, gait: true, noSquash: true, attackClip: "Attack",
+    magicMelee: true, physEvery: 3, quietMagic: true, web: true, walksOnly: true, gait: true, noSquash: true, attackClip: "Attack",
     attackCooldown: 0.6, meleeReach: 1.8, speedMul: 2, champScaleMul: 2.4, champHpMul: 2,
   },
   skeletonReaver: {

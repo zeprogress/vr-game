@@ -554,6 +554,10 @@ export class Mob {
   readonly liftM: number;
   /** Удар вблизи — магия (EliteMobDef.magicMelee). */
   readonly magicMelee: boolean;
+  /** Каждый N-й удар вблизи физический (EliteMobDef.physEvery). */
+  readonly physEvery: number;
+  private strikeN = 0;
+  private strikePhys = false;
   /** Фаза покачивания в полёте (жужжание). */
   private flyBob = Math.random() * 6.28;
 
@@ -697,6 +701,7 @@ export class Mob {
       flying?: boolean;
       visLift?: number;
       magicMelee?: boolean;
+      physEvery?: number;
       rangedArmor?: number;
       physArmor?: number;
       magicArmor?: number;
@@ -765,6 +770,7 @@ export class Mob {
     this.eliteLevel = opts.level ?? 0;
     this.flying = opts.flying ?? false;
     this.magicMelee = opts.magicMelee ?? false;
+    this.physEvery = opts.physEvery ?? 0;
     this.homeX = hx;
     this.homeZ = hz;
     this.x = hx;
@@ -2125,6 +2131,7 @@ export class Mob {
             projectile: false,
             byMob: this.id,
             lifesteal: this.lifesteal || undefined,
+            phys: this.strikePhys || undefined,
           });
         }
       }
@@ -2143,6 +2150,7 @@ export class Mob {
         this.strikeT = MOB.strikeDelay;
         this.strikeTo = np.sessionId;
         this.strikeDmg = MOB.attackDamage * this.dmgMul * rageDmg;
+        this.strikePhys = this.physEvery > 0 && ++this.strikeN % this.physEvery === 0;
         this.vx -= dx * 2;
         this.vz -= dz * 2;
       }
@@ -2423,7 +2431,7 @@ class Bolt {
 export function eliteOpts(d: EliteMobDef): NonNullable<ConstructorParameters<typeof Mob>[3]> {
   return {
     model: d.model, name: d.name, level: d.level, hp: d.hp, dmgMul: d.dmgMul, scaleMul: d.scaleMul, xp: d.xp, ringMul: d.ringMul, sepMul: d.sepMul,
-    flying: d.flying, visLift: d.visLift, magicMelee: d.magicMelee, rangedArmor: d.rangedArmor, physArmor: d.physArmor, magicArmor: d.magicArmor,
+    flying: d.flying, visLift: d.visLift, magicMelee: d.magicMelee, physEvery: d.physEvery, rangedArmor: d.rangedArmor, physArmor: d.physArmor, magicArmor: d.magicArmor,
     magicVulnMul: d.magicVulnMul, critVulnMul: d.critVulnMul, spellAoe: d.spellAoe, novaCaster: d.novaCaster, enrageAt: d.enrageAt,
     splitAt: d.splitAt, splitCount: d.splitCount, splitScaleMul: d.splitScaleMul, splitHpFrac: d.splitHpFrac, splitDmgMul: d.splitDmgMul,
     splitSpeedMul: d.splitSpeedMul, splitReviveSec: d.splitReviveSec, splitXp: d.splitXp, splitChildXp: d.splitChildXp,

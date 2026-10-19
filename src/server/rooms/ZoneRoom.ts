@@ -10562,7 +10562,7 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     // Броня от силы гасит любой урон; интеллект добавляет защиту от снарядов/магии.
     // Магический удар вблизи (Костяной призрак) броню от силы проходит, режется интеллектом.
-    const magicMob = !!h.magic || (!h.projectile && !!h.byMob && !!this.sim.mobs.get(h.byMob)?.magicMelee);
+    const magicMob = !h.phys && (!!h.magic || (!h.projectile && !!h.byMob && !!this.sim.mobs.get(h.byMob)?.magicMelee));
     let dmg = inDmg * block.mult * (magicMob ? 1 - magicResistFrac(p) : 1 - armorFrac(p));
     // Физический снаряд (копьё, шипы 40 ур.) — только броня, без маг. защиты.
     const magicShot = !!h.projectile && !h.phys;
