@@ -1865,6 +1865,8 @@ export class PcInventory {
   private craftRes: { outcome: number; id?: string; found?: string; text: string; at?: number } | null = null;
   /** Нажали «Создать» — удар молота по наковальне, пока не пришёл итог. */
   private craftHitAt = 0;
+  /** Открытый выбор на сцене по нажатию ячейки цепочки (основа, материал, катализатор, метод). */
+  private craftPick: "base" | "mat" | "cat" | "meth" | null = null;
 
   private renderCraft(d: PcInvData): void {
     const c = d.craft ?? { stock: [], book: [], xp: 0 };
@@ -1882,7 +1884,12 @@ export class PcInventory {
       this.craftRes = null;
       this.render();
     };
-    const DEF_HINT = "Собери оружие: основа → материалы → катализатор → метод — и бей «Создать». Наведи на предмет — подсказка здесь.";
+    /** Открыть/закрыть выбор на сцене. */
+    const pickOpen = (k: typeof this.craftPick): void => {
+      this.craftPick = this.craftPick === k ? null : k;
+      redraw();
+    };
+    const DEF_HINT = "Собери оружие: основа → материалы → катализатор → метод (с полок или нажатием ячеек) — и бей «Создать». Наведи на предмет — подсказка здесь.";
     const hintEl = div("pcinv-fg-hint", DEF_HINT);
     /** Подсказка при наведении (на ПК) — без перерисовки окна. */
     const hint = (el: HTMLElement, text: string): void => {
@@ -1897,7 +1904,76 @@ export class PcInventory {
       const lv = Math.min(CRAFT.gemLvCap, parseGem(k)?.lv ?? 1);
       return `провал −${CRAFT.gemFail * lv}, отличный и редкий +${CRAFT.gemUp * lv}`;
     };
-    const root = div("pcinv-forge");
+    const root = div("pcinv-smithy");
+    const item = (row: HTMLElement, html: string, label: string, count: string, state: "" | "on" | "off", help: string, onClick: () => void): void => {
+      const it = div(`pcinv-fg-it${state ? ` ${state}` : ""}`);
+      const ic = div("pcinv-fg-itic");
+      ic.innerHTML = html;
+      if (count) ic.append(div("pcinv-fg-cnt", count));
+      it.append(ic, div("pcinv-fg-itl", label));
+      it.onclick = () => state !== "off" && onClick();
+      hint(it, help);
+      row.append(it);
+    };
+    const full = (): boolean => sel.mats.length >= CRAFT.maxMats;
+    /** Материалы: нажатие кладёт в ячейку (пока есть место и запас). `after` — что сделать после (закрыть выбор). */
+    const fillMats = (row: HTMLElement, after?: () => void): void => {
+      for (const m of CRAFT_MATS) {
+        const have = stock.get(m) ?? 0;
+        item(row, iconHtml(`m.${m}` as IconKey), CRAFT_ITEMS[m].name, String(have), have - used(m) > 0 && !full() ? (used(m) ? "on" : "") : "off",
+          `${CRAFT_ITEMS[m].name} → ${AFFIX_NAME[matRoll(m, sel.cls)]}. Есть ${have}. Откуда: ${CRAFT_ITEMS[m].src}.${m === "alloy" ? " Сплав делается из лома — «Переплавка лома» слева." : ""}${full() ? " Ячейки полны — убери материал." : ""}`,
+          () => {
+            sel.mats.push(m);
+            after?.();
+            redraw();
+          });
+      }
+    };
+    /** Катализаторы: «без катализатора», особые и камни (старшие первыми). */
+    const fillCats = (row: HTMLElement, after?: () => void): void => {
+      const set = (k: string | null): void => {
+        sel.cat = k;
+        after?.();
+        redraw();
+      };
+      item(row, `<span class="pcinv-fg-none">—</span>`, "Без катализатора", "", sel.cat === null ? "on" : "", "Без катализатора — шансы метода.", () => set(null));
+      for (const k of CRAFT_CATS) {
+        const have = stock.get(k) ?? 0;
+        if (have <= 0) continue;
+        item(row, catHtml(k), CRAFT_ITEMS[k].name, String(have), sel.cat === k ? "on" : "", `${CRAFT_ITEMS[k].name}: ${catNote(k)}. Возвращается. Откуда: ${CRAFT_ITEMS[k].src}.`, () => set(k));
+      }
+      for (const [k, n] of gems) {
+        const g = parseGem(k);
+        if (!g) continue;
+        item(row, gemHtml(k), `${ATTR_SHORT[g.attr]} ${g.lv}`, String(n), sel.cat === k ? "on" : "", `${gemName(k)}: ${catNote(k)}. Возвращается.`, () => set(k));
+      }
+      if (!CRAFT_CATS.some((k) => (stock.get(k) ?? 0) > 0) && !gems.length) row.append(div("pcinv-small pcinv-fg-empty", "Нет камней и особых катализаторов: камни падают с мобов, особые — с Ледяного демона и пауков."));
+    };
+    const fillMeths = (row: HTMLElement, after?: () => void): void => {
+      for (const k of CRAFT_METHOD_IDS) {
+        const m = CRAFT_METHODS[k];
+        const locked = m.lv > smith.lv;
+        item(row, iconHtml(`cm.${k}` as IconKey), m.name, locked ? `🔒${m.lv}` : String(m.cost), locked ? "off" : sel.method === k ? "on" : "", locked ? `${m.name} откроется на ${m.lv} уровне кузнеца.` : `${m.name} · ${m.cost} лома: ${m.note}.`, () => {
+          sel.method = k;
+          after?.();
+          redraw();
+        });
+      }
+    };
+    const fillBases = (row: HTMLElement, after?: () => void): void => {
+      for (const cls of ATTACK_CLASSES) {
+        const ic = div("");
+        setIcon(ic, cls, undefined, "craft");
+        item(row, ic.innerHTML, WEAPON_NOUN[cls].name, "", sel.cls === cls ? "on" : "", `${WEAPON_NOUN[cls].name}: основа задаёт класс; роллы дают материалы (кость: ${AFFIX_NAME[matRoll("bone", cls)]}).`, () => {
+          sel.cls = cls;
+          after?.();
+          redraw();
+        });
+      }
+    };
+    const closePick = (): void => {
+      this.craftPick = null;
+    };
 
     // ---- слева: кузнец, основа, найденные рецепты ----
     const left = div("pcinv-fg-side pcinv-fg-left");
@@ -1910,19 +1986,8 @@ export class PcInventory {
     const next = CRAFT_METHOD_IDS.map((k) => CRAFT_METHODS[k]).find((m) => m.lv > smith.lv);
     sm.append(div("pcinv-fg-smlv", `⚒ Кузнец ${smith.lv} ур.`), bar, div("pcinv-small", smith.maxed ? "мастерство на максимуме" : `${smith.have} / ${smith.need} опыта${next ? ` · ${next.name} — с ${next.lv} ур.` : ""}`));
     hint(sm, "Опыт кузнеца — за каждый крафт. С уровнем реже провал, чаще отличный и редкий исход, открываются новые методы.");
-    left.append(sm, div("pcinv-fg-sub", "Основа"));
-    for (const cls of ATTACK_CLASSES) {
-      const row = div(`pcinv-fg-row${sel.cls === cls ? " on" : ""}`);
-      const ic = div("pcinv-fg-ic");
-      setIcon(ic, cls, undefined, "base");
-      row.append(ic, span(WEAPON_NOUN[cls].name));
-      row.onclick = () => {
-        sel.cls = cls;
-        redraw();
-      };
-      hint(row, `${WEAPON_NOUN[cls].name}: основа задаёт класс; роллы дают материалы (кость: ${AFFIX_NAME[matRoll("bone", cls)]}).`);
-      left.append(row);
-    }
+    // Основа выбирается в ячейке цепочки на сцене — слева только кузнец и найденные рецепты.
+    left.append(sm);
     // Скрытые рецепты не показываем — только найденные (их можно повторить одним нажатием).
     const found = CRAFT_RECIPES.filter((r) => c.book.includes(r.id));
     left.append(div("pcinv-fg-sub", "Найденные рецепты"));
@@ -1966,7 +2031,7 @@ export class PcInventory {
     const arrow = (): HTMLDivElement => div("pcinv-fg-arrow", "›");
     const baseIc = div("pcinv-fg-big");
     setIcon(baseIc, sel.cls, undefined, "craft");
-    chain.append(slot("Основа", baseIc, WEAPON_NOUN[sel.cls].name, "мастерское", "Основа — какое оружие куём. Выбор — слева.", true), arrow());
+    chain.append(slot("Основа", baseIc, WEAPON_NOUN[sel.cls].name, "мастерское", "Основа — какое оружие куём. Нажми — выбрать.", true, () => pickOpen("base")), arrow());
     const matBox = div("pcinv-fg-mats");
     for (let i = 0; i < CRAFT.maxMats; i++) {
       const m = sel.mats[i];
@@ -1979,6 +2044,14 @@ export class PcInventory {
           redraw();
         };
         hint(cell, `${CRAFT_ITEMS[m].name} — нажми, чтобы убрать`);
+      } else {
+        cell.textContent = "+";
+        cell.onclick = (e) => {
+          e.stopPropagation();
+          this.craftPick = "mat";
+          redraw();
+        };
+        hint(cell, "Добавить материал");
       }
       matBox.append(cell);
     }
@@ -1989,26 +2062,52 @@ export class PcInventory {
         "Материал",
         matBox,
         sel.mats.length ? `${sel.mats.length} из ${CRAFT.maxMats}` : "пусто",
-        matRolls.length ? matRolls.map((r) => `${AFFIX_NAME[r.sub]}${r.copies > 1 ? ` ×${r.copies}` : ""}`).join(", ") : "выбери на полке",
-        "Материалы задают роллы: разные — разные роллы, одинаковые — тот же ролл выше. Тратятся. Нажми на материал в ячейке — убрать.",
+        matRolls.length ? matRolls.map((r) => `${AFFIX_NAME[r.sub]}${r.copies > 1 ? ` ×${r.copies}` : ""}`).join(", ") : "нажми «+»",
+        "Материалы задают роллы: разные — разные роллы, одинаковые — тот же ролл выше. Тратятся. «+» — добавить, нажми на материал — убрать.",
         sel.mats.length > 0,
+        () => pickOpen("mat"),
       ),
       arrow(),
     );
     const catBox = sel.cat ? div("pcinv-fg-big") : div("pcinv-fg-big empty", "—");
     if (sel.cat) catBox.innerHTML = catHtml(sel.cat);
     chain.append(
-      slot("Катализатор", catBox, sel.cat ? catName(sel.cat) : "без катализатора", sel.cat ? (isCraftItem(sel.cat) ? `→ ${AFFIX_NAME[sel.cat === "frost" ? "chill" : "venom"]}` : "шансы лучше") : "необязательно", "Катализатор возвращается. Камень улучшает шансы (сильнее с уровнем), особый даёт особый ролл. Нажми — убрать.", !!sel.cat, sel.cat ? () => {
-        sel.cat = null;
-        redraw();
-      } : undefined),
+      slot("Катализатор", catBox, sel.cat ? catName(sel.cat) : "без катализатора", sel.cat ? (isCraftItem(sel.cat) ? `→ ${AFFIX_NAME[sel.cat === "frost" ? "chill" : "venom"]}` : "шансы лучше") : "необязательно", "Катализатор возвращается. Камень улучшает шансы (сильнее с уровнем), особый даёт особый ролл. Нажми — выбрать.", !!sel.cat, () => pickOpen("cat")),
       arrow(),
     );
     const meth = CRAFT_METHODS[sel.method];
     const methIc = div("pcinv-fg-big");
     methIc.innerHTML = iconHtml(`cm.${sel.method}` as IconKey);
-    chain.append(slot("Метод", methIc, meth.name, `${meth.cost} лома`, `${meth.name}: ${meth.note}.`, true));
+    chain.append(slot("Метод", methIc, meth.name, `${meth.cost} лома`, `${meth.name}: ${meth.note}. Нажми — выбрать.`, true, () => pickOpen("meth")));
     stage.append(chain);
+    // Выбор прямо на сцене (по нажатию ячейки цепочки): основа, материалы, катализатор, метод.
+    if (this.craftPick && !(res && res.outcome >= 0 && res.at)) {
+      const k = this.craftPick;
+      const pk = div("pcinv-fg-pick");
+      const ph = div("pcinv-fg-pickh");
+      const titles = { base: "Основа — какое оружие", mat: `Материалы — ${sel.mats.length} из ${CRAFT.maxMats}`, cat: "Катализатор (вернётся)", meth: "Метод обработки" } as const;
+      const x = button("✕", () => {
+        closePick();
+        redraw();
+      });
+      x.className = "pcinv-fg-pickx";
+      ph.append(span(titles[k]), x);
+      const row = div("pcinv-fg-items wrap");
+      if (k === "base") fillBases(row, closePick);
+      else if (k === "mat") fillMats(row, () => sel.mats.length >= CRAFT.maxMats && closePick());
+      else if (k === "cat") fillCats(row, closePick);
+      else fillMeths(row, closePick);
+      pk.append(ph, row);
+      if (k === "mat") {
+        const done = button("Готово", () => {
+          closePick();
+          redraw();
+        });
+        done.className = "pcinv-btn sm gold";
+        pk.append(done);
+      }
+      stage.append(pk);
+    }
 
     // Проверка запасов: что есть и чего не хватает.
     const need = new Map<CraftMatId, number>();
@@ -2024,6 +2123,7 @@ export class PcInventory {
     go.onclick = () => {
       this.craftHitAt = performance.now();
       this.craftRes = null;
+      this.craftPick = null;
       this.hooks.act({ act: "craft", id: craftCode(sel), idx: 0 });
       this.render();
       // Вспышка удара гаснет сама (итог перерисует окно раньше, если придёт быстрее).
@@ -2031,40 +2131,12 @@ export class PcInventory {
     };
     hint(go, ready ? `Создать: −${meth.cost} лома, материалы тратятся, катализатор вернётся.` : sel.mats.length ? `Не хватает: ${lacks.join(", ")}` : "Положи хотя бы один материал.");
     stage.append(go);
+    if (res) stage.append(this.craftReveal(d, res));
 
     // ---- справа: что получится (или итог) и необходимые материалы ----
     const right = div("pcinv-fg-side pcinv-fg-right");
     const card = div("pcinv-fg-card");
-    const resW = res?.id ? d.weapons.find((w) => w.id === res.id) : undefined;
-    if (res) {
-      const o = CRAFT_OUTCOMES[res.outcome] ?? CRAFT_OUTCOMES[0];
-      const t = div("pcinv-fg-cname", resW?.name ?? (res.outcome > 0 ? "Готово" : "Провал"));
-      const r = div("pcinv-fg-rar", `${o.name} исход${res.found ? " · новый рецепт!" : ""}`);
-      r.style.color = o.color;
-      card.append(t, r);
-      const body = div("pcinv-fg-cbody");
-      const big = div("pcinv-fg-cimg");
-      if (resW) setIcon(big, resW.cls, resW.name, "craft");
-      else big.textContent = "💨";
-      const rows = div("pcinv-fg-rows");
-      for (const a of resW?.affixes ?? []) rows.append(div("pcinv-fg-stat", a));
-      for (const e of resW?.effects ?? []) rows.append(div("pcinv-fg-stat eff", e));
-      if (!resW) rows.append(div("pcinv-fg-stat", res.text));
-      body.append(big, rows);
-      card.append(body);
-      const acts = div("pcinv-fg-acts");
-      if (resW) {
-        acts.append(
-          button("Посмотреть", () => {
-            this.tab = "gear";
-            this.craftRes = null;
-            this.openCard({ kind: "bag", id: resW.id });
-          }),
-        );
-      }
-      acts.append(button("Ещё раз", () => redraw()));
-      card.append(acts);
-    } else {
+    {
       const recipe = sel.mats.length ? matchRecipe(sel) : null;
       const known = recipe && c.book.includes(recipe.id) ? recipe : null;
       card.append(div("pcinv-fg-cname", known ? known.name : weaponName(sel.cls, "craft")));
@@ -2123,45 +2195,13 @@ export class PcInventory {
     if (sel.cat) reqCell(catHtml(sel.cat), 1, 1, catName(sel.cat), "Катализатор вернётся после крафта.");
     reqCell(iconHtml("i.scrap"), d.scrap, meth.cost, "Лом", `${meth.name}: ${meth.cost} лома, у тебя ${d.scrap.toLocaleString("ru-RU")}.`);
     req.append(cells);
-    const status = div(`pcinv-fg-status${ready ? " ok" : ""}`, ready ? "✓ Готово к созданию" : sel.mats.length ? `Не хватает: ${lacks.join(", ")}` : "Положи материал с полки");
+    const status = div(`pcinv-fg-status${ready ? " ok" : ""}`, ready ? "✓ Готово к созданию" : sel.mats.length ? `Не хватает: ${lacks.join(", ")}` : "Добавь материал — с полки или «+» в ячейке");
     req.append(status);
     right.append(req);
 
-    // ---- внизу: полки — материалы, катализаторы, методы ----
-    const shelf = div("pcinv-fg-shelf");
-    const group = (title: string): HTMLDivElement => {
-      const g = div("pcinv-fg-grp");
-      g.append(div("pcinv-fg-gt", title));
-      const row = div("pcinv-fg-items");
-      g.append(row);
-      shelf.append(g);
-      return row;
-    };
-    const item = (row: HTMLElement, html: string, label: string, count: string, state: "" | "on" | "off", help: string, onClick: () => void): void => {
-      const it = div(`pcinv-fg-it${state ? ` ${state}` : ""}`);
-      const ic = div("pcinv-fg-itic");
-      ic.innerHTML = html;
-      if (count) ic.append(div("pcinv-fg-cnt", count));
-      it.append(ic, div("pcinv-fg-itl", label));
-      it.onclick = () => state !== "off" && onClick();
-      hint(it, help);
-      row.append(it);
-    };
-    const matsRow = group("Материалы");
-    for (const m of CRAFT_MATS) {
-      const have = stock.get(m) ?? 0;
-      const left2 = have - used(m);
-      const full = sel.mats.length >= CRAFT.maxMats;
-      item(matsRow, iconHtml(`m.${m}` as IconKey), CRAFT_ITEMS[m].name, String(have), left2 > 0 && !full ? (used(m) ? "on" : "") : "off",
-        `${CRAFT_ITEMS[m].name} → ${AFFIX_NAME[matRoll(m, sel.cls)]}. Есть ${have}. Откуда: ${CRAFT_ITEMS[m].src}.${m === "alloy" ? ` Сплав делается из лома — «Переплавка лома» рядом.` : ""}${full ? " Ячейки полны — убери материал." : ""}`,
-        () => {
-          sel.mats.push(m);
-          redraw();
-        });
-    }
-    // Переплавка лома в сплав — отдельный блок с формулой «лом → сплав» и кнопками количества.
-    const sg = div("pcinv-fg-grp pcinv-fg-smelt");
-    sg.append(div("pcinv-fg-gt", "Переплавка лома"));
+    // Переплавка лома в сплав — отдельная карточка в левой колонке (под «Кузницей»): формула «лом → сплав» и кнопки количества.
+    const sg = div("pcinv-fg-side pcinv-fg-smelt");
+    sg.append(div("pcinv-fg-sub2", "Переплавка лома"));
     const eq = div("pcinv-fg-eq");
     const eqIc = (k: IconKey, n: string): HTMLDivElement => {
       const b = div("pcinv-fg-itic");
@@ -2182,38 +2222,87 @@ export class PcInventory {
     sg.append(eq, div("pcinv-small", `${CRAFT_ITEMS.alloy.name} — материал на ролл «Урон». Лома: ${d.scrap.toLocaleString("ru-RU")}`));
     // Итог переплавки (в игре — сюда же, на странице !inv — всплывашкой).
     if (this.lastResult?.text.startsWith("Переплавлено")) sg.append(div(`pcinv-fg-smres${this.lastResult.up ? "" : " bad"}`, this.lastResult.text));
-    shelf.append(sg);
-    const catsRow = group("Катализаторы");
-    catsRow.parentElement?.classList.add("cats");
-    for (const k of CRAFT_CATS) {
-      const have = stock.get(k) ?? 0;
-      if (have <= 0) continue;
-      item(catsRow, catHtml(k), CRAFT_ITEMS[k].name, String(have), sel.cat === k ? "on" : "", `${CRAFT_ITEMS[k].name}: ${catNote(k)}. Возвращается. Откуда: ${CRAFT_ITEMS[k].src}.`, () => {
-        sel.cat = sel.cat === k ? null : k;
-        redraw();
-      });
-    }
-    for (const [k, n] of gems) {
-      const g = parseGem(k);
-      if (!g) continue;
-      item(catsRow, gemHtml(k), `${ATTR_SHORT[g.attr]} ${g.lv}`, String(n), sel.cat === k ? "on" : "", `${gemName(k)}: ${catNote(k)}. Возвращается.`, () => {
-        sel.cat = sel.cat === k ? null : k;
-        redraw();
-      });
-    }
-    if (!catsRow.children.length) catsRow.append(div("pcinv-small pcinv-fg-empty", "Нет камней и особых катализаторов: камни падают с мобов, особые — с Ледяного демона и пауков."));
-    const methRow = group("Методы обработки");
-    for (const k of CRAFT_METHOD_IDS) {
-      const m = CRAFT_METHODS[k];
-      const locked = m.lv > smith.lv;
-      item(methRow, iconHtml(`cm.${k}` as IconKey), m.name, locked ? `🔒${m.lv}` : String(m.cost), locked ? "off" : sel.method === k ? "on" : "", locked ? `${m.name} откроется на ${m.lv} уровне кузнеца.` : `${m.name} · ${m.cost} лома: ${m.note}.`, () => {
-        sel.method = k;
-        redraw();
-      });
-    }
+    // ---- внизу: полки — материалы, катализаторы, методы (то же, что выбор в ячейках цепочки) ----
+    const shelf = div("pcinv-fg-shelf");
+    const group = (title: string, cls = ""): HTMLDivElement => {
+      const g = div(`pcinv-fg-grp${cls ? ` ${cls}` : ""}`);
+      g.append(div("pcinv-fg-gt", title));
+      const row = div("pcinv-fg-items");
+      g.append(row);
+      shelf.append(g);
+      return row;
+    };
+    fillMats(group("Материалы"));
+    fillCats(group("Катализаторы", "cats"));
+    fillMeths(group("Методы обработки"));
 
-    root.append(left, stage, right, shelf, hintEl);
+    const lcol = div("pcinv-fg-lcol");
+    lcol.append(left, sg);
+    // Подсказки — сверху, над кузницей.
+    root.append(hintEl, lcol, stage, right, shelf);
     this.body.append(root);
+  }
+
+  /** Итог крафта — окном посередине кузницы: исход, оружие подробно (роллы с очками, «Мастерство», атака) и «Закрыть». */
+  private craftReveal(d: PcInvData, res: NonNullable<typeof this.craftRes>): HTMLDivElement {
+    const o = CRAFT_OUTCOMES[res.outcome] ?? CRAFT_OUTCOMES[0];
+    const w = res.id ? d.weapons.find((x) => x.id === res.id) : undefined;
+    const rc = res.found ? CRAFT_RECIPES.find((r) => r.id === res.found) : undefined;
+    const wrap = div(`pcinv-fg-reveal${res.outcome > 0 ? "" : " fail"}`);
+    const card = div("pcinv-fg-rcard");
+    const head = div("pcinv-fg-rhead", res.outcome > 0 ? `${o.name} исход!` : "Провал");
+    head.style.color = o.color;
+    card.append(head);
+    if (rc) card.append(div("pcinv-fg-rfound", `📜 Найден скрытый рецепт «${rc.name}»`));
+    if (w) {
+      const top = div("pcinv-fg-rtop");
+      const ico = div(`pcinv-cell huge t-${w.tier}`);
+      setIcon(ico, w.cls, w.name, w.tier);
+      const info = div("pcinv-fg-rinfo");
+      info.append(div(`pcinv-card-name t-${w.tier}`, w.name));
+      const q = w.affixes.length ? qualityStarsShort(w.quality, w.affixes.length) : "";
+      const sub = div("pcinv-small");
+      sub.innerHTML = `${cap(TIER_LOOK[w.tier].name)}${q ? ` · оценка <b>${q}</b>` : ""}`;
+      info.append(sub);
+      const atk = attackLabel(w.cls, w.tier, sharpPctOf(w), craftPow(w) * 100);
+      if (atk) info.append(div("pcinv-tipatk", atk));
+      top.append(ico, info);
+      card.append(top);
+      // Роллы с очками — как строки заточки, только без кнопок.
+      w.affixes.forEach((label, i) => {
+        const e = w.ench[i];
+        const row = div("pcinv-fg-rroll");
+        const lab = div("pcinv-elabel");
+        lab.append(span(label), span(e ? `${e.points} / ${e.of}` : ""));
+        const bar = div("pcinv-ebar");
+        const fill = div("pcinv-efill");
+        fill.style.width = e ? `${Math.round((e.points / e.of) * 100)}%` : "0";
+        bar.append(fill);
+        row.append(lab, bar);
+        card.append(row);
+      });
+      for (const e of w.effects ?? []) card.append(div("pcinv-tipeff", e));
+      if (rc) card.append(div("pcinv-fg-lore", rc.lore));
+    } else card.append(div("pcinv-fg-rtext", res.text));
+    const acts = div("pcinv-fg-acts");
+    const close = button("Закрыть", () => {
+      this.craftRes = null;
+      this.render();
+    });
+    close.className = "pcinv-btn gold";
+    acts.append(close);
+    if (w) {
+      const see = button("В сумке", () => {
+        this.tab = "gear";
+        this.craftRes = null;
+        this.openCard({ kind: "bag", id: w.id });
+      });
+      see.className = "pcinv-btn";
+      acts.append(see);
+    }
+    card.append(acts);
+    wrap.append(card);
+    return wrap;
   }
 
   private renderAttrs(d: PcInvData): void {
@@ -2912,9 +3001,10 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-pts.on { color:#b9f5c2; border-color:#3f9a58; background:rgba(16,40,26,.75); box-shadow:0 0 10px rgba(80,200,110,.15); }
 .pcinv-attrs { display:flex; flex-direction:column; gap:8px; }
 /* ---------- «Крафт»: кузница (концепт «Кузница берсерка») ---------- */
-.pcinv-forge { display:grid; grid-template-columns:230px minmax(0,1fr) 290px; grid-template-areas:"left stage right" "shelf shelf shelf" "hint hint hint"; gap:10px; align-items:start; }
+.pcinv-smithy { display:grid; grid-template-columns:230px minmax(0,1fr) 290px; grid-template-areas:"hint hint hint" "left stage right" "shelf shelf shelf"; gap:10px; align-items:start; }
 .pcinv-fg-side { position:relative; display:flex; flex-direction:column; gap:6px; padding:12px; border:1px solid #2f4664; background:linear-gradient(180deg,rgba(9,19,34,.92),rgba(5,11,21,.92)); box-shadow:inset 0 0 0 1px rgba(0,0,0,.6); clip-path:${CUT("9px")}; }
-.pcinv-fg-left { grid-area:left; align-self:stretch; }
+.pcinv-fg-lcol { grid-area:left; display:flex; flex-direction:column; gap:10px; align-self:stretch; }
+.pcinv-fg-left { flex:1; }
 .pcinv-fg-right { grid-area:right; padding:0; gap:10px; border:none; background:none; box-shadow:none; clip-path:none; }
 .pcinv-fg-title { font:700 22px/1.1 "Iowan Old Style",Georgia,serif; color:#dbe8f6; padding-bottom:6px; border-bottom:1px solid #1d2d43; }
 .pcinv-fg-sub { margin-top:8px; font:600 14px "Iowan Old Style",Georgia,serif; color:#b9c8da; }
@@ -2999,10 +3089,11 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-fg-status.ok { color:#b9f5d0; border-color:#2f7a5a; background:linear-gradient(180deg,rgba(14,52,44,.85),rgba(8,30,26,.85)); }
 /* внизу: полки */
 .pcinv-fg-shelf { grid-area:shelf; display:flex; gap:10px; padding:8px 10px; border:1px solid #2f4664; background:linear-gradient(180deg,rgba(9,19,34,.92),rgba(5,11,21,.92)); }
-.pcinv-fg-grp { display:flex; flex-direction:column; gap:4px; min-width:0; }
-.pcinv-fg-grp.cats { flex:1 1 auto; }
+.pcinv-fg-grp { flex:none; display:flex; flex-direction:column; gap:4px; min-width:0; }
+.pcinv-fg-grp.cats { flex:1 1 0; }
 .pcinv-fg-grp + .pcinv-fg-grp { padding-left:10px; border-left:1px solid #1d2d43; }
 .pcinv-fg-gt { font-size:12.5px; color:#7fb2e6; }
+/* плитки предметов (полки, выбор на сцене, переплавка) */
 .pcinv-fg-items { display:flex; gap:6px; overflow-x:auto; scrollbar-width:thin; scrollbar-color:#2c3e57 transparent; padding-bottom:2px; }
 .pcinv-fg-it { flex:none; width:64px; display:flex; flex-direction:column; align-items:center; gap:2px; cursor:pointer; padding:3px 0; border:1px solid transparent; }
 .pcinv-fg-it:hover { border-color:#3a5576; background:rgba(20,40,66,.4); }
@@ -3014,23 +3105,54 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-fg-cnt { position:absolute; right:-2px; bottom:-2px; padding:0 3px; font:700 11px system-ui; color:#fff; background:rgba(0,0,0,.65); border-radius:3px; }
 .pcinv-fg-itl { font-size:11px; color:#c3cedb; text-align:center; line-height:1.15; max-width:64px; }
 .pcinv-fg-smelt { flex:none; }
-.pcinv-fg-eq { display:flex; align-items:center; gap:6px; }
+.pcinv-fg-eq { display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; }
 .pcinv-fg-eqar { color:#e8c27a; font:700 22px system-ui; text-shadow:0 0 8px rgba(255,160,60,.5); }
-.pcinv-fg-smb { display:flex; gap:4px; margin-left:4px; }
-.pcinv-fg-smb .pcinv-ebtn { min-height:30px; padding:4px 10px; font-size:12px; }
+.pcinv-fg-smb { display:flex; gap:6px; width:100%; }
+.pcinv-fg-smb .pcinv-ebtn { flex:1; min-height:32px; padding:4px 8px; font-size:12.5px; }
 .pcinv-fg-smres { font-size:12px; color:#a9f0b4; }
 .pcinv-fg-smres.bad { color:#ffb0a6; }
-.pcinv-fg-hint { grid-area:hint; min-height:20px; padding:2px 4px; font-size:12.5px; color:#c9b48c; }
-/* узкое окно и телефон: одна колонка — кузница, итог, полки, рецепты */
+/* выбор на сцене по нажатию ячейки цепочки */
+.pcinv-fg-slot.click:hover { border-color:#e8c27a; box-shadow:0 0 14px rgba(232,194,122,.35),0 6px 18px rgba(0,0,0,.55); }
+.pcinv-fg-mcell:not(.full) { color:#6f86a6; font:700 20px system-ui; cursor:pointer; }
+.pcinv-fg-mcell:not(.full):hover { color:#e8c27a; border-color:#e8c27a; }
+.pcinv-fg-pick { position:absolute; left:4%; right:4%; top:59%; bottom:3%; z-index:3; display:flex; flex-direction:column; gap:6px; padding:8px 10px; overflow:hidden;
+  border:1px solid #c8a35e; background:linear-gradient(180deg,#0a1220,#060a12); box-shadow:0 10px 30px rgba(0,0,0,.6); animation:pcinvToast .15s ease-out; }
+.pcinv-fg-pickh { display:flex; align-items:center; justify-content:space-between; gap:8px; font:600 14px "Iowan Old Style",Georgia,serif; color:#eadcc2; }
+.pcinv-fg-pickx { min-height:26px !important; padding:2px 10px !important; }
+.pcinv-fg-items.wrap { flex-wrap:wrap; overflow-x:hidden; overflow-y:auto; min-height:0; flex:1; align-content:flex-start; }
+.pcinv-fg-pick > .pcinv-btn { align-self:flex-end; }
+.pcinv-fg-none { color:#7f8ea4; font:700 24px system-ui; }
+/* итог крафта — окном посередине кузницы */
+.pcinv-fg-reveal { position:absolute; inset:0; z-index:5; display:flex; align-items:center; justify-content:center; padding:4%; background:rgba(4,6,10,.62); animation:pcinvFgFade .25s ease-out; }
+@keyframes pcinvFgFade { from { opacity:0; } to { opacity:1; } }
+.pcinv-fg-rcard { width:min(100%,430px); max-height:100%; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding:14px 16px; border:1px solid var(--tier-craft);
+  background:linear-gradient(180deg,rgba(28,18,10,.97),rgba(10,8,6,.97)); box-shadow:0 0 30px rgba(240,131,42,.35),0 14px 40px rgba(0,0,0,.7); animation:pcinvFgPop .35s cubic-bezier(.2,1.4,.4,1); scrollbar-width:thin; }
+.pcinv-fg-reveal.fail .pcinv-fg-rcard { border-color:#8a4038; box-shadow:0 14px 40px rgba(0,0,0,.7); }
+@keyframes pcinvFgPop { from { opacity:0; transform:scale(.85); } to { opacity:1; transform:none; } }
+.pcinv-fg-rhead { text-align:center; font:700 26px/1.1 "Iowan Old Style",Georgia,serif; text-shadow:0 0 14px currentColor; }
+.pcinv-fg-rfound { text-align:center; color:#ffd38a; font-weight:700; }
+.pcinv-fg-rtop { display:flex; align-items:center; gap:12px; }
+.pcinv-fg-rtop .pcinv-cell.huge { flex:none; box-shadow:0 0 18px rgba(240,131,42,.45); }
+.pcinv-fg-rinfo { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.pcinv-fg-rroll { padding:4px 0; border-bottom:1px solid #2a1e12; }
+.pcinv-fg-rroll .pcinv-ebar { margin-top:4px; }
+.pcinv-fg-rtext { color:#e8d6c4; }
+.pcinv-fg-rcard .pcinv-fg-acts { justify-content:center; margin-top:4px; }
+/* строка подсказок — на тёмной плашке, чтобы не сливалась с фоном страницы */
+.pcinv-fg-hint { grid-area:hint; min-height:34px; display:flex; align-items:center; padding:7px 12px; font-size:13.5px; line-height:1.35; color:#f3e6c8;
+  background:linear-gradient(180deg,rgba(9,16,28,.94),rgba(5,10,18,.94)); border:1px solid #3a4f6b; border-left:3px solid #d9a95a; text-shadow:0 1px 2px #000; }
+/* узкое окно и телефон: одна колонка — кузница, итог, полки, кузнец и переплавка */
 @media (max-width: 900px) {
-  .pcinv-forge { grid-template-columns:minmax(0,1fr); grid-template-areas:"stage" "right" "shelf" "hint" "left"; }
+  .pcinv-smithy { grid-template-columns:minmax(0,1fr); grid-template-areas:"hint" "stage" "right" "shelf" "left"; }
   .pcinv-fg-stage { max-width:560px; }
+  .pcinv-fg-shelf { flex-direction:column; }
+  .pcinv-fg-grp + .pcinv-fg-grp { padding-left:0; border-left:none; padding-top:6px; border-top:1px solid #1d2d43; }
+  .pcinv-fg-grp.cats { flex:none; }
 }
-.pcinv-root.touch .pcinv-forge { grid-template-columns:minmax(0,1fr); grid-template-areas:"stage" "right" "shelf" "left"; }
-.pcinv-root.touch .pcinv-fg-hint { display:none; }
-.pcinv-root.touch .pcinv-fg-shelf, .pcinv-forge.narrow .pcinv-fg-shelf { flex-direction:column; }
+.pcinv-root.touch .pcinv-smithy { grid-template-columns:minmax(0,1fr); grid-template-areas:"hint" "stage" "right" "shelf" "left"; }
+.pcinv-root.touch .pcinv-fg-shelf { flex-direction:column; }
 .pcinv-root.touch .pcinv-fg-grp + .pcinv-fg-grp { padding-left:0; border-left:none; padding-top:6px; border-top:1px solid #1d2d43; }
-@media (max-width: 900px) { .pcinv-fg-shelf { flex-direction:column; } .pcinv-fg-grp + .pcinv-fg-grp { padding-left:0; border-left:none; padding-top:6px; border-top:1px solid #1d2d43; } }
+.pcinv-root.touch .pcinv-fg-grp.cats { flex:none; }
 @media (max-width: 460px) {
   .pcinv-fg-shead { font-size:11px; }
   .pcinv-fg-sname { font-size:11px; }
