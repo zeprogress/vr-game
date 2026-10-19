@@ -115,13 +115,21 @@ const bgEl = document.getElementById("invBg");
 function placeBg(): void {
   if (!bgEl) return;
   const W = document.documentElement.clientWidth;
-  // «Крафт» — фон страницы меняется на кузницу у горного замка: неподвижно на весь экран (inv.html #invBg.forge).
+  // «Крафт» — фон страницы меняется на кузницу у горного замка (inv.html #invBg.forge) и прокручивается со страницей:
+  // широкая страница — на всю её высоту, узкая (длинная колонка) — на экран и плавно в тёмное.
   const forge = !!document.querySelector(".pcinv-smithy");
   bgEl.classList.toggle("forge", forge);
   if (forge) {
-    for (const k of ["backgroundSize", "backgroundPosition", "height"] as const) bgEl.style[k] = "";
+    bgEl.style.backgroundSize = "";
+    bgEl.style.backgroundPosition = "";
+    bgEl.style.height = "";
+    const narrow = W <= 900;
+    bgEl.classList.toggle("short", narrow);
+    const docH = Math.max(document.documentElement.scrollHeight, window.innerHeight);
+    bgEl.style.height = `${narrow ? window.innerHeight : docH}px`;
     return;
   }
+  bgEl.classList.remove("short");
   const st = document.querySelector<HTMLElement>(".pcinv-stage");
   let fx = W / 2;
   let fy = Math.min(window.innerHeight * 0.8, 720);
