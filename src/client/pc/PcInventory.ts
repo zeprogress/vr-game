@@ -1889,7 +1889,7 @@ export class PcInventory {
       this.craftPick = this.craftPick === k ? null : k;
       redraw();
     };
-    const DEF_HINT = "Собери оружие: основа → материалы → катализатор → метод (с полок или нажатием ячеек) — и бей «Создать». Наведи на предмет — подсказка здесь.";
+    const DEF_HINT = "Основа → материалы → катализатор → метод: нажми ячейку или возьми с полки — и «Создать».";
     const hintEl = div("pcinv-fg-hint", DEF_HINT);
     /** Подсказка при наведении (на ПК) — без перерисовки окна. */
     const hint = (el: HTMLElement, text: string): void => {
@@ -2238,8 +2238,9 @@ export class PcInventory {
 
     const lcol = div("pcinv-fg-lcol");
     lcol.append(left, sg);
-    // Подсказки — сверху, над кузницей.
-    root.append(hintEl, lcol, stage, right, shelf);
+    // Подсказки — внутри кузницы, внизу под наковальней.
+    stage.append(hintEl);
+    root.append(lcol, stage, right, shelf);
     this.body.append(root);
   }
 
@@ -3001,7 +3002,7 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-pts.on { color:#b9f5c2; border-color:#3f9a58; background:rgba(16,40,26,.75); box-shadow:0 0 10px rgba(80,200,110,.15); }
 .pcinv-attrs { display:flex; flex-direction:column; gap:8px; }
 /* ---------- «Крафт»: кузница (концепт «Кузница берсерка») ---------- */
-.pcinv-smithy { display:grid; grid-template-columns:230px minmax(0,1fr) 290px; grid-template-areas:"hint hint hint" "left stage right" "shelf shelf shelf"; gap:10px; align-items:start; }
+.pcinv-smithy { display:grid; grid-template-columns:230px minmax(0,1fr) 290px; grid-template-areas:"left stage right" "shelf shelf shelf"; gap:10px; align-items:start; }
 .pcinv-fg-side { position:relative; display:flex; flex-direction:column; gap:6px; padding:12px; border:1px solid #2f4664; background:linear-gradient(180deg,rgba(9,19,34,.92),rgba(5,11,21,.92)); box-shadow:inset 0 0 0 1px rgba(0,0,0,.6); clip-path:${CUT("9px")}; }
 .pcinv-fg-lcol { grid-area:left; display:flex; flex-direction:column; gap:10px; align-self:stretch; }
 .pcinv-fg-left { flex:1; }
@@ -3023,7 +3024,11 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-fg-ic { width:30px; height:30px; flex:none; display:flex; align-items:center; justify-content:center; }
 .pcinv-fg-ic .gico { width:30px; height:30px; }
 /* сцена: кузница с наковальней, цепочка ячеек над ней, «Создать» — на наковальне */
-.pcinv-fg-stage { grid-area:stage; position:relative; aspect-ratio:1/1; width:100%; max-width:620px; justify-self:center; background:#120a05 url(/icons/craft/forge_bg.webp) center/cover no-repeat; border:1px solid #3a2a1a; box-shadow:inset 0 0 40px rgba(0,0,0,.65); overflow:hidden; }
+/* Высота вкладки — по экрану: кузница (квадрат) не выше окна минус шапка и полки, колонки по бокам — не выше кузницы. */
+.pcinv-smithy { --fg-h:min(620px, calc(94vh - 214px)); }
+.pcinv-root.page .pcinv-smithy { --fg-h:min(620px, calc(100vh - 214px)); }
+.pcinv-fg-lcol, .pcinv-fg-right { max-height:var(--fg-h); overflow-y:auto; scrollbar-width:thin; scrollbar-color:#2c3e57 transparent; }
+.pcinv-fg-stage { grid-area:stage; position:relative; aspect-ratio:1/1; width:100%; max-width:var(--fg-h); justify-self:center; background:#120a05 url(/icons/craft/forge_bg.webp) center/cover no-repeat; border:1px solid #3a2a1a; box-shadow:inset 0 0 40px rgba(0,0,0,.65); overflow:hidden; }
 .pcinv-fg-stage::after { content:""; position:absolute; left:50%; top:74%; width:70%; height:40%; transform:translate(-50%,-50%); pointer-events:none; opacity:0; background:radial-gradient(ellipse at center,rgba(255,170,60,.85),rgba(255,90,10,.35) 40%,transparent 70%); mix-blend-mode:screen; }
 .pcinv-fg-stage.hit::after { animation:pcinvFgHit .7s ease-out; }
 .pcinv-fg-stage.done::after { animation:pcinvFgDone 1.4s ease-out; }
@@ -3047,7 +3052,7 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-fg-mcell .gico { max-width:86%; max-height:86%; width:auto; height:86%; aspect-ratio:1/1; object-fit:contain; }
 .pcinv-fg-sname { padding:0 4px; text-align:center; font-weight:700; font-size:12.5px; color:#f2e7d2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .pcinv-fg-ssub { padding:0 4px 6px; text-align:center; font-size:11px; color:#a8b4c4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.pcinv-fg-go { position:absolute; left:50%; top:84%; transform:translate(-50%,-50%); display:flex; align-items:center; gap:10px; padding:10px 34px; min-height:52px; cursor:pointer; border:none; color:#fbe9c6;
+.pcinv-fg-go { position:absolute; left:50%; top:78%; transform:translate(-50%,-50%); display:flex; align-items:center; gap:10px; padding:10px 34px; min-height:52px; cursor:pointer; border:none; color:#fbe9c6;
   font:700 22px "Iowan Old Style",Georgia,serif; letter-spacing:.02em; background:linear-gradient(180deg,#3b3020,#17110a); clip-path:${HEX("18px")};
   filter:drop-shadow(0 0 10px rgba(255,150,50,.45)); }
 .pcinv-fg-go::before { content:""; position:absolute; inset:0; z-index:-1; background:linear-gradient(180deg,#f1d08c,#8a6326); clip-path:${HEX("18px")}; }
@@ -3064,14 +3069,15 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-fg-cname { font:700 19px/1.15 "Iowan Old Style",Georgia,serif; color:#eef3f9; }
 .pcinv-fg-rar { font-weight:700; font-size:13px; }
 .pcinv-fg-cbody { display:flex; gap:10px; align-items:flex-start; }
-.pcinv-fg-cimg { width:86px; height:110px; flex:none; display:flex; align-items:center; justify-content:center; border:1px solid #7a6440; background:radial-gradient(ellipse at 50% 40%,#2a1a10,#0b0806 80%); font-size:34px; }
-.pcinv-fg-cimg .gico { width:80px; height:80px; }
+.pcinv-fg-cimg { width:80px; height:80px; flex:none; display:flex; align-items:center; justify-content:center; border:1px solid #7a6440; background:radial-gradient(ellipse at 50% 40%,#2a1a10,#0b0806 80%); font-size:34px; }
+.pcinv-fg-cimg .gico { width:72px; height:72px; }
 .pcinv-fg-rows { flex:1; min-width:0; display:flex; flex-direction:column; }
 .pcinv-fg-stat { display:flex; justify-content:space-between; gap:6px; padding:4px 0; border-bottom:1px solid #1d2d43; font-size:12.5px; color:#dbe6f2; }
 .pcinv-fg-stat > span:last-child { color:#9aa8ba; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pcinv-fg-stat.eff { color:#ffd38a; }
 .pcinv-fg-stat.dim { color:#9aa8ba; border-bottom:none; }
-.pcinv-fg-lore { font-size:12px; color:#b7c2d0; font-style:italic; line-height:1.35; }
+.pcinv-fg-lore { font-size:12px; color:#b7c2d0; font-style:italic; line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.pcinv-fg-rcard .pcinv-fg-lore { -webkit-line-clamp:unset; }
 .pcinv-fg-acts { display:flex; gap:8px; flex-wrap:wrap; }
 .pcinv-codds { display:flex; height:10px; border:1px solid #2d405a; overflow:hidden; }
 .pcinv-codd { flex-basis:0; min-width:0; }
@@ -3103,7 +3109,7 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-fg-itic .gico { width:46px; height:46px; }
 .pcinv-fg-itic > span { width:44px !important; height:44px !important; }
 .pcinv-fg-cnt { position:absolute; right:-2px; bottom:-2px; padding:0 3px; font:700 11px system-ui; color:#fff; background:rgba(0,0,0,.65); border-radius:3px; }
-.pcinv-fg-itl { font-size:11px; color:#c3cedb; text-align:center; line-height:1.15; max-width:64px; }
+.pcinv-fg-itl { font-size:11px; color:#c3cedb; text-align:center; line-height:1.15; max-width:64px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .pcinv-fg-smelt { flex:none; }
 .pcinv-fg-eq { display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; }
 .pcinv-fg-eqar { color:#e8c27a; font:700 22px system-ui; text-shadow:0 0 8px rgba(255,160,60,.5); }
@@ -3138,18 +3144,22 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-fg-rroll .pcinv-ebar { margin-top:4px; }
 .pcinv-fg-rtext { color:#e8d6c4; }
 .pcinv-fg-rcard .pcinv-fg-acts { justify-content:center; margin-top:4px; }
-/* строка подсказок — на тёмной плашке, чтобы не сливалась с фоном страницы */
-.pcinv-fg-hint { grid-area:hint; min-height:34px; display:flex; align-items:center; padding:7px 12px; font-size:13.5px; line-height:1.35; color:#f3e6c8;
-  background:linear-gradient(180deg,rgba(9,16,28,.94),rgba(5,10,18,.94)); border:1px solid #3a4f6b; border-left:3px solid #d9a95a; text-shadow:0 1px 2px #000; }
+/* строка подсказок — внутри кузницы, внизу; тёмная плашка, чтобы не сливалась с фоном; не больше двух строк */
+.pcinv-fg-hint { position:absolute; left:3%; right:3%; bottom:2%; z-index:2; padding:6px 11px; font-size:12.5px; line-height:1.35; color:#f3e6c8;
+  background:linear-gradient(180deg,rgba(9,16,28,.92),rgba(5,10,18,.92)); border:1px solid #3a4f6b; border-left:3px solid #d9a95a; text-shadow:0 1px 2px #000;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; pointer-events:none; }
 /* узкое окно и телефон: одна колонка — кузница, итог, полки, кузнец и переплавка */
 @media (max-width: 900px) {
-  .pcinv-smithy { grid-template-columns:minmax(0,1fr); grid-template-areas:"hint" "stage" "right" "shelf" "left"; }
+  .pcinv-smithy { grid-template-columns:minmax(0,1fr); grid-template-areas:"stage" "right" "shelf" "left"; }
   .pcinv-fg-stage { max-width:560px; }
+  .pcinv-fg-lcol, .pcinv-fg-right { max-height:none; overflow:visible; }
   .pcinv-fg-shelf { flex-direction:column; }
   .pcinv-fg-grp + .pcinv-fg-grp { padding-left:0; border-left:none; padding-top:6px; border-top:1px solid #1d2d43; }
   .pcinv-fg-grp.cats { flex:none; }
 }
-.pcinv-root.touch .pcinv-smithy { grid-template-columns:minmax(0,1fr); grid-template-areas:"hint" "stage" "right" "shelf" "left"; }
+.pcinv-root.touch .pcinv-smithy { grid-template-columns:minmax(0,1fr); grid-template-areas:"stage" "right" "shelf" "left"; }
+.pcinv-root.touch .pcinv-fg-stage { max-width:560px; }
+.pcinv-root.touch .pcinv-fg-lcol, .pcinv-root.touch .pcinv-fg-right { max-height:none; overflow:visible; }
 .pcinv-root.touch .pcinv-fg-shelf { flex-direction:column; }
 .pcinv-root.touch .pcinv-fg-grp + .pcinv-fg-grp { padding-left:0; border-left:none; padding-top:6px; border-top:1px solid #1d2d43; }
 .pcinv-root.touch .pcinv-fg-grp.cats { flex:none; }
