@@ -10,7 +10,7 @@ import { UPDATES } from "#shared/updates";
 import { FEEDBACK_KIND_INFO, FEEDBACK_KINDS, FEEDBACK_MARKS, FEEDBACK_MARK_COLOR, FEEDBACK_NO_MARK_COLOR, FEEDBACK_TEXT_MAX, type FeedbackKind, type FeedbackView } from "#shared/feedback";
 import { respecCostFor } from "#shared/constants";
 import { ELITE_MOBS, MOB_CAMPS } from "#shared/mobs";
-import { AFFIX_NAME, BAG, RUBY } from "#shared/items";
+import { AFFIX_NAME, BAG, ENCHANT_TIER_MUL, RUBY } from "#shared/items";
 import { CRAFT, CRAFT_CATS, CRAFT_ITEMS, CRAFT_MATS, CRAFT_METHOD_IDS, CRAFT_METHODS, matRoll } from "#shared/craft";
 import { QUEST } from "#shared/quests";
 
@@ -324,7 +324,7 @@ ${MECH_CLASSES_HTML}
 <p>Роллы обоих предметов в руках идут в удар, но не складываются: от каждого вида (урон, скорость, крит, вампиризм) берётся лучший из двух. Разные виды на двух клинках дают все сразу.</p>
 <p>Щит блокирует удар целиком с шансом от ролла Блок (врождённого блока нет). У щита роллы <b>Физ. защита</b> (−урон от ударов) и <b>Маг. защита</b> (−урон магии и снарядов); их можно точить за лом. <b>Эгида</b> вместо Маг. защиты имеет <b>Отражение</b> (часть урона уходит обратно атакующему) и врождённый «Оплот»: каждый блок лечит 10% здоровья.</p>
 <p><b>Оценка</b> («оценка 47») — сумма силы роллов, до 99: чем больше, тем лучше предмет. Ненужное — <b>на лом</b> (больше за оценку). Лом тратится на <b>заточку</b> ролла: чем он ближе к максимуму, тем дороже и меньше шанс; при неудаче лом сгорает.</p>
-<p><b>Рубиновое</b> — заточка такая же, как у обычного оружия: шанс и прирост те же, но цена в ломе ×${RUBY.enchantCostMul}.</p>
+<p><b>Цена заточки</b> (роллы и точка атаки) зависит от тира: золотое и уникальное — как прежде, <b>рубиновое</b> — вдвое дороже уникального (×${ENCHANT_TIER_MUL.ruby}), <span class="tier-craft">мастерское</span> — втрое (×${ENCHANT_TIER_MUL.craft}). Шанс и прирост у всех одинаковые.</p>
 
 <h2>Крафт</h2>
 <p>Вкладка «Крафт» в инвентаре. <span class="tier-craft">Мастерское</span> оружие собирается из четырёх частей: <b>основа</b> (класс оружия), <b>1–3 материала</b> (тратятся), <b>катализатор</b> (необязательно, возвращается) и <b>метод</b> (стоит лома).</p>

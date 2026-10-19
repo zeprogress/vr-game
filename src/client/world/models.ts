@@ -88,7 +88,7 @@ export const MODELS = {
   monSkeletonReaver: "/models/gen/SkeletonShield.glb",
   // Паук 60 ур. (подземелье): art/build/Spyder_rig.blend → Spider.glb (prep без палитры, текстуры 1024, клипы Idle/Walk/Run/Attack/HitReact/Death).
   monSpider: "/models/gen/Spider.glb",
-  // Ледяной гигант 57 ур. (подземелье): CrystalMob.glb + риг art/models/IceGiant.json, клипы tools/blender/icegiant_anim.py.
+  // Ледяной гигант 70 ур. (подземелье): CrystalMob.glb + риг art/models/IceGiant.json, клипы tools/blender/icegiant_anim.py.
   monIceGiant: "/models/gen/IceGiant.glb",
 } as const;
 

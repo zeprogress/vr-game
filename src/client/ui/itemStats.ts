@@ -2,7 +2,7 @@ import { craftPctOfText, fmtPct, powerMulOfText, sharpPctOfText, weaponDef, type
 import { attackSpeedFor } from "#shared/progression";
 import { attacksPerSec, dmgRollOfText, sharpAttackAdd, weaponHitDamage } from "#shared/heroStats";
 import { magicPowerFor } from "#shared/magic";
-import { DAGGER, DUAL, HAMMER, WEAPONS2 } from "#shared/classes2";
+import { DAGGER, HAMMER, WEAPONS2 } from "#shared/classes2";
 import { BOW, COMBAT } from "#shared/constants";
 
 export interface WornWeapon {
@@ -58,7 +58,7 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
       `${COMBAT.swordSplashRadius} м · ${Math.round(COMBAT.swordSplashFraction * 100)}%`,
     ]);
     out.push(["Растёт от", "силы (урон), ловкости (темп), удачи (крит)"]);
-    out.push(["Два меча", `темп ×${DUAL.tempo}, урон удара ×${DUAL.dmg} (роллы — лучший из двух)`]);
+    out.push(["Два меча", "бьют по очереди, темп и урон — как у одного (роллы — лучший из двух)"]);
   } else if (w.cls === "dagger" || w.cls === "spear" || w.cls === "hammer") {
     const prof = WEAPONS2[w.cls];
     const dmg = hit();
@@ -69,7 +69,7 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
     out.push(["Крит (база)", `${Math.round(prof.critBase * 100)}% · ×${prof.critMult}`]);
     if (w.cls === "dagger") {
       out.push(["Один кинжал", `+${Math.round(DAGGER.soloCrit * 100)}% крита, +${DAGGER.soloCritDmg} к силе крита, уворот выше`]);
-      out.push(["Два кинжала", `темп ×${DUAL.tempo}, урон удара ×${DUAL.dmg}`]);
+      out.push(["Два кинжала", "бьют по очереди, темп и урон — как у одного (роллы — лучший из двух)"]);
     } else if (w.cls === "spear") {
       out.push(["Выпад", `до ${prof.reach} м, конусом перед собой — до ${prof.pierce} целей`]);
     } else {

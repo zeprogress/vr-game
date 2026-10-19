@@ -62,14 +62,14 @@ export function isTwoHandedMelee(cls: string): boolean {
  * самого начала; `gold` — золотой вариант (редкая добыча с босса, просто ×урон);
  * `legendary` — именное оружие с механическим аффиксом (см. `affix`);
  * `ruby` — рубиновое (2026-10-06): выше уникального (RUBY.powerMul), 4 ролла, только с
- * супербоссов катакомб; точится как обычное — за лом, цена ×RUBY.enchantCostMul (2026-10-12);
+ * супербоссов катакомб; точится как обычное — за лом, цена ×ENCHANT_TIER_MUL.ruby к уникальному;
  * `craft` — мастерское (2026-10-19): только из крафта (shared/craft.ts), тёмно-оранжевое; сила — как у
  * уникального × «Мастерство» экземпляра (WeaponInstance.cp), точится как уникальное.
  */
 export type WeaponTier = "base" | "gold" | "legendary" | "ruby" | "craft";
 
 /**
- * Рубиновое оружие. Заточка ролла — та же, что у обычного (шанс и прирост), но цена в ломе ×enchantCostMul.
+ * Рубиновое оружие. Заточка ролла — та же, что у обычного (шанс и прирост), цена — ENCHANT_TIER_MUL.
  */
 export const RUBY = {
   /** Сила: × к уникальному того же класса (+15%, у меча 4.5 → ×5.2). */
@@ -80,9 +80,14 @@ export const RUBY = {
   dropChance: 0.05,
   /** Лом за переработку рубинового: × к оценке предмета (2026-10-12: ×100 — оценка 50 даёт 5000). */
   scrapMul: 100,
-  /** Заточка рубинового: цена в ломе — как у обычной заточки этого ролла, × это (2026-10-12: ×20, было ×100 — в 5 раз дешевле). */
-  enchantCostMul: 20,
 } as const;
+
+/**
+ * Цена заточки по тиру — во сколько раз дороже, чем у уникального; одно правило для роллов и точки атаки
+ * (2026-10-19, решение пользователя: рубиновое ×2, мастерское ×3; обычное, золотое и уникальное — как было.
+ * Раньше роллы рубинового ×20 к обычной цене — ≈13 уникальных, точка атаки рубинового ×10, мастерское — как уникальное).
+ */
+export const ENCHANT_TIER_MUL = { ruby: 2, craft: 3 } as const;
 
 /** Цвет мастерского (крафтового) оружия — тёмно-оранжевый (модели, свечение). */
 export const CRAFT_TINT = [0.86, 0.34, 0.03] as const;
@@ -348,7 +353,7 @@ function weaponItem(cls: WeaponClass, tier: WeaponTier): ItemDef {
         : tier === "craft"
           ? "мастерское · из крафта · 2–4 ролла"
           : tier === "ruby"
-          ? `рубиновое · 4 ролла · заточка за лом ×${RUBY.enchantCostMul}`
+          ? `рубиновое · 4 ролла · заточка ×${ENCHANT_TIER_MUL.ruby} к уникальному`
           : tier === "legendary"
           ? "уникальное · 2–3 ролла"
           : tier === "gold"
@@ -1203,6 +1208,12 @@ export const POINTS_MAX = 33;
 
 export const ENCHANT = { chanceHi: 0.85, chanceDrop: 0.77, chanceMin: 0.08, costBase: 1.5, costTop: 20, qualityMul: 1.2, legendaryMul: 1.5, gainMin: 1, gainMax: 3, deckSize: 20 } as const;
 
+/** Множитель цены заточки ролла к обычной: обычное и золотое ×1, уникальное ×legendaryMul, выше — от уникального. */
+function enchantTierCost(tier: string): number {
+  if (tier === "ruby" || tier === "craft") return ENCHANT.legendaryMul * ENCHANT_TIER_MUL[tier];
+  return tier === "legendary" ? ENCHANT.legendaryMul : 1;
+}
+
 /**
  * Бросок удачи заточки по колоде: в колоде deckSize карт, из них round(шанс × deckSize) удачных; карта тянется без возврата.
  * Удачи ровнее, чем независимые броски (серий меньше), средняя доля удач — тот же шанс.
@@ -1238,8 +1249,6 @@ export const ATTACK_POINT = {
   /** Цена первой попытки в ломе (уникальное) и множитель на каждую следующую точку (2026-10-16: было 100, вдвое дешевле). */
   cost0: 50,
   costGrowth: 1.2,
-  /** Рубиновое — цена попытки × это. */
-  rubyCostMul: 10,
 } as const;
 
 /** Предел суммарной прибавки к урону от точек (доля): gain0 / (1 − gainDecay) = +80%. */
@@ -1339,7 +1348,8 @@ export function attackPointNext(w: { cls: string; tier: string; sharp?: number }
   return {
     gain: ATTACK_POINT.gain0 * ATTACK_POINT.gainDecay ** n,
     chance: ATTACK_POINT.chance0 * ATTACK_POINT.chanceDecay ** n,
-    cost: Math.round(ATTACK_POINT.cost0 * ATTACK_POINT.costGrowth ** n * (w.tier === "ruby" ? ATTACK_POINT.rubyCostMul : 1)),
+    // Цена — от уникального; рубиновое и мастерское — × ENCHANT_TIER_MUL (то же правило, что у роллов).
+    cost: Math.round(ATTACK_POINT.cost0 * ATTACK_POINT.costGrowth ** n * (w.tier === "ruby" || w.tier === "craft" ? ENCHANT_TIER_MUL[w.tier] : 1)),
     points: n,
   };
 }
@@ -1374,7 +1384,7 @@ export interface EnchantInfo {
   of: number;
   max: boolean;
   chance: number;
-  /** Цена заточки в ломе (у рубинового — × RUBY.enchantCostMul). */
+  /** Цена заточки в ломе (по тиру — enchantTierCost). */
   cost: number;
 }
 
@@ -1393,9 +1403,9 @@ export function enchantInfo(w: WeaponInstance, idx: number): EnchantInfo | null 
   const max = pts >= POINTS_MAX;
   const q = w.affixes.length ? weaponQuality(w) / (POINTS_MAX * w.affixes.length) : 0;
   // Мастерское точится по цене уникального.
-  const { chance, cost } = enchantCurve(pts, q, w.tier === "legendary" || w.tier === "craft" ? ENCHANT.legendaryMul : 1);
-  // Рубиновое — та же заточка за лом, только в RUBY.enchantCostMul раз дороже.
-  return { points: pts, of: POINTS_MAX, max, chance, cost: w.tier === "ruby" ? cost * RUBY.enchantCostMul : cost };
+  // Шанс и прирост — общие; цена — по тиру (рубиновое ×2, мастерское ×3 к уникальному).
+  const { chance, cost } = enchantCurve(pts, q, enchantTierCost(w.tier));
+  return { points: pts, of: POINTS_MAX, max, chance, cost };
 }
 
 /** Удачная заточка: +gain очков к аффиксу — ролл встаёт ровно на целое очко, не выше 33. */

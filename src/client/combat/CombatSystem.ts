@@ -39,7 +39,7 @@ import type { Sfx } from "../audio/Sfx";
 import { createSword } from "../items/Sword";
 import { createClassWeapon } from "../items/classWeapons";
 import { applySharpGlow } from "../items/weaponModels";
-import { DUAL, SKILLS2, WEAPONS2 } from "#shared/classes2";
+import { SKILLS2, WEAPONS2 } from "#shared/classes2";
 import { createStaff } from "../items/Staff";
 import { createPotion, type PotionBottle } from "../items/Potion";
 import { createShield } from "../items/Shield";
@@ -374,25 +374,24 @@ export class CombatSystem {
   /**
    * Два кинжала (вид от первого лица): общий откат на обе руки. У каждой руки
    * свой замах, и без общего отката вторая рука била, не дожидаясь первой —
-   * пара кинжалов выходила ~×2.7 к одному вместо задуманных DUAL.tempo.
+   * пара кинжалов выходила ~×2.7 к одному (пара бьёт по очереди — не чаще одного клинка).
    */
   private dualDaggerCd = 0;
 
-  /** Пауза между ударами оружия относительно меча (кинжал/копьё/молот — своя; два кинжала — по очереди, чаще). */
+  /** Пауза между ударами оружия относительно меча (кинжал/копьё/молот — своя; два клинка — по очереди, тот же темп). */
   /** Пауза между атаками этим оружием — общая формула (heroAttackInterval): ПК, телефон, VR и боты одинаковы. */
   private attackInterval(k: ItemKind | "fist"): number {
     const w = k === "fist" ? "fist" : k === "bow" ? "bow" : isNewKind(k) ? k : "sword";
-    const dual = this.dualPairOf(k);
-    return heroAttackInterval(w as AttackWeapon, this.prog.level, this.prog.stats, this.atkSpeedAffix, dual);
+    return heroAttackInterval(w as AttackWeapon, this.prog.level, this.prog.stats, this.atkSpeedAffix);
   }
 
   /** Длительность анимации взмаха (не темп!): короче паузы, чтобы клип успевал. */
   private intervalMul(k: ItemKind): number {
     const base = isNewKind(k) ? WEAPONS2[k].interval / WEAPONS2.sword.interval : 1;
-    return base / (this.dualPairOf(k) ? DUAL.tempo : 1);
+    return base;
   }
 
-  /** В руках пара этого клинка (два кинжала или два меча) — DUAL. */
+  /** В руках пара этого клинка (два кинжала или два меча): бьют по очереди. */
   private dualPairOf(k: ItemKind | "fist"): boolean {
     return (k === "dagger" || k === "sword") && !!this.held1(k, "left") && !!this.held1(k, "right");
   }

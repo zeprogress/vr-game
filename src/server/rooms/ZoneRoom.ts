@@ -201,7 +201,7 @@ import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand }
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
 import { leashCut } from "../sim/leash";
 import { ATTR2 } from "#shared/attrs2";
-import { ABYSS, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, DUAL, isDualPair, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { ABYSS, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC, ULT_PULL_PULSES, ULT_PULL_POWER } from "#shared/ultimates";
 import {
   MAGIC,
@@ -2346,11 +2346,10 @@ export class ZoneRoom extends Room<ZoneState> {
     // атаки (уровень + ловкость + ролл "скорость атаки" на предмете) укорачивает интервал.
     // Темп — ОДНА формула для всех платформ и ботов (heroAttackInterval); запас HIT_RATE_SLACK на сетевой лаг.
     const mul = rolledAtkSpeedMul(p, hand, rt) * this.cryTempo(rt);
-    const dualD = isDualPair(p.leftCls, p.rightCls);
     const rate =
       msg.weapon === "throw"
         ? WEAPON_RATE.throw
-        : heroAttackInterval(msg.weapon === "arrow" ? "bow" : msg.weapon, p.level, p, mul, dualD) * HIT_RATE_SLACK;
+        : heroAttackInterval(msg.weapon === "arrow" ? "bow" : msg.weapon, p.level, p, mul) * HIT_RATE_SLACK;
     // Не «промежуток между двумя ударами» (тик сервера и сеть сбивают удары в кучу — у быстрых атак,
     // например два меча под «Боевым кличем», пауза 0.19 с, и до трети ударов отбрасывались), а счёт:
     // удары могут прийти раньше срока на HIT_BUNCH с, но средний темп не выше одного за `rate`.
@@ -2448,11 +2447,8 @@ export class ZoneRoom extends Room<ZoneState> {
     // «Теневой рывок»: первый удар после рывка — гарантированный крит.
     if (critM <= 1 && rt.forceCritUntil > this.elapsed && weapon !== "fist") critM = fullCrit;
     rt.forceCritUntil = -999;
-    // Пара клинков (два кинжала / два меча) бьёт чаще (DUAL.tempo), но каждый удар чуть слабее.
-    const dualPair = (weapon === "dagger" || weapon === "sword") && isDualPair(p.leftCls, p.rightCls);
     const dmg =
       weaponDamage(weapon, p.level, p, multIn(p, hand) * rolledDmgMul(p, hand, rt)) *
-      (dualPair ? DUAL.dmg : 1) *
       critM *
       this.buffMult(heroId, "dmg") *
       (isMeleeClass(weapon) ? this.abyssStrikeMul(p, rt) : 1);
@@ -8634,7 +8630,7 @@ export class ZoneRoom extends Room<ZoneState> {
       // множитель (RemoteAvatar тоже зовёт meleeSpeedFor).
       const atk = meleeSpeedFor(p.level, p);
       const kindB = p.rightCls === "dagger" || p.rightCls === "spear" || p.rightCls === "hammer" ? p.rightCls : "sword";
-      bot.attackCd = heroAttackInterval(kindB, p.level, p, rolledAtkSpeedMul(p, "right", bot.rt) * this.cryTempo(bot.rt), isDualPair(p.leftCls, p.rightCls));
+      bot.attackCd = heroAttackInterval(kindB, p.level, p, rolledAtkSpeedMul(p, "right", bot.rt) * this.cryTempo(bot.rt));
       bot.swingIn = BOT.attackImpact / atk;
       bot.swingTarget = chasingMob.id;
       bot.swingDx = aimDx;

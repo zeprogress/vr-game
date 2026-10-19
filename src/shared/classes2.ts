@@ -244,10 +244,10 @@ export function staffMagicTier(tier: string): number {
 }
 
 /**
- * Пара одинаковых клинков — два кинжала или (с 2026-10-06) два меча: руки чередуются,
- * темп × tempo, урон удара × dmg. Роллы двух клинков не складываются (лучший из двух).
+ * Пара одинаковых клинков — два кинжала или два меча: руки чередуются, темп и урон удара — как у
+ * одного клинка (2026-10-19: прибавка темпа ×1.35 и плата за неё −5% урона сняты по просьбе пользователя).
+ * Роллы двух клинков не складываются (лучший из двух).
  */
-export const DUAL = { tempo: 1.35, dmg: 0.95 } as const;
 /** В руках пара одинаковых клинков (кинжал+кинжал или меч+меч). */
 export function isDualPair(left: string | null | undefined, right: string | null | undefined): boolean {
   return !!left && left === right && (left === "dagger" || left === "sword");
@@ -345,14 +345,13 @@ export type AttackWeapon = "sword" | "dagger" | "spear" | "hammer" | "bow" | "fi
  * Пауза между атаками героя, с — ОДНА для всех: ПК, телефон, VR (предел сервера) и боты
  * (2026-10-05: раньше у ПК меч бил в 1.8, лук — в 2.3 раза чаще ботов и телефона).
  * База — профиль оружия (WEAPONS2.*.interval), темп — уровень и ЛОВ; `mul` — ролл
- * «скорость атаки» × клич × рывок; два кинжала бьют по очереди — чаще.
+ * «скорость атаки» × клич × рывок; два клинка бьют по очереди с тем же темпом.
  */
-export function heroAttackInterval(weapon: AttackWeapon, level: number, a: AttrsIn, mul = 1, dualPair = false): number {
+export function heroAttackInterval(weapon: AttackWeapon, level: number, a: AttrsIn, mul = 1): number {
   if (weapon === "bow") return WEAPONS2.bow.interval / (attackSpeedFor(level, a) * mul);
   if (weapon === "fist") return MELEE.cooldown / (meleeSpeedFor(level, a) * mul);
-  // Пара клинков (два кинжала / два меча) — руки чередуются, бьют чаще (DUAL).
-  const dual = dualPair && (weapon === "dagger" || weapon === "sword") ? DUAL.tempo : 1;
-  return WEAPONS2[weapon].interval / dual / (meleeSpeedFor(level, a) * mul);
+  // Пара клинков (два кинжала / два меча) бьёт по очереди, но не чаще одного клинка.
+  return WEAPONS2[weapon].interval / (meleeSpeedFor(level, a) * mul);
 }
 
 /**
@@ -888,10 +887,7 @@ export function summarize2(h: Hero2): Summary2 {
     perHit = w.dmg * physPower2(h.level, a) * tierMul;
   }
   if (h.cls === "assassin") {
-    if (h.dual) {
-      rate *= DUAL.tempo;
-      perHit *= DUAL.dmg;
-    } else {
+    if (!h.dual) {
       oneItem = true;
       critBase += DAGGER.soloCrit;
       critDmg += DAGGER.soloCritDmg;

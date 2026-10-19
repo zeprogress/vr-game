@@ -99,10 +99,9 @@ test("ЛОВ ускоряет удары и бег: больше ЛОВ — ме
   assert.ok(moveSpeed2(10, fast) > moveSpeed2(10, slow));
 });
 
-test("множитель темпа делит паузу; пара кинжалов бьёт чаще одного", () => {
+test("множитель темпа делит паузу (пара клинков — без прибавки темпа, 2026-10-19)", () => {
   const a = blankAttrs();
   assert.ok(close(heroAttackInterval("sword", 5, a, 2), heroAttackInterval("sword", 5, a, 1) / 2));
-  assert.ok(heroAttackInterval("dagger", 5, a, 1, true) < heroAttackInterval("dagger", 5, a, 1, false));
 });
 
 test("пауза любого оружия положительна и не растёт с уровнем", () => {

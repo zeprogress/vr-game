@@ -5,7 +5,7 @@ import { fireboltDamage } from "./magic";
 import { armorFrac, dodgeChance, heroAttackInterval, holdsOneItem, hpRegenFrac, maxHpFor, moveSpeedFor, staffCastInterval } from "./progression";
 import { BASE_CRIT } from "./combat";
 import { ATTR2, attrOf, invested } from "./attrs2";
-import { DAGGER, DUAL, HAMMER, isDualPair, SMOKE, staffMagicTier, WARCRY, WEAPONS2, type AttrsIn } from "./classes2";
+import { DAGGER, HAMMER, SMOKE, staffMagicTier, WARCRY, WEAPONS2, type AttrsIn } from "./classes2";
 import { magicPowerFor, magicResistFrac } from "./magic";
 import { weaponDamage } from "./combat";
 import { critRollMult, isMeleeClass, powerMulOfText, shieldBlockChance, weaponDef, type WeaponClass, type WeaponTier } from "./items";
@@ -15,11 +15,11 @@ import { critRollMult, isMeleeClass, powerMulOfText, shieldBlockChance, weaponDe
  * (heroAttackInterval: ПК, телефон, VR, боты); посох — огнешары (staffCastInterval, МДР).
  * `affixBonus` — ролл «скорость атаки» (0.12 = +12%).
  */
-export function attacksPerSec(cls: string, level: number, a: AttrsIn, affixBonus = 0, dualPair = false): number {
+export function attacksPerSec(cls: string, level: number, a: AttrsIn, affixBonus = 0): number {
   const mul = 1 + affixBonus;
   if (cls === "staff") return 1 / staffCastInterval(level, a, mul);
   const w = cls === "bow" || cls === "dagger" || cls === "spear" || cls === "hammer" ? cls : "sword";
-  return 1 / heroAttackInterval(w, level, a, mul, dualPair);
+  return 1 / heroAttackInterval(w, level, a, mul);
 }
 
 /**
@@ -181,10 +181,9 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   // Урон: и новый dmgFlat, и старый dmgPct подписаны «Урон +N%».
   const dmgBonus = affixNum2("Урон");
   // Удар — та же формула, что «Атака» у оружия (weaponHitDamage); без оружия — как меч базового тира.
-  const dual = isDualPair(p.leftCls, p.rightCls) ? DUAL.dmg : 1;
   // Точка атаки за лом и «Мастерство» крафта: множитель урона предмета — лучший из двух рук (как attackPointBest на сервере).
   const sharpMul = Math.max(powerMulOfText(weaponAffix), otherAffix ? powerMulOfText(otherAffix) : 1);
-  const hit = weaponHitDamage(cls || "sword", tier, p.level, p, dmgBonus) * dual * bm.dmg * sharpMul;
+  const hit = weaponHitDamage(cls || "sword", tier, p.level, p, dmgBonus) * bm.dmg * sharpMul;
   rows.push({ label: "Урон", value: hit.toFixed(1) + (bm.dmg > 1 ? UP : "") });
   if (cls === "hammer") {
     rows.push({ label: "Волна молота (магия)", value: (HAMMER.waveMagic * magicPowerFor(p.level, p) * tierMul * (1 + Math.max(0, attrOf(p, "int") - ATTR2.start) * HAMMER.waveIntPer)).toFixed(1) });
@@ -197,7 +196,7 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const atkSpeedBonus = affixNum2("Скорость атаки");
   rows.push({
     label: attackRateLabel(cls),
-    value: `${(attacksPerSec(cls, p.level, p, atkSpeedBonus, isDualPair(p.leftCls, p.rightCls)) * bm.tempo).toFixed(2)}/с${bm.tempo > 1 ? UP : ""}`,
+    value: `${(attacksPerSec(cls, p.level, p, atkSpeedBonus) * bm.tempo).toFixed(2)}/с${bm.tempo > 1 ? UP : ""}`,
   });
 
   rows.push({ label: "Скорость бега", value: `${(moveSpeedFor(p.level, p) * bm.move).toFixed(1)} м/с${bm.move > 1 ? UP : ""}` });

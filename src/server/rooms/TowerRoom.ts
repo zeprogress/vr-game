@@ -1,5 +1,5 @@
 // colyseus 0.15 — CJS-пакет без ESM-exports, поэтому default-импорт (как в index.ts/ZoneRoom.ts).
-import { DAGGER, DUAL, isDualPair, staffMagicTier, WEAPONS2 } from "#shared/classes2";
+import { DAGGER, staffMagicTier, WEAPONS2 } from "#shared/classes2";
 import colyseus from "colyseus";
 import { Schema, type } from "@colyseus/schema";
 
@@ -375,9 +375,7 @@ export class TowerRoom extends Room<TowerState> {
     this.heroMoveSpeed = moveSpeedFor(options.level, this.heroAttrs);
     // Темп ближнего боя — от паузы своего оружия (кинжал/копьё/молот — своя, меч — WEAPONS2.sword.interval; та же база, что heroAttackInterval).
     const prof = options.rightCls === "dagger" || options.rightCls === "spear" || options.rightCls === "hammer" ? WEAPONS2[options.rightCls] : null;
-    const dual = isDualPair(options.leftCls, options.rightCls) ? DUAL.tempo : 1;
-    this.heroMeleeSpeed = meleeSpeedFor(options.level, this.heroAttrs) * (prof ? (WEAPONS2.sword.interval / prof.interval) * dual : 1);
-    if (isDualPair(options.leftCls, options.rightCls)) this.heroDmg *= DUAL.dmg;
+    this.heroMeleeSpeed = meleeSpeedFor(options.level, this.heroAttrs) * (prof ? WEAPONS2.sword.interval / prof.interval : 1);
     this.heroSoloDagger = options.rightCls === "dagger" && options.leftCls === "";
     // Роллы оружия/щита — как на поляне: урон, скорость атаки, крит (раньше в
     // башне аффиксы не работали вовсе, крит был только базовый у лука).

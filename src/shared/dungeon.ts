@@ -425,7 +425,7 @@ export const DUN_MOB_CAMPS: readonly { u: number; v: number; type: keyof typeof 
   { u: 0, v: 10, type: "spider", count: 18, spread: 6 },
   { u: -20, v: -10, type: "spider", count: 18, spread: 6 },
   { u: 0, v: -80, type: "spider", count: 12, spread: 8 },
-  // Ледяной гигант 57 ур. (2026-10-19): только в подземелье, по одному — Кристальный грот (U) и Кристальная пещера (D).
+  // Ледяной гигант 70 ур. (2026-10-19): только в подземелье, по одному — Кристальный грот (U) и Кристальная пещера (D).
   { u: -160, v: -96, type: "iceGiant", count: 1, spread: 2, noChamp: true },
   { u: -86, v: -80, type: "iceGiant", count: 1, spread: 2, noChamp: true },
 ];
