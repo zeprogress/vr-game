@@ -12,6 +12,10 @@ export interface GameUpdate {
 
 export const UPDATES: readonly GameUpdate[] = [
   {
+    at: "2026-10-19 14:30",
+    items: ["Охота на элиту длится 5 минут вместо 4"],
+  },
+  {
     at: "2026-10-19 14:20",
     items: ["Охота на элиту: подручные дракона больше не оглушают — только големы"],
   },
