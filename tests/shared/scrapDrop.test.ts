@@ -3,18 +3,18 @@ import assert from "node:assert/strict";
 import { scrapDropChance, SCRAP_DROP } from "../../src/shared/scrapDrop";
 import { close } from "./rng";
 
-test("на 1 уровне моба — 3%, обычный моб (без уровня) — тоже 3%", () => {
-  assert.ok(close(scrapDropChance(1), 0.03));
-  assert.ok(close(scrapDropChance(0), 0.03));
+test("на 1 уровне моба — 10%, обычный моб (без уровня) — тоже 10%", () => {
+  assert.ok(close(scrapDropChance(1), 0.1));
+  assert.ok(close(scrapDropChance(0), 0.1));
 });
 
-test("на 53 уровне — 75%, выше — не больше 75%", () => {
-  assert.ok(close(scrapDropChance(53), 0.75));
-  assert.ok(close(scrapDropChance(100), 0.75));
+test("на 70 уровне — 100%, выше — не больше 100%", () => {
+  assert.ok(close(scrapDropChance(70), 1));
+  assert.ok(close(scrapDropChance(100), 1));
 });
 
-test("между ними — линейно: на 27 уровне около 39%", () => {
-  assert.ok(close(scrapDropChance(27), 0.03 + 0.72 * 0.5));
+test("между ними — линейно: на 36 уровне 10% + 90% · 35/69", () => {
+  assert.ok(close(scrapDropChance(36), 0.1 + 0.9 * (35 / 69)));
   assert.ok(scrapDropChance(10) < scrapDropChance(20));
 });
 

@@ -5233,7 +5233,7 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** Кольцо/камень с добитого моба — сразу в запись героя (не на землю: боты и игроки одинаково). */
-  /** Лом с моба: шанс 1% на 1 ур. → 50% на 53 ур. (shared/scrapDrop.ts). Падает в сумку убийцы. */
+  /** Лом с моба: шанс 10% на 1 ур. → 100% на 70 ур. (shared/scrapDrop.ts). Падает в сумку убийцы. */
   private scrapDrop(owner: string, level: number): void {
     if (Math.random() >= scrapDropChance(level)) return;
     const p = this.state.players.get(owner);

@@ -66,7 +66,7 @@ export const DUN_ZONES: readonly DunZone[] = [
   { id: "F", name: "Зал Кольца", theme: "кольцевой зал вокруг светящегося провала, развилка", u: 0, v: -10, ceil: 45, color: [0.56, 0.56, 0.55], style: "hall", enclose: "open" },
   { id: "Q", name: "Каменный лес", theme: "лес сталагмитов и сталактитов-колонн", u: 82, v: -6, ceil: 40, color: [0.5, 0.47, 0.44], style: "cave", enclose: "partial" },
   { id: "I", name: "Тайник отступника", theme: "за верёвочным мостом: элита и сундук", u: 164, v: 4, ceil: 16, color: [0.6, 0.52, 0.38], style: "cave", enclose: "open" },
-  { id: "K", name: "Шахтные выработки", theme: "три забоя на разных уровнях, леса, тележки, рельсы", u: 118, v: -134, ceil: 18, color: [0.55, 0.45, 0.33], style: "cave", enclose: "partial" },
+  { id: "K", name: "Шахтные выработки", theme: "три забоя на разных уровнях, леса, тележки, рельсы", u: 144, v: -146, ceil: 18, color: [0.55, 0.45, 0.33], style: "cave", enclose: "partial" },
   { id: "N", name: "Тайный колодец", theme: "широкие уступы по стенам вокруг провала", u: 171, v: -75, ceil: 50, color: [0.42, 0.42, 0.48], style: "cave", enclose: "closed" },
   { id: "O", name: "Сокровищница колодца", theme: "дно колодца: элита и сундук", u: 171, v: -75, ceil: 12, color: [0.6, 0.5, 0.3], style: "cave", enclose: "closed" },
   { id: "G", name: "Преддверие храма", theme: "парадная лестница, статуи-стражи, жаровни", u: 0, v: 60, ceil: 40, color: [0.68, 0.58, 0.4], style: "hall", enclose: "open" },
@@ -425,9 +425,9 @@ export const DUN_MOB_CAMPS: readonly { u: number; v: number; type: keyof typeof 
   { u: 0, v: 10, type: "spider", count: 18, spread: 6 },
   { u: -20, v: -10, type: "spider", count: 18, spread: 6 },
   { u: 0, v: -80, type: "spider", count: 12, spread: 8 },
-  // Ледяной гигант 70 ур. (2026-10-19): только в подземелье, по три в залах вокруг пауков (кольцом ~7 м, чтобы не слипались) — в 50–86 м от их
-  // лагерей и не ближе 84 м друг к другу: Шахтные выработки (K), Каменный лес (Q), Преддверие храма (G), Кристальная пещера (D). Залы просторные (пол на 16 м вокруг), свод от 22 м — гигант ≈11.5 м.
-  { u: 56, v: -133, type: "iceGiant", count: 3, spread: 12, ring: 0.6, noChamp: true }, // зал K: в S кольцо не помещалось (узкие ступени)
+  // Ледяной гигант 70 ур.: только в подземелье, по три в центре каждого зала (кольцом ~7 м, чтобы не слипались): Шахтные выработки (K), Каменный лес (Q),
+  // Преддверие храма (G), Кристальная пещера (D). Стоянка = центр зоны (DUN_ZONES): от него бот берёт дом стоянки (ZoneRoom CAMP_SPOTS). Тест: tests/shared/giantCamps.test.ts.
+  { u: 144, v: -146, type: "iceGiant", count: 3, spread: 12, ring: 0.6, noChamp: true }, // зал K: центр широкого забоя (K1), 24 м до края
   { u: 82, v: -6, type: "iceGiant", count: 3, spread: 12, ring: 0.6, noChamp: true },
   { u: 0, v: 60, type: "iceGiant", count: 3, spread: 12, ring: 0.6, noChamp: true },
   { u: -86, v: -80, type: "iceGiant", count: 3, spread: 12, ring: 0.6, noChamp: true },
