@@ -12,6 +12,42 @@ export interface CatBossView {
   resRanged: number;
   resMagic: number;
   resDodge: number;
+  /** Дракон «Охоты на элиту»: hp/maxHp — удары, а не здоровье; фаза 1..4. */
+  hits?: boolean;
+  phase?: number;
+}
+
+type MobView = Omit<CatBossView, "name" | "hits"> & { mobName: string; dead: number; x: number; z: number; phase: number };
+
+/**
+ * Дракон «Охоты на элиту» для той же панели: у него MobState.phase > 0, здоровье — удары. Ищем раз в секунду
+ * и только во время охоты (обход всех мобов каждый кадр дорог на шлеме); виден в радиусе near м.
+ */
+export class HuntBossFinder {
+  private id = "";
+  private at = 0;
+
+  view(st: { eventKind: number; mobs: { get(id: string): MobView | undefined; forEach(fn: (m: MobView, id: string) => void): void } }, x: number, z: number, near = 90): CatBossView | null {
+    if (st.eventKind !== 2) {
+      this.id = "";
+      return null;
+    }
+    let m = this.id ? st.mobs.get(this.id) : undefined;
+    if ((!m || m.dead || !m.phase) && performance.now() >= this.at) {
+      this.at = performance.now() + 1000;
+      this.id = "";
+      st.mobs.forEach((q, id) => {
+        if (!this.id && q.phase > 0 && !q.dead) this.id = id;
+      });
+      m = this.id ? st.mobs.get(this.id) : undefined;
+    }
+    if (!m || m.dead || !m.phase || Math.hypot(m.x - x, m.z - z) > near) return null;
+    return {
+      name: `${m.mobName || "Дракон"} · фаза ${m.phase}`,
+      hp: m.hp, maxHp: m.maxHp, armor: m.armor, resPhys: m.resPhys, resRanged: m.resRanged, resMagic: m.resMagic, resDodge: m.resDodge,
+      hits: true, phase: m.phase,
+    };
+  }
 }
 
 /** Босс катакомб из RoomState (catBoss → MobState); нет или мёртв — null. Одинаково у игрока и зрителя. */
@@ -81,7 +117,10 @@ export class CatBossHud {
     this.title.textContent = `☠ ${v.name}`;
     const frac = v.maxHp > 0 ? Math.max(0, Math.min(1, v.hp / v.maxHp)) : 0;
     this.fill.style.width = `${(frac * 100).toFixed(1)}%`;
-    this.pct.textContent = `${Math.ceil(v.hp).toLocaleString("ru-RU")} / ${Math.ceil(v.maxHp).toLocaleString("ru-RU")} · ${Math.ceil(frac * 100)}%`;
+    this.pct.textContent = v.hits
+      ? `${Math.ceil(v.hp).toLocaleString("ru-RU")} / ${Math.ceil(v.maxHp).toLocaleString("ru-RU")} ударов`
+      : `${Math.ceil(v.hp).toLocaleString("ru-RU")} / ${Math.ceil(v.maxHp).toLocaleString("ru-RU")} · ${Math.ceil(frac * 100)}%`;
+    this.el.dataset.phase = String(v.phase ?? 0);
 
     const sig = `${v.armor}|${v.resPhys}|${v.resRanged}|${v.resMagic}|${v.resDodge}`;
     if (sig === this.resSig) return;
@@ -129,6 +168,9 @@ function ensureCss(): void {
 .cbh-bar { position:relative; height:14px; border-radius:7px; background:rgba(255,255,255,.12); overflow:hidden; }
 .cbh-spec .cbh-bar { height:22px; border-radius:11px; }
 .cbh-fill { position:absolute; left:0; top:0; bottom:0; background:linear-gradient(90deg, #a3241c, #ff6a3d); }
+.cbh-root[data-phase="2"] .cbh-fill { background:linear-gradient(90deg, #b8471c, #ffa23d); }
+.cbh-root[data-phase="3"] .cbh-fill { background:linear-gradient(90deg, #8f1c5c, #ff3d8b); }
+.cbh-root[data-phase="4"] .cbh-fill { background:linear-gradient(90deg, #4a1c8f, #b03dff); box-shadow:0 0 10px #b03dff; }
 .cbh-pct { position:absolute; right:6px; top:0; font-size:11px; line-height:14px; }
 .cbh-spec .cbh-pct { font-size:15px; line-height:22px; }
 .cbh-res { margin-top:8px; display:flex; flex-wrap:wrap; gap:6px; }

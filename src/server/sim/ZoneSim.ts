@@ -1,6 +1,6 @@
 import { RING, RING_LEVEL_GATE } from "#shared/jewels";
 import { QUEST } from "#shared/quests";
-import { AFFIX, BOW, COMBAT, DROP_CHANCE, WEAPON_DROP_MUL, UNIQUE_DROP_MUL, goldDropMulForLevel, WORLD, PLAYER } from "#shared/constants";
+import { AFFIX, BOW, COMBAT, DROP_CHANCE, EVENT, WEAPON_DROP_MUL, UNIQUE_DROP_MUL, goldDropMulForLevel, WORLD, PLAYER } from "#shared/constants";
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { RAID } from "#shared/raid";
 import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, WEB, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER, ICE_GIANT, MOB_SWING } from "#shared/mobs";
@@ -310,6 +310,33 @@ export class Mob {
   private readonly giantFisHit = new Set<string>();
   /** «Ледяная ярость» включилась (один раз за жизнь). */
   giantFury = false;
+  /**
+   * Дракон «Охоты на элиту»: здоровье — удары (EVENT.eliteHunt.hits), каждое попадание (не тик) — минус одно;
+   * настоящий урон копится в dmgLog — по нему комната считает DPS и фазы.
+   */
+  hitCounter = false;
+  /** Фаза дракона охоты (1..4), 0 — не он. */
+  huntPhase = 0;
+  private readonly dmgLog: { t: number; d: number }[] = [];
+
+  /** Запомнить урон по счётчику ударов (мс — Date.now()). */
+  noteDamage(d: number, now: number, windowSec: number): void {
+    this.dmgLog.push({ t: now, d });
+    this.pruneDmg(now, windowSec);
+  }
+
+  /** Общий урон в секунду по мобу за последние windowSec с (все герои). */
+  dpsAt(now: number, windowSec: number): number {
+    this.pruneDmg(now, windowSec);
+    let sum = 0;
+    for (const e of this.dmgLog) sum += e.d;
+    return sum / windowSec;
+  }
+
+  private pruneDmg(now: number, windowSec: number): void {
+    const from = now - windowSec * 1000;
+    while (this.dmgLog.length && this.dmgLog[0].t < from) this.dmgLog.shift();
+  }
   /** Наледь от упавших глыб: замедляет, пока стоишь (переживает смерть гиганта до истечения). */
   private readonly icePatches: { x: number; z: number; t: number; tickT: number }[] = [];
   /** Плевун: сколько уже пятится и сколько ещё нельзя пятиться. */
@@ -3531,9 +3558,11 @@ export class ZoneSim {
     if (m.markT > 0) dmg *= m.markMul; // «Метка»: +25% урона от всех атакующих
     if (m.vulnT > 0 && attacker && this.hammerHit?.(attacker)) dmg *= m.vulnMul; // «Цепная молния»: по молоту — больше
     // Вклад считаем по ФАКТИЧЕСКИ снятому HP: оверкилл сверх остатка не должен раздувать долю.
+    // Дракон охоты (hitCounter): здоровье — удары, попадание снимает одно; вклад, цифры и DPS — по урону.
     const hpBefore = m.hp;
-    const killed = m.applyHit(dmg, dx, dz, dot);
-    const dealt = Math.max(0, hpBefore - m.hp);
+    const killed = m.applyHit(m.hitCounter ? (dot ? 0 : 1) : dmg, dx, dz, dot);
+    const dealt = m.hitCounter ? (hpBefore > 0 ? Math.max(0, dmg) : 0) : Math.max(0, hpBefore - m.hp);
+    if (m.hitCounter && dealt > 0) m.noteDamage(dealt, Date.now(), EVENT.eliteHunt.dpsWindow);
     if (attacker) m.addThreat(attacker, dealt);
     // Пугало: копим сессию урона бойца (новый боец или пауза дольше idleSec — заново).
     // У каждого пугала (главного и напарников) — своё табло DPS.

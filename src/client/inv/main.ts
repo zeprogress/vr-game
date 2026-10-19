@@ -8,7 +8,7 @@ import { injectPcStyle } from "../pc/pcStyle";
 import type { PcInvData } from "#shared/net/messages";
 import { UPDATES } from "#shared/updates";
 import { FEEDBACK_KIND_INFO, FEEDBACK_KINDS, FEEDBACK_MARKS, FEEDBACK_MARK_COLOR, FEEDBACK_NO_MARK_COLOR, FEEDBACK_TEXT_MAX, type FeedbackKind, type FeedbackView } from "#shared/feedback";
-import { respecCostFor } from "#shared/constants";
+import { EVENT, respecCostFor } from "#shared/constants";
 import { ELITE_MOBS, MOB_CAMPS } from "#shared/mobs";
 import { AFFIX_NAME, BAG, ENCHANT_TIER_MUL, RUBY } from "#shared/items";
 import { CRAFT, CRAFT_CATS, CRAFT_ITEMS, CRAFT_MATS, CRAFT_METHOD_IDS, CRAFT_METHODS, matRoll } from "#shared/craft";
@@ -357,7 +357,7 @@ ${MECH_CLASSES_HTML}
 <p>Слабые — у лагеря, сильнее — дальше. ${mobZonesText()}</p>
 
 <h2>События</h2>
-<p>Раз в несколько минут: <b>нашествие</b> (35%), <b>охота на элиту</b> — Огнекрылый дракон (40%), <b>Охотничья башня</b> (25%). Победа даёт «Благословение победы» — ×2 опыта и урона. В башне — соло-забег по этажам с дропом оружия своего класса.</p>
+<p>Раз в несколько минут: <b>нашествие</b> (35%), <b>охота на элиту</b> — Огнекрылый дракон (40%; вместо здоровья у него ${EVENT.eliteHunt.hits} ударов — каждое попадание снимает один, а чем больше общий урон в секунду по нему, тем выше фаза: от ${EVENT.eliteHunt.phaseDps[0]}/с — 2-я, ${EVENT.eliteHunt.phaseDps[1]}/с — 3-я, ${EVENT.eliteHunt.phaseDps[2]}/с — 4-я, с каждой бьёт сильнее и чаще), <b>Охотничья башня</b> (25%). Победа даёт «Благословение победы» — ×2 опыта и урона. В башне — соло-забег по этажам с дропом оружия своего класса.</p>
 <p><b>Квест чата</b> — раз в пару часов общая задача для ботов: пиши <code>!квест</code>, чтобы участвовать; награда — опыт, свиток мудрости и жетоны.</p>
 
 <h2>Титулы</h2>

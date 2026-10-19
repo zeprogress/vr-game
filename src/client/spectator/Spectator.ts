@@ -49,7 +49,7 @@ import { type CatacombsFx, catViewOf } from "../world/Catacombs";
 import { DungeonFx } from "../world/DungeonFx";
 import { type RaidArenaFx, raidViewOf } from "../world/RaidArena";
 import { RaidHud } from "../ui/RaidHud";
-import { CatBossHud, catBossViewOf } from "../ui/CatBossHud";
+import { CatBossHud, catBossViewOf, HuntBossFinder } from "../ui/CatBossHud";
 import { RAID } from "#shared/raid";
 import { VoiceChat } from "../voice/VoiceChat";
 import type { NetClient } from "../net/NetClient";
@@ -1048,7 +1048,8 @@ export class Spectator {
     const rv = cst ? raidViewOf(cst) : null;
     this.raidFx?.update(dt, rv);
     this.raidHud.update(rv, null);
-    this.catBossHud.update(cst && inCatRegion(this.cam.cam.position.x, this.cam.cam.position.z) ? catBossViewOf(cst) : null);
+    const hcp = this.cam.cam.position;
+    this.catBossHud.update(cst ? (inCatRegion(hcp.x, hcp.z) ? catBossViewOf(cst) : this.huntBoss.view(cst, hcp.x, hcp.z, 140)) : null);
     this.probe?.mark("zone");
 
     // Аватары игроков + мобы для режиссёра.
@@ -1596,6 +1597,8 @@ export class Spectator {
   private readonly raidHud = new RaidHud(true);
   /** Панель босса катакомб сверху: имя, HP, резисты. */
   private readonly catBossHud = new CatBossHud(true);
+  /** Дракон «Охоты на элиту» для той же панели (удары и фаза). */
+  private readonly huntBoss = new HuntBossFinder();
   private catMusic = "";
 
   /** Рядом с живым боссом — boss.mp3, вдали / после смерти — обычная. Башня — та же

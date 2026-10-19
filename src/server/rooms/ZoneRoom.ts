@@ -80,7 +80,7 @@ import {
   type PcInvData,
   type AutoGoMsg,
 } from "#shared/net/messages";
-import { ADMIN_NICK, NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL } from "#shared/constants";
+import { ADMIN_NICK, NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, huntPhaseFor, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL } from "#shared/constants";
 import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, ICE_GIANT, mobArmorBits, type CatDefense } from "#shared/mobs";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
 import { skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
@@ -3037,21 +3037,25 @@ export class ZoneRoom extends Room<ZoneState> {
     }
 
     if (this.activeEventKind === 2) {
-      // Охота: один именной бугай, жирнее и злее от числа героев в мире.
+      // Охота: один именной бугай; здоровье — удары (eh.hits), урон злее от числа героев рядом.
       const e = ELITE_MOBS[EVENT.eliteHunt.eliteKey];
       const eh = EVENT.eliteHunt;
       // Масштаб — по героям РЯДОМ с точкой, а не по всему миру: иначе десятки
       // ботов-зевак по всей карте раздували стража до неубиваемого.
       const heroes = this.heroesNear(spot.x, spot.z, eh.scaleRadius);
-      const hpMul = Math.min(eh.hpCap, 1 + (heroes - 1) * eh.hpPerHero);
       const dmgMul = Math.min(eh.dmgCap, 1 + (heroes - 1) * eh.dmgPerHero);
       this.eventPhaseAt = Date.now() + eh.hardTimeout * 1000;
       this.huntBossId = this.sim.spawnEventMob(e.kind, spot.x, spot.z, {
         ...eliteMobOpts(e),
         boss: true,
-        hp: Math.round(e.hp * hpMul),
+        hp: eh.hits,
         dmgMul: e.dmgMul * dmgMul,
       });
+      const hb = this.sim.mobs.get(this.huntBossId);
+      if (hb) {
+        hb.hitCounter = true;
+        hb.huntPhase = 1;
+      }
       this.huntDmgBase = MOB.attackDamage * e.dmgMul * dmgMul;
       const t0 = Date.now();
       this.huntAddAt = t0 + eh.addGap * 1000;
@@ -3151,12 +3155,29 @@ export class ZoneRoom extends Room<ZoneState> {
    * дождь» (метки под несколькими героями). Все с телеграфом — от них можно
    * уйти; в ярости идут чаще (enrageGapMul). Урон — через hurtPlayer.
    */
+  /**
+   * Фаза дракона охоты по общему DPS героев за последние eh.dpsWindow с: выше порога — следующая фаза
+   * (только вверх, можно перескочить сразу через несколько). Объявление всем, рёв дракона.
+   */
+  private huntPhaseTick(now: number, boss: Mob, eh: typeof EVENT.eliteHunt): void {
+    if (!boss.hitCounter) return;
+    const ph = huntPhaseFor(boss.dpsAt(now, eh.dpsWindow));
+    if (ph <= boss.huntPhase) return;
+    boss.huntPhase = ph;
+    boss.swing(MOB_SWING.wings);
+    const lim = eh.phaseDps[ph - 2];
+    const sub = `урон по нему больше ${lim.toLocaleString("ru-RU")}/с — бьёт в ×${eh.phaseDmg[ph - 1]} сильнее, умения и свита чаще`;
+    this.broadcast(MSG.catacomb, { kind: "boss", title: `${boss.eliteName} — фаза ${ph}!`, sub, secs: 5 } satisfies CatacombMsg);
+    this.reply(`${boss.eliteName} переходит в фазу ${ph}: ${sub}.`);
+  }
+
   private tickHuntAttacks(
     now: number,
     boss: Mob,
     eh: typeof EVENT.eliteHunt,
   ): void {
-    const gapK = boss.raging ? eh.enrageGapMul : 1;
+    // Дракон охоты — по фазе (DPS героев); дракон катакомб — ярость ниже порога HP.
+    const gapK = boss.huntPhase > 0 ? eh.phaseGap[boss.huntPhase - 1] : boss.raging ? eh.enrageGapMul : 1;
     const hurtAround = (
       cx: number,
       cz: number,
@@ -3328,16 +3349,14 @@ export class ZoneRoom extends Room<ZoneState> {
           return;
         }
         const eh = EVENT.eliteHunt;
-        // Ярость ниже порога HP: быстрее двигается (Mob.enraged) + бьёт сильнее.
-        if (!boss.raging && boss.hp / boss.maxHp < eh.enrageAt) {
-          boss.raging = true;
-          this.reply(`${boss.eliteName} впадает в ярость!`);
-        }
+        // Фазы по общему DPS героев по дракону (только вверх): сильнее бьёт, умения и свита чаще.
+        this.huntPhaseTick(now, boss, eh);
+        const ph = Math.max(1, boss.huntPhase) - 1;
         // Периодический призыв миньонов — «разберись с мелочью».
         if (now >= this.huntAddAt) {
-          this.huntAddAt = now + eh.addGap * (boss.raging ? eh.enrageGapMul : 1) * 1000;
+          this.huntAddAt = now + eh.addGap * eh.phaseGap[ph] * 1000;
           boss.swing(MOB_SWING.magic);
-          for (let i = 0; i < eh.addCount; i++) {
+          for (let i = 0; i < eh.phaseAdds[ph]; i++) {
             const adef = ELITE_MOBS[eh.addTypes[Math.floor(Math.random() * eh.addTypes.length)]];
             const a = Math.random() * Math.PI * 2;
             const r = 2 + Math.random() * 3;
@@ -10296,6 +10315,7 @@ export class ZoneRoom extends Room<ZoneState> {
       s.resRanged = Math.round(m.rangedArmor * 100);
       s.resMagic = Math.round(m.magicArmor * 100);
       s.resDodge = Math.round(m.dodge * 100);
+      s.phase = m.huntPhase;
       s.dead = m.dead ? 1 : 0;
       s.grounded = m.grounded ? 1 : 0;
       s.hurtSeq = m.hurtSeq;
@@ -10678,8 +10698,11 @@ export class ZoneRoom extends Room<ZoneState> {
     // Багровый бьёт под уровень своих бойцов (BOSS_ADAPT) — и сгустками тоже.
     const bossM = this.bossMob();
     if (bossM && h.byMob === bossM.id) inDmg *= bossM.adaptDmgMul;
-    if (h.byMob && h.byMob === this.huntBossId && this.sim.mobs.get(this.huntBossId)?.raging) {
-      inDmg *= EVENT.eliteHunt.enrageDmgMul;
+    if (h.byMob && h.byMob === this.huntBossId) {
+      // Дракон охоты бьёт по фазе; дракон катакомб — сильнее в ярости.
+      const hb = this.sim.mobs.get(this.huntBossId);
+      if (hb && hb.huntPhase > 0) inDmg *= EVENT.eliteHunt.phaseDmg[hb.huntPhase - 1];
+      else if (hb?.raging) inDmg *= EVENT.eliteHunt.enrageDmgMul;
     }
     // Броня от силы гасит любой урон; интеллект добавляет защиту от снарядов/магии.
     // Магический удар вблизи (Костяной призрак) броню от силы проходит, режется интеллектом.

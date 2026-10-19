@@ -195,6 +195,8 @@ export class MobState extends Schema {
   @type("uint8") resRanged = 0;
   @type("uint8") resMagic = 0;
   @type("uint8") resDodge = 0;
+  /** Фаза дракона «Охоты на элиту» (1..4; 0 — не он): hp/maxHp у него — удары, а не здоровье. */
+  @type("uint8") phase = 0;
 }
 
 export class DummyState extends Schema {
