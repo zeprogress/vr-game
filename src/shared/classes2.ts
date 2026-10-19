@@ -223,7 +223,8 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   },
   // Лук: стрела 1.75 (как сейчас), но масштаб — от СИЛ, темп — от ЛОВ.
   bow: {
-    name: WEAPON_NOUN.bow.name, dmg: 2, interval: 1.6, tempoSoft: 1.8, reach: 30, pierce: 1, // 1.75 → 2 (2026-10-05)
+    // Стрела +10% (2026-10-19): 2 → 2.2.
+    name: WEAPON_NOUN.bow.name, dmg: 2.2, interval: 1.6, tempoSoft: 1.8, reach: 30, pierce: 1, // 1.75 → 2 (2026-10-05)
     critBase: BOW.critChance, critMult: BOW.critMult, twoHanded: true, dmgType: "phys", tiers: [1.2, 3.6, 4.1],
   },
   // Посох: огнешар (средний заряд 0.7), темп — от МДР. Тир теперь множит и магию.
