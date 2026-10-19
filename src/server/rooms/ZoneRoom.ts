@@ -261,6 +261,7 @@ import {
   dunEntry,
   dunFloorLocal,
   dunPath,
+  dunProject,
   dunZoneAt,
   dunSegmentClear,
   dunWorld,
@@ -9053,6 +9054,12 @@ export class ZoneRoom extends Room<ZoneState> {
     if (dist < 2) return [dx, dz];
     let nav = bot.nav;
     if (!nav || this.elapsed - nav.at > 2 || Math.hypot(nav.tx - tx, nav.tz - tz) > 5) {
+      // Бот вне пола (вынесло за край уступа): маршрут строится от точки на полу, иначе он стоит на месте.
+      if (dunFloorLocal(p.head.x - DUN_X, p.head.z - DUN_Z, 0.4) === null) {
+        const [sx, sz] = dunProject(p.head.x, p.head.z, 0.4);
+        p.head.x = sx;
+        p.head.z = sz;
+      }
       const path = dunPath(p.head.x, p.head.z, tx, tz).map((q): [number, number] => [q.x, q.z]);
       nav = { tx, tz, at: this.elapsed, path };
       bot.nav = nav;
