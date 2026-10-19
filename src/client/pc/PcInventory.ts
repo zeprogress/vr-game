@@ -498,6 +498,8 @@ export class PcInventory {
     const keep = new Map([...this.root.querySelectorAll<HTMLElement>("[data-keep]")].map((e) => [e.dataset.keep ?? "", [e.scrollLeft, e.scrollTop]] as const));
     this.renderInner();
     this.root.classList.toggle("tab-gear", this.tab === "gear");
+    // «Крафт»: фон — кузница на весь экран (в игре — всё окно, на странице !inv — фон страницы).
+    this.root.classList.toggle("tab-craft", this.tab === "craft");
     this.win.scrollTop = top;
     [...this.win.querySelectorAll<HTMLElement>(".pcinv-tpick")].forEach((e, i) => {
       if (lists[i] !== undefined) e.scrollTop = lists[i];
@@ -3031,8 +3033,10 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-smithy { --fg-h:min(620px, calc(94vh - 234px)); }
 .pcinv-root.page .pcinv-smithy { --fg-h:min(620px, calc(100vh - 234px)); }
 .pcinv-fg-lcol, .pcinv-fg-right { max-height:var(--fg-h); overflow-y:auto; scrollbar-width:thin; scrollbar-color:#2c3e57 transparent; }
-/* Фон всей вкладки — кузница у горного замка (концепт); наковальня — по центру, под цепочкой и «Создать». */
-.pcinv-smithy { padding:10px; background:#120a05 url(/icons/craft/forge_hall.jpg) center 62%/cover no-repeat; box-shadow:inset 0 0 60px rgba(0,0,0,.55); }
+/* Фон — кузница у горного замка (концепт) на весь экран: в игре — всё окно, на странице !inv — фон страницы
+   (inv/main.ts placeBg ставит наковальню под «Создать»); наковальня — по центру, под цепочкой. */
+.pcinv-smithy { padding:10px; }
+.pcinv-root.tab-craft:not(.page) .pcinv-win { background:#120a05 url(/icons/craft/forge_hall.jpg) center 64%/cover no-repeat; }
 .pcinv-fg-stage { grid-area:stage; position:relative; aspect-ratio:1/1; width:100%; max-width:var(--fg-h); justify-self:center; overflow:hidden; }
 .pcinv-fg-stage::after { content:""; position:absolute; left:50%; top:74%; width:70%; height:40%; transform:translate(-50%,-50%); pointer-events:none; opacity:0; background:radial-gradient(ellipse at center,rgba(255,170,60,.85),rgba(255,90,10,.35) 40%,transparent 70%); mix-blend-mode:screen; }
 .pcinv-fg-stage.hit::after { animation:pcinvFgHit .7s ease-out; }

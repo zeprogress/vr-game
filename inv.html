@@ -171,6 +171,8 @@
         background: #03070d url("/inv/bg.webp") no-repeat 50% 0 / cover;
         -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 160px), transparent);
         mask-image: linear-gradient(180deg, #000 calc(100% - 160px), transparent); }
+      /* Вкладка «Крафт»: кузница на весь экран (main.ts placeBg), без затемнения снизу. */
+      #invBg.forge { position: fixed; height: 100vh; background: #120a05 url("/icons/craft/forge_hall.jpg") no-repeat 50% 64% / cover; -webkit-mask-image: none; mask-image: none; }
       body > *:not(#invBg):not(#toast) { position: relative; z-index: 1; }
       h1 { color: #eef3f8; font: 700 20px/1.2 "Iowan Old Style", Georgia, serif; letter-spacing: 0.01em; }
       .sub { color: #8fa0b5; opacity: 1; margin-bottom: 0; }

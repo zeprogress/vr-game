@@ -115,6 +115,13 @@ const bgEl = document.getElementById("invBg");
 function placeBg(): void {
   if (!bgEl) return;
   const W = document.documentElement.clientWidth;
+  // «Крафт» — фон страницы меняется на кузницу у горного замка: неподвижно на весь экран (inv.html #invBg.forge).
+  const forge = !!document.querySelector(".pcinv-smithy");
+  bgEl.classList.toggle("forge", forge);
+  if (forge) {
+    for (const k of ["backgroundSize", "backgroundPosition", "height"] as const) bgEl.style[k] = "";
+    return;
+  }
   const st = document.querySelector<HTMLElement>(".pcinv-stage");
   let fx = W / 2;
   let fy = Math.min(window.innerHeight * 0.8, 720);
