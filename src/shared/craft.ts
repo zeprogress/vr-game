@@ -480,12 +480,14 @@ export const CRAFT_DROPS: Partial<Record<string, readonly { id: CraftItemId; cha
     { id: "web", chance: 0.01 }, // 2026-10-19: было 0.25, потом 0.03 (пауков много — паутины было слишком много)
     { id: "sting", chance: 0.001 }, // 2026-10-19: было 0.004 (катализатор не тратится — один на тысячу пауков)
   ],
-  skeletonReaver: [{ id: "bone", chance: 0.25 }],
-  boneWraith: [{ id: "bone", chance: 0.2 }],
-  boneChief: [{ id: "bone", chance: 0.2 }],
+  // 2026-10-19: кость было 0.25/0.2/0.2 — стало 1%, как паутина.
+  skeletonReaver: [{ id: "bone", chance: 0.01 }],
+  boneWraith: [{ id: "bone", chance: 0.01 }],
+  boneChief: [{ id: "bone", chance: 0.01 }],
   frostDemon: [{ id: "frost", chance: 0.001 }], // 2026-10-19: было 0.01 (катализатор не тратится)
-  worldElite: [{ id: "scale", chance: 1, n: 3 }],
-  catDragon: [{ id: "scale", chance: 1, n: 3 }],
+  // 2026-10-19: чешуя было ×3 всегда — стала одна штука с шансом.
+  worldElite: [{ id: "scale", chance: 0.2 }],
+  catDragon: [{ id: "scale", chance: 0.25 }],
 };
 /** Вожак лагеря — шансы × это. */
 export const CRAFT_DROP_CHAMP = 4;
