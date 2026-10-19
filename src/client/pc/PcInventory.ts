@@ -1890,12 +1890,15 @@ export class PcInventory {
       redraw();
     };
     const DEF_HINT = "Основа → материалы → катализатор → метод: нажми ячейку или возьми с полки — и «Создать».";
-    const hintEl = div("pcinv-fg-hint", DEF_HINT);
+    // Текст — во внутреннем элементе: обрезка по двум строкам не залезает в поля плашки.
+    const hintEl = div("pcinv-fg-hint");
+    const hintTx = div("pcinv-fg-hintt", DEF_HINT);
+    hintEl.append(hintTx);
     /** Подсказка при наведении (на ПК) — без перерисовки окна. */
     const hint = (el: HTMLElement, text: string): void => {
       el.title = text;
-      el.addEventListener("mouseenter", () => (hintEl.textContent = text));
-      el.addEventListener("mouseleave", () => (hintEl.textContent = DEF_HINT));
+      el.addEventListener("mouseenter", () => (hintTx.textContent = text));
+      el.addEventListener("mouseleave", () => (hintTx.textContent = DEF_HINT));
     };
     const catHtml = (k: string): string => (isCraftItem(k) ? iconHtml(`m.${k}` as IconKey) : gemHtml(k));
     const catName = (k: string): string => (isCraftItem(k) ? CRAFT_ITEMS[k].name : gemName(k));
@@ -3002,7 +3005,7 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-pts.on { color:#b9f5c2; border-color:#3f9a58; background:rgba(16,40,26,.75); box-shadow:0 0 10px rgba(80,200,110,.15); }
 .pcinv-attrs { display:flex; flex-direction:column; gap:8px; }
 /* ---------- «Крафт»: кузница (концепт «Кузница берсерка») ---------- */
-.pcinv-smithy { display:grid; grid-template-columns:230px minmax(0,1fr) 290px; grid-template-areas:"left stage right" "shelf shelf shelf"; gap:10px; align-items:start; }
+.pcinv-smithy { display:grid; grid-template-columns:270px minmax(0,1fr) 270px; grid-template-areas:"left stage right" "shelf shelf shelf"; gap:10px; align-items:start; }
 .pcinv-fg-side { position:relative; display:flex; flex-direction:column; gap:6px; padding:12px; border:1px solid #2f4664; background:linear-gradient(180deg,rgba(9,19,34,.92),rgba(5,11,21,.92)); box-shadow:inset 0 0 0 1px rgba(0,0,0,.6); clip-path:${CUT("9px")}; }
 .pcinv-fg-lcol { grid-area:left; display:flex; flex-direction:column; gap:10px; align-self:stretch; }
 .pcinv-fg-left { flex:1; }
@@ -3025,10 +3028,12 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-fg-ic .gico { width:30px; height:30px; }
 /* сцена: кузница с наковальней, цепочка ячеек над ней, «Создать» — на наковальне */
 /* Высота вкладки — по экрану: кузница (квадрат) не выше окна минус шапка и полки, колонки по бокам — не выше кузницы. */
-.pcinv-smithy { --fg-h:min(620px, calc(94vh - 214px)); }
-.pcinv-root.page .pcinv-smithy { --fg-h:min(620px, calc(100vh - 214px)); }
+.pcinv-smithy { --fg-h:min(620px, calc(94vh - 234px)); }
+.pcinv-root.page .pcinv-smithy { --fg-h:min(620px, calc(100vh - 234px)); }
 .pcinv-fg-lcol, .pcinv-fg-right { max-height:var(--fg-h); overflow-y:auto; scrollbar-width:thin; scrollbar-color:#2c3e57 transparent; }
-.pcinv-fg-stage { grid-area:stage; position:relative; aspect-ratio:1/1; width:100%; max-width:var(--fg-h); justify-self:center; background:#120a05 url(/icons/craft/forge_bg.webp) center/cover no-repeat; border:1px solid #3a2a1a; box-shadow:inset 0 0 40px rgba(0,0,0,.65); overflow:hidden; }
+/* Фон всей вкладки — кузница у горного замка (концепт); наковальня — по центру, под цепочкой и «Создать». */
+.pcinv-smithy { padding:10px; background:#120a05 url(/icons/craft/forge_hall.jpg) center 62%/cover no-repeat; box-shadow:inset 0 0 60px rgba(0,0,0,.55); }
+.pcinv-fg-stage { grid-area:stage; position:relative; aspect-ratio:1/1; width:100%; max-width:var(--fg-h); justify-self:center; overflow:hidden; }
 .pcinv-fg-stage::after { content:""; position:absolute; left:50%; top:74%; width:70%; height:40%; transform:translate(-50%,-50%); pointer-events:none; opacity:0; background:radial-gradient(ellipse at center,rgba(255,170,60,.85),rgba(255,90,10,.35) 40%,transparent 70%); mix-blend-mode:screen; }
 .pcinv-fg-stage.hit::after { animation:pcinvFgHit .7s ease-out; }
 .pcinv-fg-stage.done::after { animation:pcinvFgDone 1.4s ease-out; }
@@ -3146,24 +3151,26 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-fg-rcard .pcinv-fg-acts { justify-content:center; margin-top:4px; }
 /* строка подсказок — внутри кузницы, внизу; тёмная плашка, чтобы не сливалась с фоном; не больше двух строк */
 .pcinv-fg-hint { position:absolute; left:3%; right:3%; bottom:2%; z-index:2; padding:6px 11px; font-size:12.5px; line-height:1.35; color:#f3e6c8;
-  background:linear-gradient(180deg,rgba(9,16,28,.92),rgba(5,10,18,.92)); border:1px solid #3a4f6b; border-left:3px solid #d9a95a; text-shadow:0 1px 2px #000;
-  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; pointer-events:none; }
+  background:linear-gradient(180deg,rgba(9,16,28,.92),rgba(5,10,18,.92)); border:1px solid #3a4f6b; border-left:3px solid #d9a95a; text-shadow:0 1px 2px #000; pointer-events:none; }
+.pcinv-fg-hintt { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 /* узкое окно и телефон: одна колонка — кузница, итог, полки, кузнец и переплавка */
 @media (max-width: 900px) {
-  .pcinv-smithy { grid-template-columns:minmax(0,1fr); grid-template-areas:"stage" "right" "shelf" "left"; }
-  .pcinv-fg-stage { max-width:560px; }
+  .pcinv-smithy { grid-template-columns:minmax(0,1fr); grid-template-areas:"stage" "right" "shelf" "left"; padding:0; background:none; box-shadow:none; }
+  .pcinv-fg-stage { max-width:560px; background:#120a05 url(/icons/craft/forge_hall.jpg) 50% 70%/cover no-repeat; border:1px solid #3a2a1a; }
   .pcinv-fg-lcol, .pcinv-fg-right { max-height:none; overflow:visible; }
   .pcinv-fg-shelf { flex-direction:column; }
   .pcinv-fg-grp + .pcinv-fg-grp { padding-left:0; border-left:none; padding-top:6px; border-top:1px solid #1d2d43; }
   .pcinv-fg-grp.cats { flex:none; }
 }
 .pcinv-root.touch .pcinv-smithy { grid-template-columns:minmax(0,1fr); grid-template-areas:"stage" "right" "shelf" "left"; }
-.pcinv-root.touch .pcinv-fg-stage { max-width:560px; }
+.pcinv-root.touch .pcinv-smithy { padding:0; background:none; box-shadow:none; }
+.pcinv-root.touch .pcinv-fg-stage { max-width:560px; background:#120a05 url(/icons/craft/forge_hall.jpg) 50% 70%/cover no-repeat; border:1px solid #3a2a1a; }
 .pcinv-root.touch .pcinv-fg-lcol, .pcinv-root.touch .pcinv-fg-right { max-height:none; overflow:visible; }
 .pcinv-root.touch .pcinv-fg-shelf { flex-direction:column; }
 .pcinv-root.touch .pcinv-fg-grp + .pcinv-fg-grp { padding-left:0; border-left:none; padding-top:6px; border-top:1px solid #1d2d43; }
 .pcinv-root.touch .pcinv-fg-grp.cats { flex:none; }
 @media (max-width: 460px) {
+  .pcinv-fg-hint { font-size:11.5px; padding:4px 9px; }
   .pcinv-fg-shead { font-size:11px; }
   .pcinv-fg-sname { font-size:11px; }
   .pcinv-fg-ssub { display:none; }
