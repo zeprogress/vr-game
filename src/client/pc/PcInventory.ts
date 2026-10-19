@@ -2855,9 +2855,9 @@ function injectInvStyle(): void {
 .pcinv-cell.t-base { --e:linear-gradient(180deg,#7a8ca3,#3e4c60); }
 ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 /* Редкое мастерское (исход крафта «редкий»): цвет тира тот же, рамка толще, светится и пульсирует. */
-.pcinv-cell.craft-rare { --bw:3px; --e:linear-gradient(180deg,color-mix(in srgb,var(--tier-craft) 40%,#fff),var(--tier-craft) 50%,color-mix(in srgb,var(--tier-craft) 70%,#fff));
-  animation:pcinvRareGlow 2.2s ease-in-out infinite; animation-delay:var(--now,0ms); }
-@keyframes pcinvRareGlow { 0%,100% { filter:drop-shadow(0 0 5px var(--tier-craft)); } 50% { filter:drop-shadow(0 0 7px var(--tier-craft)); } }
+/* Рамка — как у тира (цвет и градиент те же), чуть толще; свечение заметно пульсирует. */
+.pcinv-cell.craft-rare { --bw:1.8px; animation:pcinvRareGlow 2.2s ease-in-out infinite; animation-delay:var(--now,0ms); }
+@keyframes pcinvRareGlow { 0%,100% { filter:drop-shadow(0 0 3px var(--tier-craft)); } 50% { filter:drop-shadow(0 0 10px var(--tier-craft)); } }
 /* Само оружие на значке слегка светится цветом тира. */
 .pcinv-cell.craft-rare > .gico { filter:drop-shadow(0 0 3px var(--tier-craft)) drop-shadow(0 0 7px color-mix(in srgb,var(--tier-craft) 65%,transparent)) brightness(1.08); }
 .pcinv-cell.empty { --e:#1c2a3c; --f:linear-gradient(180deg,#08111e,#060d18); color:#2b3e58; }

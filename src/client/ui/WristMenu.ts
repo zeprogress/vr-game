@@ -1578,7 +1578,7 @@ export class WristMenu {
     // Редкое мастерское — цвет тира тот же, рамка толще и со свечением.
     const rare = isCraftRare(wp);
     ctx.strokeStyle = st.stroke || TIER_COLOR[wp.tier];
-    ctx.lineWidth = st.stroke ? st.lw : rare ? 3 : 1.5;
+    ctx.lineWidth = st.stroke ? st.lw : rare ? 2.2 : 1.5;
     if (rare && !st.stroke) {
       ctx.shadowColor = TIER_COLOR[wp.tier];
       ctx.shadowBlur = 14;
