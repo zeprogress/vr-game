@@ -478,7 +478,7 @@ export function pcInvCraft(rec: { mats?: unknown; recipes?: unknown; smithXp?: u
 export const CRAFT_DROPS: Partial<Record<string, readonly { id: CraftItemId; chance: number; n?: number }[]>> = {
   spider: [
     { id: "web", chance: 0.01 }, // 2026-10-19: было 0.25, потом 0.03 (пауков много — паутины было слишком много)
-    { id: "sting", chance: 0.004 },
+    { id: "sting", chance: 0.001 }, // 2026-10-19: было 0.004 (катализатор не тратится — один на тысячу пауков)
   ],
   skeletonReaver: [{ id: "bone", chance: 0.25 }],
   boneWraith: [{ id: "bone", chance: 0.2 }],
