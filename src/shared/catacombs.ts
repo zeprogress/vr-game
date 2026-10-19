@@ -353,9 +353,9 @@ export const CATACOMBS = {
     {
       hall: 3,
       waves: [],
-      // Супербосс — каждый заход один случайный из трёх (mobs.ts CAT_SUPERBOSSES).
-      // ВРЕМЕННО: в конце катакомб всегда дракон (catDragon). Вернуть случайного из трёх — убрать фильтр.
-      bosses: CAT_SUPERBOSSES.filter((b) => b.key === "catDragon"),
+      // Супербосс — каждый заход один случайный из трёх (mobs.ts CAT_SUPERBOSSES): Владыка Бездны,
+      // Мор'Гхаш, Гор'Таал. Ротация возвращена 2026-10-19 (до этого временно всегда был дракон).
+      bosses: CAT_SUPERBOSSES,
       chest: "final",
     },
   ] as CatStage[],
