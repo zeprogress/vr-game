@@ -37,7 +37,6 @@ import {
   matchRecipe,
   matRoll,
   plannedRolls,
-  recipeHint,
   recipeText,
   rollsFor,
   smithLevel,
@@ -2046,17 +2045,23 @@ export class WristMenu {
     ctx.font = "19px system-ui, sans-serif";
     ctx.fillStyle = "#a9a498";
     ctx.fillText(`${smith.maxed ? "максимум" : `опыт ${smith.have}/${smith.need}`} · лом ${scrap}`, X + 230, y + 5);
-    chip("cr:book", TEX_W - 24 - 300, y - 4, 300, 40, this.craftBook ? "← К крафту" : `📜 Рецепты ${c.book.length}/${CRAFT_RECIPES.length}`, "", this.craftBook, false, ["Книга рецептов", "скрытые сочетания: находят только опытом"], () => (this.craftBook = !this.craftBook));
+    chip("cr:book", TEX_W - 24 - 300, y - 4, 300, 40, this.craftBook ? "← К крафту" : `📜 Рецепты · ${c.book.length}`, "", this.craftBook, false, ["Книга рецептов", "скрытые сочетания: находят только опытом"], () => (this.craftBook = !this.craftBook));
     y += 46;
     if (this.craftBook) {
-      for (const rc of CRAFT_RECIPES) {
-        const found = c.book.includes(rc.id);
+      // Скрытые рецепты не показываем — только найденные.
+      const found = CRAFT_RECIPES.filter((rc) => c.book.includes(rc.id));
+      if (!found.length) {
+        ctx.font = "22px system-ui, sans-serif";
+        ctx.fillStyle = "#a9a498";
+        this.wrapText(ctx, "Пока ни одного. Скрытые рецепты находятся только опытом — пробуй сочетания.", X, y, TEX_W - 48, 28, 2);
+      }
+      for (const rc of found) {
         ctx.font = "bold 24px system-ui, sans-serif";
-        ctx.fillStyle = found ? orange : "#7c88a4";
-        ctx.fillText(found ? rc.name : "???", X, y);
+        ctx.fillStyle = orange;
+        ctx.fillText(rc.name, X, y);
         ctx.font = "19px system-ui, sans-serif";
         ctx.fillStyle = "#c9c3b4";
-        this.wrapText(ctx, found ? recipeText(rc) : recipeHint(rc), X + 20, y + 30, TEX_W - 80, 24, 2);
+        this.wrapText(ctx, recipeText(rc), X + 20, y + 30, TEX_W - 80, 24, 2);
         y += 92;
       }
       return;

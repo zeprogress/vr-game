@@ -114,13 +114,17 @@ export const ICONS = {
   "i.scroll_wind": { emoji: "🪶" },
   /** Жетоны заданий. */
   "i.token": { emoji: "◈" },
-  // ---- крафт: материалы и особые катализаторы (shared/craft.ts) — временные значки ----
-  "m.alloy": { emoji: "🧱" },
-  "m.web": { emoji: "🕸️" },
-  "m.scale": { emoji: "🐉" },
-  "m.bone": { emoji: "🦴" },
-  "m.frost": { emoji: "❄️" },
-  "m.sting": { emoji: "🦂" },
+  // ---- крафт: материалы, особые катализаторы и методы (shared/craft.ts) — вырезаны из концепта кузницы, временные ----
+  "m.alloy": { emoji: "🧱", img: "craft/alloy.png" },
+  "m.web": { emoji: "🕸️", img: "craft/web.png" },
+  "m.scale": { emoji: "🐉", img: "craft/scale.png" },
+  "m.bone": { emoji: "🦴", img: "craft/bone.png" },
+  "m.frost": { emoji: "❄️", img: "craft/frost.png" },
+  "m.sting": { emoji: "🦂", img: "craft/sting.png" },
+  "cm.forge": { emoji: "🔨", img: "craft/m_forge.png" },
+  "cm.temper": { emoji: "🔥", img: "craft/m_temper.png" },
+  "cm.carve": { emoji: "✴️", img: "craft/m_carve.png" },
+  "cm.age": { emoji: "⏳", img: "craft/m_age.png" },
 
   // ---- классы ----
   "c.warrior": { emoji: "⚔️" },

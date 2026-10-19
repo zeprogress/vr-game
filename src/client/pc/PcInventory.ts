@@ -5,7 +5,7 @@ import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
 import { ensureIconCss, iconHtml, setIconEl } from "../ui/icons";
 import type { IconKey } from "#shared/icons";
-import { AEGIS_NAME, AFFIX_NAME, craftPow, ATTACK_CLASSES, WEAPON_NOUN, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, qualityStarsShort, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, AFFIX_NAME, craftPow, weaponName, ATTACK_CLASSES, WEAPON_NOUN, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, qualityStarsShort, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcEnchRow, PcInvActMsg, PcInvArmor, PcInvData, PcInvResult, PcInvWeapon, TradeItemView } from "#shared/net/messages";
 import { SKIN_LABELS, skinPicture } from "#shared/skins";
 import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type PcInvJewels, type RingTier } from "#shared/jewels";
@@ -27,14 +27,13 @@ import {
   matchRecipe,
   matRoll,
   plannedRolls,
-  recipeHint,
+  isCraftItem,
   recipeText,
   rollsFor,
   smithLevel,
   type CraftInput,
   type CraftItemId,
   type CraftMatId,
-  type CraftMethodId,
 } from "#shared/craft";
 
 /**
@@ -453,8 +452,10 @@ export class PcInventory {
     if (!r.text) return; // «Понятно» у подарков — без строки итога
     // Крафт — свой итог во вкладке (исход крупно, кнопка «Посмотреть»).
     if (r.craft) {
-      this.craftRes = { ...r.craft, text: r.text };
+      this.craftRes = { ...r.craft, text: r.text, at: Date.now() };
       if (this.isOpen) this.render();
+      // Вспышка итога на наковальне гаснет сама — снять класс следующей перерисовкой.
+      window.setTimeout(() => this.isOpen && this.tab === "craft" && this.render(), 1550);
       return;
     }
     if (!this.forging) {
@@ -1856,20 +1857,23 @@ export class PcInventory {
     this.tipAllowed = false;
   }
 
-  // ---------------- крафт (shared/craft.ts) ----------------
+  // ---------------- крафт (shared/craft.ts): кузница по концепту «Кузница берсерка» ----------------
 
   /** Собираемый крафт: класс, материалы, катализатор, метод (живёт между перерисовками). */
   private craftSel: CraftInput = { cls: "sword", mats: [], cat: null, method: "forge" };
-  /** Итог последнего крафта (исход крупно; есть оружие — «Посмотреть»). */
-  private craftRes: { outcome: number; id?: string; found?: string; text: string } | null = null;
+  /** Итог последнего крафта (исход крупно; есть оружие — «Посмотреть»); at — когда пришёл (вспышка на наковальне). */
+  private craftRes: { outcome: number; id?: string; found?: string; text: string; at?: number } | null = null;
+  /** Нажали «Создать» — удар молота по наковальне, пока не пришёл итог. */
+  private craftHitAt = 0;
 
   private renderCraft(d: PcInvData): void {
     const c = d.craft ?? { stock: [], book: [], xp: 0 };
     const stock = new Map<CraftItemId, number>(c.stock);
-    const gems = d.jewels?.gems ?? [];
+    // Камни для катализатора — старшие уровни первыми.
+    const gems = [...(d.jewels?.gems ?? [])].sort((a, b) => (parseGem(b[0])?.lv ?? 0) - (parseGem(a[0])?.lv ?? 0));
     const sel = this.craftSel;
     const smith = smithLevel(c.xp);
-    // Метод, ещё не открытый уровнем (или пропавший катализатор) — сбрасываем на доступное.
+    // Метод, ещё не открытый уровнем (или пропавший катализатор/материал) — сбрасываем на доступное.
     if (CRAFT_METHODS[sel.method].lv > smith.lv) sel.method = "forge";
     if (sel.cat && !(stock.get(sel.cat as CraftItemId) ?? 0) && !gems.some(([k]) => k === sel.cat)) sel.cat = null;
     const used = (m: CraftMatId): number => sel.mats.filter((x) => x === m).length;
@@ -1878,218 +1882,317 @@ export class PcInventory {
       this.craftRes = null;
       this.render();
     };
-    const wrap = div("pcinv-craft");
+    const DEF_HINT = "Собери оружие: основа → материалы → катализатор → метод — и бей «Создать». Наведи на предмет — подсказка здесь.";
+    const hintEl = div("pcinv-fg-hint", DEF_HINT);
+    /** Подсказка при наведении (на ПК) — без перерисовки окна. */
+    const hint = (el: HTMLElement, text: string): void => {
+      el.title = text;
+      el.addEventListener("mouseenter", () => (hintEl.textContent = text));
+      el.addEventListener("mouseleave", () => (hintEl.textContent = DEF_HINT));
+    };
+    const catHtml = (k: string): string => (isCraftItem(k) ? iconHtml(`m.${k}` as IconKey) : gemHtml(k));
+    const catName = (k: string): string => (isCraftItem(k) ? CRAFT_ITEMS[k].name : gemName(k));
+    const catNote = (k: string): string => {
+      if (isCraftItem(k)) return `особый ролл: ${AFFIX_NAME[k === "frost" ? "chill" : "venom"]}`;
+      const lv = Math.min(CRAFT.gemLvCap, parseGem(k)?.lv ?? 1);
+      return `провал −${CRAFT.gemFail * lv}, отличный и редкий +${CRAFT.gemUp * lv}`;
+    };
+    const root = div("pcinv-forge");
 
-    // Кузнец: уровень, опыт, что откроется дальше.
-    const sm = div("pcinv-csmith");
+    // ---- слева: кузнец, основа, найденные рецепты ----
+    const left = div("pcinv-fg-side pcinv-fg-left");
+    left.append(div("pcinv-fg-title", "Кузница"));
+    const sm = div("pcinv-fg-smith");
     const bar = div("pcinv-cbar");
     const fill = div("pcinv-cbar-f");
     fill.style.width = `${smith.maxed ? 100 : Math.round((smith.have / smith.need) * 100)}%`;
     bar.append(fill);
     const next = CRAFT_METHOD_IDS.map((k) => CRAFT_METHODS[k]).find((m) => m.lv > smith.lv);
-    sm.append(
-      div("pcinv-csmith-lv", `⚒ Кузнец ${smith.lv} ур.`),
-      bar,
-      div("pcinv-small", smith.maxed ? "максимум мастерства" : `${smith.have} / ${smith.need} опыта${next ? ` · ${next.name} — с ${next.lv} ур.` : ""} · с уровнем реже провал, чаще отличный и редкий`),
-    );
-    wrap.append(sm);
-
-    // 1. Основа — класс оружия.
-    const sec = (n: string, title: string, note = ""): HTMLDivElement => {
-      const b = div("pcinv-csec");
-      const h = div("pcinv-csec-h");
-      h.append(span(`${n}. ${title}`));
-      if (note) h.append(div("pcinv-small", note));
-      b.append(h);
-      wrap.append(b);
-      return b;
-    };
-    const s1 = sec("1", "Основа", "какое оружие создаём");
-    const row1 = div("pcinv-crow");
+    sm.append(div("pcinv-fg-smlv", `⚒ Кузнец ${smith.lv} ур.`), bar, div("pcinv-small", smith.maxed ? "мастерство на максимуме" : `${smith.have} / ${smith.need} опыта${next ? ` · ${next.name} — с ${next.lv} ур.` : ""}`));
+    hint(sm, "Опыт кузнеца — за каждый крафт. С уровнем реже провал, чаще отличный и редкий исход, открываются новые методы.");
+    left.append(sm, div("pcinv-fg-sub", "Основа"));
     for (const cls of ATTACK_CLASSES) {
-      const ch = div(`pcinv-cchip${sel.cls === cls ? " on" : ""}`);
-      const ic = div("pcinv-cic");
-      setIcon(ic, cls, undefined, "craft");
-      ch.append(ic, span(WEAPON_NOUN[cls].name));
-      ch.onclick = () => {
+      const row = div(`pcinv-fg-row${sel.cls === cls ? " on" : ""}`);
+      const ic = div("pcinv-fg-ic");
+      setIcon(ic, cls, undefined, "base");
+      row.append(ic, span(WEAPON_NOUN[cls].name));
+      row.onclick = () => {
         sel.cls = cls;
         redraw();
       };
-      row1.append(ch);
+      hint(row, `${WEAPON_NOUN[cls].name}: основа задаёт класс; роллы дают материалы (кость: ${AFFIX_NAME[matRoll("bone", cls)]}).`);
+      left.append(row);
     }
-    s1.append(row1);
+    // Скрытые рецепты не показываем — только найденные (их можно повторить одним нажатием).
+    const found = CRAFT_RECIPES.filter((r) => c.book.includes(r.id));
+    left.append(div("pcinv-fg-sub", "Найденные рецепты"));
+    if (!found.length) left.append(div("pcinv-small pcinv-fg-empty", "Пока ни одного. Скрытые рецепты находятся только опытом — пробуй сочетания."));
+    for (const rc of found) {
+      const row = div("pcinv-fg-row rec");
+      const ic = div("pcinv-fg-ic");
+      setIcon(ic, rc.cls, undefined, "craft");
+      const t = div("pcinv-fg-rtxt");
+      t.append(div("pcinv-fg-rname", rc.name), div("pcinv-small", "Открыт"));
+      row.append(ic, t);
+      row.onclick = () => {
+        // Положить рецепт целиком: камень вида — старший из сумки.
+        const gem = rc.cat?.startsWith("gem:") ? gems.find(([k]) => parseGem(k)?.attr === rc.cat!.slice(4))?.[0] ?? null : rc.cat;
+        this.craftSel = { cls: rc.cls, mats: [...rc.mats], cat: gem, method: rc.method };
+        redraw();
+      };
+      hint(row, `${rc.name}: ${recipeText(rc)}`);
+      left.append(row);
+    }
 
-    // 2. Материалы: три гнезда и запас.
-    const s2 = sec("2", `Материалы — до ${CRAFT.maxMats}`, "разные — разные роллы, одинаковые — тот же ролл сильнее; тратятся");
-    const slots = div("pcinv-crow");
+    // ---- центр: кузница — цепочка «Основа → Материал → Катализатор → Метод» и наковальня ----
+    const stage = div("pcinv-fg-stage");
+    const since = performance.now() - this.craftHitAt;
+    if (since < 700) stage.classList.add("hit");
+    const res = this.craftRes;
+    if (res?.at && Date.now() - res.at < 1500) stage.classList.add(res.outcome > 0 ? "done" : "fail");
+    const chain = div("pcinv-fg-chain");
+    const slot = (head: string, box: HTMLElement, name: string, sub: string, help: string, filled: boolean, onClick?: () => void): HTMLDivElement => {
+      const s = div(`pcinv-fg-slot${filled ? " full" : ""}`);
+      const b = div("pcinv-fg-sbox");
+      b.append(box);
+      s.append(div("pcinv-fg-shead", head), b, div("pcinv-fg-sname", name), div("pcinv-fg-ssub", sub));
+      if (onClick) {
+        s.classList.add("click");
+        s.onclick = onClick;
+      }
+      hint(s, help);
+      return s;
+    };
+    const arrow = (): HTMLDivElement => div("pcinv-fg-arrow", "›");
+    const baseIc = div("pcinv-fg-big");
+    setIcon(baseIc, sel.cls, undefined, "craft");
+    chain.append(slot("Основа", baseIc, WEAPON_NOUN[sel.cls].name, "мастерское", "Основа — какое оружие куём. Выбор — слева.", true), arrow());
+    const matBox = div("pcinv-fg-mats");
     for (let i = 0; i < CRAFT.maxMats; i++) {
       const m = sel.mats[i];
-      const sl = div(`pcinv-cslot${m ? " full" : ""}`);
+      const cell = div(`pcinv-fg-mcell${m ? " full" : ""}`);
       if (m) {
-        sl.innerHTML = iconHtml(`m.${m}` as IconKey);
-        sl.append(span(CRAFT_ITEMS[m].name));
-        sl.title = "Убрать";
-        sl.onclick = () => {
+        cell.innerHTML = iconHtml(`m.${m}` as IconKey);
+        cell.onclick = (e) => {
+          e.stopPropagation();
           sel.mats.splice(i, 1);
           redraw();
         };
-      } else sl.append(span("пусто"));
-      slots.append(sl);
+        hint(cell, `${CRAFT_ITEMS[m].name} — нажми, чтобы убрать`);
+      }
+      matBox.append(cell);
     }
-    s2.append(slots);
-    const mats = div("pcinv-crow");
+    const plan = plannedRolls(sel);
+    const matRolls = plan.filter((r) => !(sel.cat && isCraftItem(sel.cat) && r.from === CRAFT_ITEMS[sel.cat].name));
+    chain.append(
+      slot(
+        "Материал",
+        matBox,
+        sel.mats.length ? `${sel.mats.length} из ${CRAFT.maxMats}` : "пусто",
+        matRolls.length ? matRolls.map((r) => `${AFFIX_NAME[r.sub]}${r.copies > 1 ? ` ×${r.copies}` : ""}`).join(", ") : "выбери на полке",
+        "Материалы задают роллы: разные — разные роллы, одинаковые — тот же ролл выше. Тратятся. Нажми на материал в ячейке — убрать.",
+        sel.mats.length > 0,
+      ),
+      arrow(),
+    );
+    const catBox = sel.cat ? div("pcinv-fg-big") : div("pcinv-fg-big empty", "—");
+    if (sel.cat) catBox.innerHTML = catHtml(sel.cat);
+    chain.append(
+      slot("Катализатор", catBox, sel.cat ? catName(sel.cat) : "без катализатора", sel.cat ? (isCraftItem(sel.cat) ? `→ ${AFFIX_NAME[sel.cat === "frost" ? "chill" : "venom"]}` : "шансы лучше") : "необязательно", "Катализатор возвращается. Камень улучшает шансы (сильнее с уровнем), особый даёт особый ролл. Нажми — убрать.", !!sel.cat, sel.cat ? () => {
+        sel.cat = null;
+        redraw();
+      } : undefined),
+      arrow(),
+    );
+    const meth = CRAFT_METHODS[sel.method];
+    const methIc = div("pcinv-fg-big");
+    methIc.innerHTML = iconHtml(`cm.${sel.method}` as IconKey);
+    chain.append(slot("Метод", methIc, meth.name, `${meth.cost} лома`, `${meth.name}: ${meth.note}.`, true));
+    stage.append(chain);
+
+    // Проверка запасов: что есть и чего не хватает.
+    const need = new Map<CraftMatId, number>();
+    for (const m of sel.mats) need.set(m, (need.get(m) ?? 0) + 1);
+    const lacks: string[] = [];
+    for (const [m, n] of need) if ((stock.get(m) ?? 0) < n) lacks.push(CRAFT_ITEMS[m].name);
+    if (d.scrap < meth.cost) lacks.push("лома");
+    const ready = sel.mats.length > 0 && !lacks.length;
+    const go = document.createElement("button");
+    go.className = `pcinv-fg-go${since < 700 ? " busy" : ""}`;
+    go.innerHTML = `<span class="pcinv-fg-goic">${iconHtml("cm.forge")}</span><span>Создать</span>`;
+    go.disabled = !ready;
+    go.onclick = () => {
+      this.craftHitAt = performance.now();
+      this.craftRes = null;
+      this.hooks.act({ act: "craft", id: craftCode(sel), idx: 0 });
+      this.render();
+      // Вспышка удара гаснет сама (итог перерисует окно раньше, если придёт быстрее).
+      window.setTimeout(() => this.isOpen && this.tab === "craft" && this.render(), 720);
+    };
+    hint(go, ready ? `Создать: −${meth.cost} лома, материалы тратятся, катализатор вернётся.` : sel.mats.length ? `Не хватает: ${lacks.join(", ")}` : "Положи хотя бы один материал.");
+    stage.append(go);
+
+    // ---- справа: что получится (или итог) и необходимые материалы ----
+    const right = div("pcinv-fg-side pcinv-fg-right");
+    const card = div("pcinv-fg-card");
+    const resW = res?.id ? d.weapons.find((w) => w.id === res.id) : undefined;
+    if (res) {
+      const o = CRAFT_OUTCOMES[res.outcome] ?? CRAFT_OUTCOMES[0];
+      const t = div("pcinv-fg-cname", resW?.name ?? (res.outcome > 0 ? "Готово" : "Провал"));
+      const r = div("pcinv-fg-rar", `${o.name} исход${res.found ? " · новый рецепт!" : ""}`);
+      r.style.color = o.color;
+      card.append(t, r);
+      const body = div("pcinv-fg-cbody");
+      const big = div("pcinv-fg-cimg");
+      if (resW) setIcon(big, resW.cls, resW.name, "craft");
+      else big.textContent = "💨";
+      const rows = div("pcinv-fg-rows");
+      for (const a of resW?.affixes ?? []) rows.append(div("pcinv-fg-stat", a));
+      for (const e of resW?.effects ?? []) rows.append(div("pcinv-fg-stat eff", e));
+      if (!resW) rows.append(div("pcinv-fg-stat", res.text));
+      body.append(big, rows);
+      card.append(body);
+      const acts = div("pcinv-fg-acts");
+      if (resW) {
+        acts.append(
+          button("Посмотреть", () => {
+            this.tab = "gear";
+            this.craftRes = null;
+            this.openCard({ kind: "bag", id: resW.id });
+          }),
+        );
+      }
+      acts.append(button("Ещё раз", () => redraw()));
+      card.append(acts);
+    } else {
+      const recipe = sel.mats.length ? matchRecipe(sel) : null;
+      const known = recipe && c.book.includes(recipe.id) ? recipe : null;
+      card.append(div("pcinv-fg-cname", known ? known.name : weaponName(sel.cls, "craft")));
+      const rar = div("pcinv-fg-rar", known ? "Рецепт: не ниже хорошего" : "Исход решит удача");
+      rar.style.color = known ? "#ffd38a" : "var(--tier-craft)";
+      card.append(rar);
+      const body = div("pcinv-fg-cbody");
+      const big = div("pcinv-fg-cimg");
+      setIcon(big, sel.cls, undefined, "craft");
+      const rows = div("pcinv-fg-rows");
+      for (const r of plan.slice(0, CRAFT.maxRolls)) {
+        const st = div("pcinv-fg-stat");
+        st.append(span(AFFIX_NAME[r.sub]), span(r.copies > 1 ? `×${r.copies}` : ""));
+        st.title = r.copies > 1 ? `${r.from} ×${r.copies} — ролл выше` : r.from;
+        rows.append(st);
+      }
+      if (known) rows.append(div("pcinv-fg-stat eff", `★ ${AFFIX_NAME[known.star]} сверх предела`));
+      const lo = rollsFor(1, sel.method);
+      const hi = rollsFor(CRAFT_OUTCOMES.length - 1, sel.method);
+      rows.append(div("pcinv-fg-stat dim", `Роллов ${lo}–${hi} · Мастерство до +${Math.round(CRAFT_OUTCOMES[CRAFT_OUTCOMES.length - 1].pow * 100)}%`));
+      body.append(big, rows);
+      card.append(body);
+      card.append(div("pcinv-fg-lore", known ? known.lore : "Сила — как у уникального; хороший, отличный и редкий исход добавляют «Мастерство» и роллы."));
+      // Шансы исходов полосой.
+      const odds = craftOdds(sel, smith.lv, !!known);
+      const ob = div("pcinv-codds");
+      const legend = div("pcinv-clegend");
+      CRAFT_OUTCOMES.forEach((o, i) => {
+        const cell = div("pcinv-codd");
+        cell.style.flexGrow = String(Math.max(0.0001, odds[i]));
+        cell.style.background = o.color;
+        ob.append(cell);
+        const l = div("pcinv-cleg");
+        l.innerHTML = `<i style="background:${o.color}"></i>${o.name} ${odds[i] < 10 ? odds[i].toFixed(1) : Math.round(odds[i])}%`;
+        hint(l, i === 0 ? "Провал: материалы сгорают, половина лома возвращается, катализатор цел." : `${o.name}: ${rollsFor(i, sel.method)} ролла${o.pow > 0 ? `, Мастерство +${Math.round(o.pow * 100)}% к урону` : ", сила уникального"}`);
+        legend.append(l);
+      });
+      card.append(ob, legend);
+    }
+    right.append(card);
+    // Необходимые материалы: есть / нужно.
+    const req = div("pcinv-fg-card");
+    req.append(div("pcinv-fg-sub2", "Необходимые материалы"));
+    const cells = div("pcinv-fg-req");
+    const reqCell = (html: string, have: number, n: number, label: string, help: string): void => {
+      const cell = div(`pcinv-fg-rq${have >= n ? "" : " lack"}`);
+      const ic = div("pcinv-fg-rqic");
+      ic.innerHTML = html;
+      // Как в концепте: «есть/нужно», есть — не больше нужного (у лома — только цена).
+      ic.append(div("pcinv-fg-rqn", n >= 100 ? `${n}` : `${Math.min(have, n)}/${n}`));
+      cell.append(ic, div("pcinv-fg-rql", label));
+      hint(cell, help);
+      cells.append(cell);
+    };
+    for (const [m, n] of need) reqCell(iconHtml(`m.${m}` as IconKey), stock.get(m) ?? 0, n, CRAFT_ITEMS[m].name, `${CRAFT_ITEMS[m].name}: нужно ${n}, есть ${stock.get(m) ?? 0}. Откуда: ${CRAFT_ITEMS[m].src}.`);
+    if (sel.cat) reqCell(catHtml(sel.cat), 1, 1, catName(sel.cat), "Катализатор вернётся после крафта.");
+    reqCell(iconHtml("i.scrap"), d.scrap, meth.cost, "Лом", `${meth.name}: ${meth.cost} лома, у тебя ${d.scrap.toLocaleString("ru-RU")}.`);
+    req.append(cells);
+    const status = div(`pcinv-fg-status${ready ? " ok" : ""}`, ready ? "✓ Готово к созданию" : sel.mats.length ? `Не хватает: ${lacks.join(", ")}` : "Положи материал с полки");
+    req.append(status);
+    right.append(req);
+
+    // ---- внизу: полки — материалы, катализаторы, методы ----
+    const shelf = div("pcinv-fg-shelf");
+    const group = (title: string): HTMLDivElement => {
+      const g = div("pcinv-fg-grp");
+      g.append(div("pcinv-fg-gt", title));
+      const row = div("pcinv-fg-items");
+      g.append(row);
+      shelf.append(g);
+      return row;
+    };
+    const item = (row: HTMLElement, html: string, label: string, count: string, state: "" | "on" | "off", help: string, onClick: () => void): void => {
+      const it = div(`pcinv-fg-it${state ? ` ${state}` : ""}`);
+      const ic = div("pcinv-fg-itic");
+      ic.innerHTML = html;
+      if (count) ic.append(div("pcinv-fg-cnt", count));
+      it.append(ic, div("pcinv-fg-itl", label));
+      it.onclick = () => state !== "off" && onClick();
+      hint(it, help);
+      row.append(it);
+    };
+    const matsRow = group("Материалы");
     for (const m of CRAFT_MATS) {
       const have = stock.get(m) ?? 0;
-      const ch = div(`pcinv-cchip mat${have - used(m) > 0 && sel.mats.length < CRAFT.maxMats ? "" : " off"}`);
-      ch.innerHTML = iconHtml(`m.${m}` as IconKey);
-      const t = div("pcinv-ctxt");
-      t.append(div("pcinv-cname", `${CRAFT_ITEMS[m].name} · ${have}`), div("pcinv-small", `→ ${AFFIX_NAME[matRoll(m, sel.cls)]}`));
-      ch.append(t);
-      ch.title = `Откуда: ${CRAFT_ITEMS[m].src}`;
-      ch.onclick = () => {
-        if (have - used(m) <= 0 || sel.mats.length >= CRAFT.maxMats) return;
-        sel.mats.push(m);
-        redraw();
-      };
-      mats.append(ch);
+      const left2 = have - used(m);
+      const full = sel.mats.length >= CRAFT.maxMats;
+      item(matsRow, iconHtml(`m.${m}` as IconKey), CRAFT_ITEMS[m].name, String(have), left2 > 0 && !full ? (used(m) ? "on" : "") : "off",
+        `${CRAFT_ITEMS[m].name} → ${AFFIX_NAME[matRoll(m, sel.cls)]}. Есть ${have}. Откуда: ${CRAFT_ITEMS[m].src}.${full ? " Ячейки полны — убери материал." : ""}`,
+        () => {
+          sel.mats.push(m);
+          redraw();
+        });
     }
-    s2.append(mats);
-    const smelt = div("pcinv-crow");
-    for (const n of [1, 5]) {
-      const b = button(`Переплавить ${n * CRAFT_SMELT} лома → ${CRAFT_ITEMS.alloy.name}${n > 1 ? ` ×${n}` : ""}`, () => this.hooks.act({ act: "smelt", id: "alloy", idx: n }));
-      b.disabled = d.scrap < n * CRAFT_SMELT;
-      smelt.append(b);
-    }
-    s2.append(smelt);
-
-    // 3. Катализатор: камень (шансы) или особый (особый ролл); возвращается.
-    const s3 = sec("3", "Катализатор", "необязательно, возвращается: камень улучшает шансы (сильнее с уровнем), особый — даёт особый ролл");
-    const cats = div("pcinv-crow");
-    const catChip = (key: string | null, html: string, name: string, note: string, color?: string): void => {
-      const ch = div(`pcinv-cchip${sel.cat === key ? " on" : ""}`);
-      if (html) {
-        // Значок в коробке 30×30: значок камня занимает весь контейнер.
-        const ic = div("pcinv-cic");
-        ic.innerHTML = html;
-        ch.append(ic);
-      }
-      const t = div("pcinv-ctxt");
-      const nm = div("pcinv-cname", name);
-      if (color) nm.style.color = color;
-      t.append(nm, div("pcinv-small", note));
-      ch.append(t);
-      ch.onclick = () => {
-        sel.cat = key;
-        redraw();
-      };
-      cats.append(ch);
-    };
-    catChip(null, "", "Без катализатора", "шансы метода");
+    // Переплавка: лом → сплав (рядом с материалами).
+    item(matsRow, `${iconHtml("i.scrap")}`, `В сплав`, `${CRAFT_SMELT}`, d.scrap >= CRAFT_SMELT ? "" : "off", `Переплавить ${CRAFT_SMELT} лома в ${CRAFT_ITEMS.alloy.name} (×1). Есть лома: ${d.scrap.toLocaleString("ru-RU")}.`, () =>
+      this.hooks.act({ act: "smelt", id: "alloy", idx: 1 }),
+    );
+    const catsRow = group("Катализаторы");
     for (const k of CRAFT_CATS) {
       const have = stock.get(k) ?? 0;
-      if (have > 0) catChip(k, iconHtml(`m.${k}` as IconKey), `${CRAFT_ITEMS[k].name} · ${have}`, `→ ${AFFIX_NAME[k === "frost" ? "chill" : "venom"]}`, CRAFT_ITEMS[k].color);
+      if (have <= 0) continue;
+      item(catsRow, catHtml(k), CRAFT_ITEMS[k].name, String(have), sel.cat === k ? "on" : "", `${CRAFT_ITEMS[k].name}: ${catNote(k)}. Возвращается. Откуда: ${CRAFT_ITEMS[k].src}.`, () => {
+        sel.cat = sel.cat === k ? null : k;
+        redraw();
+      });
     }
     for (const [k, n] of gems) {
       const g = parseGem(k);
       if (!g) continue;
-      const lv = Math.min(CRAFT.gemLvCap, g.lv);
-      catChip(k, gemHtml(k), `${gemName(k)} · ${n}`, `провал −${CRAFT.gemFail * lv}, отличный и редкий +${CRAFT.gemUp * lv}`);
+      item(catsRow, gemHtml(k), `${ATTR_SHORT[g.attr]} ${g.lv}`, String(n), sel.cat === k ? "on" : "", `${gemName(k)}: ${catNote(k)}. Возвращается.`, () => {
+        sel.cat = sel.cat === k ? null : k;
+        redraw();
+      });
     }
-    if (!CRAFT_CATS.some((k) => (stock.get(k) ?? 0) > 0) && !gems.length) cats.append(div("pcinv-small", "Камней и особых катализаторов нет — камни падают с мобов, особые — с Ледяного демона и пауков."));
-    s3.append(cats);
-
-    // 4. Метод.
-    const s4 = sec("4", "Метод", "стоит лома; новые открываются с уровнем кузнеца");
-    const meth = div("pcinv-crow");
+    if (!catsRow.children.length) catsRow.append(div("pcinv-small pcinv-fg-empty", "Нет камней и особых катализаторов: камни падают с мобов, особые — с Ледяного демона и пауков."));
+    const methRow = group("Методы обработки");
     for (const k of CRAFT_METHOD_IDS) {
       const m = CRAFT_METHODS[k];
       const locked = m.lv > smith.lv;
-      const ch = div(`pcinv-cchip meth${sel.method === k ? " on" : ""}${locked ? " off" : ""}`);
-      const t = div("pcinv-ctxt");
-      t.append(div("pcinv-cname", `${m.name} · ${m.cost} лома`), div("pcinv-small", locked ? `откроется на ${m.lv} ур. кузнеца` : m.note));
-      ch.append(t);
-      ch.onclick = () => {
-        if (locked) return;
-        sel.method = k as CraftMethodId;
+      item(methRow, iconHtml(`cm.${k}` as IconKey), m.name, locked ? `🔒${m.lv}` : String(m.cost), locked ? "off" : sel.method === k ? "on" : "", locked ? `${m.name} откроется на ${m.lv} уровне кузнеца.` : `${m.name} · ${m.cost} лома: ${m.note}.`, () => {
+        sel.method = k;
         redraw();
-      };
-      meth.append(ch);
-    }
-    s4.append(meth);
-
-    // Предпросмотр: роллы, шансы, цена; найденный рецепт — по имени.
-    const pv = div("pcinv-cprev");
-    const recipe = sel.mats.length ? matchRecipe(sel) : null;
-    const known = recipe && c.book.includes(recipe.id) ? recipe : null;
-    const odds = craftOdds(sel, smith.lv, !!known);
-    if (known) pv.append(div("pcinv-crecipe", `📜 Рецепт «${known.name}»: исход не ниже хорошего, ★ ${AFFIX_NAME[known.star]} сверх предела`));
-    const plan = plannedRolls(sel);
-    pv.append(
-      div(
-        "pcinv-small",
-        sel.mats.length
-          ? `Роллы по порядку: ${plan.map((r) => `${AFFIX_NAME[r.sub]}${r.copies > 1 ? ` ×${r.copies}` : ""}`).join(", ")} — сколько встанет, решает исход (${rollsFor(1, sel.method)}–${rollsFor(4, sel.method)}), остальное — случайно.`
-          : "Положи хотя бы один материал.",
-      ),
-    );
-    const ob = div("pcinv-codds");
-    CRAFT_OUTCOMES.forEach((o, i) => {
-      const cell = div("pcinv-codd");
-      const pct = odds[i];
-      cell.style.flexGrow = String(Math.max(0.0001, pct));
-      cell.style.background = o.color;
-      cell.title = `${o.name}: ${pct.toFixed(1)}%`;
-      ob.append(cell);
-    });
-    pv.append(ob);
-    const legend = div("pcinv-clegend");
-    CRAFT_OUTCOMES.forEach((o, i) => {
-      const l = div("pcinv-cleg");
-      l.innerHTML = `<i style="background:${o.color}"></i>${o.name} ${odds[i] < 10 ? odds[i].toFixed(1) : Math.round(odds[i])}%`;
-      l.title = i === 0 ? "материалы сгорают, половина лома возвращается" : `${rollsFor(i, sel.method)} ролла${o.pow > 0 ? ` · Мастерство +${Math.round(o.pow * 100)}% к урону` : " · сила уникального"}`;
-      legend.append(l);
-    });
-    pv.append(legend);
-    const cost = CRAFT_METHODS[sel.method].cost;
-    const go = button(`⚒ Создать — ${cost} лома`, () => this.hooks.act({ act: "craft", id: craftCode(sel), idx: 0 }));
-    go.className = "pcinv-btn gold pcinv-cgo";
-    go.disabled = !sel.mats.length || d.scrap < cost;
-    if (d.scrap < cost) go.title = `Не хватает лома: есть ${d.scrap}`;
-    pv.append(go);
-    wrap.append(pv);
-
-    // Итог последнего крафта.
-    const r = this.craftRes;
-    if (r) {
-      const o = CRAFT_OUTCOMES[r.outcome] ?? CRAFT_OUTCOMES[0];
-      const box = div(`pcinv-cres${r.outcome > 0 ? "" : " fail"}`);
-      const h = div("pcinv-cres-h", o.name);
-      h.style.color = o.color;
-      box.append(h, div("", r.text));
-      if (r.id && d.weapons.some((w) => w.id === r.id)) {
-        const see = button("Посмотреть", () => {
-          this.tab = "gear";
-          this.craftRes = null;
-          this.openCard({ kind: "bag", id: r.id! });
-        });
-        box.append(see);
-      }
-      wrap.append(box);
+      });
     }
 
-    // Книга рецептов.
-    const s5 = sec("📜", `Книга рецептов — найдено ${c.book.length} из ${CRAFT_RECIPES.length}`, "скрытые сочетания находят только опытом: именное оружие и ролл сверх предела");
-    for (const rc of CRAFT_RECIPES) {
-      const found = c.book.includes(rc.id);
-      const row = div(`pcinv-crec${found ? " found" : ""}`);
-      row.append(div("pcinv-cname", found ? rc.name : "???"), div("pcinv-small", found ? recipeText(rc) : recipeHint(rc)));
-      s5.append(row);
-    }
-    // Справка по исходам.
-    const help = div("pcinv-small dim");
-    help.textContent = `Исходы: обычный — сила уникального, 2 ролла; хороший — Мастерство +15%, 3 ролла; отличный — +25%, 3 ролла; редкий — +38%, 4 ролла (≈ рубиновое + 20%). Мастерское оружие точится, передаётся и разбирается как остальное.`;
-    wrap.append(help);
-    this.body.append(tabPanel("Крафт", wrap));
+    root.append(left, stage, right, shelf, hintEl);
+    this.body.append(root);
   }
 
   private renderAttrs(d: PcInvData): void {
@@ -2786,41 +2889,126 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-pts { align-self:flex-start; padding:5px 12px; font:700 14px/1.2 system-ui; color:#c9d5e3; background:rgba(10,22,38,.8); border:1px solid #2d405a; }
 .pcinv-pts.on { color:#b9f5c2; border-color:#3f9a58; background:rgba(16,40,26,.75); box-shadow:0 0 10px rgba(80,200,110,.15); }
 .pcinv-attrs { display:flex; flex-direction:column; gap:8px; }
-/* ---------- «Крафт» ---------- */
-.pcinv-craft { display:flex; flex-direction:column; gap:12px; }
-.pcinv-csmith { display:flex; flex-direction:column; gap:5px; padding:10px 14px; border:1px solid #6b3a12; background:rgba(46,26,12,.55); }
-.pcinv-csmith-lv { font:800 15px system-ui; color:var(--tier-craft); }
+/* ---------- «Крафт»: кузница (концепт «Кузница берсерка») ---------- */
+.pcinv-forge { display:grid; grid-template-columns:230px minmax(0,1fr) 290px; grid-template-areas:"left stage right" "shelf shelf shelf" "hint hint hint"; gap:10px; align-items:start; }
+.pcinv-fg-side { position:relative; display:flex; flex-direction:column; gap:6px; padding:12px; border:1px solid #2f4664; background:linear-gradient(180deg,rgba(9,19,34,.92),rgba(5,11,21,.92)); box-shadow:inset 0 0 0 1px rgba(0,0,0,.6); clip-path:${CUT("9px")}; }
+.pcinv-fg-left { grid-area:left; align-self:stretch; }
+.pcinv-fg-right { grid-area:right; padding:0; gap:10px; border:none; background:none; box-shadow:none; clip-path:none; }
+.pcinv-fg-title { font:700 22px/1.1 "Iowan Old Style",Georgia,serif; color:#dbe8f6; padding-bottom:6px; border-bottom:1px solid #1d2d43; }
+.pcinv-fg-sub { margin-top:8px; font:600 14px "Iowan Old Style",Georgia,serif; color:#b9c8da; }
+.pcinv-fg-sub2 { font:600 16px "Iowan Old Style",Georgia,serif; color:#dbe8f6; margin-bottom:8px; }
+.pcinv-fg-smith { display:flex; flex-direction:column; gap:4px; padding:8px 10px; border:1px solid #6b3a12; background:rgba(46,26,12,.6); }
+.pcinv-fg-smlv { font:800 14px system-ui; color:var(--tier-craft); }
 .pcinv-cbar { height:7px; background:#1a120a; border:1px solid #5a3410; }
 .pcinv-cbar-f { height:100%; background:linear-gradient(90deg,#b84f00,#f0832a); }
-.pcinv-csec { display:flex; flex-direction:column; gap:7px; }
-.pcinv-csec-h { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; font:700 14px system-ui; color:#dbe8f6; }
-.pcinv-crow { display:flex; flex-wrap:wrap; gap:7px; }
-.pcinv-cchip { display:flex; align-items:center; gap:8px; min-height:40px; padding:5px 11px; cursor:pointer; border:1px solid #2d405a; background:rgba(10,22,38,.8); color:#dbe6f2; }
-.pcinv-cchip:hover { border-color:#4f6f96; }
-.pcinv-cchip.on { border-color:var(--tier-craft); background:rgba(70,36,8,.7); box-shadow:0 0 10px rgba(240,131,42,.25); }
-.pcinv-cchip.off { opacity:.45; cursor:default; }
-.pcinv-cchip .gico { width:26px; height:26px; font-size:20px; }
-.pcinv-cic { width:30px; height:30px; flex:none; display:flex; align-items:center; justify-content:center; }
-.pcinv-cic .gico { width:30px; height:30px; }
-.pcinv-ctxt { display:flex; flex-direction:column; gap:1px; }
-.pcinv-cname { font-weight:700; font-size:13px; }
-.pcinv-cslot { display:flex; align-items:center; gap:7px; min-width:150px; min-height:42px; padding:5px 11px; border:1px dashed #3a4f6b; color:#6f7f95; cursor:default; }
-.pcinv-cslot.full { border-style:solid; border-color:#8a5a2a; color:#f2dcc4; cursor:pointer; background:rgba(46,26,12,.45); }
-.pcinv-cslot .gico { width:24px; height:24px; font-size:19px; }
-.pcinv-cprev { display:flex; flex-direction:column; gap:7px; padding:12px 14px; border:1px solid #33465f; background:rgba(6,14,26,.7); }
-.pcinv-crecipe { color:#ffd38a; font-weight:700; }
-.pcinv-codds { display:flex; height:12px; border:1px solid #2d405a; overflow:hidden; }
+.pcinv-fg-row { display:flex; align-items:center; gap:10px; min-height:40px; padding:4px 10px; cursor:pointer; border:1px solid #22354f; background:rgba(10,22,38,.7); color:#dbe6f2; font-size:13.5px; }
+.pcinv-fg-row:hover { border-color:#4f6f96; }
+.pcinv-fg-row.on { border-color:#d9a95a; background:linear-gradient(90deg,rgba(60,70,95,.85),rgba(20,32,52,.85)); box-shadow:0 0 0 1px rgba(217,169,90,.35),0 0 12px rgba(217,169,90,.18); color:#fff; }
+.pcinv-fg-row.rec { min-height:46px; }
+.pcinv-fg-rtxt { display:flex; flex-direction:column; }
+.pcinv-fg-rname { font-weight:700; color:var(--tier-craft); }
+.pcinv-fg-empty { padding:4px 2px; line-height:1.4; }
+.pcinv-fg-ic { width:30px; height:30px; flex:none; display:flex; align-items:center; justify-content:center; }
+.pcinv-fg-ic .gico { width:30px; height:30px; }
+/* сцена: кузница с наковальней, цепочка ячеек над ней, «Создать» — на наковальне */
+.pcinv-fg-stage { grid-area:stage; position:relative; aspect-ratio:1/1; width:100%; max-width:620px; justify-self:center; background:#120a05 url(/icons/craft/forge_bg.webp) center/cover no-repeat; border:1px solid #3a2a1a; box-shadow:inset 0 0 40px rgba(0,0,0,.65); overflow:hidden; }
+.pcinv-fg-stage::after { content:""; position:absolute; left:50%; top:74%; width:70%; height:40%; transform:translate(-50%,-50%); pointer-events:none; opacity:0; background:radial-gradient(ellipse at center,rgba(255,170,60,.85),rgba(255,90,10,.35) 40%,transparent 70%); mix-blend-mode:screen; }
+.pcinv-fg-stage.hit::after { animation:pcinvFgHit .7s ease-out; }
+.pcinv-fg-stage.done::after { animation:pcinvFgDone 1.4s ease-out; }
+.pcinv-fg-stage.fail::after { background:radial-gradient(ellipse at center,rgba(180,180,190,.6),rgba(60,60,70,.3) 45%,transparent 70%); mix-blend-mode:normal; animation:pcinvFgDone 1.4s ease-out; }
+@keyframes pcinvFgHit { 0% { opacity:0; } 12% { opacity:1; transform:translate(-50%,-50%) scale(.6); } 100% { opacity:0; transform:translate(-50%,-50%) scale(1.3); } }
+@keyframes pcinvFgDone { 0% { opacity:1; transform:translate(-50%,-50%) scale(.8); } 100% { opacity:0; transform:translate(-50%,-50%) scale(1.6); } }
+.pcinv-fg-chain { position:absolute; left:3%; right:3%; top:27%; display:flex; align-items:center; gap:1.2%; }
+.pcinv-fg-arrow { flex:none; color:#e8c27a; font:700 26px system-ui; text-shadow:0 0 8px rgba(255,160,60,.6); }
+.pcinv-fg-slot { flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:stretch; background:linear-gradient(180deg,rgba(8,14,24,.92),rgba(6,10,18,.88)); border:1px solid #5d4a2c; box-shadow:0 6px 18px rgba(0,0,0,.55); }
+.pcinv-fg-slot.click { cursor:pointer; }
+.pcinv-fg-slot.full .pcinv-fg-sbox { border-color:#c8a35e; box-shadow:inset 0 0 18px rgba(240,160,70,.18); }
+.pcinv-fg-shead { padding:4px 4px; text-align:center; font:600 13px "Iowan Old Style",Georgia,serif; color:#eadcc2; background:linear-gradient(180deg,#2a2f3c,#161a24); border-bottom:1px solid #5d4a2c; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pcinv-fg-sbox { position:relative; margin:6px; aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; border:2px solid #7a6440; background:radial-gradient(ellipse at 50% 40%,#1c2a40,#070d18 80%); }
+.pcinv-fg-big { width:78%; height:78%; display:flex; align-items:center; justify-content:center; }
+.pcinv-fg-big .gico { width:100%; height:100%; }
+.pcinv-fg-big.empty { color:#5d6f88; font:700 26px system-ui; }
+.pcinv-fg-mats { position:absolute; inset:6%; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); grid-template-rows:minmax(0,1.3fr) minmax(0,1fr); gap:4px; }
+.pcinv-fg-mcell { min-width:0; min-height:0; overflow:hidden; border:1px dashed #3a4f6b; display:flex; align-items:center; justify-content:center; }
+.pcinv-fg-mcell:first-child { grid-column:1 / span 2; }
+.pcinv-fg-mcell.full { border:1px solid #8a6a3a; cursor:pointer; background:rgba(60,36,12,.35); }
+.pcinv-fg-mcell .gico { max-width:86%; max-height:86%; width:auto; height:86%; aspect-ratio:1/1; object-fit:contain; }
+.pcinv-fg-sname { padding:0 4px; text-align:center; font-weight:700; font-size:12.5px; color:#f2e7d2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pcinv-fg-ssub { padding:0 4px 6px; text-align:center; font-size:11px; color:#a8b4c4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pcinv-fg-go { position:absolute; left:50%; top:84%; transform:translate(-50%,-50%); display:flex; align-items:center; gap:10px; padding:10px 34px; min-height:52px; cursor:pointer; border:none; color:#fbe9c6;
+  font:700 22px "Iowan Old Style",Georgia,serif; letter-spacing:.02em; background:linear-gradient(180deg,#3b3020,#17110a); clip-path:${HEX("18px")};
+  filter:drop-shadow(0 0 10px rgba(255,150,50,.45)); }
+.pcinv-fg-go::before { content:""; position:absolute; inset:0; z-index:-1; background:linear-gradient(180deg,#f1d08c,#8a6326); clip-path:${HEX("18px")}; }
+.pcinv-fg-go { isolation:isolate; }
+.pcinv-fg-go::after { content:""; position:absolute; inset:2px; z-index:-1; background:linear-gradient(180deg,#2b2418,#110c07); clip-path:${HEX("17px")}; }
+.pcinv-fg-go:hover:not(:disabled) { filter:drop-shadow(0 0 16px rgba(255,170,70,.75)); color:#fff; }
+.pcinv-fg-go:disabled { opacity:.55; cursor:default; filter:grayscale(.6); }
+.pcinv-fg-go.busy { animation:pcinvFgShake .35s ease-out; }
+@keyframes pcinvFgShake { 0%,100% { transform:translate(-50%,-50%); } 30% { transform:translate(-50%,-46%); } 60% { transform:translate(-50%,-52%); } }
+.pcinv-fg-goic { width:28px; height:28px; display:flex; }
+.pcinv-fg-goic .gico { width:28px; height:28px; }
+/* справа: карточка оружия и необходимые материалы */
+.pcinv-fg-card { position:relative; display:flex; flex-direction:column; gap:6px; padding:12px 14px; border:1px solid #2f4664; background:linear-gradient(180deg,rgba(9,19,34,.94),rgba(5,11,21,.94)); clip-path:${CUT("9px")}; animation:pcinvToast .2s ease-out; }
+.pcinv-fg-cname { font:700 19px/1.15 "Iowan Old Style",Georgia,serif; color:#eef3f9; }
+.pcinv-fg-rar { font-weight:700; font-size:13px; }
+.pcinv-fg-cbody { display:flex; gap:10px; align-items:flex-start; }
+.pcinv-fg-cimg { width:86px; height:110px; flex:none; display:flex; align-items:center; justify-content:center; border:1px solid #7a6440; background:radial-gradient(ellipse at 50% 40%,#2a1a10,#0b0806 80%); font-size:34px; }
+.pcinv-fg-cimg .gico { width:80px; height:80px; }
+.pcinv-fg-rows { flex:1; min-width:0; display:flex; flex-direction:column; }
+.pcinv-fg-stat { display:flex; justify-content:space-between; gap:6px; padding:4px 0; border-bottom:1px solid #1d2d43; font-size:12.5px; color:#dbe6f2; }
+.pcinv-fg-stat > span:last-child { color:#9aa8ba; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pcinv-fg-stat.eff { color:#ffd38a; }
+.pcinv-fg-stat.dim { color:#9aa8ba; border-bottom:none; }
+.pcinv-fg-lore { font-size:12px; color:#b7c2d0; font-style:italic; line-height:1.35; }
+.pcinv-fg-acts { display:flex; gap:8px; flex-wrap:wrap; }
+.pcinv-codds { display:flex; height:10px; border:1px solid #2d405a; overflow:hidden; }
 .pcinv-codd { flex-basis:0; min-width:0; }
-.pcinv-clegend { display:flex; flex-wrap:wrap; gap:4px 14px; font-size:12px; color:#c9d5e3; }
-.pcinv-cleg i { display:inline-block; width:9px; height:9px; margin-right:5px; vertical-align:middle; }
-.pcinv-cgo { align-self:flex-start; min-height:40px; font-size:13.5px; font-weight:800; }
-.pcinv-cres { display:flex; flex-direction:column; gap:6px; padding:12px 14px; border:1px solid var(--tier-craft); background:rgba(46,26,12,.7); animation:pcinvToast .2s ease-out; }
-.pcinv-cres.fail { border-color:#a8433a; background:rgba(54,22,22,.7); }
-.pcinv-cres-h { font:800 20px "Iowan Old Style",Georgia,serif; }
-.pcinv-cres .pcinv-ebtn { align-self:flex-start; }
-.pcinv-crec { padding:6px 10px; border-left:3px solid #2d405a; background:rgba(10,22,38,.5); }
-.pcinv-crec.found { border-left-color:var(--tier-craft); }
-.pcinv-crec.found .pcinv-cname { color:var(--tier-craft); }
+.pcinv-clegend { display:flex; flex-wrap:wrap; gap:3px 10px; font-size:11.5px; color:#c9d5e3; }
+.pcinv-cleg i { display:inline-block; width:8px; height:8px; margin-right:4px; vertical-align:middle; }
+.pcinv-fg-req { display:flex; flex-wrap:wrap; gap:8px; }
+.pcinv-fg-rq { width:56px; display:flex; flex-direction:column; align-items:center; gap:3px; }
+.pcinv-fg-rqic { position:relative; width:52px; height:52px; display:flex; align-items:center; justify-content:center; border:1px solid #7a6440; background:radial-gradient(ellipse at 50% 40%,#1c2a40,#070d18 80%); }
+.pcinv-fg-rqic .gico, .pcinv-fg-rqic > span { width:40px !important; height:40px !important; }
+.pcinv-fg-rqn { position:absolute; left:0; right:0; bottom:1px; text-align:center; font:700 11px system-ui; color:#e8eef6; text-shadow:0 1px 2px #000,0 0 3px #000; }
+.pcinv-fg-rq.lack .pcinv-fg-rqic { border-color:#a8433a; }
+.pcinv-fg-rq.lack .pcinv-fg-rqn { color:#ff8f84; }
+.pcinv-fg-rql { font-size:10.5px; color:#a8b4c4; text-align:center; line-height:1.15; max-width:60px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pcinv-fg-status { margin-top:6px; padding:9px 12px; text-align:center; font:600 14px "Iowan Old Style",Georgia,serif; color:#ffb0a6; border:1px solid #6a2a24; background:rgba(40,14,12,.6); clip-path:${HEX("14px")}; }
+.pcinv-fg-status.ok { color:#b9f5d0; border-color:#2f7a5a; background:linear-gradient(180deg,rgba(14,52,44,.85),rgba(8,30,26,.85)); }
+/* внизу: полки */
+.pcinv-fg-shelf { grid-area:shelf; display:flex; gap:10px; padding:8px 10px; border:1px solid #2f4664; background:linear-gradient(180deg,rgba(9,19,34,.92),rgba(5,11,21,.92)); }
+.pcinv-fg-grp { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.pcinv-fg-grp:nth-child(2) { flex:1; }
+.pcinv-fg-grp + .pcinv-fg-grp { padding-left:10px; border-left:1px solid #1d2d43; }
+.pcinv-fg-gt { font-size:12.5px; color:#7fb2e6; }
+.pcinv-fg-items { display:flex; gap:6px; overflow-x:auto; scrollbar-width:thin; scrollbar-color:#2c3e57 transparent; padding-bottom:2px; }
+.pcinv-fg-it { flex:none; width:64px; display:flex; flex-direction:column; align-items:center; gap:2px; cursor:pointer; padding:3px 0; border:1px solid transparent; }
+.pcinv-fg-it:hover { border-color:#3a5576; background:rgba(20,40,66,.4); }
+.pcinv-fg-it.on { border-color:var(--tier-craft); background:rgba(70,36,8,.55); box-shadow:0 0 10px rgba(240,131,42,.25); }
+.pcinv-fg-it.off { opacity:.4; cursor:default; }
+.pcinv-fg-itic { position:relative; width:48px; height:48px; display:flex; align-items:center; justify-content:center; }
+.pcinv-fg-itic .gico { width:46px; height:46px; }
+.pcinv-fg-itic > span { width:44px !important; height:44px !important; }
+.pcinv-fg-cnt { position:absolute; right:-2px; bottom:-2px; padding:0 3px; font:700 11px system-ui; color:#fff; background:rgba(0,0,0,.65); border-radius:3px; }
+.pcinv-fg-itl { font-size:11px; color:#c3cedb; text-align:center; line-height:1.15; max-width:64px; }
+.pcinv-fg-hint { grid-area:hint; min-height:20px; padding:2px 4px; font-size:12.5px; color:#c9b48c; }
+/* узкое окно и телефон: одна колонка — кузница, итог, полки, рецепты */
+@media (max-width: 900px) {
+  .pcinv-forge { grid-template-columns:minmax(0,1fr); grid-template-areas:"stage" "right" "shelf" "hint" "left"; }
+  .pcinv-fg-stage { max-width:560px; }
+}
+.pcinv-root.touch .pcinv-forge { grid-template-columns:minmax(0,1fr); grid-template-areas:"stage" "right" "shelf" "left"; }
+.pcinv-root.touch .pcinv-fg-hint { display:none; }
+.pcinv-root.touch .pcinv-fg-shelf, .pcinv-forge.narrow .pcinv-fg-shelf { flex-direction:column; }
+.pcinv-root.touch .pcinv-fg-grp + .pcinv-fg-grp { padding-left:0; border-left:none; padding-top:6px; border-top:1px solid #1d2d43; }
+@media (max-width: 900px) { .pcinv-fg-shelf { flex-direction:column; } .pcinv-fg-grp + .pcinv-fg-grp { padding-left:0; border-left:none; padding-top:6px; border-top:1px solid #1d2d43; } }
+@media (max-width: 460px) {
+  .pcinv-fg-shead { font-size:11px; }
+  .pcinv-fg-sname { font-size:11px; }
+  .pcinv-fg-ssub { display:none; }
+  .pcinv-fg-arrow { font-size:18px; }
+  .pcinv-fg-go { font-size:18px; padding:8px 24px; min-height:44px; }
+}
 .pcinv-arow { position:relative; isolation:isolate; display:flex; align-items:center; gap:12px; padding:10px 14px; }
 .pcinv-arow::before { content:""; position:absolute; inset:0; z-index:-1; background:linear-gradient(180deg,rgba(12,26,44,.85),rgba(7,16,29,.85)); border:1px solid #233650; clip-path:${CUT("8px")}; }
 .pcinv-arow:hover::before { border-color:#35537a; }

@@ -203,22 +203,18 @@ export interface CraftRecipe {
   method: CraftMethodId;
   /** Ролл «сверх предела» — CRAFT.starMul от максимума вида. */
   star: AffixSub;
+  /** Строчка-описание под оружием (карточка крафта). */
+  lore: string;
 }
 
 export const CRAFT_RECIPES: readonly CraftRecipe[] = [
-  { id: "webweaver", name: "Ткач паутины", cls: "bow", mats: ["web", "web", "bone"], cat: "sting", method: "temper", star: "atkSpeedPct" },
-  { id: "frostguard", name: "Ледяной страж", cls: "hammer", mats: ["bone", "bone", "alloy"], cat: "frost", method: "age", star: "vamp" },
-  { id: "dragonblood", name: "Кровь дракона", cls: "dagger", mats: ["scale", "scale", "scale"], cat: "gem:luc", method: "temper", star: "critChance" },
-  { id: "ashstaff", name: "Посох пепла", cls: "staff", mats: ["bone", "bone", "scale"], cat: "gem:int", method: "carve", star: "critChance" },
-  { id: "stormfang", name: "Клык бури", cls: "spear", mats: ["web", "scale", "alloy"], cat: null, method: "forge", star: "dmgFlat" },
-  { id: "crusher", name: "Сокрушитель", cls: "sword", mats: ["alloy", "alloy", "alloy"], cat: "gem:str", method: "forge", star: "dmgFlat" },
+  { id: "webweaver", name: "Ткач паутины", cls: "bow", mats: ["web", "web", "bone"], cat: "sting", method: "temper", star: "atkSpeedPct", lore: "Тетива из паучьего шёлка поёт быстрее ветра." },
+  { id: "frostguard", name: "Ледяной страж", cls: "hammer", mats: ["bone", "bone", "alloy"], cat: "frost", method: "age", star: "vamp", lore: "Холод сковывает врага, а сила его уходит к владельцу." },
+  { id: "dragonblood", name: "Кровь дракона", cls: "dagger", mats: ["scale", "scale", "scale"], cat: "gem:luc", method: "temper", star: "critChance", lore: "Клинок из чешуи помнит, куда бить." },
+  { id: "ashstaff", name: "Посох пепла", cls: "staff", mats: ["bone", "bone", "scale"], cat: "gem:int", method: "carve", star: "critChance", lore: "Кость и пламя: каждый огнешар — как удар грома." },
+  { id: "stormfang", name: "Клык бури", cls: "spear", mats: ["web", "scale", "alloy"], cat: null, method: "forge", star: "dmgFlat", lore: "Наконечник, что пробивает ряды насквозь." },
+  { id: "crusher", name: "Сокрушитель", cls: "sword", mats: ["alloy", "alloy", "alloy"], cat: "gem:str", method: "forge", star: "dmgFlat", lore: "Простая сталь в руке силы — тяжелее любого молота." },
 ];
-
-/** Подсказка к ненайденному рецепту: класс, метод и вид катализатора — состав остаётся загадкой. */
-export function recipeHint(r: CraftRecipe): string {
-  const cat = r.cat === null ? "без катализатора" : r.cat.startsWith("gem:") ? "катализатор — камень" : "особый катализатор";
-  return `${WEAPON_NOUN[r.cls].name} · ${CRAFT_METHODS[r.method].name} · ${r.mats.length} материала · ${cat}`;
-}
 
 /** Полный состав рецепта (для найденных). */
 export function recipeText(r: CraftRecipe): string {
