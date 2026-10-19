@@ -97,23 +97,13 @@ export const ICONS = {
   "a.gloves.legendary": { emoji: "🧤", img: "armor/gloves_legendary.png" },
   "a.legs.legendary": { emoji: "👖", img: "armor/legs_legendary.png" },
   "a.boots.legendary": { emoji: "🥾", img: "armor/boots_legendary.png" },
-  /** Лом — кусочки металла (шестерёнка путала). */
-  "i.scrap": {
-    emoji: "🔩",
-    box: "0 0 28 28",
-    svg: g(
-      `stroke-linejoin="round"`,
-      `<path d="M3 17l7-5 4 3-2 6-7 1z" fill="#8d939c" stroke="#d6dae0" stroke-width="1.1"/>` +
-        `<path d="M12 9l6-4 5 3-1 6-6 1z" fill="#a4957e" stroke="#e2d6c2" stroke-width="1.1"/>` +
-        `<path d="M15 18l6-2 4 4-3 5-6-1z" fill="#6f757e" stroke="#c9ced6" stroke-width="1.1"/>` +
-        `<circle cx="18.5" cy="10" r="1.1" fill="#3a3e45"/><circle cx="8" cy="17.5" r="1" fill="#3a3e45"/>`,
-    ),
-  },
-  "i.fish": { emoji: "🐟" },
-  "i.scroll_xp": { emoji: "📜" },
-  "i.scroll_wind": { emoji: "🪶" },
+  /** Лом оружия — из листа игровых иконок (public/icons/items). */
+  "i.scrap": { emoji: "🔩", img: "items/scrap.png" },
+  "i.fish": { emoji: "🐟", img: "items/fish.png" },
+  "i.scroll_xp": { emoji: "📜", img: "items/scroll_xp.png" },
+  "i.scroll_wind": { emoji: "🪶", img: "items/scroll_wind.png" },
   /** Жетоны заданий. */
-  "i.token": { emoji: "◈" },
+  "i.token": { emoji: "◈", img: "items/token.png" },
   // ---- крафт: материалы, особые катализаторы и методы (shared/craft.ts) — вырезаны из концепта кузницы, временные ----
   "m.alloy": { emoji: "🧱", img: "craft/alloy.png" },
   "m.web": { emoji: "🕸️", img: "craft/web.png" },
@@ -211,8 +201,8 @@ export const ICONS = {
   // ---- баффы ----
   "b.victory": { emoji: "🗡️" },
   "b.camp": { emoji: "🛡️" },
-  "b.scrollXp": { emoji: "📜" },
-  "b.scrollWind": { emoji: "🪶" },
+  "b.scrollXp": { emoji: "📜", img: "items/scroll_xp.png" },
+  "b.scrollWind": { emoji: "🪶", img: "items/scroll_wind.png" },
 
   // ---- интерфейс ----
   /** Мешок (кнопка снаряжения и сумки). */
