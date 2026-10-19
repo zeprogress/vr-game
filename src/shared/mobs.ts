@@ -728,9 +728,10 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     level: 70, kind: "slime",
     // 2026-10-19: HP ×5 (260 000 → 1 300 000), урон ×1.5 (32 → 48), размер ×2 (≈11.5 м); опыт — за 125
     // убийств своего уровня (было 25: ×5 по HP), xp по кривой здоровья.
-    hp: 1300000, dmgMul: 48, xp: 51200000000, scaleMul: 12, tint: null,
+    // 2026-10-20: размер ×2/3 (≈7.7 м, scaleMul 12 → 8): радиусы умений и дальности — под него; урон умений ↑, перезарядки ↓.
+    hp: 1300000, dmgMul: 48, xp: 51200000000, scaleMul: 8, tint: null,
     physArmor: 0.2, magicVulnMul: 1.2, // кристаллы держат удар; огонь магии их топит
-    attackCooldown: 2, meleeReach: 9, speedMul: 1, sepMul: 0.6,
+    attackCooldown: 2, meleeReach: 6, speedMul: 1, sepMul: 0.6,
     iceGiant: true, walksOnly: true, gait: true, noSquash: true, blendAnims: true,
     strikeDelay: 0.6, attackSec: 1.3, walkClipSpeed: 2.4, runClipSpeed: 5.8,
     killXpMul: 125, respawnSec: 30, legendaryChance: 0.12, ringMul: 6,
@@ -743,7 +744,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
  */
 export const ICE_GIANT = {
   /** «Стужа»: в бою раз в tick с всем героям в радиусе — замедление (урона нет; щит и уворот не спасают). */
-  aura: { radius: 15, tick: 1, slowSec: 1.4, slowFrac: 0.2 }, // радиусы умений — под размер ×2 (2026-10-19)
+  aura: { radius: 10, tick: 1, slowSec: 1.4, slowFrac: 0.2 }, // радиусы умений — под размер (2026-10-20: 15 → 10)
   /**
    * «Обморожение»: удары гиганта (размах, раскол, глыба, разлом) кладут стаки, каждый — ещё perStack
    * замедления, живут stackSec с после последнего. На maxStacks — «Ледяная глыба»: герой вмерзает
@@ -753,18 +754,18 @@ export const ICE_GIANT = {
   /** «Ледяной размах» (обычный удар): все герои в дуге ±cleaveHalf рад перед гигантом. */
   cleaveHalf: 1.05,
   /** «Ледяной раскол»: двумя руками оземь — круг вокруг себя, шипы, отбрасывание. Нужно minHeroes героев рядом. */
-  slam: { cooldown: 15, windup: 1.3, radius: 15, dmgMul: 2, knockback: 12, stacks: 2, minHeroes: 2 },
+  slam: { cooldown: 9, windup: 1.3, radius: 10, dmgMul: 2.8, knockback: 12, stacks: 2, minHeroes: 2 },
   /** «Ледяная глыба»: в дальнего героя — круг на земле, удар по кругу и наледь (замедляет, пока стоишь). */
   throw: {
-    cooldown: 11, windup: 1.35, flight: 1.2, minDist: 18, maxDist: 40, radius: 5, dmgMul: 1.8, stacks: 1,
-    patchSec: 8, patchR: 6, patchSlow: 0.5,
+    cooldown: 6, windup: 1.35, flight: 1.2, minDist: 14, maxDist: 40, radius: 3.5, dmgMul: 2.6, stacks: 1,
+    patchSec: 8, patchR: 4, patchSlow: 0.5,
   },
   /** «Ледяной разлом»: кулак в землю — гряда шипов бежит к герою по прямой (полуширина halfWidth). */
-  fissure: { cooldown: 9, windup: 0.85, minDist: 12, maxDist: 34, len: 36, speed: 18, halfWidth: 2.2, dmgMul: 1.4, stunSec: 0.7, stacks: 1 },
+  fissure: { cooldown: 5, windup: 0.85, minDist: 9, maxDist: 34, len: 36, speed: 18, halfWidth: 1.6, dmgMul: 2.0, stunSec: 0.7, stacks: 1 },
   /** «Ледяная ярость»: на доле HP at — рёв; аура шире, умения чаще. */
   fury: { at: 0.3, auraMul: 1.35, cdMul: 0.7, roarSec: 2.2 },
   /** Пауза между умениями, с — между ними он бьёт когтями. */
-  gap: 2.5,
+  gap: 1.5,
   /** Длительность клипов модели (tools/blender/icegiant_anim.py), с: пока клип умения идёт, гигант стоит. */
   clipSec: { attack: 1.3, slam: 2.4, throw: 2.3, fissure: 1.8, roar: 2.2 },
 };

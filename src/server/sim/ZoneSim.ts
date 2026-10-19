@@ -243,6 +243,9 @@ const LEAP_WAIT_RING = (LEAP.minDist + LEAP.maxDist) / 2;
 const BURROW_CIRCLE_R = 1;
 const BURROW_CIRCLE_V = 2;
 
+/** Подземелье: перенос моба к полу дальше этого, м — это уже прыжок через провал; такой шаг отменяется. */
+const DUN_SNAP_MAX = 3;
+
 export class Mob {
   readonly id = nid();
   /** Это осколок голема из пары — см. GolemSplitGroup. undefined — обычный моб. */
@@ -3195,7 +3198,16 @@ export class ZoneSim {
       if (m.dead || !inDunRegion(m.x, m.z)) continue;
       const ox = m.x;
       const oz = m.z;
-      [m.x, m.z] = dunProject(m.x, m.z, MOB.bodyRadius * m.scale, m.y);
+      const [px, pz] = dunProject(m.x, m.z, MOB.bodyRadius * m.scale, m.y);
+      // Перенос дальше DUN_SNAP_MAX — это не «подтянуть к краю», а прыжок через провал в соседний зал:
+      // моб, шагнувший в пустоту по прямой (погоня, возврат домой), остаётся на месте, а не оказывается за пропастью.
+      if (Math.hypot(px - ox, pz - oz) > DUN_SNAP_MAX && dunFloorLocal(ox - DUN_X, oz - DUN_Z, 0.4) !== null) {
+        m.vx = 0;
+        m.vz = 0;
+        continue;
+      }
+      m.x = px;
+      m.z = pz;
       if (m.x === ox && m.z === oz) continue;
       // Скорость наружу за ограду гасим, иначе моб упирался бы в край и дрожал.
       const nx = ox - m.x;
