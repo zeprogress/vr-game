@@ -830,7 +830,8 @@ export const EVENT = {
      * из списка; разные.
      */
     addGap: 20,
-    addTypes: ["skySquid", "golem", "ruinMage", "infernoDemon", "infernoDemon"],
+    // Только не оглушающие подручные (2026-10-19): спрут (хват), чародей (волна), демон (таран) оглушали — убраны.
+    addTypes: ["golem"],
     addCount: 2,
     /** Ниже этой доли HP — ярость: умения чаще (enrageGapMul), удары сильнее. */
     enrageAt: 0.45,
