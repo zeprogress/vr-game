@@ -552,13 +552,23 @@ export const CHAIN_HAMMER = { hops: 5, vulnMul: 1.2, vulnSec: 5 } as const;
  * 🧪 Лучник «Разрывная стрела» (2026-10-20): стрела в цель до range м — ×dmgMult (SKILLS2), взрыв задевает
  * всех в radius м вокруг цели (по краю тела) — ×splash. Крит — у каждого попадания отдельно (УДЧ).
  */
+/**
+ * Стрелы умений лучника летят настоящими стрелами (клиент — ui/SkillArrows.ts) со скоростью speed м/с;
+ * сервер наносит урон через то же время полёта — цифры урона и взрыв совпадают с попаданием стрелы.
+ */
+export const SKILL_ARROW = { speed: 40 } as const;
+/** Время полёта стрелы умения на dist м, с — одно для сервера и клиента. */
+export function skillArrowTime(dist: number): number {
+  return Math.max(0.06, dist / SKILL_ARROW.speed);
+}
 export const BLAST_ARROW = { splash: 1.2, radius: 5, range: 22 } as const; // радиус 3 → 5 (2026-10-20, мал)
 /**
  * 🧪 «Шквал стрел» (2026-10-20) — массовое для фарма: waves волн стрел с шагом gap с (первая — через first с),
  * каждая бьёт ВСЕХ врагов в radius м вокруг лучника (круг идёт за ним) ×dmgMult (SKILLS2), крит — у каждого
  * попадания; задетые замедлены на slow на slowSec с.
  */
-export const ARROW_STORM = { radius: 12, waves: 3, first: 0.3, gap: 0.5, slow: 0.3, slowSec: 2 } as const;
+// fall — сколько падают стрелы волны с неба (событие волны уходит на fall с раньше удара; first — после залпа вверх).
+export const ARROW_STORM = { radius: 12, waves: 3, first: 0.7, gap: 0.5, fall: 0.3, slow: 0.3, slowSec: 2 } as const;
 /**
  * 🧪 «Стрела-призрак»: duration с (× МДР — SkillDef.attr) обычные мобы не видят стрелка и не бьют его
  * (боссы видят); его урон ×dmgMul; каждое попадание стрелой (у бота — выстрел) лечит healFrac макс. HP.

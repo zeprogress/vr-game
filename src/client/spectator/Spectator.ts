@@ -335,6 +335,7 @@ export class Spectator {
           : kind === "swing" ? this.sfx.swordSwing()
           : kind === "horn" ? this.sfx.bossHorn()
           : kind === "volley" ? this.sfx.arrowVolley()
+          : kind === "bow" ? this.sfx.bowRelease(0.8)
           : kind === "fire" ? this.sfx.fireBurst(undefined, 0.6)
           : kind === "holy" ? this.sfx.levelUp()
           : kind === "fanfare" ? this.sfx.bossFanfare()
@@ -347,6 +348,7 @@ export class Spectator {
           : this.sfx.hitThud(0.7),
         ),
       emote: (id, e) => this.avatars.get(id)?.playEmote(e),
+      shoot: (id) => this.avatars.get(id)?.playSwing(),
       shieldPos: (id) => this.avatars.get(id)?.shieldPoint() ?? null,
     };
     this.eventBeacon = new EventBeacon(this.scene);

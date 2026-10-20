@@ -957,6 +957,9 @@ if (ONLY.has("skilltest")) {
     for (const m of [a, b, c, far]) t.room.sim.stunMob(m.id, 99);
     put(t.p, a.x + 12, a.z);
     const ok = t.room.castSkill("blastArrow", t.x.id, t.p, t.rt, a.x, a.z);
+    const early = lost(a);
+    secs(t.step, 0.8); // урон — когда стрела долетит (SKILL_ARROW.speed)
+    check("Разрывная: урон в момент прилёта стрелы", early === 0 && lost(a) > 0, `сразу после выстрела −${Math.round(early)}, после полёта −${Math.round(lost(a))}`);
     const ratio = lost(b) > 0 ? lost(a) / ((lost(b) + lost(c)) / 2) : 0;
     check("Разрывная: удар и взрыв", ok && lost(a) > 0 && lost(b) > 0 && lost(c) > 0 && lost(far) === 0, `цель −${Math.round(lost(a))}, соседи −${Math.round(lost(b))} / −${Math.round(lost(c))}, дальний −${Math.round(lost(far))}`);
     check("Разрывная: цель ≈ ×2.1 к соседу", ratio > 1.2, `цель / сосед = ${f(ratio, 2)} (без критов 2.5 / 1.2 ≈ 2.08)`);
@@ -1025,8 +1028,10 @@ if (ONLY.has("skilltest")) {
     const hp0 = t.p.hp;
     const h0 = t.meter.hits.get(t.x.id) ?? 0;
     const ok = t.room.castSkill("swarmArrow", t.x.id, t.p, t.rt, ms[0].x, ms[0].z);
+    // Первый залп долетел (10 м — 0.25 с), второй ещё не выпущен (0.35 с).
+    secs(t.step, 0.3);
     const after1 = (t.meter.hits.get(t.x.id) ?? 0) - h0;
-    secs(t.step, C2.SWARM_ARROW.volleyGap * C2.SWARM_ARROW.volleys + 0.2);
+    secs(t.step, (C2.SWARM_ARROW.volleys - 1) * C2.SWARM_ARROW.volleyGap + C2.skillArrowTime(C2.SWARM_ARROW.range + 8) + 0.3);
     const all = (t.meter.hits.get(t.x.id) ?? 0) - h0;
     const touched = ms.filter((m: any) => lost(m) > 0).length;
     check("Рой: задевает кучку", ok && touched >= 3, `задето ${touched} из ${ms.length}, урон ${ms.map((m: any) => Math.round(lost(m))).join(" / ")}`);

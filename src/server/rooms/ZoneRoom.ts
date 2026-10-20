@@ -202,7 +202,7 @@ import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand }
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
 import { leashCut } from "../sim/leash";
 import { ATTR2 } from "#shared/attrs2";
-import { ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC, ULT_PULL_PULSES, ULT_PULL_POWER } from "#shared/ultimates";
 import {
   MAGIC,
@@ -9674,6 +9674,11 @@ export class ZoneRoom extends Room<ZoneState> {
       return [(m.x - x) / d, (m.z - z) / d];
     };
     const act = (r: Omit<ActRelay, "id" | "v">): void => this.broadcast(MSG.act, { ...r, id: ownerId, v } as ActRelay);
+    /** Лучник выпустил стрелы умением: клип выстрела у его модели и звук (volley — номер залпа, n — сколько стрел). */
+    const shot = (volley: number, n: number): void => {
+      const pp = this.state.players.get(ownerId);
+      if (pp) act({ k: "skillShot", x: pp.head.x, y: pp.head.y - PLAYER.eyeHeight, z: pp.head.z, d: volley, r: n });
+    };
     /** Стрела умения в моба: урон ×mul силы удара, крит — как у выстрела (роллы лука, УДЧ), у каждой стрелы свой. */
     const arrowHit = (m: Mob, mul: number, fromX: number, fromZ: number): void => {
       if (m.dead) return;
@@ -10079,15 +10084,21 @@ export class ZoneRoom extends Room<ZoneState> {
         }
         const [dx, dz] = dirTo(m, p.head.x, p.head.z);
         const toY = m.y + MOB.bodyRadius * m.scale;
-        act({ k: "lifeArrow", x: p.head.x, y: p.head.y - 0.3, z: p.head.z, x2: m.x, z2: m.z, d: toY });
-        const hp0 = m.hp;
-        this.sim.hitMob(m.id, sk.dmgMult * pow.dmg, dx, dz, ownerId, true);
-        const dealt = Math.max(0, hp0 - Math.max(0, m.hp));
-        const before = p.hp;
-        p.hp = Math.min(p.maxHp, p.hp + dealt * LIFE_ARROW.healDmg + p.maxHp * LIFE_ARROW.healMax);
-        const healed = Math.round(p.hp - before);
-        if (healed > 0) this.sim.dmgHits.push({ x: p.head.x, y: p.head.y + 0.4, z: p.head.z, dmg: healed, by: ownerId, c: "heal" });
-        this.broadcast(MSG.act, { k: "healHit", id: ownerId, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay);
+        const oy = p.head.y - 0.3;
+        shot(0, 1);
+        act({ k: "lifeArrow", x: p.head.x, y: oy, z: p.head.z, x2: m.x, z2: m.z, d: toY });
+        // Урон и лечение — когда стрела долетит (то же время, что у стрелы на клиенте).
+        this.clock.setTimeout(() => {
+          if (p.dead || m.dead) return;
+          const hp0 = m.hp;
+          this.sim.hitMob(m.id, sk.dmgMult * pow.dmg, dx, dz, ownerId, true);
+          const dealt = Math.max(0, hp0 - Math.max(0, m.hp));
+          const before = p.hp;
+          p.hp = Math.min(p.maxHp, p.hp + dealt * LIFE_ARROW.healDmg + p.maxHp * LIFE_ARROW.healMax);
+          const healed = Math.round(p.hp - before);
+          if (healed > 0) this.sim.dmgHits.push({ x: p.head.x, y: p.head.y + 0.4, z: p.head.z, dmg: healed, by: ownerId, c: "heal" });
+          this.broadcast(MSG.act, { k: "healHit", id: ownerId, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay);
+        }, skillArrowTime(Math.hypot(m.x - p.head.x, toY - oy, m.z - p.head.z)) * 1000);
         return true;
       }
       case "soulSteal": {
@@ -10153,27 +10164,43 @@ export class ZoneRoom extends Room<ZoneState> {
         }
         const cx = m.x;
         const cz = m.z;
-        act({ k: "blastArrow", x: p.head.x, y: p.head.y - 0.3, z: p.head.z, x2: cx, z2: cz, d: m.y + MOB.bodyRadius * m.scale, r: BLAST_ARROW.radius });
-        arrowHit(m, sk.dmgMult, p.head.x, p.head.z);
-        for (const o of around(cx, cz, BLAST_ARROW.radius)) if (o.id !== m.id) arrowHit(o, BLAST_ARROW.splash, cx, cz);
+        const ox = p.head.x;
+        const oy = p.head.y - 0.3;
+        const oz = p.head.z;
+        const toY = m.y + MOB.bodyRadius * m.scale;
+        shot(0, 1);
+        act({ k: "blastArrow", x: ox, y: oy, z: oz, x2: cx, z2: cz, d: toY, r: BLAST_ARROW.radius });
+        // Урон и взрыв — когда стрела долетит (то же время, что у стрелы на клиенте).
+        this.clock.setTimeout(() => {
+          arrowHit(m, sk.dmgMult, ox, oz);
+          for (const o of around(cx, cz, BLAST_ARROW.radius)) if (o.id !== m.id) arrowHit(o, BLAST_ARROW.splash, cx, cz);
+        }, skillArrowTime(Math.hypot(cx - ox, toY - oy, cz - oz)) * 1000);
         return true;
       }
       case "arrowStorm": {
         // 🧪 Шквал стрел: волны по всем врагам вокруг лучника (круг идёт за ним), крит — у каждого попадания.
         const A = ARROW_STORM;
+        shot(0, 12);
         act({ k: "stormWave", x: p.head.x, y: feetY, z: p.head.z, d: 0, r: A.radius });
         for (let w = 0; w < A.waves; w++) {
+          // Стрелы волны начинают падать за fall с до удара — урон приходит, когда они воткнулись.
+          let cx = 0;
+          let cz = 0;
           this.clock.setTimeout(() => {
             const pp = this.state.players.get(ownerId);
             if (!pp || pp.dead) return;
-            const px = pp.head.x;
-            const pz = pp.head.z;
-            act({ k: "stormWave", x: px, y: pp.head.y - PLAYER.eyeHeight, z: pz, d: w + 1, r: A.radius });
-            for (const m of around(px, pz, A.radius)) {
-              arrowHit(m, sk.dmgMult, px, pz);
-              this.sim.slowMob(m.id, A.slowSec, 1 - A.slow);
-            }
-          }, (A.first + w * A.gap) * 1000);
+            cx = pp.head.x;
+            cz = pp.head.z;
+            act({ k: "stormWave", x: cx, y: pp.head.y - PLAYER.eyeHeight, z: cz, d: w + 1, r: A.radius });
+            this.clock.setTimeout(() => {
+              const p2 = this.state.players.get(ownerId);
+              if (!p2 || p2.dead) return;
+              for (const m of around(cx, cz, A.radius)) {
+                arrowHit(m, sk.dmgMult, cx, cz);
+                this.sim.slowMob(m.id, A.slowSec, 1 - A.slow);
+              }
+            }, A.fall * 1000);
+          }, (A.first - A.fall + w * A.gap) * 1000);
         }
         return true;
       }
@@ -10190,7 +10217,8 @@ export class ZoneRoom extends Room<ZoneState> {
         const [fx, fz] = fwd();
         const yaw = Math.atan2(fx, fz);
         const touched = new Set<string>();
-        const volley = (pp: PlayerState): void => {
+        const volley = (pp: PlayerState, vi: number): void => {
+          shot(vi, S.arrows);
           const ox = pp.head.x;
           const oz = pp.head.z;
           const oy = pp.head.y - 0.3;
@@ -10221,35 +10249,41 @@ export class ZoneRoom extends Room<ZoneState> {
             const m: Mob = hit;
             const cx = m.x;
             const cz = m.z;
-            act({ k: "swarmArrow", x: ox, y: oy, z: oz, x2: cx, z2: cz, d: m.y + MOB.bodyRadius * m.scale, r: S.blastR });
-            touched.add(m.id);
-            arrowHit(m, sk.dmgMult, ox, oz);
-            for (const o of around(cx, cz, S.blastR)) {
-              touched.add(o.id);
-              arrowHit(o, S.blast, cx, cz);
-            }
+            const toY = m.y + MOB.bodyRadius * m.scale;
+            act({ k: "swarmArrow", x: ox, y: oy, z: oz, x2: cx, z2: cz, d: toY, r: S.blastR });
+            // Урон и взрыв — когда стрела долетит.
+            this.clock.setTimeout(() => {
+              touched.add(m.id);
+              arrowHit(m, sk.dmgMult, ox, oz);
+              for (const o of around(cx, cz, S.blastR)) {
+                touched.add(o.id);
+                arrowHit(o, S.blast, cx, cz);
+              }
+            }, skillArrowTime(Math.hypot(cx - ox, toY - oy, cz - oz)) * 1000);
           }
         };
-        volley(p);
+        volley(p, 0);
         for (let v2 = 1; v2 < S.volleys; v2++) {
-          const last = v2 === S.volleys - 1;
           this.clock.setTimeout(() => {
             const pp = this.state.players.get(ownerId);
             if (!pp || pp.dead) return;
-            volley(pp);
-            // Бонус — по итогу всех залпов: задето 3+ разных врагов.
-            if (last && touched.size >= S.bonusTargets) {
-              this.skillHeal(ownerId, pp, pp.maxHp * S.healFrac);
-              rt.runUntil = this.elapsed + S.runSec;
-            }
+            volley(pp, v2);
           }, v2 * S.volleyGap * 1000);
         }
+        // Бонус — по итогу всех залпов (последние стрелы долетели): задето 3+ разных врагов.
+        this.clock.setTimeout(() => {
+          const pp = this.state.players.get(ownerId);
+          if (!pp || pp.dead || touched.size < S.bonusTargets) return;
+          this.skillHeal(ownerId, pp, pp.maxHp * S.healFrac);
+          rt.runUntil = this.elapsed + S.runSec;
+        }, ((S.volleys - 1) * S.volleyGap + skillArrowTime(S.range + 8) + 0.05) * 1000);
         return true;
       }
       case "barrierArrow": {
         // 🧪 Стрела-барьер: кольцо там, где стоит стрелок (тик — tickBarriers).
         const dur = BARRIER_ARROW.duration;
         this.barriers.push({ x: p.head.x, z: p.head.z, r: sk.radius, until: this.elapsed + dur, owner: ownerId, dmg: sk.dmgMult * pow.dmg, tickT: 0, pushAt: new Map(), hitAt: new Map() });
+        shot(0, 12);
         act({ k: "arrowBarrier", x: p.head.x, y: feetY, z: p.head.z, d: dur, r: sk.radius });
         return true;
       }
@@ -10262,9 +10296,16 @@ export class ZoneRoom extends Room<ZoneState> {
         const cy = tgt ? (tgt.grounded ? tgt.y : terrainHeight(cx, cz)) : feetY;
         const r = sk.radius * k;
         const sec = WEB_ARROW.duration * k;
-        this.webs.push({ x: cx, z: cz, r, until: this.elapsed + sec, owner: ownerId, dps: sk.dmgMult * pow.dmg, tickT: 0 });
-        act({ k: "webShot", x: p.head.x, y: p.head.y - 0.3, z: p.head.z, x2: cx, z2: cz, d: cy });
-        act({ k: "webZone", x: cx, y: cy, z: cz, d: sec, r });
+        const ox = p.head.x;
+        const oy = p.head.y - 0.3;
+        const oz = p.head.z;
+        shot(0, 1);
+        act({ k: "webShot", x: ox, y: oy, z: oz, x2: cx, z2: cz, d: cy });
+        // Паутина раскрывается, когда стрела воткнулась в землю.
+        this.clock.setTimeout(() => {
+          this.webs.push({ x: cx, z: cz, r, until: this.elapsed + sec, owner: ownerId, dps: sk.dmgMult * pow.dmg, tickT: 0 });
+          act({ k: "webZone", x: cx, y: cy, z: cz, d: sec, r });
+        }, skillArrowTime(Math.hypot(cx - ox, cy - oy, cz - oz)) * 1000);
         return true;
       }
       case "abyss": {

@@ -47,15 +47,18 @@ export function tintArrows(tier: WeaponTier): void {
   }
 }
 
-export function createArrowProto(scene: Scene): Mesh {
+/** `tintable` — материалы прототипа перекрашивает tintArrows (стрелы своего лука); стрелам умений — false. */
+export function createArrowProto(scene: Scene, tintable = true): Mesh {
   const shaftMat = new StandardMaterial("arrowShaft", scene);
   shaftMat.diffuseColor = new Color3(0.5, 0.36, 0.22);
   shaftMat.specularColor = new Color3(0, 0, 0);
   const headMat = new StandardMaterial("arrowHead", scene);
   headMat.diffuseColor = new Color3(0.7, 0.72, 0.75);
   headMat.specularColor = new Color3(0.5, 0.5, 0.5);
-  arrowMats.set("shaft", shaftMat);
-  arrowMats.set("head", headMat);
+  if (tintable) {
+    arrowMats.set("shaft", shaftMat);
+    arrowMats.set("head", headMat);
+  }
   const fletchMat = new StandardMaterial("arrowFletch", scene);
   fletchMat.diffuseColor = new Color3(0.8, 0.2, 0.2);
   fletchMat.specularColor = new Color3(0, 0, 0);

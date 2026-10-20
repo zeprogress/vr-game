@@ -483,6 +483,7 @@ export class Game {
           : kind === "swing" ? this.sfx.swordSwing()
           : kind === "horn" ? this.sfx.bossHorn()
           : kind === "volley" ? this.sfx.arrowVolley()
+          : kind === "bow" ? this.sfx.bowRelease(0.8)
           : kind === "fire" ? this.sfx.fireBurst(undefined, 0.6)
           : kind === "holy" ? this.sfx.levelUp()
           : kind === "fanfare" ? this.sfx.bossFanfare()
@@ -496,6 +497,11 @@ export class Game {
         ),
       emote: (id, e) => this.avatars.get(id)?.playEmote(e),
       shieldPos: (id) => this.avatars.get(id)?.shieldPoint() ?? null,
+      // Выстрел умением: чужой герой — клип атаки его класса (лук); свой — первый залп уже сыграл при касте.
+      shoot: (id, volley) => {
+        if (id !== this.net?.sessionId) this.avatars.get(id)?.playSwing();
+        else if (volley > 0) this.localAvatar?.swing(this.progression.meleeAnimRate * this.combat.atkSpeedAffix, "bow");
+      },
     };
     this.specMarker = new SpecCamMarker(this.scene);
     this.eventBeacon = new EventBeacon(this.scene);

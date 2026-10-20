@@ -13,7 +13,9 @@ import "@babylonjs/core/Meshes/Builders/torusBuilder";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import type { SkillVfx } from "./SkillVfx";
+import { SkillArrows } from "./SkillArrows";
 import { CAT_SHRINES } from "#shared/catacombs";
+import { ARROW_STORM } from "#shared/classes2";
 
 /**
  * Эффекты «Классов 2.0» — дешёвые для шлема: всё из заранее созданных
@@ -152,7 +154,11 @@ export class ClassFx {
   private nGhost = 0;
   private readonly sealTex: DynamicTexture;
 
+  /** Летящие стрелы умений лучника (настоящая модель стрелы, ui/SkillArrows.ts). */
+  readonly arrows: SkillArrows;
+
   constructor(scene: Scene) {
+    this.arrows = SkillArrows.of(scene);
     for (let i = 0; i < 10; i++) {
       const mesh = MeshBuilder.CreateTorus(`cfxRing${i}`, { diameter: 2, thickness: 0.05, tessellation: 40 }, scene);
       const mat = addMat(scene, `cfxRingMat${i}`, FX_COLORS.arcane);
@@ -280,15 +286,6 @@ export class ClassFx {
   later(sec: number, fn: () => void): void {
     if (sec <= 0) fn();
     else this.timers.push({ t: sec, fn });
-  }
-
-  private readonly onceAt = new Map<string, number>();
-  /** true не чаще раза в `sec` с на ключ — один звук на пачку одинаковых событий (веер стрел). */
-  once(key: string, sec: number): boolean {
-    const now = performance.now() / 1000;
-    if (now - (this.onceAt.get(key) ?? -1e9) < sec) return false;
-    this.onceAt.set(key, now);
-    return true;
   }
 
   /** Грозовое поле: каждые 0.5 с молния с неба в случайную точку круга. */
@@ -437,7 +434,9 @@ export interface ClassActCtx {
   fx: ClassFx;
   vfx: SkillVfx;
   /** Звук в точке мира. */
-  sound: (at: { x: number; y: number; z: number }, kind: "bash" | "swing" | "thud" | "horn" | "volley" | "fire" | "holy" | "fanfare" | "ultW" | "ultA" | "ultS" | "ultK" | "ultP" | "ultB") => void;
+  sound: (at: { x: number; y: number; z: number }, kind: "bash" | "swing" | "thud" | "horn" | "volley" | "bow" | "fire" | "holy" | "fanfare" | "ultW" | "ultA" | "ultS" | "ultK" | "ultP" | "ultB") => void;
+  /** Лучник `id` выпустил стрелы умением: клип выстрела из лука на его модели (volley — номер залпа: свой герой первый залп уже показал сам при касте). */
+  shoot?: (id: string, volley: number) => void;
   /** Клип/эмоция на модели героя `id` (если она есть). */
   emote: (id: string, emote: "roll" | "jump" | "cheer") => void;
   /** Центр щита в руке героя `id` (null — не видно/нет модели): разряд отражения бьёт от щита. */
@@ -515,10 +514,14 @@ function ultBlast(c: ClassActCtx, v: number, x: number, y: number, z: number, r:
           if (w > 0) c.sound({ x, y, z }, "volley");
           for (let i = 0; i < 16; i++) {
             const [px, pz] = rndInRing();
-            vfx.bolt(px, y + 18, pz, px, y + 0.2, pz, C, 0.3, 0.1);
-            vfx.burst(px, y + 0.2, pz, C, { count: 6, speed: 4, life: 0.5, grav: 6, size: 0.18 });
-            // стрела «втыкается» в землю: короткий всплеск пыли на месте попадания
-            vfx.burst(px, y + 0.1, pz, FXC.gold, { count: 3, speed: 2, life: 0.3, grav: 8, size: 0.12 });
+            // Стрела падает с неба и втыкается в землю: всплеск цвета ульты и пыли на месте попадания.
+            c.fx.arrows.fly({ x: px + 1.5, y: y + 18, z: pz + 0.6 }, { x: px, y: y + 0.25, z: pz }, {
+              time: 0.3, arc: 0, stick: 1,
+              onHit: () => {
+                vfx.burst(px, y + 0.2, pz, C, { count: 6, speed: 4, life: 0.5, grav: 6, size: 0.18 });
+                vfx.burst(px, y + 0.1, pz, FXC.gold, { count: 3, speed: 2, life: 0.3, grav: 8, size: 0.12 });
+              },
+            });
           }
           ringTo(0, r, 0.6, 0.7);
         });
@@ -1204,42 +1207,55 @@ export function playClassAct(
       return true;
     }
     // ---- 🧪 новые стрелы лучника (сервер — ZoneRoom.castSkill / tickBarriers / tickWebs) ----
+    case "skillShot":
+      // Лучник выпустил стрелы умением: клип выстрела у его модели, звук тетивы (залп — шум стрел).
+      c.shoot?.(id, d ?? 0);
+      c.sound(at, (r ?? 1) > 1 ? "volley" : "bow");
+      return true;
     case "blastArrow":
-      // Разрывная: огненная стрела в цель, взрыв — вспышка, ударная волна радиусом r и искры.
+      // Разрывная: стрела летит в цель и взрывается — вспышка, ударная волна радиусом r и искры.
       if (x2 !== undefined && z2 !== undefined) {
         const toY = d ?? y;
-        const R = r ?? 3;
-        vfx.bolt(x, y, z, x2, toY, z2, FXC.fire, 0.22, 0.1);
-        c.fx.later(0.08, () => {
-          vfx.burst(x2, toY, z2, FXC.fireCore, { count: 26, speed: 9, life: 0.5, grav: 4, size: 0.3 });
-          vfx.burst(x2, toY, z2, FXC.fire, { count: 18, speed: 5, life: 0.8, grav: -1, size: 0.55 });
-          vfx.decal(x2, toY - 0.9, z2, R, FXC.fire, 0.5, 0, 1);
-          c.fx.ring(x2, toY - 0.9, z2, 0.3, R, FXC.fireCore, 0.35, 0.8);
-          c.sound({ x: x2, y: toY, z: z2 }, "fire");
+        const R = r ?? 5;
+        c.fx.arrows.fly({ x, y, z }, { x: x2, y: toY, z: z2 }, {
+          onHit: () => {
+            vfx.burst(x2, toY, z2, FXC.fireCore, { count: 26, speed: 9, life: 0.5, grav: 4, size: 0.3 });
+            vfx.burst(x2, toY, z2, FXC.fire, { count: 18, speed: 5, life: 0.8, grav: -1, size: 0.55 });
+            vfx.decal(x2, toY - 0.9, z2, R, FXC.fire, 0.5, 0, 1);
+            c.fx.ring(x2, toY - 0.9, z2, 0.3, R, FXC.fireCore, 0.35, 0.8);
+            c.sound({ x: x2, y: toY, z: z2 }, "fire");
+          },
         });
       }
       return true;
     case "stormWave": {
-      // Шквал стрел: d = 0 — залп в небо над героем; волна — ударное кольцо по земле радиусом r
-      // и стрелы, падающие по всему кругу (точки случайные — урон считает сервер по мобам).
+      // Шквал стрел: d = 0 — стрелы веером уходят в небо над героем; волна — стрелы падают по всему кругу
+      // радиусом r и втыкаются в землю (точки случайные — урон считает сервер по мобам), ударное кольцо.
       const R = r ?? 12;
+      const arrows = c.fx.arrows;
       if (!d) {
-        vfx.burst(x, y + 1.6, z, FXC.gold, { count: 30, speed: 16, life: 0.45, grav: -3, size: 0.16, dir: [0, 1, 0], spread: 0.25 });
-        c.sound(at, "volley");
+        for (let i = 0; i < 10; i++) {
+          const a = (i / 10) * Math.PI * 2;
+          arrows.fly({ x, y: y + 1.4, z }, { x: x + Math.cos(a) * 3, y: y + 18, z: z + Math.sin(a) * 3 }, { time: 0.45, arc: 0 });
+        }
         return true;
       }
-      vfx.decal(x, y, z, R, ATK, 0.55, 0, 0.9);
-      c.fx.ring(x, y, z, 0.6, R, FXC.gold, 0.45, 0.7);
-      for (let i = 0; i < 8; i++) {
+      const fall = ARROW_STORM.fall;
+      for (let i = 0; i < 14; i++) {
         const a = Math.random() * Math.PI * 2;
         const rr = Math.sqrt(Math.random()) * R;
         const px = x + Math.cos(a) * rr;
         const pz = z + Math.sin(a) * rr;
-        c.fx.later(Math.random() * 0.2, () =>
-          vfx.burst(px, y + 0.15, pz, FXC.gold, { count: 6, speed: 4, life: 0.35, grav: 10, size: 0.13 }),
-        );
+        arrows.fly({ x: px + 1.2, y: y + 16, z: pz + 0.5 }, { x: px, y: y + 0.25, z: pz }, {
+          time: fall, arc: 0, stick: 0.9,
+          onHit: () => vfx.burst(px, y + 0.15, pz, FXC.gold, { count: 5, speed: 3, life: 0.35, grav: 10, size: 0.13 }),
+        });
       }
-      c.sound(at, "volley");
+      c.fx.later(fall, () => {
+        vfx.decal(x, y, z, R, ATK, 0.55, 0, 0.9);
+        c.fx.ring(x, y, z, 0.6, R, FXC.gold, 0.45, 0.7);
+        c.sound(at, "volley");
+      });
       return true;
     }
     case "ghostOn":
@@ -1250,22 +1266,22 @@ export function playClassAct(
       c.sound(at, "swing");
       return true;
     case "swarmArrow":
-      // Стрела роя: след стрелы, попала (r > 0) — маленький взрыв радиусом r.
+      // Стрела роя: летит настоящей стрелой; попала (r > 0) — маленький взрыв радиусом r. Звук — на залп (skillShot).
       if (x2 !== undefined && z2 !== undefined) {
         const toY = d ?? y;
-        vfx.bolt(x, y, z, x2, toY, z2, FXC.buff, 0.22, 0.06);
-        if ((r ?? 0) > 0) {
-          c.fx.later(0.08, () => {
-            vfx.burst(x2, toY, z2, FXC.fire, { count: 14, speed: 6, life: 0.45, grav: 3, size: 0.24 });
-            vfx.decal(x2, toY - 0.9, z2, r ?? 3, FXC.buff, 0.4, 0, 0.8);
-          });
-        }
-        // Звук — один на веер (стрелы приходят пачкой одного героя).
-        if (c.fx.once(`swarm:${id}`, 0.3)) c.sound(at, "volley");
+        const hit = (r ?? 0) > 0;
+        c.fx.arrows.fly({ x, y, z }, { x: x2, y: toY, z: z2 }, {
+          onHit: hit
+            ? () => {
+                vfx.burst(x2, toY, z2, FXC.fire, { count: 14, speed: 6, life: 0.45, grav: 3, size: 0.24 });
+                vfx.decal(x2, toY - 0.9, z2, r ?? 3, FXC.buff, 0.4, 0, 0.8);
+              }
+            : undefined,
+        });
       }
       return true;
     case "arrowBarrier": {
-      // Стрела-барьер: печать-кольцо на всё время, по краю — частокол искр-стрел вверх.
+      // Стрела-барьер: стрелы падают по краю кольца и стоят частоколом всё время; под ними — печать-кольцо.
       const R = r ?? 4;
       const dur = d ?? 4;
       c.fx.seal(x, y, z, R, DEF, dur);
@@ -1273,9 +1289,14 @@ export function playClassAct(
       c.fx.ring(x, y, z, 0.5, R, DEF, 0.4, 0.9);
       for (let i = 0; i < 12; i++) {
         const a = (i / 12) * Math.PI * 2;
-        vfx.burst(x + Math.cos(a) * R, y + 0.1, z + Math.sin(a) * R, FXC.gold, { count: 5, speed: 5, life: 0.5, grav: 6, size: 0.14, dir: [0, 1, 0], spread: 0.15 });
+        const px = x + Math.cos(a) * R;
+        const pz = z + Math.sin(a) * R;
+        // С неба чуть снаружи — стрела стоит с наклоном наружу, как частокол.
+        c.fx.arrows.fly({ x: px + Math.cos(a) * 2.5, y: y + 12, z: pz + Math.sin(a) * 2.5 }, { x: px, y: y + 0.35, z: pz }, {
+          time: 0.35, arc: 0, stick: Math.max(0.3, dur - 0.35),
+          onHit: () => vfx.burst(px, y + 0.15, pz, FXC.gold, { count: 5, speed: 3, life: 0.35, grav: 8, size: 0.13 }),
+        });
       }
-      c.sound(at, "volley");
       return true;
     }
     case "barrierHit":
@@ -1285,12 +1306,13 @@ export function playClassAct(
       c.sound(at, "thud");
       return true;
     case "webShot":
-      // Стрела-паук: стрела в землю, в точке — клубок нитей.
+      // Стрела-паук: стрела втыкается в землю, в точке — клубок нитей (паутина раскроется по webZone).
       if (x2 !== undefined && z2 !== undefined) {
         const toY = d ?? y;
-        vfx.bolt(x, y, z, x2, toY + 0.2, z2, FXC.shadow, 0.25, 0.06);
-        c.fx.later(0.1, () => vfx.burst(x2, toY + 0.3, z2, FXC.iceRim, { count: 20, speed: 5, life: 0.5, grav: 6, size: 0.16 }));
-        c.sound(at, "swing");
+        c.fx.arrows.fly({ x, y, z }, { x: x2, y: toY + 0.3, z: z2 }, {
+          stick: 1.5,
+          onHit: () => vfx.burst(x2, toY + 0.3, z2, FXC.iceRim, { count: 20, speed: 5, life: 0.5, grav: 6, size: 0.16 }),
+        });
       }
       return true;
     case "webZone": {
@@ -1310,17 +1332,17 @@ export function playClassAct(
       return true;
     }
     case "lifeArrow":
-      // Стрела жизни: золотисто-зелёная стрела в цель, обратно к стрелку — зелёная нить жизни и всплеск лечения.
+      // Стрела жизни: стрела летит в цель; в момент попадания — обратно к стрелку зелёная нить жизни и всплеск лечения.
       if (x2 !== undefined && z2 !== undefined) {
         const toY = d ?? y;
-        vfx.bolt(x, y, z, x2, toY, z2, FXC.gold, 0.25, 0.1);
-        vfx.burst(x2, toY, z2, FXC.gold, { count: 14, speed: 5, life: 0.4, grav: 2, size: 0.2 });
-        c.fx.later(0.15, () => {
-          vfx.bolt(x2, toY, z2, x, y, z, HEALC, 0.45, 0.07);
-          vfx.burst(x, y - 0.6, z, HEALC, { count: 24, speed: 3, life: 0.9, grav: -4, size: 0.22 });
-          vfx.decal(x, y - 1.6, z, 1.6, HEALC, 1, 1, 0.9, { kind: "hero", id, dy: 0.05 });
+        c.fx.arrows.fly({ x, y, z }, { x: x2, y: toY, z: z2 }, {
+          onHit: () => {
+            vfx.burst(x2, toY, z2, FXC.gold, { count: 14, speed: 5, life: 0.4, grav: 2, size: 0.2 });
+            vfx.bolt(x2, toY, z2, x, y, z, HEALC, 0.45, 0.07);
+            vfx.burst(x, y - 0.6, z, HEALC, { count: 24, speed: 3, life: 0.9, grav: -4, size: 0.22 });
+            vfx.decal(x, y - 1.6, z, 1.6, HEALC, 1, 1, 0.9, { kind: "hero", id, dy: 0.05 });
+          },
         });
-        c.sound(at, "swing");
       }
       return true;
     case "chainHit":
