@@ -279,7 +279,7 @@ import { giveItems, parseTradeItem, parseTradeList, takeItems, takenName, tradeL
 import { KillRates } from "../sim/killRate";
 import { addStock, CRAFT_ITEMS, CRAFT_PROC, CRAFT_SMELT, craftStockOf, craftWeapon, parseCraftCode, pcInvCraft, recipeBookOf, rollCraftDrop, smithLevel } from "#shared/craft";
 import { applyJewelOp, gemName, JEWEL_ACTS, jewelBonus, jewelOpFrom, jewelsOf, pcInvJewels, RING_LOOK, ringName, rollJewelDrop, type JewelAct, type JewelSave } from "#shared/jewels";
-import { SCRAP_DROP, scrapDropChance } from "#shared/scrapDrop";
+import { scrapDropChance } from "#shared/scrapDrop";
 
 const { Room } = colyseus;
 
@@ -2994,7 +2994,7 @@ export class ZoneRoom extends Room<ZoneState> {
       for (let k = 0; k < g.count; k++) {
         const [x, z] = at();
         const id = this.sim.spawnEventMob(ge.kind, x, z, {
-          ...eliteMobOpts(ge), hp: g.hits, dmgMul: ge.dmgMul * g.dmgMul, scaleMul: (ge.scaleMul ?? 1) * g.sizeMul,
+          ...eliteMobOpts(ge), hp: g.hits, dmgMul: ge.dmgMul * g.dmgMul, scaleMul: (ge.scaleMul ?? 1) * g.sizeMul, scrap: g.scrap,
         });
         const m = this.sim.mobs.get(id);
         if (m) {
@@ -10603,7 +10603,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.killRates.add(k.owner, nowSec);
       if (k.jm > 0) {
         this.jewelDrop(k.owner, k.jm, k.jr, k.jl);
-        this.scrapDrop(k.owner, k.jl, (k.campType && ELITE_MOBS[k.campType]?.scrap) || SCRAP_DROP.amount);
+        this.scrapDrop(k.owner, k.jl, k.sc);
       }
       this.craftDrop(k.owner, k.campType, k.name, k.champ);
       this.chatQuestKill(k.owner, k.champ);

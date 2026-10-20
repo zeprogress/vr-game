@@ -18,3 +18,12 @@ test("нашествие: гигант — 100 ударов, второй бью
   assert.equal(m.maxHp, 100, "новый бьющий не добавляет ударов");
   assert.equal(m.huntPhase, 0);
 });
+
+test("нашествие: с гиганта — 5 лома за убийство, с гиганта лагеря — 30", () => {
+  const sim = new ZoneSim();
+  const e = ELITE_MOBS.iceGiant;
+  const inv = sim.spawnEventMob(e.kind, 0, 0, { ...eliteOpts(e), hp: EVENT.invasion.giants.hits, scrap: EVENT.invasion.giants.scrap });
+  assert.equal(sim.mobs.get(inv)!.scrapN, 5);
+  const camp = sim.spawnEventMob(e.kind, 0, 0, eliteOpts(e));
+  assert.equal(sim.mobs.get(camp)!.scrapN, 30);
+});
