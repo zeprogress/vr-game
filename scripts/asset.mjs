@@ -14,11 +14,17 @@
  *   npm run asset -- dkit <out.glb> [--preview лист.png] [--only RockWall,Column] — модульный набор подземелья
  *   npm run asset -- dungeon <kit.glb> <dungeon.json> <папка> [--views B,C,top] — рендер подземелья (JSON: tools/dungeon/export.mts)
  *
+ * Свои существа (docs/pipelines/creatures.md):
+ *   npm run asset -- anim <скрипт.py> <риг.blend> <out.glb> [--only Walk,Run] — клипы скриптом существа (tools/blender/<скрипт>)
+ *   npm run asset -- frames <модель> <out.png> --clips "Attack:0,0.5,0.6;Walk" [--view 34|side|front|back34] — раскадровка клипов
+ *   npm run asset -- feet <модель> [--clips Walk,Run] — стопы в шаге/беге: касание земли, уход под землю
+ *   npm run asset -- weights <модель> — веса скина: вершины без костей, кости без вершин
+ *
  * Blender: переменная BLENDER или /Applications/Blender.app (macOS).
  */
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -33,10 +39,15 @@ const SCRIPTS = {
   newloc: "new_location.py",
   dkit: "gen_dkit.py",
   dungeon: "preview_dungeon.py",
+  frames: "anim_frames.py",
+  feet: "feet_check.py",
+  weights: "weights_check.py",
 };
-const [cmd, ...rest] = process.argv.slice(2);
+let [cmd, ...rest] = process.argv.slice(2);
+// anim <скрипт.py> …: скрипт клипов существа из tools/blender (например icegiant_anim.py)
+if (cmd === "anim" && rest[0]) SCRIPTS.anim = basename(rest.shift());
 if (!SCRIPTS[cmd]) {
-  console.error(`команды: ${Object.keys(SCRIPTS).join(", ")}`);
+  console.error(`команды: ${Object.keys(SCRIPTS).join(", ")}, anim`);
   process.exit(2);
 }
 const blender =

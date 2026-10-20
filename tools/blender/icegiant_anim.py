@@ -3,18 +3,14 @@
 с переносом веса, размахи когтями (правой и левой), удар двумя руками оземь, бросок ледяной глыбы,
 удар-разлом кулаком в землю, рёв, вздрагивание и смерть (колени → лицом вниз).
 
+Образец для новых существ (docs/pipelines/creatures.md): кирпичи — zep_gen/keyanim.py (ключи K с переходами,
+поза BipedPose, шаг/бег biped_gait с перекатом стопы, shake), здесь — только клипы этого существа.
 Позы — повороты в осях арматуры (anim.Rig: вокруг головы кости, относительно позы родителя), ноги — IK
-к земле (стопы стоят). Углы рук заданы «для левой стороны»: правая — зеркально (ay, az с обратным знаком).
-Знаки (перед модели −Y, +X — левая сторона):
-  корпус/шея/голова: ax>0 — наклон вперёд, ay>0 — крен влево, az>0 — поворот влево;
-  плечо (ключица): ay<0 — поднять, az<0 — вперёд;
-  рука: ax<0 — вперёд/вверх, ay<0 — отвести в сторону/вверх, az<0 — поперёк корпуса;
-  локоть и кисть: ax<0 — согнуть (кисть — когти вперёд/вверх);
-  стопа (pitch): >0 — носок вниз (пятка вверх).
-Ключи: (секунда, значение[, переход]) — переход на отрезке К этому ключу: s — плавно, i — разгон (удар),
-o — торможение (дотяжка), l — ровно, b — с перелётом.
+к земле (стопы стоят). Знаки осей и переходы ключей — в шапке keyanim.py.
+Длительности клипов и кадры удара (*_SEC, *_HIT) — те же числа, что ICE_GIANT.clipSec / strikeDelay / windup
+в src/shared/mobs.ts: поменял здесь — поменяй там.
 
-Запуск: Blender -b --factory-startup -P tools/blender/icegiant_anim.py -- <IceGiant_rig.blend> <out.glb>
+Запуск: npm run asset -- anim icegiant_anim.py art/build/IceGiant_rig.blend public/models/gen/IceGiant.glb [--only Walk,Run]
 """
 import math
 import os
@@ -22,12 +18,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 import bpy  # noqa: E402
-from mathutils import Quaternion, Vector  # noqa: E402
+from mathutils import Vector  # noqa: E402
 import zep_lib as z  # noqa: E402
 from zep_gen import anim, build  # noqa: E402
+from zep_gen.keyanim import D, K, Q, BipedPose, biped_gait, shake  # noqa: E402
 
-D = math.radians
-I = Quaternion()
 FPS = anim.FPS
 
 a = z.args()
@@ -45,77 +40,8 @@ ROLES = {
 rig = anim.Rig(arm, ROLES, {"anim": {}, "depth": 0.3})
 
 
-# ---------------------------------------------------------------- ключи и переходы
-
-def _smooth(u):
-    return u * u * (3 - 2 * u)
-
-
-def _back(u):
-    # торможение с небольшим перелётом (≈8%) — «дотяжка» удара
-    c = 1.9
-    u -= 1
-    return 1 + (c + 1) * u * u * u + c * u * u
-
-
-EASE = {
-    "s": _smooth,
-    "i": lambda u: u * u * u,
-    "o": lambda u: 1 - (1 - u) ** 3,
-    "l": lambda u: u,
-    "b": _back,
-}
-
-
-def K(keys, t):
-    """Значение по ключам (секунда, значение[, переход]); значение — число или кортеж."""
-    if t <= keys[0][0]:
-        return keys[0][1]
-    for k0, k1 in zip(keys, keys[1:]):
-        if t <= k1[0]:
-            u = (t - k0[0]) / max(1e-9, k1[0] - k0[0])
-            e = EASE[k1[2] if len(k1) > 2 else "s"](u)
-            v0, v1 = k0[1], k1[1]
-            if isinstance(v0, tuple):
-                return tuple(x0 + (x1 - x0) * e for x0, x1 in zip(v0, v1))
-            return v0 + (v1 - v0) * e
-    return keys[-1][1]
-
-
-def Q(ax=0.0, ay=0.0, az=0.0, side=1):
-    return Quaternion((0, 0, 1), D(az * side)) @ Quaternion((0, 1, 0), D(ay * side)) @ Quaternion((1, 0, 0), D(ax))
-
-
-class Pose:
-    def __init__(self):
-        self.d = {}
-        self.root = Vector()
-        self.feet = [Vector(), Vector()]  # смещения стоп L, R (м, оси арматуры)
-        self.pitch = [0.0, 0.0]
-
-    def rot(self, bone, ax=0.0, ay=0.0, az=0.0, side=1):
-        self.d[bone] = self.d.get(bone, I) @ Q(ax, ay, az, side)
-
-    def torso(self, ax=0.0, ay=0.0, az=0.0):
-        """Корпус: делим между Spine (40%) и Chest (60%)."""
-        self.rot("Spine", ax * 0.4, ay * 0.4, az * 0.4)
-        self.rot("Chest", ax * 0.6, ay * 0.6, az * 0.6)
-
-    def head(self, ax=0.0, ay=0.0, az=0.0):
-        self.rot("Neck", ax * 0.4, ay * 0.4, az * 0.4)
-        self.rot("Head", ax * 0.6, ay * 0.6, az * 0.6)
-
-    def arm(self, s, sh=(0, 0, 0), up=(0, 0, 0), lo=0.0, hand=0.0):
-        """Рука стороны s ("L"/"R"): ключица, плечо (ax, ay, az), локоть и кисть (ax)."""
-        side = 1 if s == "L" else -1
-        self.rot("Shoulder." + s, *sh, side=side)
-        self.rot("UpperArm." + s, *up, side=side)
-        self.rot("LowerArm." + s, lo, 0, 0, side)
-        self.rot("Hand." + s, hand, 0, 0, side)
-
-    def done(self):
-        rig.plant(self.d, self.root, self.feet, self.pitch)
-        return self.d, self.root, None
+def Pose():
+    return BipedPose(rig)
 
 
 # Базовая стойка гиганта: чуть присел, руки отведены от бёдер (длинные когти не задевают ноги).
@@ -132,59 +58,7 @@ def rest_arms(p, k=1.0):
 
 def gait(u, g):
     """u — доля цикла 0..1. Левая стопа касается земли в u=0, правая — в 0.5."""
-    p = Pose()
-    S, duty, lift = g["stride"], g["duty"], g["lift"]
-    tau = 2 * math.pi
-    s = (u * 2) % 1.0  # доля шага (от касания)
-    # таз: просадка сразу после касания (вес принят), выше всего — в середине опоры
-    p.root.z = -g["crouch"] - g["bob"] * 0.5 * (1 + math.cos(tau * (s - 0.12)))
-    # перенос веса на опорную ногу (левая опора — середина u≈0.3)
-    p.root.x = g["sway"] * math.cos(tau * (u - 0.28))
-    p.rot("Hips", 0, -g["roll"] * math.cos(tau * (u - 0.28)), -g["yaw"] * math.cos(tau * u))
-    # корпус: наклон, встречный поворот плеч, крен на опорную ногу, кивок после удара стопы
-    lean = g["lean"] + g["pitch"] * math.cos(tau * (s - 0.22))
-    p.torso(lean, g["lat"] * math.cos(tau * (u - 0.33)), g["twist"] * math.cos(tau * (u - 0.04)))
-    p.head(-lean * 0.7 + g["nod"] * math.cos(tau * (s - 0.3)), -g["lat"] * 0.6 * math.cos(tau * (u - 0.4)),
-           -g["twist"] * 0.55 * math.cos(tau * (u - 0.1)))
-    # руки: встречно ногам, с запаздыванием; вперёд — локоть сгибается сильнее
-    for s_, ph in (("L", 0.5), ("R", 0.0)):
-        f = math.cos(tau * (u - ph - g["lag"]))
-        fh = math.cos(tau * (u - ph - g["lag"] - 0.08))
-        p.arm(s_, (g["shrug"] * f, -3 + 2 * abs(f), -g["shrug"] * f),
-              (-g["arm0"] - g["arm"] * f, -g["armOut"], 4),
-              -(g["elbow"] + g["elbowK"] * max(0.0, f)),
-              -(g["hand0"] + g["handK"] * fh))
-    for i, ph in enumerate((0.0, 0.5)):
-        q = (u + 1 - ph) % 1.0
-        if q < duty:  # опора: стопа едет назад по земле
-            v = q / duty
-            y = -S / 2 + S * v
-            zz = 0.008  # сгиб голени чуть «проминает» подошву в землю — на столько выше
-            # касание пяткой → стопа плавно ложится плашмя → в конце опоры пятка отрывается (перекат на носок)
-            pit = -g["toeUp"] * (1 - _smooth(min(1.0, v / 0.2))) + g["heel"] * _smooth(max(0.0, (v - 0.68) / 0.32))
-        else:  # перенос: дуга вперёд, перед касанием носок задран (пятка первой)
-            v = (q - duty) / (1 - duty)
-            y = S / 2 - S * _smooth(v)
-            zz = lift * math.sin(math.pi * v) ** 1.3
-            pit = g["heel"] * (1 - _smooth(v * 2.2)) - g["toeUp"] * _smooth(max(0.0, (v - 0.55) / 0.45))
-        p.feet[i] = Vector((0, y, zz)) + foot_roll(i, pit)
-        p.pitch[i] = D(pit)
-    return p.done()
-
-
-def foot_roll(i, pit):
-    """Сдвиг лодыжки, чтобы стопа поворачивалась вокруг точки на земле, а не вокруг лодыжки:
-    носок вниз (pit > 0) — вокруг носка, носок вверх (pit < 0) — вокруг пятки. Без этого носок
-    уходил под землю на отрыве, а пятка — на касании."""
-    lg = rig.legs[i]
-    A = lg["A"]
-    if pit >= 0:
-        T = rig.tail[lg["bones"][2]]
-        P = Vector((T.x, T.y, max(0.0, T.z - 0.03)))
-    else:
-        P = Vector((A.x, A.y + HEEL_BACK, 0.0))
-    R = Quaternion((1, 0, 0), D(pit))
-    return P + R @ (A - P) - A
+    return biped_gait(rig, Pose(), u, g, HEEL_BACK)
 
 
 # Пятка модели — позади лодыжки (у кристаллической ноги задний шип), м по оси +Y (назад).
@@ -302,13 +176,6 @@ def clip_attack_l(rig_, u):
 
 SLAM_SEC = 2.4
 SLAM_HIT = 1.3
-
-
-def shake(t, t0, t1, amp, hz=13.0):
-    if t < t0 or t > t1:
-        return 0.0
-    k = 1 - (t - t0) / (t1 - t0)
-    return amp * k * k * math.sin((t - t0) * hz * 2 * math.pi)
 
 
 def clip_slam(rig_, u):
