@@ -91,11 +91,16 @@ export class InventoryRoom extends colyseus.Room {
       if (!act || !id) return;
       // Не чаще 4 раз в секунду — заточку не закликать скриптом быстрее анимации.
       const now = Date.now();
-      if (now - (this.lastAct.get(client.sessionId) ?? 0) < 250) return;
+      if (now - (this.lastAct.get(client.sessionId) ?? 0) < 250) {
+        // Молча — заточка на странице ждала бы ответ вечно; тост, а кнопки разблокирует сама страница.
+        client.send("toast", { ok: false, text: "Слишком быстро — подожди секунду" });
+        return;
+      }
       this.lastAct.set(client.sessionId, now);
       const r = invHub.act(w.norm, act as InvActKind, id, idx, typeof m?.fuel === "string" ? m.fuel : undefined);
       console.log(`[inv] ${w.norm} ← web ${act} «${id}» · ip ${this.ipBySession.get(client.sessionId) ?? "?"} → ${r.ok ? "ок" : "отказ"}: ${r.text}`);
-      client.send(r.enchant ? "enchant" : "toast", r);
+      // Заточка и точка атаки отвечают каналом «enchant»: страница окна заточки ждёт именно его (иначе кнопки залипали).
+      client.send(r.enchant || act === "sharpen" || act === "enchant" || act === "armorEnchant" ? "enchant" : "toast", r);
     });
     this.onMessage("refresh", (client) => this.sendInv(client));
     // «Помощь в разработке»: список видят все, писать — только с подтверждённым входом, пометки — только админ.

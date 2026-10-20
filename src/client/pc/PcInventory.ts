@@ -144,6 +144,8 @@ export class PcInventory {
   private forging = false;
   private pendingResult: PcInvResult | null = null;
   private hammerDone = false;
+  /** Номер текущего удара молотом: таймер «ответа нет» проверяет, что это всё ещё он. */
+  private forgeSeq = 0;
   private lastResult: { text: string; up: boolean } | null = null;
   /** Таймер, который убирает всплывашку итога в сумке (сама гаснет через RESULT_TOAST_MS). */
   private resultTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1745,11 +1747,22 @@ export class PcInventory {
       sharpen ? { act: "sharpen", id, idx: 0 }
         : this.data?.armor?.some((x) => x.id === id) ? { act: "armorEnchant", id, idx } : { act: "enchant", id, idx },
     );
+    const seq = ++this.forgeSeq;
     // Три удара молотом — пусть напряжение настоится, потом итог.
     window.setTimeout(() => {
       this.hammerDone = true;
       if (this.pendingResult) this.reveal();
     }, 1100);
+    // Ответа нет (сервер промолчал, обрыв связи) — не держим кнопки запертыми навсегда.
+    window.setTimeout(() => {
+      if (!this.forging || seq !== this.forgeSeq) return;
+      this.pendingResult = null;
+      this.forging = false;
+      this.hammerDone = false;
+      this.lastResult = { up: false, text: "Ответа от сервера нет — попробуй ещё раз" };
+      this.armResultTimer(this.lastResult);
+      this.render();
+    }, 6000);
   }
 
   private reveal(): void {
