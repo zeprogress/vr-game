@@ -717,7 +717,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     magicArmor: 0.2, // магия режется на 20% (2026-10-15; было 30%)
     champScaleMul: 1.7, // вожак жнецов заметно крупнее обычного вожака (QUEST.champ — 1.3)
     leaper: true, leapCooldown: 20, walksOnly: true, gait: true, noSquash: true, legendaryChance: 0.05,
-    ringMul: 10, // кольца: ×10 сверх элиты (2026-10-14)
+    ringMul: 0.6, // кольца 0.15% за убийство (2026-10-21: было ×10 — 1.5%, в 10 раз реже)
     sepMul: 0.5, // расталкивание: тело жнеца ≈0.6 м вместо ≈1.2 м (только толпа; удар не меняется)
   },
   // Ледяной гигант 70 ур. (2026-10-19; был 57): редкий танк для толпы — ≈11.5 м, ходит за героями и бьёт вблизи
@@ -736,7 +736,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     attackCooldown: 2, meleeReach: 6, speedMul: 1, sepMul: 0.6,
     iceGiant: true, walksOnly: true, gait: true, noSquash: true, blendAnims: true,
     strikeDelay: 0.6, attackSec: 1.3, walkClipSpeed: 2.4, runClipSpeed: 5.8,
-    killXpMul: 125, respawnSec: 5, legendaryChance: 0.12, ringMul: 6, // респавн 5 с (2026-10-20; было 30)
+    killXpMul: 125, respawnSec: 5, legendaryChance: 0.12, ringMul: 40, // кольца 10% за убийство (2026-10-21; было ×6 — 0.9%); респавн 5 с (2026-10-20; было 30)
     /** Лом за убийство (2026-10-20): в подземелье 100 — делятся между участниками (CAMP shareScrap); в нашествии свой. */
     scrap: 100,
   },
