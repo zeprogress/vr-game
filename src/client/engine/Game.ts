@@ -127,7 +127,7 @@ import type { ActKind, CharMsg, LootItem, MoveMsg, PcInvData, QuestActMsg, Quest
 import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
-import { AEGIS_NAME, aegisTier, bothHandsCls, FAV_MAX, ITEMS, sharpPctOfText, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, aegisTier, bothHandsCls, ITEMS, sharpPctOfText, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
 import { sharpGlowTune } from "../items/sharpGlowTune";
 import { BOT, EVENT, PLAYER, POTION_CD, RESPAWN, SKILL, isAdminNick } from "#shared/constants";
 import { BLINK, BOSS, PULL, CHARGE, SPIKES, CHIEF_HEAL, FREEZE, SPORE } from "#shared/mobs";
@@ -2121,12 +2121,6 @@ export class Game {
       case "fav": {
         const list = this.net?.warehouse?.list ?? [];
         const w = list.find((x) => x.id === a.id);
-        // Лимит ★ общий с кольцами (их данные — в окне инвентаря).
-        const rings = this.pcInvData?.jewels?.rings ?? [];
-        if (w && !w.fav && list.filter((x) => x.fav).length + rings.filter((x) => x.fav).length >= FAV_MAX) {
-          toast(`Избранное заполнено — ${FAV_MAX} из ${FAV_MAX}`);
-          return;
-        }
         this.net?.sendPcInvAct({ act: "fav", id: a.id, idx: 0 });
         toast(w?.fav ? "Убрано из избранного" : `${glyph("ui.fav")} В избранном — не разбирается`);
         return;

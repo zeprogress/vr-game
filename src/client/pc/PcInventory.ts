@@ -1456,13 +1456,13 @@ export class PcInventory {
     this.hooks.act({ act: "fav", id: w.id, idx: 0 });
   }
 
-  /** ★ у брони: тот же общий лимит (FAV_MAX), не разбирается и не передаётся. */
+  /** ★ у брони: не разбирается и не передаётся (избранное без лимита). */
   private toggleArmorFav(id: string): void {
     this.hideTip();
     this.hooks.armorAct?.(id, "fav");
   }
 
-  /** ★ у кольца: тот же общий лимит, что у оружия (FAV_MAX), не разбирается. */
+  /** ★ у кольца: не разбирается (избранное без лимита). */
   private toggleRingFav(id: string): void {
     this.hideTip();
     this.hooks.act({ act: "ringFav", id, idx: 0 });

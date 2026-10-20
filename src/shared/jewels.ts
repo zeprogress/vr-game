@@ -14,7 +14,6 @@
  */
 import type { Attr } from "./classes2";
 import { ATTR_LOOK } from "./look";
-import { FAV_MAX } from "./items";
 import { armorLevelMul } from "./armor";
 
 export type GemAttr = Attr;
@@ -208,9 +207,9 @@ export interface JewelOpResult {
 
 /**
  * Применить операцию. `scrapHave` — лом в сумке (хватит ли на «вынуть»). Списание/начисление лома
- * делает вызывающий по `scrap` в ответе. `favOther` — сколько ★ у оружия: лимит ★ общий (FAV_MAX).
+ * делает вызывающий по `scrap` в ответе.
  */
-export function applyJewelOp(js: JewelSave, o: JewelOp, scrapHave: number, favOther = 0): JewelOpResult {
+export function applyJewelOp(js: JewelSave, o: JewelOp, scrapHave: number): JewelOpResult {
   const ring = (id: string): RingInst | undefined => js.rings.find((x) => x.id === id);
   switch (o.op) {
     case "ringOn": {
@@ -234,9 +233,6 @@ export function applyJewelOp(js: JewelSave, o: JewelOp, scrapHave: number, favOt
       if (r.fav) {
         delete r.fav;
         return { ok: true, text: `Убрано из избранного: ${ringLabel(r)}` };
-      }
-      if (js.rings.filter((x) => x.fav).length + favOther >= FAV_MAX) {
-        return { ok: false, text: `Избранное заполнено — ${FAV_MAX} из ${FAV_MAX}. Сначала убери что-нибудь оттуда.` };
       }
       r.fav = true;
       return { ok: true, text: `★ В избранном: ${ringLabel(r)} — не разбирается` };

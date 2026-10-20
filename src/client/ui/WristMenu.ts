@@ -11,7 +11,7 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
-import { AEGIS_NAME, AFFIX_NAME, ATTACK_CLASSES, WEAPON_NOUN, attackPoints, isCraftRare, bothHandsCls, bothHandsNote, FAV_MAX, qualityStars, qualityStarsShort, craftPow, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, AFFIX_NAME, ATTACK_CLASSES, WEAPON_NOUN, attackPoints, isCraftRare, bothHandsCls, bothHandsNote, qualityStars, qualityStarsShort, craftPow, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { skillDamageText } from "#shared/skillDamage";
 import { armorIconKey, glyph, itemIcon, weaponIcon, type IconKey } from "#shared/icons";
 import { ARMOR_PART_NAME, ARMOR_PARTS, type ArmorPart } from "#shared/armor";
@@ -2219,7 +2219,7 @@ export class WristMenu {
     buttons.push({
       id: "pop:fav",
       label: r.fav ? `${glyph("ui.favOff")} Убрать из избранного` : `${glyph("ui.fav")} В избранное`,
-      hint: r.fav ? "снова можно будет разобрать" : `общее ★ до ${FAV_MAX} (с оружием) · не разбирается`,
+      hint: r.fav ? "снова можно будет разобрать" : "не разбирается",
       color: "#ffd166",
       act: () => this.jewelSend({ act: "ringFav", id: r.id, idx: 0 }),
     });
