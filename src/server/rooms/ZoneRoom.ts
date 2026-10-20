@@ -257,6 +257,7 @@ import {
   DUN_PORTAL,
   DUN_PORTAL_EXIT,
   DUN_SPOTS,
+  DUN_SHAPES,
   DUN_X,
   DUN_Z,
   dunEntry,
@@ -2945,7 +2946,70 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** Выбрать точку нашествия: на поляне, подальше от HUB, угла босса и лагерей. */
-  private pickEventSpot(): { x: number; z: number } {
+  /** Залы подземелья, где событие не начинаем: вход, выход, святилище босса, сокровищница. */
+  private static readonly EVENT_DUN_SKIP = new Set(["A", "H", "J", "Z"]);
+
+  /**
+   * Место охоты и нашествия (2026-10-20): случайная точка по суше по всей карте, а с шансом EVENT.dungeonChance —
+   * в одном из залов подземелья (с запасом под волну и дракона). Вне лагеря, босса, стоянок, озера и катакомб.
+   * Башня — прежнее кольцо у спавна.
+   */
+  private pickEventSpot(kind: number): { x: number; z: number } {
+    if (kind === 3) return this.pickEventSpotRing();
+    const nearMobCamps = (x: number, z: number): boolean =>
+      MOB_CAMPS.some((c) => Math.hypot(x - c.x, z - c.z) < 18) ||
+      DUN_MOB_CAMPS.some((c) => {
+        const w = dunWorld(c.u, c.v);
+        return Math.hypot(x - w.x, z - w.z) < 18;
+      });
+    if (Math.random() < EVENT.dungeonChance) {
+      const pad = EVENT.invasion.radius + 4;
+      for (let t = 0; t < 60; t++) {
+        const s = DUN_SHAPES[Math.floor(Math.random() * DUN_SHAPES.length)];
+        if (s.t === "strip" || ZoneRoom.EVENT_DUN_SKIP.has(s.zone)) continue;
+        let u0 = Infinity;
+        let u1 = -Infinity;
+        let v0 = Infinity;
+        let v1 = -Infinity;
+        if (s.t === "disc") {
+          u0 = s.u - s.r;
+          u1 = s.u + s.r;
+          v0 = s.v - s.r;
+          v1 = s.v + s.r;
+        } else {
+          for (const [pu, pv] of s.pts) {
+            u0 = Math.min(u0, pu);
+            u1 = Math.max(u1, pu);
+            v0 = Math.min(v0, pv);
+            v1 = Math.max(v1, pv);
+          }
+        }
+        const u = u0 + Math.random() * (u1 - u0);
+        const v = v0 + Math.random() * (v1 - v0);
+        if (dunFloorLocal(u, v, pad) === null) continue;
+        const w = dunWorld(u, v);
+        if (nearMobCamps(w.x, w.z)) continue;
+        return { x: w.x, z: w.z };
+      }
+    }
+    for (let t = 0; t < 60; t++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 24 + Math.random() * 176;
+      const x = Math.cos(a) * r;
+      const z = Math.sin(a) * r - 6;
+      if (Math.hypot(x - HUB_CENTER.x, z - HUB_CENTER.z) < HUB.safeRadius + 10) continue; // не в лагере
+      if (Math.hypot(x - BOSS.home[0], z - BOSS.home[1]) < 30) continue; // не у босса
+      if (MOB_CAMPS.some((c) => Math.hypot(x - c.x, z - c.z) < 18)) continue; // не в чужом лагере
+      if (inDunRegion(x, z) || inCatRegion(x, z)) continue; // не в подземелье и не в катакомбах
+      if (((x - LAKE.x) / (LAKE.rx + 8)) ** 2 + ((z - LAKE.z) / (LAKE.rz + 8)) ** 2 < 1) continue; // не в озере
+      if (terrainHeight(x, z) < LAKE.waterY + 1) continue; // сухо
+      return { x, z };
+    }
+    return this.pickEventSpotRing();
+  }
+
+  /** Прежнее место: кольцо вокруг спавна (башня и запасной вариант). */
+  private pickEventSpotRing(): { x: number; z: number } {
     for (let t = 0; t < 24; t++) {
       const a = Math.random() * Math.PI * 2;
       const r = 22 + Math.random() * 34;
@@ -3012,9 +3076,6 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   private startEvent(): void {
-    const spot = this.pickEventSpot();
-    this.eventX = spot.x;
-    this.eventZ = spot.z;
     this.eventPhase = "active";
     this.eventForced = false;
     this.eventWave = 0;
@@ -3040,6 +3101,10 @@ export class ZoneRoom extends Room<ZoneState> {
       if (this.activeEventKind === 1 && this.eventsOff.has("invasion")) this.activeEventKind = 2;
       else if (this.activeEventKind === 2 && this.eventsOff.has("hunt")) this.activeEventKind = 1;
     }
+    // Место — после вида: охота и нашествие — случайно по карте или в подземелье; башня — как прежде.
+    const spot = this.pickEventSpot(this.activeEventKind);
+    this.eventX = spot.x;
+    this.eventZ = spot.z;
     this.forcedEventKind = 0;
     this.state.eventKind = this.activeEventKind;
     this.state.eventX = spot.x;
