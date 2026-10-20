@@ -10164,6 +10164,8 @@ export class ZoneRoom extends Room<ZoneState> {
       case "arrowStorm": {
         // 🧪 Шквал стрел: волны по всем врагам вокруг лучника (круг идёт за ним), крит — у каждого попадания.
         const A = ARROW_STORM;
+        /** Кого задели волны — за все волны 3+ врагов: лечение (после последней). */
+        const touched = new Set<string>();
         shot(0, 12);
         act({ k: "stormWave", x: p.head.x, y: feetY, z: p.head.z, d: 0, r: A.radius });
         for (let w = 0; w < A.waves; w++) {
@@ -10180,9 +10182,11 @@ export class ZoneRoom extends Room<ZoneState> {
               const p2 = this.state.players.get(ownerId);
               if (!p2 || p2.dead) return;
               for (const m of around(cx, cz, A.radius)) {
+                touched.add(m.id);
                 arrowHit(m, sk.dmgMult, cx, cz);
                 this.sim.slowMob(m.id, A.slowSec, 1 - A.slow);
               }
+              if (w === A.waves - 1 && touched.size >= A.bonusTargets) this.skillHeal(ownerId, p2, p2.maxHp * A.healFrac);
             }, A.fall * 1000);
           }, (A.first - A.fall + w * A.gap) * 1000);
         }
@@ -10254,11 +10258,10 @@ export class ZoneRoom extends Room<ZoneState> {
             volley(pp, v2);
           }, v2 * S.volleyGap * 1000);
         }
-        // Бонус — по итогу всех залпов (последние стрелы долетели): задето 3+ разных врагов.
+        // Бонус — по итогу всех залпов (последние стрелы долетели): задето 3+ разных врагов — бег быстрее.
         this.clock.setTimeout(() => {
           const pp = this.state.players.get(ownerId);
           if (!pp || pp.dead || touched.size < S.bonusTargets) return;
-          this.skillHeal(ownerId, pp, pp.maxHp * S.healFrac);
           rt.runUntil = this.elapsed + S.runSec;
         }, ((S.volleys - 1) * S.volleyGap + skillArrowTime(S.range + 8) + 0.05) * 1000);
         return true;

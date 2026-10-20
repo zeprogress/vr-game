@@ -568,7 +568,8 @@ export const BLAST_ARROW = { splash: 1.2, radius: 5, range: 22 } as const; // р
  * попадания; задетые замедлены на slow на slowSec с.
  */
 // fall — сколько падают стрелы волны с неба (событие волны уходит на fall с раньше удара; first — после залпа вверх).
-export const ARROW_STORM = { radius: 12, waves: 3, first: 0.7, gap: 0.5, fall: 0.3, slow: 0.3, slowSec: 2 } as const;
+// Задето за все волны ≥ bonusTargets врагов — лечение healFrac макс. HP (2026-10-20: лечение перенесено с «Роя»).
+export const ARROW_STORM = { radius: 12, waves: 3, first: 0.7, gap: 0.5, fall: 0.3, slow: 0.3, slowSec: 2, bonusTargets: 3, healFrac: 0.05 } as const;
 /**
  * 🧪 «Стрела-призрак»: duration с (× МДР — SkillDef.attr) обычные мобы не видят стрелка и не бьют его
  * (боссы видят); его урон ×dmgMul; каждое попадание стрелой (у бота — выстрел) лечит healFrac макс. HP.
@@ -577,10 +578,10 @@ export const GHOST_ARROW = { duration: 4, dmgMul: 0.7, healFrac: 0.03 } as const
 /**
  * 🧪 «Стрела-рой»: volleys залпов по arrows стрел веером ±halfAngle рад вперёд на range м; стрела бьёт первого моба
  * в коридоре ±lane м (+ радиус тела) — ×dmgMult (SKILLS2) и взрывается: ×blast всем в blastR м. Задето за все залпы
- * ≥ bonusTargets врагов — лечение healFrac макс. HP и бег +run на runSec с.
+ * ≥ bonusTargets врагов — бег +run на runSec с.
  */
 export const SWARM_ARROW = {
-  arrows: 5, halfAngle: 0.5, range: 20, lane: 0.9, blast: 0.5, blastR: 3, bonusTargets: 3, healFrac: 0.05, run: 0.2, runSec: 3,
+  arrows: 5, halfAngle: 0.5, range: 20, lane: 0.9, blast: 0.5, blastR: 3, bonusTargets: 3, run: 0.2, runSec: 3, // лечения нет (2026-10-20 — у «Шквала»)
   /** Залпов за применение и пауза между ними, с (2026-10-20: было 1 залп). */
   volleys: 3, volleyGap: 0.35,
 } as const;
@@ -707,7 +708,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   arrowStorm: {
     name: "Шквал стрел", icon: glyph("s.arrowStorm"), test: true,
-    desc: `${ARROW_STORM.waves} волны стрел по всем врагам в ${ARROW_STORM.radius} м вокруг тебя: ×1 каждому за волну (свой крит), задетые замедлены на ${pctR(ARROW_STORM.slow)} на ${ARROW_STORM.slowSec} с`,
+    desc: `${ARROW_STORM.waves} волны стрел по всем врагам в ${ARROW_STORM.radius} м вокруг тебя: ×1 каждому за волну (свой крит), задетые замедлены на ${pctR(ARROW_STORM.slow)} на ${ARROW_STORM.slowSec} с; задел ${ARROW_STORM.bonusTargets}+ врагов — лечение ${pctR(ARROW_STORM.healFrac)} здоровья`,
     cooldown: 16, castTime: 0.3, radius: ARROW_STORM.radius, dmgMult: 1, hits: ARROW_STORM.waves,
   },
   ghostArrow: {
@@ -718,7 +719,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   swarmArrow: {
     name: "Стрела-рой", icon: glyph("s.swarmArrow"), test: true,
-    desc: `${SWARM_ARROW.volleys} залпа по ${SWARM_ARROW.arrows} стрел веером вперёд (${SWARM_ARROW.range} м): каждая ×0.8 и взрыв ${SWARM_ARROW.blastR} м ×${SWARM_ARROW.blast}; задел ${SWARM_ARROW.bonusTargets}+ врагов — лечение ${pctR(SWARM_ARROW.healFrac)} здоровья и бег +${pctR(SWARM_ARROW.run)} на ${SWARM_ARROW.runSec} с`,
+    desc: `${SWARM_ARROW.volleys} залпа по ${SWARM_ARROW.arrows} стрел веером вперёд (${SWARM_ARROW.range} м): каждая ×0.8 и взрыв ${SWARM_ARROW.blastR} м ×${SWARM_ARROW.blast}; задел ${SWARM_ARROW.bonusTargets}+ врагов — бег +${pctR(SWARM_ARROW.run)} на ${SWARM_ARROW.runSec} с`,
     cooldown: 10, castTime: 0.25, radius: SWARM_ARROW.range, dmgMult: 0.8, hits: SWARM_ARROW.arrows,
   },
   barrierArrow: {

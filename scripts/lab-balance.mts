@@ -972,6 +972,8 @@ if (ONLY.has("skilltest")) {
     const far = ms[5];
     for (const m of ms) t.room.sim.stunMob(m.id, 99);
     put(t.p, ms[0].x + 3, ms[0].z);
+    t.p.hp = t.p.maxHp * 0.5;
+    const hpS = t.p.hp;
     far.x = t.p.head.x + C2.ARROW_STORM.radius + 6;
     far.z = t.p.head.z;
     const h0 = t.meter.hits.get(t.x.id) ?? 0;
@@ -983,6 +985,7 @@ if (ONLY.has("skilltest")) {
     // ≥: в 12 м может оказаться и чужой слизень мира — его волна тоже бьёт.
     check("Шквал: волны по всем рядом", ok && hits >= 5 * C2.ARROW_STORM.waves && lost(far) === 0, `попаданий ${hits} (≥ 5 мобов × ${C2.ARROW_STORM.waves} волны), дальний −${Math.round(lost(far))}`);
     check("Шквал: замедляет", slowed === near.length, `замедлено ${slowed} из ${near.length}, урон ${near.map((m: any) => Math.round(lost(m))).join(" / ")}`);
+    check("Шквал: лечение за 3+", t.p.hp >= hpS + t.p.maxHp * C2.ARROW_STORM.healFrac * 0.99, `HP ${Math.round(hpS)} → ${Math.round(t.p.hp)} (+${Math.round(C2.ARROW_STORM.healFrac * 100)}%)`);
   }
 
   // 3. Стрела-призрак: моб рядом перестаёт бить, урон ×0.7, попадание стрелой лечит, плашка.
@@ -1036,7 +1039,8 @@ if (ONLY.has("skilltest")) {
     const touched = ms.filter((m: any) => lost(m) > 0).length;
     check("Рой: задевает кучку", ok && touched >= 3, `задето ${touched} из ${ms.length}, урон ${ms.map((m: any) => Math.round(lost(m))).join(" / ")}`);
     check("Рой: три залпа", all >= after1 * C2.SWARM_ARROW.volleys * 0.9, `попаданий: первый залп ${after1}, все залпы ${all}`);
-    check("Рой: лечение и бег за 3+", t.p.hp > hp0 && t.p.runSecs > 0, `HP ${Math.round(hp0)} → ${Math.round(t.p.hp)}, бег ${t.p.runSecs} с`);
+    // Без лечения умения: прибавка — только обычная регенерация за эти ~2 с (меньше 2% здоровья, лечение было бы 5%).
+    check("Рой: бег за 3+, без лечения", t.p.hp - hp0 < t.p.maxHp * 0.02 && t.p.runSecs > 0, `HP ${Math.round(hp0)} → ${Math.round(t.p.hp)} (только регенерация), бег ${t.p.runSecs} с`);
   }
 
   // 5. Стрела-барьер: вошедший моб — урон и отброс наружу; стрелок в кольце лечится и увёртывается.
