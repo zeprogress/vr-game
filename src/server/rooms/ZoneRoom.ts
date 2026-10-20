@@ -5401,7 +5401,17 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private craftProc(attacker: string, mobId: string, dealt: number): void {
     const chill = this.heroRoll(attacker, "chill");
-    if (chill > 0 && Math.random() < chill) this.sim.slowMob(mobId, CRAFT_PROC.chill.sec, CRAFT_PROC.chill.mul);
+    if (chill > 0 && Math.random() < chill) {
+      // «Обморожение» как у Ледяного гиганта: стаки кристаллами, на максимуме — «Ледяная глыба» (клетка изо льда).
+      const r = this.sim.chillMob(mobId);
+      const m = this.sim.mobs.get(mobId);
+      if (r && m) {
+        const relay: ActRelay = r.k === "encase"
+          ? { k: "mobEncase", id: mobId, x: m.x, y: m.y, z: m.z, d: ICE_GIANT.frost.freezeSec, r: MOB.bodyRadius * m.scale * 1.3 }
+          : { k: "mobFrost", id: mobId, x: m.x, y: m.y, z: m.z, d: r.n };
+        this.broadcast(MSG.act, relay);
+      }
+    }
     const venom = this.heroRoll(attacker, "venom");
     if (venom > 0 && Math.random() < venom) this.sim.poisonMob(mobId, dealt * CRAFT_PROC.venom.tickFrac, dealt * CRAFT_PROC.venom.burstFrac, attacker);
   }

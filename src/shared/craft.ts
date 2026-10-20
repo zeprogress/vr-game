@@ -79,8 +79,7 @@ export function matRoll(m: CraftMatId, cls: WeaponClass): AffixSub {
 
 /** Что даёт особый ролл в бою (сервер — ZoneRoom.craftProc). */
 export const CRAFT_PROC = {
-  /** Холод: замедление цели на sec с, скорость и темп × mul. */
-  chill: { sec: 2, mul: 0.65 },
+  /** Холод: стаки «Обморожения» и «Ледяная глыба» — те же числа, что у Ледяного гиганта (ICE_GIANT.frost, ZoneSim Mob.chill). */
   /** Яд: стак яда (правила «Чумного клинка»: стаки и взрыв) — урон в секунду за стак = доля удара. */
   venom: { tickFrac: 0.12, burstFrac: 0.6 },
 } as const;

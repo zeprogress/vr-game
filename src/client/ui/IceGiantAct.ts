@@ -26,7 +26,7 @@ export interface IceGiantCtx {
 
 const KINDS = new Set<ActKind>([
   "giantSlam", "giantSlamHit", "giantThrowMark", "giantThrowFly", "giantThrowHit", "giantFissure", "giantFissureGo",
-  "giantFury", "frostStack", "iceEncase",
+  "giantFury", "frostStack", "iceEncase", "mobFrost", "mobEncase",
 ]);
 
 /** Глыба гиганта: в руке до броска и в полёте до удара (id моба → кристаллы). */
@@ -166,19 +166,21 @@ export function playIceGiantAct(
       ice.after(0.4, () => ice.burst(x, y + 3, z, FXC.frost, { count: 28, speed: 10, life: 1.4, grav: 2, size: 0.5 }));
       sfx.at(at, () => sfx.ice("roar", 1.1, 0.02, 0.35));
       break;
-    case "frostStack": {
-      // Стак «Обморожения»: кристаллы кружат вокруг героя — сколько стаков, столько кристаллов.
-      const fol = (): P | null => ctx.follow("hero", id);
+    case "frostStack":
+    case "mobFrost": {
+      // Стак «Обморожения»: кристаллы кружат вокруг героя (или моба) — сколько стаков, столько кристаллов.
+      const fol = (): P | null => ctx.follow(k === "mobFrost" ? "mob" : "hero", id);
       ice.frostOrbit(id, Math.max(1, Math.round(d ?? 1)), G.frost.stackSec, fol);
       sfx.at(fol() ?? at, () => sfx.ice("stack", 0.55, 0.08));
       break;
     }
-    case "iceEncase": {
-      // «Ледяная глыба»: стаки сгорели, герой в клетке из кристаллов d с, потом лёд разлетается.
+    case "iceEncase":
+    case "mobEncase": {
+      // «Ледяная глыба»: стаки сгорели, герой (или моб) в клетке из кристаллов d с, потом лёд разлетается.
       ice.clearOrbit(id);
-      const p = ctx.follow("hero", id) ?? { x, y: ctx.ground(x, z), z };
+      const p = ctx.follow(k === "mobEncase" ? "mob" : "hero", id) ?? { x, y: ctx.ground(x, z), z };
       const T = d ?? G.frost.freezeSec;
-      ice.shards(SHARD.cage, p, { r: 0.62, hold: T, size: 2.1, count: 14 });
+      ice.shards(SHARD.cage, p, { r: r ?? 0.62, hold: T, size: 2.1, count: 14 });
       ice.decal(DECAL.frost, p.x, p.y, p.z, 1.6, T + 0.8, 0.9);
       ice.burst(p.x, p.y + 1, p.z, FXC.frost, { count: 20, speed: 3, life: 0.7, grav: 2, size: 0.35 });
       sfx.at(p, () => sfx.ice("freeze"));

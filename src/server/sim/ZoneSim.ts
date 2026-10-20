@@ -1190,6 +1190,39 @@ export class Mob {
     this.markBy = by;
   }
 
+  /**
+   * «Обморожение» от холодного ролла оружия — те же правила, что у Ледяного гиганта (ICE_GIANT.frost): каждый стак —
+   * ещё perStack замедления, живёт stackSec с после последнего; на maxStacks — «Ледяная глыба»: моб вмерзает на
+   * freezeSec (стан), потом immuneSec стаки не копятся. Боссы не вмерзают — стаки держатся на maxStacks−1.
+   */
+  private frostN = 0;
+  private frostT = 0;
+  private frostImmuneT = 0;
+  chill(): { k: "stack" | "encase"; n: number } | null {
+    if (this.dead || this.frostImmuneT > 0) return null;
+    const F = ICE_GIANT.frost;
+    if (this.frostT <= 0) this.frostN = 0;
+    if (this.frostN + 1 >= F.maxStacks && this.kind !== "boss") {
+      this.frostN = 0;
+      this.frostT = 0;
+      this.frostImmuneT = F.freezeSec + F.immuneSec;
+      this.stun(F.freezeSec);
+      return { k: "encase", n: F.maxStacks };
+    }
+    this.frostN = Math.min(F.maxStacks - 1, this.frostN + 1);
+    this.frostT = F.stackSec;
+    this.slow(F.stackSec, 1 - F.perStack * this.frostN);
+    return { k: "stack", n: this.frostN };
+  }
+  /** Стаки «Обморожения» тают, если по мобу давно не били холодом; после глыбы — пауза. */
+  tickFrost(dt: number): void {
+    if (this.frostT > 0) {
+      this.frostT -= dt;
+      if (this.frostT <= 0) this.frostN = 0;
+    }
+    if (this.frostImmuneT > 0) this.frostImmuneT -= dt;
+  }
+
   /** Замедление («Печать»): секунд осталось и доля скорости/темпа атак (0.6 — на 40% медленнее). */
   private slowT = 0;
   private slowMul = 1;
@@ -1318,6 +1351,7 @@ export class Mob {
         this.slowT -= dt;
         if (this.slowT <= 0) this.slowMul = 1;
       }
+      this.tickFrost(dt);
       return;
     }
     // Где моб стоял до своего шага в этом тике — чтобы герой не толкал моба (см. «не проходит сквозь игроков»).
@@ -1336,6 +1370,7 @@ export class Mob {
       this.slowT -= dt;
       if (this.slowT <= 0) this.slowMul = 1;
     }
+    this.tickFrost(dt);
     // Замедленный моб и бьёт реже.
     if (this.attackCd > 0) this.attackCd -= dt * this.slowK;
     // Ядовитые облака живут своей жизнью — и после смерти колосса тоже.
@@ -3806,6 +3841,11 @@ export class ZoneSim {
   /** Замедлить моба («Печать»): на `sec` секунд, скорость и темп атак × `mul`. */
   slowMob(id: string, sec: number, mul: number): void {
     this.mobs.get(id)?.slow(sec, mul);
+  }
+
+  /** Холодный ролл попал в моба: стак «Обморожения» или «Ледяная глыба» (Mob.chill); null — нет (мёртв или пауза). */
+  chillMob(id: string): { k: "stack" | "encase"; n: number } | null {
+    return this.mobs.get(id)?.chill() ?? null;
   }
 
   /** Оглушить моба по id (оглушающий удар воина). */
