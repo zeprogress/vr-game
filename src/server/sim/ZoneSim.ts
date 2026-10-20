@@ -3706,8 +3706,8 @@ export class ZoneSim {
     // иначе при переборе (один удар и ниже порога, и в 0 HP разом) раскол не
     // успевал бы сработать до обработки смерти (см. Mob.checkSplitThreshold).
     if (m.checkSplitThreshold(hpBefore)) {
-      // Вожак-голем «побеждён», когда раскололся — задание засчитываем сразу.
-      if (m.champ && attacker) this.mobKills.push({ owner: attacker, kind: m.kind, name: m.eliteName, campType: m.campType, champ: true, jm: this.jewelMul(m), jr: m.ringMul, jl: this.jewelLevel(m), sc: m.scrapN, pt: m.scrapParts, quest: this.questCredit(m, attacker) });
+      // Голем «побеждён» раколом: кольца, лом, задания и счёт — сразу (осколки сами наград не дают; раньше — только вожак).
+      if (attacker) this.mobKills.push({ owner: attacker, kind: m.kind, name: m.eliteName, campType: m.campType, champ: m.champ, jm: this.jewelMul(m), jr: m.ringMul, jl: this.jewelLevel(m), sc: m.scrapN, pt: m.scrapParts, quest: this.questCredit(m, attacker) });
       this.splitGolem(m);
       return null;
     }
