@@ -46,7 +46,7 @@ import { QuestBang } from "../world/hub/HubNpc";
 import { setGrassVr } from "../world/GrassField";
 import { LightFocus } from "../world/lightFocus";
 import { VrPanel } from "../ui/VrPanel";
-import { drawBoard, drawEnchant, drawFishing, drawHunter, drawNote, drawShop } from "../ui/VrQuestPanels";
+import { drawBoard, drawEnchant, drawFishing, drawHunter, drawNote, drawShop, VR_FORGE_MS } from "../ui/VrQuestPanels";
 import { QuestWindow, QuestTracker, QuestCompass, ShopWindow, HunterWindow, trackItems, type TrackItem } from "../ui/QuestWindow";
 import { VrCompass } from "../ui/VrCompass";
 import { buffList } from "../ui/buffList";
@@ -288,6 +288,8 @@ export class Game {
   private vrEnchId: string | null = null;
   private vrEnchAt: Vector3 | null = null;
   private vrEnchResult: { up: boolean; text: string } | null = null;
+  /** Когда ударили молотом (performance.now / Date.now), 0 — не точим. */
+  private vrForgeAt = 0;
   private pcInvData: PcInvData | null = null;
   /** Когда последний раз пили зелье (performance.now) — общий откат POTION_CD. */
   private lastDrinkAt = -1e9;
@@ -2142,6 +2144,11 @@ export class Game {
     }
   }
 
+  /** VR: удар молотом ещё идёт — новую заточку не начинаем. */
+  private vrForgeBusy(): boolean {
+    return this.vrForgeAt > 0 && Date.now() - this.vrForgeAt < VR_FORGE_MS;
+  }
+
   /** Окно снаряжения ПК-стиля (ПК и телефон; на телефоне — тап-меню и перетаскивание пальцем). */
   private makePcInventory(touch: boolean): PcInventory {
     const afterGear = (): void => {
@@ -2328,14 +2335,19 @@ export class Game {
             inHand,
             this.vrEnchResult,
             (idx) => {
+              if (this.vrForgeBusy()) return;
               this.vrEnchResult = null;
+              this.vrForgeAt = Date.now();
               this.net?.sendPcInvAct({ act: isArmor ? "armorEnchant" : "enchant", id, idx });
             },
             () => {
+              if (this.vrForgeBusy()) return;
               this.vrEnchResult = null;
+              this.vrForgeAt = Date.now();
               this.net?.sendPcInvAct({ act: "sharpen", id, idx: 0 });
             },
             () => (this.vrEnchId = null),
+            this.vrForgeAt ? Date.now() - this.vrForgeAt : -1,
           );
         });
       }
@@ -3809,15 +3821,16 @@ export class Game {
       if (r.craft) this.wristPanel?.craftResult(r.craft.outcome, r.text);
       // VR: итог действия с кольцами/камнями — всплывашкой (окна инвентаря в шлеме нет).
       if (this.player.inVR && !r.enchant && r.text) this.notifyToast(r.text);
-      if (r.enchant && this.vrEnchId) {
+      if (this.vrEnchId && (r.enchant || this.vrForgeAt)) {
         const e = r.enchant;
-        this.vrEnchResult = e.up
-          ? { up: true, text: `Успех! ${e.label} (+${e.gain}) · −${e.cost} лома` }
-          : { up: false, text: `Не вышло… −${e.cost} лома` };
+        this.vrEnchResult = e
+          ? e.up
+            ? { up: true, text: `Успех! ${e.label} (+${e.gain}) · −${e.cost} лома` }
+            : { up: false, text: `Не вышло… −${e.cost} лома` }
+          : { up: r.ok, text: r.text };
         this.sfx.pickup();
         this.net?.sendPcInvOpen();
-      }
-      if (!r.enchant) this.notifyToast(r.text);
+      } else if (!r.enchant) this.notifyToast(r.text);
     };
     net.onWarehouse = () => this.pcInv?.refresh();
     net.onPicked = (item, count) => {

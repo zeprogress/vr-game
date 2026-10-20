@@ -217,6 +217,13 @@ export function drawFishing(
 }
 
 /** Заточка в VR (как ПК-вкладка «Заточка»): роллы предмета, цена в ломе, шанс. */
+/** Удар молотом в ПК-окне заточки — 3 удара, потом итог (как PcInventory.forge). */
+export const VR_FORGE_MS = 1100;
+
+/**
+ * Панель заточки. forgeT — мс с начала удара молотом (−1 — не точим): пока идёт, кнопки заперты, молот бьёт по строке
+ * предмета, итог — после ударов (до этого в lastResult может уже лежать ответ сервера).
+ */
 export function drawEnchant(
   ui: PanelUi,
   d: PcInvData | null,
@@ -226,7 +233,9 @@ export function drawEnchant(
   enchant: (idx: number) => void,
   sharpen: () => void,
   close: () => void,
+  forgeT = -1,
 ): void {
+  const busy = forgeT >= 0 && forgeT < VR_FORGE_MS;
   const w = d?.weapons.find((x) => x.id === id) ?? null;
   // Броня — одна строка: свой стат, шкала и цена как у оружия.
   const arm = w ? undefined : d?.armor?.find((x) => x.id === id);
@@ -241,6 +250,11 @@ export function drawEnchant(
   const rows = w ? w.ench : (arm?.ench ?? []);
   const tierColor = TIER_LOOK[(w?.tier ?? arm?.tier ?? "base") as WeaponTier]?.color ?? VR_UI.text;
   let x = ui.text(w ? w.name : (arm?.label ?? ""), PAD, 110, 36, tierColor, 800);
+  if (busy) {
+    // Молот: три удара по строке предмета (как значок в ПК-окне).
+    const hit = Math.abs(Math.sin((forgeT / VR_FORGE_MS) * Math.PI * 3));
+    ui.text("⚒", ui.W - PAD - 40, 120 - hit * 22, 64, VR_UI.gold, 800, "center");
+  }
   if (inHand) {
     ui.rect(PAD + x + 16, 114, 110, 34, "#8fd18f", 6);
     ui.text(w ? "в руке" : "надета", PAD + x + 71, 117, 24, "#0e1a10", 800, "center");
@@ -259,7 +273,7 @@ export function drawEnchant(
     ui.text(`${a.points}/${a.of}`, PAD + 20 + bw - 290, y + 56, 24, VR_UI.sub);
     if (a.max) ui.text("MAX", PAD + bw - 110, y + 36, 32, VR_UI.gold, 800, "center");
     else {
-      ui.button(`ench:${i}`, `⚒ ${a.cost}`, PAD + bw - 200, y + 14, 180, 50, () => enchant(i), true, d.scrap >= a.cost);
+      ui.button(`ench:${i}`, `⚒ ${a.cost}`, PAD + bw - 200, y + 14, 180, 50, () => enchant(i), true, d.scrap >= a.cost && !busy);
       ui.text(`шанс ${Math.round(a.chance * 100)}%`, PAD + bw - 110, y + 72, 22, VR_UI.sub, 500, "center");
     }
     y += 124;
@@ -273,7 +287,7 @@ export function drawEnchant(
     ui.text(`+${fmtPct(attackPointBonus(n) * 100)}% к урону · точек ${n}`, PAD + 20, y + 52, 24, VR_UI.sub);
     if (next) {
       ui.text(`следующая +${fmtPct(next.gain * 100, 2)}% · шанс ${fmtPct(next.chance * 100)}%`, PAD + 20, y + 84, 22, VR_UI.sub);
-      ui.button("sharp", `⚒ ${next.cost}`, PAD + bw - 200, y + 14, 180, 50, sharpen, true, d.scrap >= next.cost);
+      ui.button("sharp", `⚒ ${next.cost}`, PAD + bw - 200, y + 14, 180, 50, sharpen, true, d.scrap >= next.cost && !busy);
     }
     y += 140;
   }
