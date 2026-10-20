@@ -511,9 +511,10 @@ interface Bot {
   /** Катакомбы: приказы зрителя (живут, пока не сменят — задержка стрима не мешает). */
   catFocus?: CatFocus;
   catPos?: CatPos;
-  catMode?: CatMode;
-  /** Отступает к входу зала (режим «осторожно», мало HP). */
-  catRetreat?: boolean;
+  /** Режим боя — везде в игре (сохраняется в записи героя): осторожно / агрессивно / обычно. */
+  mode?: BotMode;
+  /** Отступает (режим «осторожно», мало HP): в катакомбах — ко входу зала, вне их — к костру в лагере. */
+  retreat?: boolean;
   /** 0 — ещё не забросил (у берега); иначе this.elapsed, когда клюнет. */
   fishBiteAt: number;
 }
@@ -701,7 +702,7 @@ function isEventToggle(v: string): v is EventToggle {
 /** Приказы ботам в катакомбах: кого бить, где стоять, как рисковать. */
 type CatFocus = "auto" | "boss" | "adds" | "ranged" | "weak" | "strong";
 type CatPos = "auto" | "front" | "back" | "flank";
-type CatMode = "auto" | "careful" | "brave";
+type BotMode = "auto" | "careful" | "brave";
 const CAT_FOCUS_WORDS: Record<string, CatFocus> = {
   авто: "auto", auto: "auto", босс: "boss", босса: "boss", boss: "boss", свита: "adds", свиту: "adds", мелочь: "adds", adds: "adds",
   стрелки: "ranged", стрелков: "ranged", дальних: "ranged", ranged: "ranged", слабых: "weak", слабые: "weak", weak: "weak",
@@ -711,13 +712,13 @@ const CAT_POS_WORDS: Record<string, CatPos> = {
   авто: "auto", auto: "auto", вперёд: "front", вперед: "front", фронт: "front", front: "front", танк: "front",
   назад: "back", сзади: "back", тыл: "back", back: "back", фланг: "flank", сбоку: "flank", flank: "flank",
 };
-const CAT_MODE_WORDS: Record<string, CatMode> = {
+const CAT_MODE_WORDS: Record<string, BotMode> = {
   авто: "auto", auto: "auto", осторожно: "careful", осторожный: "careful", careful: "careful",
   агрессивно: "brave", агрессивный: "brave", смело: "brave", brave: "brave",
 };
 const CAT_FOCUS_RU: Record<CatFocus, string> = { auto: "сам выбирает", boss: "босс", adds: "свита", ranged: "стрелки", weak: "слабые", strong: "сильные" };
 const CAT_POS_RU: Record<CatPos, string> = { auto: "сам", front: "впереди", back: "сзади", flank: "с фланга" };
-const CAT_MODE_RU: Record<CatMode, string> = { auto: "обычно", careful: "осторожно", brave: "агрессивно" };
+const CAT_MODE_RU: Record<BotMode, string> = { auto: "обычно", careful: "осторожно", brave: "агрессивно" };
 
 /** Позиция в сейв: из катакомб — в лагерь (после рестарта там пусто), вне пола подземелья — к его краю. */
 function savePos(x: number, y: number, z: number, edge: number): { x: number; y: number; z: number } {
@@ -6457,6 +6458,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Расселение по уровню: слабых — на поляну, прокачанных — к сильным лагерям.
     const campPref = typeof rec?.campPref === "string" && ELITE_MOBS[rec.campPref] ? rec.campPref : null;
     const campRand = Math.random();
+    const botMode: BotMode = rec?.botMode === "careful" || rec?.botMode === "brave" ? rec.botMode : "auto";
     const home = botHome(p.level, campPref, campRand);
     const sp = botSpawnAt(botGate(home));
     p.head.x = sp.x;
@@ -6659,6 +6661,7 @@ export class ZoneRoom extends Room<ZoneState> {
       homeZ: home.z,
       campPref,
       campRand,
+      mode: botMode,
       fishing: false,
       fishBiteAt: 0,
     });
@@ -7321,13 +7324,8 @@ export class ZoneRoom extends Room<ZoneState> {
   private catTacticSpot(bot: Bot): { x: number; z: number; r: number } {
     const hallI = this.cat.anchorHall;
     const h = CAT_HALLS[hallI];
-    const p = bot.state;
-    // Осторожный: HP ниже 35% — к входу, пока не поднимется до 70%.
-    if (bot.catMode === "careful") {
-      if (p.hp < p.maxHp * 0.35) bot.catRetreat = true;
-      else if (p.hp > p.maxHp * 0.7) bot.catRetreat = false;
-    } else bot.catRetreat = false;
-    if (bot.catRetreat) {
+    // Осторожный (botCareful): HP ниже 35% — ко входу зала, пока не поднимется до 70%.
+    if (bot.retreat) {
       const e = catEntry(hallI);
       return { x: e.x, z: e.z, r: 3 };
     }
@@ -7408,7 +7406,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Цель по приказу (!цель): босс, свита, стрелки, слабые, сильные. null — как обычно. */
   private catFocusPick(bot: Bot, ok: (m: Mob) => boolean, spot?: { x: number; z: number }): Mob | null {
-    const focus = bot.catFocus ?? (bot.catMode === "brave" ? "boss" : "auto");
+    const focus = bot.catFocus ?? (bot.mode === "brave" ? "boss" : "auto");
     const p = bot.state;
     if (focus === "auto") return this.catAssistPick(bot, ok, spot);
     if (focus === "boss") {
@@ -7500,13 +7498,14 @@ export class ZoneRoom extends Room<ZoneState> {
     } else if (cmd === "mode") {
       const v = CAT_MODE_WORDS[w];
       if (!v) return this.reply(`@${nick} !режим осторожно | агрессивно | авто`);
-      bot.catMode = v;
+      bot.mode = v;
+      store.put(bot.rt.token ?? `nick:${norm}`, { botMode: v === "auto" ? undefined : v });
       said = v === "careful" ? "Буду осторожен." : v === "brave" ? "В атаку!" : "Как обычно.";
     }
     if (said) this.botSay(norm, said);
     this.reply(
       `@${nick} тактика: цель — ${CAT_FOCUS_RU[bot.catFocus ?? "auto"]}, позиция — ${CAT_POS_RU[bot.catPos ?? "auto"]}, ` +
-        `режим — ${CAT_MODE_RU[bot.catMode ?? "auto"]}${this.cat.inRun(bot.id) ? "" : " (сработает в катакомбах)"}`,
+        `режим — ${CAT_MODE_RU[bot.mode ?? "auto"]} (везде, сохраняется)`,
     );
   }
 
@@ -7887,6 +7886,8 @@ export class ZoneRoom extends Room<ZoneState> {
     bot.stunCd = Math.max(0, bot.stunCd - dt);
     bot.rainCd = Math.max(0, bot.rainCd - dt);
 
+    // Осторожный режим — везде: мало HP → отход (botLiveHome / зона ниже), пока не поднимется до 70%.
+    this.botCareful(bot, p);
     // Дом бота по уровню мог смениться (перерос лагерь, в т.ч. ещё ДО этого
     // деплоя — у уже прокачанных ботов дом иначе не пересчитать). Дёшево —
     // сверяем каждый тик, двигаем только при реальной смене.
@@ -7952,6 +7953,13 @@ export class ZoneRoom extends Room<ZoneState> {
       cx = spot.x;
       cz = spot.z;
       zoneR = spot.r;
+    }
+    // Отход осторожного вне катакомб: зона — у костра, внутри безопасного круга (мобов там нет).
+    const retreating = !!bot.retreat && !catAnchor;
+    if (retreating) {
+      cx = HUB_CENTER.x;
+      cz = HUB_CENTER.z;
+      zoneR = HUB.safeRadius - 2;
     }
     const inZone = (x: number, z: number): boolean =>
       Math.hypot(x - cx, z - cz) < zoneR;
@@ -8039,7 +8047,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
     // Катакомбы: кого бить — по приказу зрителя (!цель), отступая — никого.
     if (catAnchor) {
-      if (bot.catRetreat) {
+      if (bot.retreat) {
         mob = undefined;
         bot.target = null;
       } else {
@@ -8051,9 +8059,14 @@ export class ZoneRoom extends Room<ZoneState> {
       }
     }
 
+    // Отход осторожного: никого не бьёт, пока не поднимется — идёт к костру.
+    if (retreating) {
+      mob = undefined;
+      bot.target = null;
+    }
     // Кто вплотную (или только что ударил рядом), а цель дальше — сперва он: иначе бот бежит к
     // старой цели, упирается в тело моба (костяной призрак возник за спиной) и стоит под ударами.
-    if (!raidBoss && mob && !bot.catRetreat) {
+    if (!raidBoss && mob && !bot.retreat) {
       const dCur = Math.hypot(mob.x - p.head.x, mob.z - p.head.z);
       let near: Mob | undefined;
       let nd = Infinity;
@@ -8266,9 +8279,9 @@ export class ZoneRoom extends Room<ZoneState> {
         : inDunRegion(p.head.x, p.head.z)
           ? (x: number, z: number): boolean => inDunRegion(x, z) && dunFloorLocal(x - DUN_X, z - DUN_Z, 0.3) !== null
           : undefined;
-    // Катакомбы, режим «агрессивно»: зон умений мобов не обходит — стоит и бьёт (урон получает как обычно).
-    const braveCat = bot.catMode === "brave" && this.cat.inRun(bot.id);
-    const escape = braveCat || ((raidBoss || onRaidArena) && this.raid.tideCasting) || (bot.escapeOffUntil ?? 0) > this.elapsed
+    // Режим «агрессивно» (везде): зон умений мобов не обходит — стоит и бьёт (урон получает как обычно).
+    const brave = bot.mode === "brave";
+    const escape = brave || ((raidBoss || onRaidArena) && this.raid.tideCasting) || (bot.escapeOffUntil ?? 0) > this.elapsed
       ? null
       : this.dangerEscape(p.head.x, p.head.z, escOk);
     // Мягкая метка выпада (подземелье) — цель остаётся: бот выходит из круга и продолжает бить.
@@ -9175,7 +9188,19 @@ export class ZoneRoom extends Room<ZoneState> {
    * ближайшая стоянка того же вида, где кто-то жив (бот не стоит на пустой точке — Ледяной гигант один на зал,
    * возрождается через 30 с). На новой стоянке остаётся, пока и она не опустеет; живых нет нигде — ждёт у своей.
    */
+  /** Осторожный режим (везде): HP ниже 35% — отход, выше 70% — снова в бой. В катакомбах отход — ко входу зала (catTacticSpot). */
+  private botCareful(bot: Bot, p: PlayerState): void {
+    if (bot.mode !== "careful") {
+      bot.retreat = false;
+      return;
+    }
+    if (p.hp < p.maxHp * 0.35) bot.retreat = true;
+    else if (p.hp > p.maxHp * 0.7) bot.retreat = false;
+  }
+
   private botLiveHome(bot: Bot, p: PlayerState): { x: number; z: number } {
+    // Осторожный отход вне катакомб — дом у костра в лагере (там лечение у костра и нет мобов).
+    if (bot.retreat && !this.cat.inRun(bot.id)) return { x: HUB_CENTER.x, z: HUB_CENTER.z };
     const base = botHome(p.level, bot.campPref, bot.campRand);
     const i0 = CAMP_SPOTS.findIndex((c) => c.x === base.x && c.z === base.z);
     if (i0 < 0) {

@@ -36,6 +36,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   bestTowerTimeSec?: number;
   /** Лагерь, выбранный зрителем командой !camp (ключ ELITE_MOBS); нет — автовыбор. */
   campPref?: string;
+  /** Режим бота, выбранный командой !режим: осторожно / агрессивно; нет — обычно. */
+  botMode?: "careful" | "brave";
   /** Сколько раз уже сбрасывал атрибуты — от этого цена следующего (respecCostFor). */
   respecCount?: number;
   /** Когда герой впервые прошёл башню целиком (мс с эпохи) — порядок «каким по счёту». */
