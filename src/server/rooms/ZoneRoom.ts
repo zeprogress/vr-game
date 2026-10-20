@@ -501,7 +501,7 @@ interface Bot {
   homeZ: number;
   /** Лагерь по выбору зрителя (!camp) — ключ ELITE_MOBS; null — автовыбор. */
   campPref: string | null;
-  /** Закреплённый случайный выбор среди равных по уровню лагерей (0..1). */
+  /** Случайный выбор среди равных по уровню лагерей (0..1). Перебрасывается при каждом возрождении (respawn). */
   campRand: number;
   /** Свой лагерь опустел (все убиты) — бот ушёл на эту стоянку того же вида (индекс CAMP_SPOTS), пока там живы. */
   altSpot?: number;
@@ -634,8 +634,12 @@ function botGate(home: { x: number; z: number }): { x: number; z: number } {
 
 function botHome(level: number, pref: string | null = null, rand = 0): { x: number; z: number } {
   if (pref) {
-    const pc = CAMP_SPOTS.find((c) => c.type === pref);
-    if (pc) return { x: pc.x, z: pc.z };
+    // Стоянок одного вида может быть несколько (Ледяной гигант — по одной на зал): свою выбирает бот по rand.
+    const same = CAMP_SPOTS.filter((c) => c.type === pref);
+    if (same.length) {
+      const pc = same[Math.min(same.length - 1, Math.floor(rand * same.length))];
+      return { x: pc.x, z: pc.z };
+    }
   }
   if (level < 5 || CAMPS_BY_POWER.length === 0) {
     return { x: RESPAWN.spawnX, z: RESPAWN.spawnZ };
@@ -9119,17 +9123,13 @@ export class ZoneRoom extends Room<ZoneState> {
     if (alt !== undefined && CAMP_SPOTS[alt]?.type === type && !this.campEmpty(alt)) return CAMP_SPOTS[alt];
     bot.altSpot = undefined;
     if (!this.campEmpty(i0)) return base;
-    let best = -1;
-    let bd = Infinity;
+    // Случайная живая стоянка того же вида (не ближайшая): у мобов несколько стоянок — каждый раз другая.
+    const live: number[] = [];
     CAMP_SPOTS.forEach((c, i) => {
-      if (c.type !== type || this.campDeadSince[i] > 0) return;
-      const d = Math.hypot(c.x - p.head.x, c.z - p.head.z);
-      if (d < bd) {
-        bd = d;
-        best = i;
-      }
+      if (c.type === type && this.campDeadSince[i] === 0) live.push(i);
     });
-    if (best < 0) return base;
+    if (live.length === 0) return base;
+    const best = live[Math.floor(Math.random() * live.length)];
     bot.altSpot = best;
     return CAMP_SPOTS[best];
   }
@@ -11131,6 +11131,9 @@ export class ZoneRoom extends Room<ZoneState> {
     // по уровню, может смениться лагерь — уровень мог вырасти).
     const bot = id.startsWith("bot:") ? this.bots.get(id.slice(4)) : undefined;
     if (bot) {
+      // Каждое возрождение — новый случайный выбор среди стоянок (если их несколько), прежний запасной сбрасываем.
+      bot.campRand = Math.random();
+      bot.altSpot = undefined;
       const home = this.botLiveHome(bot, p);
       bot.homeX = home.x;
       bot.homeZ = home.z;
