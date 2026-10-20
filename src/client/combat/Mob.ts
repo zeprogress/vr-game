@@ -1406,7 +1406,7 @@ export class Mob implements Hittable {
       this.reflectShieldT += dt;
       const pulse = 1 + 0.05 * Math.sin(this.reflectShieldT * 10);
       this.reflectShield.scaling.setAll(pulse);
-      (this.reflectShield.material as StandardMaterial).alpha = 0.35 + 0.25 * Math.abs(Math.sin(this.reflectShieldT * 7));
+      (this.reflectShield.material as StandardMaterial).alpha = 0.45 + 0.25 * Math.abs(Math.sin(this.reflectShieldT * 7));
     } else if (this.reflectShield) {
       this.reflectShield.setEnabled(false);
     }
