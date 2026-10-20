@@ -3071,9 +3071,9 @@ export class ZoneRoom extends Room<ZoneState> {
       this.huntDmgBase = MOB.attackDamage * e.dmgMul * dmgMul;
       const t0 = Date.now();
       this.huntAddAt = t0 + eh.addGap * 1000;
-      this.huntNovaAt = t0 + eh.novaGap * 1000;
-      this.huntLobAt = t0 + eh.lobGap * 1000;
-      this.huntBreathAt = t0 + eh.breathGap * 1000;
+      this.huntNovaAt = t0 + eh.novaGap * eh.skillGapMul * 1000;
+      this.huntLobAt = t0 + eh.lobGap * eh.skillGapMul * 1000;
+      this.huntBreathAt = t0 + eh.breathGap * eh.skillGapMul * 1000;
       this.huntNovaFireAt = 0;
       this.huntLobFireAt = 0;
       this.huntBreathFireAt = 0;
@@ -3188,8 +3188,8 @@ export class ZoneRoom extends Room<ZoneState> {
     boss: Mob,
     eh: typeof EVENT.eliteHunt,
   ): void {
-    // Дракон охоты — по фазе (DPS героев); дракон катакомб — ярость ниже порога HP.
-    const gapK = boss.huntPhase > 0 ? eh.phaseGap[boss.huntPhase - 1] : boss.raging ? eh.enrageGapMul : 1;
+    // Дракон охоты — по фазе (DPS героев) и вдвое реже (skillGapMul); дракон катакомб — ярость ниже порога HP.
+    const gapK = boss.huntPhase > 0 ? eh.phaseGap[boss.huntPhase - 1] * eh.skillGapMul : boss.raging ? eh.enrageGapMul : 1;
     const hurtAround = (
       cx: number,
       cz: number,
