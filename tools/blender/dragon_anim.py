@@ -44,9 +44,20 @@ ROLES = {
 # без подпрыгиваний: таз и корень не покачиваются по вертикали, ноги в шаге поднимаются едва заметно
 rig = anim.Rig(arm, ROLES, {"anim": {
     "attack": "bite",
-    "walk": {"bob": 0.0, "crouch": 0.0, "lift": 0.01},
+    "walk": {"bob": 0.0, "crouch": 0.03, "lift": 0.01},
     "run": {"bob": 0.0, "crouch": 0.0, "lift": 0.02},
 }, "depth": 0.3})
+
+
+# направление сгиба передних ног задаём явно: локти — назад (по направлению таз → голова); задние не трогаем. Из геометрии покоя направление у передних ног почти случайное: колено лежит на одной линии
+# с бедром и стопой, и лапы гнулись «вывернутыми».
+_fwd = rig.head["Head"] - rig.head["Pelvis"]
+_fwd.z = 0.0
+_fwd.normalize()
+for _lg in rig.legs:
+    _ft = _lg["bones"][2]
+    if _ft.startswith("Front"):
+        _lg["pole"] = (-_fwd).normalized()
 
 
 def rx(deg):
@@ -91,6 +102,54 @@ def with_wings(fn, amp, cycles):
     return f
 
 
+# покой с весом: корпус садится на сгибаемые колени и локти (ноги стоят на стопах, а не вытянуты)
+WEIGHT_DROP = 0.12  # м, на выдохе ниже, на вдохе выше
+
+
+def clip_stand(rig_, t):
+    """Покой с весом: корпус оседает, колени и локти сгибаются (ноги — обратная кинематика к стопам на земле),
+    дыхание поднимает и опускает корпус, голова и хвост двигаются медленно."""
+    b = math.sin(2 * math.pi * t)
+    root = Vector((0.0, 0.0, -WEIGHT_DROP * (0.85 + 0.15 * b)))
+    pose = {}
+    pose["Pelvis"] = ry(1.2 * b)
+    anim._spine(rig_, pose, pitch=math.radians(1.5) * b, roll=-math.radians(1.0) * b)
+    pose["Neck1"] = rx(3.0 * b)
+    pose["Head"] = rz(5.0 * math.sin(2 * math.pi * t + 1.2)) @ rx(2.0 * math.sin(4 * math.pi * t))
+    anim._tail(rig_, pose, t, amp=math.radians(8), lag=0.6)
+    rig_.plant(pose, root)
+    return pose, root, None
+
+
+def alive(fn, amp=1.0):
+    """Живость поверх базового клипа: дыхание грудью, покачивание головы и шеи, хвост волной от основания
+    к кончику с запаздыванием по сегментам, лёгкое шевеление крыльев и вес с ноги на ногу. Все частоты —
+    целые числа циклов на отрезок t ∈ [0, 1), поэтому петля клипа замыкается без рывка."""
+    def f(rig_, t):
+        pose, root, sc = fn(rig_, t)
+        pose = dict(pose)
+        k = 2 * math.pi * t
+
+        def add(bone, q):
+            pose[bone] = pose.get(bone, Quaternion()) @ q
+
+        add("Chest", rx(amp * 2.5 * math.sin(k)))
+        add("Spine1", rx(amp * 1.2 * math.sin(k - 0.4)))
+        add("Neck1", rx(amp * -1.5 * math.sin(k)))
+        add("Neck2", rx(amp * -1.0 * math.sin(k - 0.2)))
+        add("Head", ry(amp * 7.0 * math.sin(k)) @ rx(amp * 2.0 * math.sin(k + 0.5)))
+        add("Head", ry(amp * 2.5 * math.sin(2 * k + 1.2)))
+        add("Jaw", rx(amp * 2.2 * max(0.0, math.sin(k))))
+        add("Root", rz(amp * 0.8 * math.sin(k)))
+        for i in range(1, 9):
+            d = 0.45 * i  # волна бежит от основания к кончику хвоста
+            add(f"Tail{i}", rz(amp * 3.0 * math.sin(k - d)) @ rx(amp * 1.5 * math.sin(2 * k - 0.3 * i)))
+        add("WingArm2.L", ry(amp * 2.5 * math.sin(2 * k + 0.8)))
+        add("WingArm2.R", ry(-amp * 2.5 * math.sin(2 * k + 0.8)))
+        return pose, root, sc
+    return f
+
+
 # ---- свои клипы (t — доля длительности, s — секунды) ----
 
 def clip_tail_turn(t, dur=2.0):
@@ -106,16 +165,15 @@ def clip_tail_turn(t, dur=2.0):
 
 
 def clip_wings_strike(t, dur=1.8):
-    """Левое крыло: замах поднятым над спиной, затем горизонтальный взмах вперёд и наружу костяшкой верхней
-    кости (WingArm1); корпус разворачивается к противнику сильнее, чем крыло. Крыло всё время снаружи тела."""
+    """Левое крыло: замах над спиной, затем взмах наружу и вперёд. Корпус поворачивается к противнику слабее
+    крыла, крыло всё время снаружи тела (раньше корпус и крыло на 0.9 с проваливались друг в друга)."""
     s = t * dur
     pose = {}
-    # корень: сильный разворот к противнику (положительный поворот — морда в сторону левого крыла)
-    pose["Root"] = rz(ease([(0, 0), (0.5, 15), (0.9, 55), (1.4, 40), (1.8, 0)], s))
-    lift = ease([(0, 0), (0.5, 35), (0.85, 10), (1.2, 6), (1.8, 0)], s)
-    sweep = ease([(0, 0), (0.5, 0), (0.85, -105), (1.2, -100), (1.8, 0)], s)
+    pose["Root"] = rz(ease([(0, 0), (0.5, 8), (0.9, 22), (1.4, 14), (1.8, 0)], s))
+    lift = ease([(0, 0), (0.5, 40), (0.85, 14), (1.2, 8), (1.8, 0)], s)
+    sweep = ease([(0, 0), (0.5, 0), (0.85, -80), (1.2, -76), (1.8, 0)], s)
     pose["WingArm1.L"] = rx(lift) @ rz(sweep)
-    pose["WingArm2.L"] = rx(lift * 0.6) @ rz(ease([(0, 0), (0.5, 0), (0.85, -60), (1.2, -55), (1.8, 0)], s - 0.03))
+    pose["WingArm2.L"] = rx(lift * 0.6) @ rz(ease([(0, 0), (0.5, 0), (0.85, -45), (1.2, -42), (1.8, 0)], s - 0.03))
     # правое крыло остаётся сложенным вниз
     pose["WingArm1.R"] = ry(-15)
     pose["WingArm2.R"] = ry(-10)
@@ -123,27 +181,30 @@ def clip_wings_strike(t, dur=1.8):
 
 
 def clip_claw(t, dur=1.4):
-    """Удар лапой: передняя левая лапа резко поднимается вверх, затем бьёт когтями сверху вниз.
-    Туловище не поворачивается и не подпрыгивает: лапы стоят на земле, кроме бьющей."""
+    """Удар когтями: передняя левая лапа заносится высоко вверх-назад и бьёт сверху вниз вперёд; голова следит
+    за ударом. Остальные лапы стоят на земле, туловище не подпрыгивает."""
     s = t * dur
     pose = {}
-    # резкий подъём: плечо уводит лапу назад-вверх, затем удар сверху вниз до земли
-    pose["FrontLeg1.L"] = rx(ease([(0, 0), (0.3, 25), (0.55, -35), (0.8, -20), (1.2, 0), (1.4, 0)], s))
-    pose["FrontLeg2.L"] = rx(ease([(0, 0), (0.3, -15), (0.55, 20), (0.8, 8), (1.2, 0), (1.4, 0)], s))
-    pose["FrontFoot.L"] = rx(ease([(0, 0), (0.3, 10), (0.55, 35), (0.8, 10), (1.2, 0), (1.4, 0)], s))
-    pose["Root"] = rz(ease([(0, 0), (0.35, -6), (0.7, -18), (1.2, -8), (1.4, 0)], s))
-    pose["Chest"] = rz(ease([(0, 0), (0.35, -4), (0.7, 10), (1.4, 0)], s))
+    pose["FrontLeg1.L"] = rx(ease([(0, 0), (0.3, -95), (0.55, 75), (0.8, 55), (1.2, 0), (1.4, 0)], s))
+    pose["FrontLeg2.L"] = rx(ease([(0, 0), (0.3, 35), (0.55, -45), (0.8, -30), (1.2, 0), (1.4, 0)], s))
+    pose["FrontFoot.L"] = rx(ease([(0, 0), (0.3, -25), (0.55, 35), (0.8, 25), (1.2, 0), (1.4, 0)], s))
+    pose["Chest"] = rz(ease([(0, 0), (0.3, -6), (0.6, 18), (1.4, 0)], s))
+    pose["Neck1"] = rx(ease([(0, 0), (0.3, -12), (0.6, 14), (1.2, 0), (1.4, 0)], s))
+    pose["Head"] = rx(ease([(0, 0), (0.3, -10), (0.6, 18), (1.2, 0), (1.4, 0)], s))
     return pose, None, None
 
 
-def clip_breath(t, dur=2.0):
+def clip_breath(t, dur=2.4):
+    """Огненное дыхание: голова и шея откидываются назад-вверх (набор воздуха, грудь раздувается), затем мощный
+    выброс вперёд и вниз с открытой пастью; в конце голова возвращается в покой."""
     s = t * dur
     pose = {}
-    # выброс: нос поднят, шея немного выдвинута вперёд (голова не опускается)
-    pose["Neck1"] = rx(ease([(0, 0), (0.6, -28), (1.0, 6), (1.4, 5), (1.8, 0), (2.0, 0)], s))
-    pose["Neck2"] = rx(ease([(0, 0), (0.6, -22), (1.0, 12), (1.4, 10), (1.8, 0), (2.0, 0)], s))
-    pose["Head"] = rx(ease([(0, 0), (0.6, -16), (1.0, -60), (1.4, -56), (1.8, 0), (2.0, 0)], s))
-    pose["Jaw"] = rx(ease([(0, 0), (0.9, 0), (1.1, 34), (1.6, 34), (1.9, 0), (2.0, 0)], s))
+    rise = ease([(0, 0), (0.5, -62), (0.9, -70), (1.2, -56), (1.45, 34), (1.7, 30), (2.0, 4), (2.4, 0)], s)
+    pose["Neck1"] = rx(rise * 0.55)
+    pose["Neck2"] = rx(rise * 0.8)
+    pose["Head"] = rx(rise)
+    pose["Jaw"] = rx(ease([(0, 0), (0.6, 6), (0.9, 18), (1.2, 22), (1.45, 55), (1.8, 50), (2.1, 0), (2.4, 0)], s))
+    pose["Chest"] = rx(ease([(0, 0), (0.5, -6), (0.9, -8), (1.2, -4), (1.45, 8), (1.7, 6), (2.0, 0), (2.4, 0)], s))
     return pose, None, None
 
 
@@ -209,14 +270,14 @@ def clip_death_collapse(t, dur=2.6):
 
 # ---- клипы: (имя, кадров, петля, функция(rig, t)); базовые — из генератора с обёртками ----
 CLIPS = [
-    ("Idle", 90, True, with_wings(anim.clip_idle, 6.0, 1)),
-    ("Walk", 48, True, with_wings(anim.clip_walk, 4.0, 1)),
-    ("Run", 30, True, with_wings(anim.clip_run, 12.0, 2)),
+    ("Idle", 90, True, alive(with_wings(clip_stand, 6.0, 1), 1.0)),
+    ("Walk", 48, True, alive(with_wings(anim.clip_walk, 4.0, 1), 0.6)),
+    ("Run", 30, True, alive(with_wings(anim.clip_run, 12.0, 2), 0.5)),
     ("AttackBite", 36, False, None),  # генератор: quad, style "bite"
     ("AttackClaw", 42, False, lambda rig_, t: clip_claw(t)),
     ("AttackTail", 60, False, lambda rig_, t: clip_tail_turn(t)),
     ("AttackWings", 54, False, lambda rig_, t: clip_wings_strike(t)),
-    ("AttackBreath", 60, False, lambda rig_, t: clip_breath(t)),
+    ("AttackBreath", 72, False, lambda rig_, t: clip_breath(t)),
     ("MagicCharge", 60, False, lambda rig_, t: clip_magic_charge(t)),
     ("HitReact", 18, False, lambda rig_, t: clip_hit_react(t)),
     ("Death", 78, False, lambda rig_, t: clip_death_collapse(t)),
@@ -292,7 +353,7 @@ def bake(name, frames, loop, fn):
         t = (f % frames) / frames if loop else f / max(1, n)
         pose, root, _sc = fn(rig, t)
         root = root or Vector((0, 0, 0))
-        if name != "Death":  # лапы всегда на земле: корень не поднимается и не опускается по вертикали
+        if name not in ("Death", "Idle", "Walk", "Run"):  # лапы на земле; у покоя и шага корень — присед (ноги считаются под него)
             root = Vector((root.x, root.y, 0.0))
         for b in rig.names:
             R = pose.get(b, Quaternion())
@@ -321,8 +382,15 @@ for pb in pbs:
     pb.rotation_quaternion = (1, 0, 0, 0)
     pb.location = (0, 0, 0)
 
+# текстуры — не больше 2048 (как в игровой модели): риг несёт 4096, а на шлеме и телефоне это лишний вес
+TEX_MAX = 2048
+for img in bpy.data.images:
+    w, h = img.size
+    if w and h and max(w, h) > TEX_MAX:
+        k = TEX_MAX / max(w, h)
+        img.scale(int(w * k), int(h * k))
+
 os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
-bpy.ops.object.select_all(action="SELECT")
 bpy.ops.export_scene.gltf(
     filepath=out, export_format="GLB", use_selection=False, export_yup=True, export_apply=False,
     export_animations=True, export_skins=True, export_texcoords=True, export_normals=True,
