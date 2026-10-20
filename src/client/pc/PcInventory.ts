@@ -1,5 +1,5 @@
 import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, skillCooldownFor, skillDesc, skillName, stepCost, type ClassId } from "#shared/classes2";
-import { SHOP } from "#shared/shop";
+import { SHOP, type ShopId } from "#shared/shop";
 import { armorIconKey, glyph, skillIcon, weaponIcon } from "#shared/icons";
 import { ARMOR_PART_NAME, ARMOR_PARTS, type ArmorPart } from "#shared/armor";
 import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
@@ -602,19 +602,46 @@ export class PcInventory {
   private renderShop(d: PcInvData): void {
     const tokens = d.tokens ?? 0;
     const fish = d.fish ?? 0;
+    const icon: Record<ShopId, IconKey> = {
+      potions: "i.potion",
+      scrap: "i.scrap",
+      scroll_wind: "i.scroll_wind",
+      scroll_xp: "i.scroll_xp",
+      fish_trade: "i.fish",
+      chest: "w.sword.gold",
+    };
     const box = div("pcinv-shop");
-    box.append(div("pcinv-fg-title", "Трактирщик"));
-    box.append(div("pcinv-small", `Жетоны ◈: ${tokens} · рыба: ${fish}. Товары — как у трактирщика в лагере.`));
+    const head = div("pcinv-shop-head");
+    head.append(
+      div("pcinv-shop-title", "Трактирщик"),
+      div("pcinv-shop-sub", "Лавка за жетоны ◈ — товары те же, что в лагере. К стойке подходить не нужно."),
+    );
+    const purse = div("pcinv-shop-purse");
+    purse.append(this.shopChip(iconHtml("i.token"), tokens, "жетонов"), this.shopChip(iconHtml("i.fish"), fish, "рыб"));
+    head.append(purse);
+    box.append(head);
+    const list = div("pcinv-shop-list");
     for (const it of SHOP) {
       const row = div("pcinv-shop-row");
+      const ic = div("pcinv-shop-ic");
+      ic.innerHTML = iconHtml(icon[it.id]);
       const info = div("pcinv-shop-info");
-      info.append(div("pcinv-shop-name", it.name), div("pcinv-small", it.desc));
+      info.append(div("pcinv-shop-name", it.name), div("pcinv-shop-desc", it.desc));
+      const enough = it.fishCost ? fish >= it.fishCost : tokens >= it.price;
       const buy = button(it.fishCost ? `Обменять · ${it.fishCost} рыб` : `Купить · ${it.price} ◈`, () => this.hooks.act({ act: "shop", id: it.id, idx: 0 }));
-      buy.disabled = it.fishCost ? fish < it.fishCost : tokens < it.price;
-      row.append(info, buy);
-      box.append(row);
+      buy.disabled = !enough;
+      row.append(ic, info, buy);
+      list.append(row);
     }
+    box.append(list);
     this.body.append(box);
+  }
+
+  /** Плашка с числом (жетоны, рыба) в шапке вкладки «Трактирщик». */
+  private shopChip(icon: string, n: number, word: string): HTMLElement {
+    const c = div("pcinv-shop-chip");
+    c.innerHTML = `${icon}<b>${n.toLocaleString("ru-RU")}</b><small>${word}</small>`;
+    return c;
   }
 
   // ---------------- обмен между героями ----------------
@@ -2978,10 +3005,24 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-cell:hover .pcinv-fav { opacity:1; }
 .pcinv-cell.big .pcinv-fav { pointer-events:none; }
 .pcinv-cell.tokens .gico-e { font-size:22px; color:#e8c26a; }
-.pcinv-shop { padding:10px 4px; display:grid; gap:8px; }
-.pcinv-shop-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 10px; border:1px solid #3a3122; border-radius:8px; background:#1a1610; }
-.pcinv-shop-info { display:grid; gap:2px; min-width:0; }
-.pcinv-shop-name { font-weight:600; color:#e8c26a; }
+.pcinv-shop { display:grid; gap:14px; padding:16px; background:#0a1424; border:1px solid #2a3f5c; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.5); }
+.pcinv-shop-title { font:700 24px/1.1 "Iowan Old Style",Georgia,serif; color:#f3ead7; }
+.pcinv-shop-sub { margin-top:4px; font-size:14.5px; line-height:1.45; color:#c6d2e0; }
+.pcinv-shop-purse { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+.pcinv-shop-chip { display:flex; align-items:center; gap:8px; padding:7px 12px; background:#0f2038; border:1px solid #33507a; border-radius:8px; font:700 17px/1 system-ui; color:#f7fbff; font-variant-numeric:tabular-nums; }
+.pcinv-shop-chip .gico { width:20px; height:20px; }
+.pcinv-shop-chip small { font:600 13.5px/1 system-ui; color:#b8c7da; }
+.pcinv-shop-list { display:grid; gap:8px; }
+.pcinv-shop-row { display:grid; grid-template-columns:48px minmax(0,1fr) auto; align-items:center; gap:12px; padding:10px 12px; background:linear-gradient(180deg,#14243b,#0e1a2c); border:1px solid #2b4062; border-radius:9px; }
+.pcinv-shop-row:hover { border-color:#3d7fc0; }
+.pcinv-shop-ic { width:48px; height:48px; display:grid; place-items:center; background:#060d18; border:1px solid #2b4062; border-radius:8px; }
+.pcinv-shop-ic .gico { width:30px; height:30px; }
+.pcinv-shop-info { display:grid; gap:3px; min-width:0; }
+.pcinv-shop-name { font:700 16px/1.25 system-ui; color:#f7fbff; }
+.pcinv-shop-desc { font-size:14px; line-height:1.4; color:#c6d2e0; }
+.pcinv-shop-row .pcinv-ebtn { min-width:150px; padding:9px 12px; font:700 14px/1 system-ui; }
+.pcinv-shop-row .pcinv-ebtn:disabled { opacity:.7; filter:none; color:#8ea0b8; }
+@media (max-width:560px) { .pcinv-shop-row { grid-template-columns:44px minmax(0,1fr); } .pcinv-shop-row .pcinv-ebtn { grid-column:1 / -1; width:100%; } .pcinv-shop-ic { width:44px; height:44px; } }
 
 /* ---------- «Снаряжение»: раскладка ---------- */
 .pcinv-gear { display:grid; gap:12px; align-items:start; grid-template-columns:auto minmax(0,1fr); grid-template-areas:"hero bag"; }
