@@ -178,6 +178,8 @@ export function eliteXpAt(level: number): number {
 export interface EliteMobDef {
   model: string;
   name: string;
+  /** Лом за одно убийство, если не обычная единица (shared/scrapDrop.ts, SCRAP_DROP.amount). */
+  scrap?: number;
   /** Коротко о механике для справки игрокам (страница !inv собирает «Зоны мобов» отсюда). */
   blurb?: string;
   /** Уровень моба (табличка/сила). Он же — потолок для расселения ботов в
@@ -735,6 +737,8 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     iceGiant: true, walksOnly: true, gait: true, noSquash: true, blendAnims: true,
     strikeDelay: 0.6, attackSec: 1.3, walkClipSpeed: 2.4, runClipSpeed: 5.8,
     killXpMul: 125, respawnSec: 30, legendaryChance: 0.12, ringMul: 6,
+    /** Лом за убийство (2026-10-20): вместо обычной единицы. */
+    scrap: 30,
   },
 };
 

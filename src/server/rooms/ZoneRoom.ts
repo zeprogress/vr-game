@@ -5248,12 +5248,12 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Кольцо/камень с добитого моба — сразу в запись героя (не на землю: боты и игроки одинаково). */
   /** Лом с моба: шанс 10% на 1 ур. → 100% на 70 ур. (shared/scrapDrop.ts). Падает в сумку убийцы. */
-  private scrapDrop(owner: string, level: number): void {
+  private scrapDrop(owner: string, level: number, amount: number): void {
     if (Math.random() >= scrapDropChance(level)) return;
     const p = this.state.players.get(owner);
     if (!p) return;
     const bag = readBag(p);
-    addToBag(bag, "scrap", SCRAP_DROP.amount);
+    addToBag(bag, "scrap", amount);
     writeBag(p, bag);
   }
 
@@ -6828,6 +6828,15 @@ export class ZoneRoom extends Room<ZoneState> {
         this.huntBossId = "";
       },
       chest: (id, kind) => this.catChest(id, kind),
+      scrap: (ids, n) => {
+        for (const id of ids) {
+          const sp = this.state.players.get(id);
+          if (!sp) continue;
+          const bag = readBag(sp);
+          addToBag(bag, "scrap", n);
+          writeBag(sp, bag);
+        }
+      },
       chestFx: (x, z, final, lootMul) => {
         this.sim.dropPotions(x, z, Math.round((final ? 8 : 4) * lootMul), 5);
         this.broadcast(MSG.act, { k: "catChest", id: "", x, y: terrainHeight(x, z), z, r: final ? 1 : 0 } satisfies ActRelay);
@@ -7231,6 +7240,11 @@ export class ZoneRoom extends Room<ZoneState> {
         loot.push({ id: scroll, count: 1 });
       }
       store.put(token, { tokens: (store.get(token)?.tokens ?? 0) + CATACOMBS.finalTokens });
+      // Лом супербосса — каждому в отряде (CATACOMBS.finalScrap).
+      const bagS = readBag(p);
+      addToBag(bagS, "scrap", CATACOMBS.finalScrap);
+      writeBag(p, bagS);
+      loot.push({ id: "scrap", count: CATACOMBS.finalScrap });
       // Редкая награда супербосса — рубиновое оружие СЛУЧАЙНОГО класса (сверх уникального).
       if (Math.random() < RUBY.dropChance) {
         const r = rollWeaponInstance(ATTACK_CLASSES[Math.floor(Math.random() * ATTACK_CLASSES.length)], "ruby");
@@ -10563,7 +10577,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.killRates.add(k.owner, nowSec);
       if (k.jm > 0) {
         this.jewelDrop(k.owner, k.jm, k.jr, k.jl);
-        this.scrapDrop(k.owner, k.jl);
+        this.scrapDrop(k.owner, k.jl, (k.campType && ELITE_MOBS[k.campType]?.scrap) || SCRAP_DROP.amount);
       }
       this.craftDrop(k.owner, k.campType, k.name, k.champ);
       this.chatQuestKill(k.owner, k.champ);

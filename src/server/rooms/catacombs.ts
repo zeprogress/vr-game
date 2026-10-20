@@ -86,6 +86,8 @@ export interface CatHost {
   dismissMobs(ids: string[]): void;
   /** Награды: сундук стадии / суперприз — в склад героя. Возвращает выпавшее (для баннера). */
   chest(id: string, kind: "gold" | "final"): LootItem[];
+  /** Лом каждому из ids — в сумку (награда за чемпиона). */
+  scrap(ids: string[], n: number): void;
   /** Сундук на полу (эффект) и зелья россыпью (lootMul — проклятие «Щедрая гробница»). */
   chestFx(x: number, z: number, final: boolean, lootMul: number): void;
   /** Опасность зала: телеграф-круги в точках, через CAT_HAZARD.delay — удар (и боты от них уворачиваются). */
@@ -160,6 +162,8 @@ export class CatacombDirector {
   private cooldownUntil = 0;
   private readonly mobs = new Set<string>();
   private bossId = "";
+  /** Чемпион текущей волны (мини-босс) — его смерть даёт лом всему отряду; "" — нет живого. */
+  private champId = "";
   private finalOn = false;
   /** Средний уровень пати — по нему комната подгоняет силу мобов. */
   private partyLevel = 1;
@@ -488,7 +492,11 @@ export class CatacombDirector {
       this.finish(false, "Время вышло — Бездна сомкнулась");
       return;
     }
-    for (const id of [...this.mobs]) if (!this.host.alive(id)) this.mobs.delete(id);
+    for (const id of [...this.mobs]) {
+      if (this.host.alive(id)) continue;
+      this.mobs.delete(id);
+      if (id === this.champId) this.championDown();
+    }
     // Смерти и «пали все».
     const partyHeroes = heroes.filter((h) => this.party.has(h.id));
     for (const h of partyHeroes) {
@@ -822,6 +830,7 @@ export class CatacombDirector {
       boss: true,
     });
     this.mobs.add(id);
+    this.champId = id;
     this.host.announce({ kind: "boss", title: `Чемпион: ${c.name}`, sub: "мини-босс волны", secs: 3 });
   }
 
@@ -1014,6 +1023,16 @@ export class CatacombDirector {
     return (n / CATACOMBS.sizeRef) ** CATACOMBS.sizeDmgPow;
   }
 
+  /** Чемпион (мини-босс волны) пал — каждому в отряде лом (CATACOMBS.champScrap). */
+  private championDown(): void {
+    this.champId = "";
+    const n = CATACOMBS.champScrap;
+    const ids = [...this.party];
+    this.host.scrap(ids, n);
+    for (const id of ids) this.noteLoot(id, { id: "scrap", count: n });
+    this.host.announce({ kind: "chest", title: "Чемпион повержен", sub: `каждому в отряде — ${n} лома`, secs: 4 });
+  }
+
   private stageClear(): void {
     const st = CATACOMBS.stages[this.stage];
     const h = CAT_HALLS[this.node(this.stage)];
@@ -1045,10 +1064,10 @@ export class CatacombDirector {
         this.phaseEnd = this.host.now() + CATACOMBS.outroSec * 1000;
         this.host.announce({
           kind: "win", title: `${this.plan[this.stage]?.boss?.name ?? "Владыка Бездны"} повержен!`,
-          sub: `каждому — уникальное оружие, свиток, ${CATACOMBS.finalTokens} ◈ и опыт · ×2 опыт и урон ${CATACOMBS.buffMinutes} мин`,
+          sub: `каждому — уникальное оружие, свиток, ${CATACOMBS.finalTokens} ◈, ${CATACOMBS.finalScrap} лома и опыт · ×2 опыт и урон ${CATACOMBS.buffMinutes} мин`,
           loot, secs: 12,
         });
-        this.host.chat(`☠ Катакомбы пройдены! ${this.plan[this.stage]?.boss?.name ?? "Владыка Бездны"} повержен. Отряду — уникальное оружие, свитки и жетоны. Слава героям!`);
+        this.host.chat(`☠ Катакомбы пройдены! ${this.plan[this.stage]?.boss?.name ?? "Владыка Бездны"} повержен. Отряду — уникальное оружие, свитки, жетоны и лом. Слава героям!`);
         // Итоговая таблица: урон и добыча каждого (клиенты покажут после карточки победы).
         this.host.report(
           {
