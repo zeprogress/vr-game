@@ -7,7 +7,10 @@ zep_gen/anim.py (роли четвероногого: ноги с IK к земл
 Позы: поворот в пространстве арматуры (Quaternion), время — кадры по 30 fps. Корень Root — движение и
 поворот всего тела; у клипов с поворотом тела разворот задаётся на Root.
 
-Запуск: Blender -b --factory-startup -P tools/blender/dragon_anim.py -- <rig.glb> <out.glb>
+Запуск: Blender -b --factory-startup -P tools/blender/dragon_anim.py -- <rig.glb|.blend> <out.glb>
+Риг: суставы ставит пользователь в art/build/DragonBest_rigZEP.blend → переносятся в art/models/DragonBest.json →
+fit_rig.py (тепловые веса, Root без деформации) → art/build/DragonBest_rig.blend → этот скрипт →
+public/models/gen/DragonBest.glb.
 """
 import math
 import os

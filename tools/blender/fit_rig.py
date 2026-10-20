@@ -138,6 +138,10 @@ for c in list(ob.users_collection):
     c.objects.unlink(ob)
 coll.objects.link(ob)
 arm = build.make_armature(name, skel, joints, coll)
+# кости без деформации (например, корень рига): иначе тепловая карта отдаёт им брюхо и спину ("noDeform")
+for bn in sp.get("noDeform", []):
+    if bn in arm.data.bones:
+        arm.data.bones[bn].use_deform = False
 
 # ---- веса: тепловая карта; если не посчиталась — по объёму (envelope) ----
 bpy.ops.object.select_all(action="DESELECT")
