@@ -569,7 +569,7 @@ export const BLAST_ARROW = { splash: 1.2, radius: 5, range: 22 } as const; // р
  */
 // fall — сколько падают стрелы волны с неба (событие волны уходит на fall с раньше удара; first — после залпа вверх).
 // Задето за все волны ≥ bonusTargets врагов — лечение healFrac макс. HP (2026-10-20: лечение перенесено с «Роя»).
-export const ARROW_STORM = { radius: 12, waves: 3, first: 0.7, gap: 0.5, fall: 0.3, slow: 0.3, slowSec: 2, bonusTargets: 3, healFrac: 0.05 } as const;
+export const ARROW_STORM = { radius: 12, waves: 3, first: 0.7, gap: 0.5, fall: 0.3, slow: 0.3, slowSec: 2, bonusTargets: 3, healFrac: 0.15 } as const;
 /**
  * 🧪 «Стрела-призрак»: duration с (× МДР — SkillDef.attr) обычные мобы не видят стрелка и не бьют его
  * (боссы видят); его урон ×dmgMul; каждое попадание стрелой (у бота — выстрел) лечит healFrac макс. HP.
