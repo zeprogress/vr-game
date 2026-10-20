@@ -4734,9 +4734,58 @@ export class ZoneRoom extends Room<ZoneState> {
     this.sendQuests(client);
   }
 
+  /**
+   * Трактирщик на странице !inv — вкладка «Трактирщик» (та же лавка SHOP, что в лагере). К стойке подходить
+   * не нужно. Живой герой — сумка, жетоны и оружие из мира; иначе — из записи (как крафт). Обмен рубиновых — только в игре.
+   */
+  private shopAct(norm: string, id: string): InvActResult {
+    const item = SHOP.find((i) => i.id === id);
+    if (!item) return { ok: false, text: "Такого товара в лавке нет." };
+    const t = this.findWeaponsTarget(norm);
+    const token = t?.rt.token ?? `nick:${norm}`;
+    const rec = store.get(token);
+    if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
+    const bag = t ? readBag(t.p) : restoreBag(rec.bag);
+    const tokens = rec.tokens ?? 0;
+    const patch: Partial<PlayerRecord> = {};
+    let note: string;
+    if (item.fishCost) {
+      // Обмен рыбы на жетоны: рыба из сумки → tokensGet ◈.
+      const gain = item.tokensGet ?? 1;
+      if (!takeFromBag(bag, "fish", item.fishCost)) return { ok: false, text: `Нужно ${item.fishCost} рыб, у тебя ${bagCount(bag, "fish")}` };
+      patch.tokens = tokens + gain;
+      note = `Обмен: −${item.fishCost} рыб · +${gain} ◈ (теперь ${tokens + gain} ◈)`;
+    } else {
+      if (tokens < item.price) return { ok: false, text: `Не хватает жетонов: нужно ${item.price} ◈` };
+      if (item.item) {
+        if (addToBag(bag, item.item, item.count ?? 1) > 0) return { ok: false, text: "Сумка полна" };
+        note = `Куплено: ${item.name}`;
+      } else {
+        // Сундук — оружие класса, что сейчас в правой руке (живого — из мира, иначе — из записи).
+        const held = t ? t.p.rightCls : (rec.held?.right?.cls ?? "");
+        const w = this.rollChestWeapon(t?.p ?? null, isWeaponClass(held) && held !== "shield" ? held : undefined);
+        if (t) {
+          t.rt.weapons.push(w);
+          this.announcePickup(t.p.nick, w.cls, w.tier, w);
+        } else patch.weapons = [...(rec.weapons ?? []), w];
+        note = `Из сундука: ${instanceName(w)} ${instanceStars(w)}`;
+      }
+      patch.tokens = tokens - item.price;
+      note += ` · −${item.price} ◈ (осталось ${tokens - item.price} ◈)`;
+    }
+    if (t) writeBag(t.p, bag);
+    else patch.bag = bag;
+    store.put(token, patch);
+    if (t) {
+      this.persistNick(norm);
+      if (!t.id.startsWith("bot:")) this.syncWarehouse(t.id, t.rt);
+    }
+    return { ok: true, text: note };
+  }
+
   /** Сундук: уникальное оружие класса героя (по оружию в правой руке), 3 ролла, оценка ≥ CHEST_MIN_QUALITY. */
-  private rollChestWeapon(p: PlayerState, forCls?: WeaponClass): WeaponInstance {
-    const cls: WeaponClass = forCls ?? (isWeaponClass(p.rightCls) && p.rightCls !== "shield" ? p.rightCls : "sword");
+  private rollChestWeapon(p: PlayerState | null, forCls?: WeaponClass): WeaponInstance {
+    const cls: WeaponClass = forCls ?? (p && isWeaponClass(p.rightCls) && p.rightCls !== "shield" ? p.rightCls : "sword");
     let w = rollWeaponInstance(cls, "legendary");
     for (let i = 0; i < 200 && w.affixes.length < 3; i++) w = rollWeaponInstance(cls, "legendary");
     for (let i = 0; i < 400 && weaponQuality(w) < CHEST_MIN_QUALITY; i++) {
@@ -5859,6 +5908,7 @@ export class ZoneRoom extends Room<ZoneState> {
   private invAct(norm: string, act: InvActKind, id: string, idx: number, fuel?: string): InvActResult {
     if ((JEWEL_ACTS as readonly string[]).includes(act)) return this.jewelAct(norm, act as JewelAct, id, idx, fuel);
     if (act === "craft") return this.craftAct(norm, id);
+    if (act === "shop") return this.shopAct(norm, id);
     if (act === "smelt") return this.smeltAct(norm, idx);
     if (act === "gift") return this.giftAct(norm, id, idx, fuel ?? "");
     if ((TRADE_ACTS as readonly string[]).includes(act)) return this.tradeAct(norm, act as TradeAct, id, idx, fuel ?? "");

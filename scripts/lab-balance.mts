@@ -1700,6 +1700,48 @@ if (ONLY.has("nav")) {
   results.nav = bots.map((b) => ({ start: b.st, at: b.at }));
 }
 
+// 🧪 Трактирщик на странице !inv: жетоны → товар без похода к стойке; рыба → жетоны; сундук — на склад героя.
+if (ONLY.has("shop")) {
+  say(`\n── 🧪 Трактирщик на странице !inv (настоящий серверный код) ──`);
+  const check = (name: string, cond: boolean, detail: string): void => {
+    say(`  ${cond ? "✅" : "❌"} ${pad(name, 34)} ${detail}`);
+    if (!cond) anomalies.push(`🧪 ${name}: ${detail}`);
+  };
+  const r = makeRoom((m: any) => m.kind === "slime" && !m.campType);
+  const x = addBot(r.room, "shopper", { lvl: 20, load: LOADOUTS.find((l) => l.id === "лук")! });
+  r.room.tickBot = () => {};
+  for (let i = 0; i < 3; i++) r.step();
+  const p = x.bot.state;
+  p.head.x += 500; // далеко от трактира: на странице до стойки не ходят
+  const token = `nick:${x.norm}`;
+  const bagN = (id: string): number => {
+    let n = 0;
+    for (let i = 0; i < p.bag.length; i++) if (p.bag[i].item === id) n += p.bag[i].count;
+    return n;
+  };
+  const tk = (): number => store.get(token)?.tokens ?? 0;
+  store.put(token, { tokens: 3 });
+  const b0 = bagN("potion");
+  const r1 = r.room.invAct(x.norm, "shop", "potions", 0);
+  check("Лавка: зелья за 1 жетон", r1.ok && tk() === 2 && bagN("potion") > b0, `${r1.text} · жетонов ${tk()}, зелий +${bagN("potion") - b0}`);
+  store.put(token, { tokens: 0 });
+  const r2 = r.room.invAct(x.norm, "shop", "scroll_xp", 0);
+  check("Лавка: без жетонов — отказ", !r2.ok && tk() === 0, r2.text);
+  // Рыба → жетоны: 25 рыб → 5 ◈ (рыбу кладём в свободную ячейку сумки бота).
+  const free = Array.from({ length: p.bag.length }, (_, i) => i).find((i) => !p.bag[i].item);
+  if (free !== undefined) {
+    p.bag[free].item = "fish";
+    p.bag[free].count = 25;
+  }
+  const r3 = r.room.invAct(x.norm, "shop", "fish_trade", 0);
+  check("Лавка: 25 рыб → 5 ◈", r3.ok && tk() === 5 && bagN("fish") === 0, `${r3.text}; жетонов ${tk()}, рыб ${bagN("fish")}`);
+  // Сундук: оружие класса из правой руки — на склад героя, 10 ◈.
+  store.put(token, { tokens: 12 });
+  const w0 = x.bot.rt.weapons.length;
+  const r4 = r.room.invAct(x.norm, "shop", "chest", 0);
+  check("Лавка: сундук — оружие на склад", r4.ok && x.bot.rt.weapons.length === w0 + 1 && tk() === 2, r4.text);
+}
+
 say(`\n=== АНОМАЛИИ (${anomalies.length}) ===`);
 for (const a of anomalies) say(` • ${a}`);
 const errs = serverLog.filter((l) => /error|exception|TypeError|ReferenceError/i.test(l));

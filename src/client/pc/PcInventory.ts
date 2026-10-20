@@ -1,4 +1,5 @@
 import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, skillCooldownFor, skillDesc, skillName, stepCost, type ClassId } from "#shared/classes2";
+import { SHOP } from "#shared/shop";
 import { armorIconKey, glyph, skillIcon, weaponIcon } from "#shared/icons";
 import { ARMOR_PART_NAME, ARMOR_PARTS, type ArmorPart } from "#shared/armor";
 import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
@@ -53,7 +54,7 @@ import {
  */
 
 export type Side = "left" | "right";
-export type InvTab = "gear" | "attrs" | "skills" | "craft" | "trade";
+export type InvTab = "gear" | "attrs" | "skills" | "craft" | "trade" | "shop";
 
 export interface HeldInfo {
   cls: string;
@@ -528,14 +529,20 @@ export class PcInventory {
       this.cursEl.append(n);
     }
     if (!d) return;
-    const cur = (ico: string, n: number, title: string): void => {
+    const cur = (ico: string, n: number, title: string): HTMLElement => {
       const c = div("pcinv-cur");
       c.innerHTML = `${ico}<b>${n.toLocaleString("ru-RU")}</b>`;
       c.title = title;
       this.cursEl.append(c);
+      return c;
     };
     cur(iconHtml("i.scrap"), d.scrap, "Лом — на заточку (в карточке предмета)");
-    cur(iconHtml("i.token"), d.tokens ?? 0, "Жетоны заданий — у трактирщика в лагере");
+    // На странице жетоны — ссылка на вкладку «Трактирщик».
+    const tok = cur(iconHtml("i.token"), d.tokens ?? 0, "Жетоны заданий — у трактирщика в лагере");
+    if (this.hooks.page) {
+      tok.classList.add("click");
+      tok.onclick = () => this.open("shop");
+    }
     cur(iconHtml("i.potion"), d.potions, "Зелья лечения");
   }
 
@@ -550,6 +557,8 @@ export class PcInventory {
       ["craft", "Крафт", 0],
       ["trade", "Обмен", d?.trade?.sessions.filter((x) => x.theirs.ok && !x.mine.ok).length ?? 0],
     ];
+    // Трактирщик — только на странице !inv (в игре лавка у стойки в лагере).
+    if (this.hooks.page) tabs.push(["shop", "Трактирщик", 0]);
     for (const [id, label, n] of tabs) {
       const t = div(`pcinv-tab${this.tab === id ? " on" : ""}`, label);
       // Число на вкладке — свободные очки атрибутов / обмены, ждущие моего подтверждения.
@@ -585,7 +594,27 @@ export class PcInventory {
     else if (this.tab === "skills") this.renderSkills(d);
     else if (this.tab === "trade") this.renderTrade(d);
     else if (this.tab === "craft") this.renderCraft(d);
+    else if (this.tab === "shop") this.renderShop(d);
     else this.renderAttrs(d);
+  }
+
+  /** Трактирщик (только страница !inv): лавка за жетоны ◈ — те же товары, что в лагере; подходить к стойке не нужно. */
+  private renderShop(d: PcInvData): void {
+    const tokens = d.tokens ?? 0;
+    const fish = d.fish ?? 0;
+    const box = div("pcinv-shop");
+    box.append(div("pcinv-fg-title", "Трактирщик"));
+    box.append(div("pcinv-small", `Жетоны ◈: ${tokens} · рыба: ${fish}. Товары — как у трактирщика в лагере.`));
+    for (const it of SHOP) {
+      const row = div("pcinv-shop-row");
+      const info = div("pcinv-shop-info");
+      info.append(div("pcinv-shop-name", it.name), div("pcinv-small", it.desc));
+      const buy = button(it.fishCost ? `Обменять · ${it.fishCost} рыб` : `Купить · ${it.price} ◈`, () => this.hooks.act({ act: "shop", id: it.id, idx: 0 }));
+      buy.disabled = it.fishCost ? fish < it.fishCost : tokens < it.price;
+      row.append(info, buy);
+      box.append(row);
+    }
+    this.body.append(box);
   }
 
   // ---------------- обмен между героями ----------------
@@ -1214,7 +1243,7 @@ export class PcInventory {
       const c = countCell(iconHtml("i.token"), d.tokens);
       c.classList.add("tokens", "click");
       info(c, `Жетоны заданий ${glyph("i.token")}`, tip);
-      c.addEventListener("click", () => this.textTipAt(c, `Жетоны заданий ${glyph("i.token")}`, tip));
+      c.addEventListener("click", () => (this.hooks.page ? this.open("shop") : this.textTipAt(c, `Жетоны заданий ${glyph("i.token")}`, tip)));
       out.push(c);
     }
     // Свитки — клик: прочитать (бафф на 15 мин).
@@ -2949,6 +2978,10 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-cell:hover .pcinv-fav { opacity:1; }
 .pcinv-cell.big .pcinv-fav { pointer-events:none; }
 .pcinv-cell.tokens .gico-e { font-size:22px; color:#e8c26a; }
+.pcinv-shop { padding:10px 4px; display:grid; gap:8px; }
+.pcinv-shop-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 10px; border:1px solid #3a3122; border-radius:8px; background:#1a1610; }
+.pcinv-shop-info { display:grid; gap:2px; min-width:0; }
+.pcinv-shop-name { font-weight:600; color:#e8c26a; }
 
 /* ---------- «Снаряжение»: раскладка ---------- */
 .pcinv-gear { display:grid; gap:12px; align-items:start; grid-template-columns:auto minmax(0,1fr); grid-template-areas:"hero bag"; }

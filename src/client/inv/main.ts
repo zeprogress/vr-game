@@ -193,6 +193,8 @@ function pageInv(): PcInventory {
     useItem: (id) => act("scroll", id),
   });
   document.getElementById("invMount")!.append(pcInv.element);
+  // Ссылка …/inv?ник#shop — сразу на вкладке «Трактирщик» (жетоны на странице ведут туда же).
+  if (location.hash === "#shop") pcInv.open("shop");
   return pcInv;
 }
 
