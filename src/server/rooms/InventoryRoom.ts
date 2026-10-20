@@ -1,5 +1,5 @@
 import { JEWEL_ACTS, jewelBonus, jewelsOf, pcInvJewels } from "#shared/jewels";
-import { pcInvCraft } from "#shared/craft";
+import { pcInvCraft, pcInvCraftFor } from "#shared/craft";
 import { TRADE_ACTS, tradeViewOf } from "../trade";
 // colyseus 0.15 — CJS-пакет без ESM-exports, поэтому default-импорт (как в index.ts/ZoneRoom.ts).
 import { CLASSES2, classOf2, type SkillId, type Weapon2 } from "#shared/classes2";
@@ -303,6 +303,8 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
   };
   const heldOf = (h: { cls: string; tier: string } | null | undefined) =>
     h && h.cls ? { cls: h.cls, tier: h.tier } : null;
+  // Найденные скрытые рецепты — только владельцу: чужой !inv книгу не показывает.
+  if (pc.craft) pc.craft = pcInvCraftFor(pc.craft, authed);
   pc.partners = invHub.partners(norm);
   return {
     ok: true,

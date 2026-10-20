@@ -497,6 +497,8 @@ export interface PcInvCraft {
   stock: [CraftItemId, number][];
   /** Найденные скрытые рецепты (id). */
   book: string[];
+  /** Книга скрыта: чужой !inv её не показывает — видит только владелец героя. */
+  hidden?: boolean;
   /** Опыт кузнеца (уровень — smithLevel). */
   xp: number;
 }
@@ -505,6 +507,11 @@ export function pcInvCraft(rec: { mats?: unknown; recipes?: unknown; smithXp?: u
   const s = craftStockOf(rec.mats);
   const order: CraftItemId[] = [...CRAFT_MATS, ...CRAFT_CATS];
   return { stock: order.filter((k) => (s[k] ?? 0) > 0).map((k) => [k, s[k]!]), book: recipeBookOf(rec.recipes), xp: Math.max(0, Math.floor(Number(rec.smithXp) || 0)) };
+}
+
+/** Окно чужого героя (!inv без входа владельца): найденные рецепты не отдаём — книгу видит только владелец. */
+export function pcInvCraftFor(craft: PcInvCraft, owner: boolean): PcInvCraft {
+  return owner ? craft : { ...craft, book: [], hidden: true };
 }
 
 // ---------------------------------------------------------------- добыча

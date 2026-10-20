@@ -10,6 +10,7 @@ import {
   craftCaps,
   craftWeapon,
   matchRecipe,
+  pcInvCraftFor,
   parseCraftCode,
   pcInvCraft,
   smithLevel,
@@ -228,4 +229,15 @@ test("данные окна: запас в постоянном порядке, 
   assert.deepEqual(v.stock, [["alloy", 2], ["web", 3], ["sting", 1]]);
   assert.deepEqual(v.book, ["crusher"]);
   assert.equal(v.xp, 12);
+});
+
+test("Книга рецептов: чужой !inv её не видит, владелец — видит", () => {
+  const craft = { stock: [], book: [CRAFT_RECIPES[0].id], xp: 3 };
+  const mine = pcInvCraftFor(craft, true);
+  assert.deepEqual(mine.book, [CRAFT_RECIPES[0].id]);
+  assert.equal(mine.hidden, undefined);
+  const theirs = pcInvCraftFor(craft, false);
+  assert.deepEqual(theirs.book, []);
+  assert.equal(theirs.hidden, true);
+  assert.equal(theirs.xp, 3);
 });

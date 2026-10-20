@@ -2056,7 +2056,8 @@ export class PcInventory {
     // Скрытые рецепты не показываем — только найденные (их можно повторить одним нажатием).
     const found = CRAFT_RECIPES.filter((r) => c.book.includes(r.id));
     left.append(div("pcinv-fg-sub", "Найденные рецепты"));
-    if (!found.length) left.append(div("pcinv-small pcinv-fg-empty", "Пока ни одного. Скрытые рецепты находятся только опытом — пробуй сочетания."));
+    if (c.hidden) left.append(div("pcinv-small pcinv-fg-empty", "Книга рецептов видна только владельцу героя."));
+    else if (!found.length) left.append(div("pcinv-small pcinv-fg-empty", "Пока ни одного. Скрытые рецепты находятся только опытом — пробуй сочетания."));
     for (const rc of found) {
       const row = div("pcinv-fg-row rec");
       const ic = div("pcinv-fg-ic");
