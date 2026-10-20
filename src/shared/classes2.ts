@@ -570,6 +570,8 @@ export const BLAST_ARROW = { splash: 1.2, radius: 5, range: 22 } as const; // р
 // fall — сколько падают стрелы волны с неба (событие волны уходит на fall с раньше удара; first — после залпа вверх).
 // Каждая волна, задевшая хотя бы одного врага, — лечение healFrac макс. HP (2026-10-20: лечение перенесено с «Роя»).
 export const ARROW_STORM = { radius: 12, waves: 3, first: 0.7, gap: 0.5, fall: 0.3, slow: 0.3, slowSec: 2, healFrac: 0.15 } as const;
+/** 🧪 «Метка охотника» (2026-10-20): стрелы лука по СВОЕЙ метке копят темп стрельбы — perHit за попадание, до max стаков; resetSec с без попаданий — стаки сгорают. */
+export const MARK_FOCUS = { perHit: 0.03, max: 10, resetSec: 5 } as const;
 /**
  * 🧪 «Стрела-призрак»: duration с (× МДР — SkillDef.attr) обычные мобы не видят стрелка и не бьют его
  * (боссы видят); его урон ×dmgMul; каждое попадание стрелой (у бота — выстрел) лечит healFrac макс. HP.
@@ -669,7 +671,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     name: "Метка", icon: glyph("s.mark"), desc: "Цель 10 с: все атакующие (и ты сам) наносят ей +40% урона; умерла под меткой — откат сброшен",
     cooldown: 12, castTime: 0.2, radius: 22, dmgMult: 0, hits: 1,
     variants: {
-      archer: { name: "Метка охотника", desc: "Цель 10 с: все атакующие (и ты сам) наносят ей +40% урона; умерла под меткой — откат сброшен" },
+      archer: { name: "Метка охотника", cdMul: 2, desc: `Цель 10 с, без бонуса урона. Твои стрелы по ней копят скорость стрельбы: +${pctR(MARK_FOCUS.perHit)} за попадание, до +${pctR(MARK_FOCUS.perHit * MARK_FOCUS.max)} (${MARK_FOCUS.max} попаданий); ${MARK_FOCUS.resetSec} с без попаданий — сгорает. Цель умерла — метка спадает, откат сброшен` },
     },
   },
   plague: {
@@ -780,7 +782,7 @@ export type SkillAttrs = Partial<Record<Attr, number>> & { gb?: Partial<Record<A
 
 /** Откат умения героя, сек, до 0.1 — тот же расчёт, что у сервера: база × класс × МДР (с камнями). Без `a` — старт (МДР 1). */
 export function skillCooldownFor(id: SkillId, cls: ClassId | null, a: SkillAttrs = {}): number {
-  return Math.round(SKILLS2[id].cooldown * skillCdMul2(cls, a) * 10) / 10;
+  return Math.round(SKILLS2[id].cooldown * skillCdMul2(cls, a) * (cls ? SKILLS2[id].variants?.[cls]?.cdMul ?? 1 : 1) * 10) / 10;
 }
 
 /** «Град выпадов» копейщика: серия колющих ударов вперёд. */

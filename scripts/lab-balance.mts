@@ -1015,6 +1015,47 @@ if (ONLY.has("skilltest")) {
     check("Шквал: никого рядом — без лечения", t3.p.hp - hp3 < t3.p.maxHp * 0.02, `HP ${Math.round(hp3)} → ${Math.round(t3.p.hp)}`);
   }
 
+  // 🧪 Метка охотника: без бонуса урона; стаки темпа — только от попаданий по СВОЕЙ метке (стрелой игрока и снарядом бота),
+  // +3% за стак, потолок 10; сгорают через 5 с без попаданий; откат 24 с; убили — метка спадает и ставится заново.
+  {
+    const t = bowScene(["mark", "arrowRain"]);
+    const [tg, other] = pack(t.mobs, 2, t.mobs[0].x, t.mobs[0].z, 3);
+    for (const m of [tg, other]) t.room.sim.stunMob(m.id, 99);
+    put(t.p, tg.x + 6, tg.z);
+    const ok = t.room.castSkill("mark", t.x.id, t.p, t.rt, tg.x, tg.z);
+    const sm = t.room.sim.mobs.get(tg.id);
+    check("Метка охотника: без бонуса урона", ok && sm.markT > 0 && sm.markMul === 1, `метка ${Math.round(sm.markT)} с, множитель урона ×${sm.markMul}`);
+    const again = t.room.castSkill("mark", t.x.id, t.p, t.rt, tg.x, tg.z);
+    check("Метка охотника: откат 24 с", !again, `повторно сразу — ${again ? "прошло" : "нельзя"}`);
+    // Чужая цель без метки стаков не даёт.
+    other.x = tg.x - 12;
+    other.z = tg.z;
+    t.room.heroStrike(t.x.id, t.p, t.rt, "right", "arrow", other, 1, 0);
+    secs(t.step, 0.05);
+    check("Метка охотника: без своей метки стаков нет", t.rt.focusStacks === 0, `стаков ${t.rt.focusStacks}`);
+    // 5 стрелой игрока + 5 снарядом бота — все по своей метке.
+    for (let i = 0; i < 5; i++) t.room.heroStrike(t.x.id, t.p, t.rt, "right", "arrow", tg, 1, 0);
+    for (let i = 0; i < 5; i++) {
+      const oy = t.p.head.y - 0.25;
+      t.room.sim.castBolt(t.p.head.x, oy, t.p.head.z, tg.x - t.p.head.x, tg.y + 0.6 - oy, tg.z - t.p.head.z, BOT.arrowSpeed, 0.05, 0.2, 1, t.x.id, 2.5, 1, 0, 0, false);
+      secs(t.step, 0.3);
+    }
+    secs(t.step, 0.1);
+    const tempo = t.room.focusTempo(t.rt);
+    check("Метка охотника: 10 попаданий (5 стрелой, 5 снарядом) → +30% темпа", t.rt.focusStacks === 10 && Math.abs(tempo - 1.3) < 1e-9, `стаков ${t.rt.focusStacks}, темп ×${tempo.toFixed(2)}`);
+    t.room.heroStrike(t.x.id, t.p, t.rt, "right", "arrow", tg, 1, 0);
+    secs(t.step, 0.05);
+    check("Метка охотника: потолок 10 стаков", t.rt.focusStacks === 10, `стаков ${t.rt.focusStacks}`);
+    // Без попаданий 5 с стаки сгорают (метка ещё держится — 10 с).
+    secs(t.step, 5.5);
+    check("Метка охотника: без попаданий 5 с — сгорают", t.room.focusTempo(t.rt) === 1 && t.p.focusStacks === 0, `темп ×${t.room.focusTempo(t.rt).toFixed(2)}, у клиента стаков ${t.p.focusStacks}`);
+    // Убили под меткой — метка спадает и откат сброшен: ставится заново на другую цель.
+    t.room.sim.hitMob(tg.id, 1e12, 1, 0, t.x.id);
+    secs(t.step, 0.2);
+    const re = t.room.castSkill("mark", t.x.id, t.p, t.rt, other.x, other.z);
+    check("Метка охотника: после убийства ставится заново", re, `метка на другую цель — ${re ? "да" : "нет"}`);
+  }
+
   // 3. Стрела-призрак: моб рядом перестаёт бить, урон ×0.7, попадание стрелой лечит, плашка.
   {
     const t = bowScene(["ghostArrow", "mark"]);

@@ -201,7 +201,7 @@ import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand }
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
 import { leashCut } from "../sim/leash";
 import { ATTR2 } from "#shared/attrs2";
-import { ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, MARK_FOCUS, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC, ULT_PULL_PULSES, ULT_PULL_POWER } from "#shared/ultimates";
 import {
   MAGIC,
@@ -354,6 +354,9 @@ interface Runtime {
   ghostUntil: number;
   /** 🧪 «Стрела-рой»: бег быстрее (SWARM_ARROW.run) до этого момента. */
   runUntil: number;
+  /** 🧪 «Метка охотника»: стаки темпа от попаданий стрелой по своей метке и до какого момента они живут. */
+  focusStacks: number;
+  focusUntil: number;
   /** Класс, под который сейчас выставлены skill1/skill2 (смена оружия — другой набор). */
   skillCls: string;
   /** Последний присланный поворот — чтобы сохранить его и при выходе. */
@@ -2483,6 +2486,8 @@ export class ZoneRoom extends Room<ZoneState> {
     struck: Mob, dx: number, dz: number, except?: Client,
   ): boolean {
     const { dmg, critM } = this.heroHitRoll(heroId, p, rt, hand, weapon, struck);
+    // 🧪 «Метка охотника»: стрела лука по СВОЕЙ метке копит темп.
+    if (weapon === "arrow" && struck.markT > 0 && struck.markBy === heroId) this.markFocusHit(heroId);
     // Для «!follow»-телохранителя: кого сейчас бьёт цель (фокус-фаер).
     rt.lastHitMobId = struck.id;
     rt.lastHitMobAt = this.elapsed;
@@ -2598,8 +2603,23 @@ export class ZoneRoom extends Room<ZoneState> {
   private cryTempo(rt: Runtime): number {
     // 🧪 «Призрак бездны»: после выхода из тени — +ABYSS.haste темпа (клиент считает так же, см. Game.abyssHasteUntil).
     const haste = rt.hasteUntil > this.elapsed ? 1 + ABYSS.haste : 1;
-    if (rt.cryUntil <= this.elapsed) return haste;
-    return haste * (rt.cryKind === 2 ? 1 + WARCRY.rallyTempo : rt.cryKind === 1 || rt.cryKind === 3 ? 1 + WARCRY.tempo : 1);
+    const focus = this.focusTempo(rt);
+    if (rt.cryUntil <= this.elapsed) return haste * focus;
+    return haste * focus * (rt.cryKind === 2 ? 1 + WARCRY.rallyTempo : rt.cryKind === 1 || rt.cryKind === 3 ? 1 + WARCRY.tempo : 1);
+  }
+
+  /** 🧪 «Метка охотника»: темп от накопленных попаданий по своей метке (1 — стаков нет или сгорели). */
+  private focusTempo(rt: Runtime): number {
+    return rt.focusUntil > this.elapsed ? 1 + rt.focusStacks * MARK_FOCUS.perHit : 1;
+  }
+
+  /** 🧪 «Метка охотника»: попадание стрелой по своей метке — +стак (до max); без попаданий resetSec с стаки сгорают. */
+  private markFocusHit(heroId: string): void {
+    const rt = this.rt.get(heroId) ?? (heroId.startsWith("bot:") ? this.bots.get(heroId.slice(4))?.rt : undefined);
+    if (!rt) return;
+    if (rt.focusUntil <= this.elapsed) rt.focusStacks = 0;
+    rt.focusStacks = Math.min(MARK_FOCUS.max, rt.focusStacks + 1);
+    rt.focusUntil = this.elapsed + MARK_FOCUS.resetSec;
   }
 
   /**
@@ -6624,6 +6644,8 @@ export class ZoneRoom extends Room<ZoneState> {
       hasteUntil: -999,
       ghostUntil: -999,
       runUntil: -999,
+      focusStacks: 0,
+      focusUntil: -999,
       whirlKind: 0,
       skillCls: "",
       yaw: 0,
@@ -9970,7 +9992,8 @@ export class ZoneRoom extends Room<ZoneState> {
           rt.skillAt[kind] = -999; // некого метить — откат не тратим
           return false;
         }
-        this.sim.markMob(m.id, ownerId, MARK.duration, MARK.dmgMul);
+        // Метка охотника (лук): без бонуса урона — копит темп стрел (markFocusHit).
+        this.sim.markMob(m.id, ownerId, MARK.duration, cls === "archer" ? 1 : MARK.dmgMul);
         if (cls === "spearman") this.sim.slowMob(m.id, MARK.duration, 1 - MARK.slow);
         this.marks.set(m.id, { owner: ownerId, until: this.elapsed + MARK.duration });
         act({ k: "markOn", x: m.x, y: m.y, z: m.z, mobId: m.id, d: MARK.duration });
@@ -10756,6 +10779,8 @@ export class ZoneRoom extends Room<ZoneState> {
       if (p.ghostSecs !== ghost) p.ghostSecs = ghost;
       const run = p.dead ? 0 : sec(rt?.runUntil);
       if (p.runSecs !== run) p.runSecs = run;
+      const focus = p.dead || !rt || rt.focusUntil <= this.elapsed ? 0 : rt.focusStacks;
+      if (p.focusStacks !== focus) p.focusStacks = focus;
       const kind = left > 0 ? (rt?.cryKind ?? 0) : 0;
       if (p.cryKind !== kind) p.cryKind = kind;
     });
@@ -10956,6 +10981,9 @@ export class ZoneRoom extends Room<ZoneState> {
     // Криты снарядов — красный «X» в точке попадания стрелы.
     for (const c of this.sim.critHits) this.critFx(c.x, c.y, c.z, c.owner);
     this.sim.critHits.length = 0;
+    // 🧪 «Метка охотника»: стрелы лука бота (снаряды в симуляции) по своей метке.
+    for (const id of this.sim.markedArrowHits) this.markFocusHit(id);
+    this.sim.markedArrowHits.length = 0;
     // Числа урона у спектатора — батчем за тик, только если тумблер включён
     // (не тратим сеть/CPU зря, если никто не смотрит или выключено с пульта).
     // Герой промахнулся (моб увернулся / неуязвим) — «MISS» над героем: точка — его голова.
@@ -11863,6 +11891,8 @@ export class ZoneRoom extends Room<ZoneState> {
       hasteUntil: -999,
       ghostUntil: -999,
       runUntil: -999,
+      focusStacks: 0,
+      focusUntil: -999,
       whirlKind: 0,
       skillCls: "",
       yaw: rec?.yaw ?? 0,

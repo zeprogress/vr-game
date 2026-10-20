@@ -2816,6 +2816,8 @@ export class ZoneSim {
   readonly dummies = new Map<string, Dummy>();
   readonly balls = new Map<string, Ball>();
   readonly bolts = new Map<string, Bolt>();
+  /** 🧪 «Метка охотника»: владельцы стрел лука, попавших в моба под СВОЕЙ меткой; разбирает ZoneRoom (markFocusHit). */
+  readonly markedArrowHits: string[] = [];
   readonly drops = new Map<string, Drop>();
   private boss!: Mob;
   /** sim-время в секундах (для окна давности вклада в бой с боссом). */
@@ -3468,6 +3470,7 @@ export class ZoneSim {
         if (b.crit) this.critHits.push({ x: m.x, y: m.y, z: m.z, owner: b.owner });
         const magic = b.kind === 0; // 0 — огнешар (магия), 1 — стрела (физика)
         this.hitMob(m.id, b.dmg, b.vx / vh, b.vz / vh, b.owner, true, false, magic, b.crit);
+        if (b.kind === 1 && m.markT > 0 && m.markBy === b.owner) this.markedArrowHits.push(b.owner);
         // Поджог — ролл посоха «Поджог» (раньше врождённый): горит и прямая цель, и задетые АОЕ (ниже).
         // ДпС — от МАКСИМАЛЬНОГО HP цели, не от урона удара (см. AFFIX.fire).
         if (magic) {

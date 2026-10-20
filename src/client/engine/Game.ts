@@ -11,7 +11,7 @@ import { BOT_SKIN_MODELS } from "../world/models";
 import "./billboardFix";
 import { vrLights } from "../world/vrLights";
 import { STAT_NAMES } from "#shared/progression";
-import { ABYSS, SMOKE, JUMP_BEHIND, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, ASSASSIN_WHIRL_DASH, BLAST_ARROW, SOUL_STEAL, SWARM_ARROW, WEB_ARROW, WHIRL, classOf2, hopDistance, hopsBack, skillCdMul2, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { ABYSS, SMOKE, JUMP_BEHIND, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, ASSASSIN_WHIRL_DASH, BLAST_ARROW, SOUL_STEAL, SWARM_ARROW, WEB_ARROW, WHIRL, classOf2, hopDistance, hopsBack, skillCdMul2, SKILLS2, skillName, WARCRY, MARK_FOCUS, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
@@ -966,11 +966,12 @@ export class Game {
       this.pcTarget?.update(this.combat.pcOutOfRange);
       this.mark("combat");
       this.updateSkillAbility(dt);
-      // Роллы «скорость атаки» × «Боевой клич» (+15%) / «Сбор» (+30%).
+      // Роллы «скорость атаки» × «Боевой клич» (+15%) / «Сбор» (+30%) × «Метка охотника» (стаки от попаданий).
       const me = this.net?.self;
       const cry = me && me.crySecs > 0 ? (me.cryKind === 2 ? 1 + WARCRY.rallyTempo : me.cryKind === 1 || me.cryKind === 3 ? 1 + WARCRY.tempo : 1) : 1;
       const haste = performance.now() < this.abyssHasteUntil ? 1 + ABYSS.haste : 1;
-      this.combat.atkSpeedAffix = this.heldAtkSpeedMul() * cry * haste;
+      const focus = me && me.focusStacks > 0 ? 1 + me.focusStacks * MARK_FOCUS.perHit : 1;
+      this.combat.atkSpeedAffix = this.heldAtkSpeedMul() * cry * haste * focus;
       // Прицеливание луком/посохом: камера «в глаза», прицел, кнопка удара
       // управляет наводкой, кнопки зелья/рук прячутся.
       if (this.localAvatar) {
