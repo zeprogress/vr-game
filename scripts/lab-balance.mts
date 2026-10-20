@@ -985,8 +985,9 @@ if (ONLY.has("skilltest")) {
     // ≥: в 12 м может оказаться и чужой слизень мира — его волна тоже бьёт.
     check("Шквал: волны по всем рядом", ok && hits >= 5 * C2.ARROW_STORM.waves && lost(far) === 0, `попаданий ${hits} (≥ 5 мобов × ${C2.ARROW_STORM.waves} волны), дальний −${Math.round(lost(far))}`);
     check("Шквал: замедляет", slowed === near.length, `замедлено ${slowed} из ${near.length}, урон ${near.map((m: any) => Math.round(lost(m))).join(" / ")}`);
-    const healAll = C2.ARROW_STORM.healFrac * C2.ARROW_STORM.waves;
-    check("Шквал: лечение за каждую волну", t.p.hp >= hpS + t.p.maxHp * healAll * 0.99, `HP ${Math.round(hpS)} → ${Math.round(t.p.hp)} (+${Math.round(healAll * 100)}% = ${C2.ARROW_STORM.waves} волны по ${Math.round(C2.ARROW_STORM.healFrac * 100)}%)`);
+    // 5 целей в волне — лечение за 3 (потолок healTargets): ${waves} волны × 3 × healFrac; сверху — запас на регенерацию.
+    const healAll = C2.ARROW_STORM.healFrac * C2.ARROW_STORM.healTargets * C2.ARROW_STORM.waves;
+    check("Шквал: лечение за каждого до 3 целей", t.p.hp >= hpS + t.p.maxHp * healAll * 0.99 && t.p.hp <= hpS + t.p.maxHp * (healAll + 0.03), `HP ${Math.round(hpS)} → ${Math.round(t.p.hp)} (+${Math.round(healAll * 100)}%: ${C2.ARROW_STORM.waves} волны × 3 цели × ${Math.round(C2.ARROW_STORM.healFrac * 100)}%)`);
 
     // Один враг рядом тоже лечит за каждую волну (порог — хотя бы один).
     const t2 = bowScene(["arrowStorm", "mark"]);
@@ -1001,7 +1002,8 @@ if (ONLY.has("skilltest")) {
     const hp1 = t2.p.hp;
     t2.room.castSkill("arrowStorm", t2.x.id, t2.p, t2.rt, NaN, NaN);
     secs(t2.step, C2.ARROW_STORM.first + C2.ARROW_STORM.gap * C2.ARROW_STORM.waves + 0.3);
-    check("Шквал: один враг — лечение за каждую волну", lost(solo[0]) > 0 && t2.p.hp >= hp1 + t2.p.maxHp * healAll * 0.99, `урон −${Math.round(lost(solo[0]))}, HP ${Math.round(hp1)} → ${Math.round(t2.p.hp)} (+${Math.round(healAll * 100)}%)`);
+    const healOne = C2.ARROW_STORM.healFrac * C2.ARROW_STORM.waves;
+    check("Шквал: один враг — по healFrac за волну", lost(solo[0]) > 0 && t2.p.hp >= hp1 + t2.p.maxHp * healOne * 0.99, `урон −${Math.round(lost(solo[0]))}, HP ${Math.round(hp1)} → ${Math.round(t2.p.hp)} (+${Math.round(healOne * 100)}%)`);
 
     // Никого рядом — без лечения (регенерация — в порог 2%).
     const t3 = bowScene(["arrowStorm", "mark"]);

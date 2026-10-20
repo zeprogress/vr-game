@@ -10202,13 +10202,14 @@ export class ZoneRoom extends Room<ZoneState> {
             this.clock.setTimeout(() => {
               const p2 = this.state.players.get(ownerId);
               if (!p2 || p2.dead) return;
-              // Лечение — за каждую волну, которая задела хотя бы одного врага.
+              // Лечение — за каждого задетого, но не больше healTargets целей в волне.
               const caught = around(cx, cz, A.radius);
               for (const m of caught) {
                 arrowHit(m, sk.dmgMult, cx, cz);
                 this.sim.slowMob(m.id, A.slowSec, 1 - A.slow);
               }
-              if (caught.length > 0) this.skillHeal(ownerId, p2, p2.maxHp * A.healFrac);
+              const healed = Math.min(caught.length, A.healTargets);
+              if (healed > 0) this.skillHeal(ownerId, p2, p2.maxHp * A.healFrac * healed);
             }, A.fall * 1000);
           }, (A.first - A.fall + w * A.gap) * 1000);
         }
