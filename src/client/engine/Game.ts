@@ -3465,7 +3465,7 @@ export class Game {
       msg.x = sel ? sel.x : p.x + fx * 10;
       msg.z = sel ? sel.z : p.z + fz * 10;
       this.combat.onMeleeSwing?.();
-    } else if (id === "mark" || id === "chain" || id === "lifeArrow" || id === "blastArrow" || id === "doubleShot") {
+    } else if (id === "mark" || id === "chain" || id === "lifeArrow" || id === "blastArrow") {
       // По выбранной цели (ПК/телефон), иначе — ближайшая впереди.
       const sel = this.selectedTargetPos() ?? frontTarget(id === "chain" ? 14 : BLAST_ARROW.range);
       // Цели нет — сервер откажет; не тратим откат и подсказываем.

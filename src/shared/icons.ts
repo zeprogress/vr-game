@@ -198,7 +198,7 @@ export const ICONS = {
   "s.lifeArrow": { emoji: "💚" },
   // 🧪 Новые стрелы лучника (2026-10-20) — пока эмодзи.
   "s.blastArrow": { emoji: "🧨" },
-  "s.doubleShot": { emoji: "⏩" },
+  "s.arrowStorm": { emoji: "🌪️" },
   "s.ghostArrow": { emoji: "💨" },
   "s.swarmArrow": { emoji: "🎆" },
   "s.barrierArrow": { emoji: "⭕" },

@@ -962,17 +962,24 @@ if (ONLY.has("skilltest")) {
     check("Разрывная: цель ≈ ×2.1 к соседу", ratio > 1.2, `цель / сосед = ${f(ratio, 2)} (без критов 2.5 / 1.2 ≈ 2.08)`);
   }
 
-  // 2. Двойной выстрел: два попадания в одну цель.
+  // 2. Шквал стрел: три волны по всем в 12 м вокруг лучника, задетые замедлены; дальше 12 м — ничего.
   {
-    const t = bowScene(["doubleShot", "mark"]);
-    const m = t.mobs[0];
-    t.room.sim.stunMob(m.id, 99);
-    put(t.p, m.x + 10, m.z);
+    const t = bowScene(["arrowStorm", "mark"]);
+    const ms = pack(t.mobs, 6, t.mobs[0].x, t.mobs[0].z, 4);
+    const far = ms[5];
+    for (const m of ms) t.room.sim.stunMob(m.id, 99);
+    put(t.p, ms[0].x + 3, ms[0].z);
+    far.x = t.p.head.x + C2.ARROW_STORM.radius + 6;
+    far.z = t.p.head.z;
     const h0 = t.meter.hits.get(t.x.id) ?? 0;
-    const ok = t.room.castSkill("doubleShot", t.x.id, t.p, t.rt, m.x, m.z);
-    secs(t.step, 0.4);
+    const ok = t.room.castSkill("arrowStorm", t.x.id, t.p, t.rt, NaN, NaN);
+    secs(t.step, C2.ARROW_STORM.first + C2.ARROW_STORM.gap * C2.ARROW_STORM.waves + 0.3);
     const hits = (t.meter.hits.get(t.x.id) ?? 0) - h0;
-    check("Двойной выстрел: две стрелы", ok && hits === 2, `попаданий ${hits}, урон −${Math.round(lost(m))}`);
+    const near = ms.slice(0, 5);
+    const slowed = near.filter((m: any) => m.slowT > 0 && m.slowMul < 1).length;
+    // ≥: в 12 м может оказаться и чужой слизень мира — его волна тоже бьёт.
+    check("Шквал: волны по всем рядом", ok && hits >= 5 * C2.ARROW_STORM.waves && lost(far) === 0, `попаданий ${hits} (≥ 5 мобов × ${C2.ARROW_STORM.waves} волны), дальний −${Math.round(lost(far))}`);
+    check("Шквал: замедляет", slowed === near.length, `замедлено ${slowed} из ${near.length}, урон ${near.map((m: any) => Math.round(lost(m))).join(" / ")}`);
   }
 
   // 3. Стрела-призрак: моб рядом перестаёт бить, урон ×0.7, попадание стрелой лечит, плашка.
@@ -1016,10 +1023,14 @@ if (ONLY.has("skilltest")) {
     put(t.p, ms[0].x + 10, ms[0].z);
     t.p.hp = t.p.maxHp * 0.5;
     const hp0 = t.p.hp;
+    const h0 = t.meter.hits.get(t.x.id) ?? 0;
     const ok = t.room.castSkill("swarmArrow", t.x.id, t.p, t.rt, ms[0].x, ms[0].z);
+    const after1 = (t.meter.hits.get(t.x.id) ?? 0) - h0;
+    secs(t.step, C2.SWARM_ARROW.volleyGap * C2.SWARM_ARROW.volleys + 0.2);
+    const all = (t.meter.hits.get(t.x.id) ?? 0) - h0;
     const touched = ms.filter((m: any) => lost(m) > 0).length;
-    t.step();
     check("Рой: задевает кучку", ok && touched >= 3, `задето ${touched} из ${ms.length}, урон ${ms.map((m: any) => Math.round(lost(m))).join(" / ")}`);
+    check("Рой: три залпа", all >= after1 * C2.SWARM_ARROW.volleys * 0.9, `попаданий: первый залп ${after1}, все залпы ${all}`);
     check("Рой: лечение и бег за 3+", t.p.hp > hp0 && t.p.runSecs > 0, `HP ${Math.round(hp0)} → ${Math.round(t.p.hp)}, бег ${t.p.runSecs} с`);
   }
 
@@ -1040,8 +1051,16 @@ if (ONLY.has("skilltest")) {
     let maxD = 0;
     secs(t.step, 0.6, () => (maxD = Math.max(maxD, Math.hypot(m.x - cx, m.z - cz))));
     const inside = t.room.inOwnBarrier(t.x.id, t.p);
-    secs(t.step, 2);
-    check("Барьер: вошедшему урон и отброс", lost(m) > 0 && maxD - 2 >= 2.5, `урон −${Math.round(lost(m))}, отброшен на ${f(maxD - 2, 1)} м (≈3 м): от центра 2 → ${f(maxD, 1)} м`);
+    const lost1 = lost(m);
+    // Моб снова в кольце (как крупный, оставшийся краем внутри) — кольцо толкает его снова.
+    m.x = cx - 1.5;
+    m.z = cz;
+    m.y = terrainHeight(m.x, m.z);
+    let maxD2 = 0;
+    secs(t.step, 0.8, () => (maxD2 = Math.max(maxD2, Math.hypot(m.x - cx, m.z - cz))));
+    secs(t.step, 1.2);
+    check("Барьер: врагу урон и отброс", lost1 > 0 && maxD - 2 >= 2.5, `урон −${Math.round(lost1)}, отброшен на ${f(maxD - 2, 1)} м (≈3 м): от центра 2 → ${f(maxD, 1)} м`);
+    check("Барьер: толкает снова, не только при входе", maxD2 - 1.5 >= 2, `второй раз: от центра 1.5 → ${f(maxD2, 1)} м`);
     check("Барьер: стрелок лечится, уворот", inside && t.p.hp > hp0, `в кольце ${inside}, HP ${Math.round(hp0)} → ${Math.round(t.p.hp)} за 2.6 с`);
   }
 

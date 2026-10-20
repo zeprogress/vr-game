@@ -1219,20 +1219,29 @@ export function playClassAct(
         });
       }
       return true;
-    case "doubleShot":
-      // Двойной выстрел: две стрелы подряд (вторая — через r с), у цели — по вспышке.
-      if (x2 !== undefined && z2 !== undefined) {
-        const toY = d ?? y;
-        for (let i = 0; i < 2; i++) {
-          c.fx.later(i * (r ?? 0.1), () => {
-            const off = i === 0 ? -0.12 : 0.12;
-            vfx.bolt(x + off, y, z, x2, toY, z2, FXC.gold, 0.2, 0.07);
-            vfx.burst(x2, toY, z2, FXC.gold, { count: 10, speed: 5, life: 0.35, grav: 2, size: 0.18 });
-          });
-        }
-        c.sound(at, "swing");
+    case "stormWave": {
+      // Шквал стрел: d = 0 — залп в небо над героем; волна — ударное кольцо по земле радиусом r
+      // и стрелы, падающие по всему кругу (точки случайные — урон считает сервер по мобам).
+      const R = r ?? 12;
+      if (!d) {
+        vfx.burst(x, y + 1.6, z, FXC.gold, { count: 30, speed: 16, life: 0.45, grav: -3, size: 0.16, dir: [0, 1, 0], spread: 0.25 });
+        c.sound(at, "volley");
+        return true;
       }
+      vfx.decal(x, y, z, R, ATK, 0.55, 0, 0.9);
+      c.fx.ring(x, y, z, 0.6, R, FXC.gold, 0.45, 0.7);
+      for (let i = 0; i < 8; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const rr = Math.sqrt(Math.random()) * R;
+        const px = x + Math.cos(a) * rr;
+        const pz = z + Math.sin(a) * rr;
+        c.fx.later(Math.random() * 0.2, () =>
+          vfx.burst(px, y + 0.15, pz, FXC.gold, { count: 6, speed: 4, life: 0.35, grav: 10, size: 0.13 }),
+        );
+      }
+      c.sound(at, "volley");
       return true;
+    }
     case "ghostOn":
       // Стрела-призрак: бледный круг и столб ходят за героем, вихрь инея (мобы теряют его из виду).
       vfx.decal(x, y, z, 1.3, FXC.frost, d ?? 4, 1, 0.8, { kind: "hero", id, dy: 0 });

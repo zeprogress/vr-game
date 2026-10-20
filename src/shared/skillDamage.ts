@@ -5,7 +5,7 @@
  */
 import { ATTR2, attrOf } from "./attrs2";
 import {
-  ASSASSIN_LEAP, BLAST_ARROW, CHAIN, CHAIN_HAMMER, DOUBLE_SHOT, FAN, HAMMER_FIELD, PLAGUE, SEAL, SKILLS2, SOUL_STEAL, SPEAR_FLURRY,
+  ARROW_STORM, ASSASSIN_LEAP, BARRIER_ARROW, BLAST_ARROW, CHAIN, CHAIN_HAMMER, FAN, HAMMER_FIELD, PLAGUE, SEAL, SKILLS2, SOUL_STEAL, SPEAR_FLURRY,
   STORM_CRUSH, SWARM_ARROW, THUNDER_SPIN, WEAPONS2, skillAttrMul, type ClassId, type SkillAttrs, type SkillId,
 } from "./classes2";
 import { SKILL } from "./constants";
@@ -74,12 +74,12 @@ export function skillDamageText(id: SkillId, cls: ClassId, strike: number, a: Sk
       return `Урон ${n(base)}`;
     case "blastArrow":
       return `Урон ${n(base)} в цель, взрыв ${n(BLAST_ARROW.splash * strike)} вокруг`;
-    case "doubleShot":
-      return `Урон ${n(base)} × ${DOUBLE_SHOT.arrows} стрелы`;
+    case "arrowStorm":
+      return `Урон ${n(base)} за волну × ${ARROW_STORM.waves} всем в ${ARROW_STORM.radius} м`;
     case "swarmArrow":
-      return `Урон ${n(base)} за стрелу × ${SWARM_ARROW.arrows}, взрыв ${n(SWARM_ARROW.blast * strike)}`;
+      return `Урон ${n(base)} за стрелу, ${SWARM_ARROW.volleys} × ${SWARM_ARROW.arrows} стрел, взрыв ${n(SWARM_ARROW.blast * strike)}`;
     case "barrierArrow":
-      return `Урон ${n(base)} вошедшему в кольцо`;
+      return `Урон ${n(base)} врагу в кольце (раз в ${BARRIER_ARROW.hitEvery} с)`;
     case "webArrow":
       return `Урон ${n(base)} в секунду в паутине`;
     case "ghostArrow":

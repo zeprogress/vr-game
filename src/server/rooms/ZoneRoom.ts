@@ -202,7 +202,7 @@ import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand }
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
 import { leashCut } from "../sim/leash";
 import { ATTR2 } from "#shared/attrs2";
-import { ABYSS, BARRIER_ARROW, BLAST_ARROW, DOUBLE_SHOT, GHOST_ARROW, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC, ULT_PULL_PULSES, ULT_PULL_POWER } from "#shared/ultimates";
 import {
   MAGIC,
@@ -9001,6 +9001,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (k === "abyss" && (nd > 3 || (p.hp > p.maxHp * 0.7 && this.mobsInRadius(p, 5).length < 3))) continue;
       // 🧪 Новые стрелы лучника.
       if (k === "swarmArrow" && this.mobsInRadius(p, SWARM_ARROW.range - 4).length < 2) continue;
+      if (k === "arrowStorm" && this.mobsInRadius(p, ARROW_STORM.radius - 2).length < 2) continue;
       if (k === "ghostArrow" && p.hp > p.maxHp * 0.6 && this.mobsInRadius(p, 5).length < 2) continue;
       if (k === "barrierArrow" && this.mobsInRadius(p, SKILLS2.barrierArrow.radius).length < 1) continue;
       if (k === "webArrow") {
@@ -9103,10 +9104,13 @@ export class ZoneRoom extends Room<ZoneState> {
   }[] = [];
 
   /**
-   * 🧪 «Стрела-барьер»: кольцо на земле. `inside` — мобы, бывшие в кольце на прошлом тике (бьём только
-   * вошедших); `healT` — накопленное лечение стрелка (цифра — раз в тик).
+   * 🧪 «Стрела-барьер»: кольцо на земле — отталкивает мобов в нём (раз в pushEvery с), ранит (раз в hitEvery с).
    */
-  private readonly barriers: { x: number; z: number; r: number; until: number; owner: string; dmg: number; inside: Set<string>; tickT: number }[] = [];
+  private readonly barriers: {
+    x: number; z: number; r: number; until: number; owner: string; dmg: number; tickT: number;
+    /** Когда моб последний раз оттолкнут и ранен кольцом (elapsed). */
+    pushAt: Map<string, number>; hitAt: Map<string, number>;
+  }[] = [];
   /** 🧪 «Стрела-паук»: паутина на земле — пригвождает мобов, жалит, лечит стрелка за каждого пойманного. */
   private readonly webs: { x: number; z: number; r: number; until: number; owner: string; dps: number; tickT: number }[] = [];
 
@@ -10154,18 +10158,23 @@ export class ZoneRoom extends Room<ZoneState> {
         for (const o of around(cx, cz, BLAST_ARROW.radius)) if (o.id !== m.id) arrowHit(o, BLAST_ARROW.splash, cx, cz);
         return true;
       }
-      case "doubleShot": {
-        // 🧪 Двойной выстрел: две стрелы в одну цель, у каждой свой крит.
-        const m = this.skillTarget(p, tx, tz, DOUBLE_SHOT.range, fwd());
-        if (!m) {
-          rt.skillAt[kind] = -999;
-          return false;
+      case "arrowStorm": {
+        // 🧪 Шквал стрел: волны по всем врагам вокруг лучника (круг идёт за ним), крит — у каждого попадания.
+        const A = ARROW_STORM;
+        act({ k: "stormWave", x: p.head.x, y: feetY, z: p.head.z, d: 0, r: A.radius });
+        for (let w = 0; w < A.waves; w++) {
+          this.clock.setTimeout(() => {
+            const pp = this.state.players.get(ownerId);
+            if (!pp || pp.dead) return;
+            const px = pp.head.x;
+            const pz = pp.head.z;
+            act({ k: "stormWave", x: px, y: pp.head.y - PLAYER.eyeHeight, z: pz, d: w + 1, r: A.radius });
+            for (const m of around(px, pz, A.radius)) {
+              arrowHit(m, sk.dmgMult, px, pz);
+              this.sim.slowMob(m.id, A.slowSec, 1 - A.slow);
+            }
+          }, (A.first + w * A.gap) * 1000);
         }
-        const ox = p.head.x;
-        const oz = p.head.z;
-        act({ k: "doubleShot", x: ox, y: p.head.y - 0.3, z: oz, x2: m.x, z2: m.z, d: m.y + MOB.bodyRadius * m.scale, r: DOUBLE_SHOT.gap });
-        arrowHit(m, sk.dmgMult, ox, oz);
-        for (let i = 1; i < DOUBLE_SHOT.arrows; i++) this.clock.setTimeout(() => arrowHit(m, sk.dmgMult, ox, oz), i * DOUBLE_SHOT.gap * 1000);
         return true;
       }
       case "ghostArrow": {
@@ -10176,59 +10185,71 @@ export class ZoneRoom extends Room<ZoneState> {
         return true;
       }
       case "swarmArrow": {
-        // 🧪 Стрела-рой: веер стрел; каждая бьёт первого моба в своём коридоре и взрывается.
+        // 🧪 Стрела-рой: залпы веером; каждая стрела бьёт первого моба в своём коридоре и взрывается.
         const S = SWARM_ARROW;
         const [fx, fz] = fwd();
         const yaw = Math.atan2(fx, fz);
-        const ox = p.head.x;
-        const oz = p.head.z;
-        const oy = p.head.y - 0.3;
         const touched = new Set<string>();
-        for (let i = 0; i < S.arrows; i++) {
-          const a = yaw + (S.arrows > 1 ? (i / (S.arrows - 1) - 0.5) * 2 * S.halfAngle : 0);
-          const ax = Math.sin(a);
-          const az = Math.cos(a);
-          let hit: Mob | null = null;
-          let best: number = S.range;
-          for (const m of this.sim.mobs.values()) {
-            if (m.dead) continue;
-            const vx = m.x - ox;
-            const vz = m.z - oz;
-            const along = vx * ax + vz * az;
-            if (along <= 0 || along > S.range + 8) continue;
-            const rad = this.sim.targetRadius("mob", m.id);
-            if (Math.abs(vx * az - vz * ax) > S.lane + rad) continue;
-            const t = Math.max(0, along - rad);
-            if (t < best) {
-              best = t;
-              hit = m;
+        const volley = (pp: PlayerState): void => {
+          const ox = pp.head.x;
+          const oz = pp.head.z;
+          const oy = pp.head.y - 0.3;
+          for (let i = 0; i < S.arrows; i++) {
+            const a = yaw + (S.arrows > 1 ? (i / (S.arrows - 1) - 0.5) * 2 * S.halfAngle : 0);
+            const ax = Math.sin(a);
+            const az = Math.cos(a);
+            let hit: Mob | null = null;
+            let best: number = S.range;
+            for (const m of this.sim.mobs.values()) {
+              if (m.dead) continue;
+              const vx = m.x - ox;
+              const vz = m.z - oz;
+              const along = vx * ax + vz * az;
+              if (along <= 0 || along > S.range + 8) continue;
+              const rad = this.sim.targetRadius("mob", m.id);
+              if (Math.abs(vx * az - vz * ax) > S.lane + rad) continue;
+              const t = Math.max(0, along - rad);
+              if (t < best) {
+                best = t;
+                hit = m;
+              }
+            }
+            if (!hit) {
+              act({ k: "swarmArrow", x: ox, y: oy, z: oz, x2: ox + ax * S.range, z2: oz + az * S.range, d: oy - 0.6, r: 0 });
+              continue;
+            }
+            const m: Mob = hit;
+            const cx = m.x;
+            const cz = m.z;
+            act({ k: "swarmArrow", x: ox, y: oy, z: oz, x2: cx, z2: cz, d: m.y + MOB.bodyRadius * m.scale, r: S.blastR });
+            touched.add(m.id);
+            arrowHit(m, sk.dmgMult, ox, oz);
+            for (const o of around(cx, cz, S.blastR)) {
+              touched.add(o.id);
+              arrowHit(o, S.blast, cx, cz);
             }
           }
-          if (!hit) {
-            act({ k: "swarmArrow", x: ox, y: oy, z: oz, x2: ox + ax * S.range, z2: oz + az * S.range, d: oy - 0.6, r: 0 });
-            continue;
-          }
-          const m: Mob = hit;
-          const cx = m.x;
-          const cz = m.z;
-          act({ k: "swarmArrow", x: ox, y: oy, z: oz, x2: cx, z2: cz, d: m.y + MOB.bodyRadius * m.scale, r: S.blastR });
-          touched.add(m.id);
-          arrowHit(m, sk.dmgMult, ox, oz);
-          for (const o of around(cx, cz, S.blastR)) {
-            touched.add(o.id);
-            arrowHit(o, S.blast, cx, cz);
-          }
-        }
-        if (touched.size >= S.bonusTargets) {
-          this.skillHeal(ownerId, p, p.maxHp * S.healFrac);
-          rt.runUntil = this.elapsed + S.runSec;
+        };
+        volley(p);
+        for (let v2 = 1; v2 < S.volleys; v2++) {
+          const last = v2 === S.volleys - 1;
+          this.clock.setTimeout(() => {
+            const pp = this.state.players.get(ownerId);
+            if (!pp || pp.dead) return;
+            volley(pp);
+            // Бонус — по итогу всех залпов: задето 3+ разных врагов.
+            if (last && touched.size >= S.bonusTargets) {
+              this.skillHeal(ownerId, pp, pp.maxHp * S.healFrac);
+              rt.runUntil = this.elapsed + S.runSec;
+            }
+          }, v2 * S.volleyGap * 1000);
         }
         return true;
       }
       case "barrierArrow": {
         // 🧪 Стрела-барьер: кольцо там, где стоит стрелок (тик — tickBarriers).
         const dur = BARRIER_ARROW.duration;
-        this.barriers.push({ x: p.head.x, z: p.head.z, r: sk.radius, until: this.elapsed + dur, owner: ownerId, dmg: sk.dmgMult * pow.dmg, inside: new Set(), tickT: 0 });
+        this.barriers.push({ x: p.head.x, z: p.head.z, r: sk.radius, until: this.elapsed + dur, owner: ownerId, dmg: sk.dmgMult * pow.dmg, tickT: 0, pushAt: new Map(), hitAt: new Map() });
         act({ k: "arrowBarrier", x: p.head.x, y: feetY, z: p.head.z, d: dur, r: sk.radius });
         return true;
       }
@@ -10447,17 +10468,18 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /**
-   * 🧪 «Стрела-барьер»: моб, вошедший в кольцо (на прошлом тике его там не было), — урон и отброс наружу;
-   * стоящий внутри (босс, пригвождённый) второй раз не бьётся. Стрелок в кольце лечится.
+   * 🧪 «Стрела-барьер»: моб в кольце (по краю тела) раз в pushEvery с отталкивается наружу — пока не выйдет
+   * (крупный, оставшийся краем внутри, толкается снова); урон — не чаще раза в hitEvery с. Стрелок в кольце лечится.
+   * Босса и пригвождённого толчок не сдвигает — их только ранит.
    */
   private tickBarriers(dt: number): void {
+    const B = BARRIER_ARROW;
     for (let i = this.barriers.length - 1; i >= 0; i--) {
       const b = this.barriers[i];
       if (this.elapsed > b.until) {
         this.barriers.splice(i, 1);
         continue;
       }
-      const now = new Set<string>();
       for (const m of this.sim.mobs.values()) {
         if (m.dead) continue;
         const dx = m.x - b.x;
@@ -10465,20 +10487,22 @@ export class ZoneRoom extends Room<ZoneState> {
         if (Math.abs(dx) > b.r + 10 || Math.abs(dz) > b.r + 10) continue;
         const d = Math.hypot(dx, dz);
         if (d - this.sim.targetRadius("mob", m.id) > b.r) continue;
-        now.add(m.id);
-        if (b.inside.has(m.id)) continue;
+        if (this.elapsed - (b.pushAt.get(m.id) ?? -99) < B.pushEvery) continue;
+        b.pushAt.set(m.id, this.elapsed);
         const ux = d > 0.01 ? dx / d : 1;
         const uz = d > 0.01 ? dz / d : 0;
-        this.sim.hitMob(m.id, b.dmg, ux, uz, b.owner, true);
-        this.sim.shoveMob(m.id, ux, uz, BARRIER_ARROW.shove);
+        this.sim.shoveMob(m.id, ux, uz, B.shove);
+        if (this.elapsed - (b.hitAt.get(m.id) ?? -99) >= B.hitEvery) {
+          b.hitAt.set(m.id, this.elapsed);
+          this.sim.hitMob(m.id, b.dmg, ux, uz, b.owner, true);
+        }
         this.broadcast(MSG.act, { k: "barrierHit", id: b.owner, x: m.x, y: m.y + MOB.bodyRadius * m.scale, z: m.z, x2: b.x, z2: b.z } satisfies ActRelay);
       }
-      b.inside = now;
       b.tickT -= dt;
       if (b.tickT > 0) continue;
       b.tickT = 0.5;
       const p = this.state.players.get(b.owner);
-      if (p && !p.dead && Math.hypot(p.head.x - b.x, p.head.z - b.z) <= b.r) this.skillHeal(b.owner, p, p.maxHp * BARRIER_ARROW.healFracPerSec * 0.5);
+      if (p && !p.dead && Math.hypot(p.head.x - b.x, p.head.z - b.z) <= b.r) this.skillHeal(b.owner, p, p.maxHp * B.healFracPerSec * 0.5);
     }
   }
 
