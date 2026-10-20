@@ -102,8 +102,11 @@ def with_wings(fn, amp, cycles):
     return f
 
 
-# покой с весом: корпус садится на сгибаемые колени и локти (ноги стоят на стопах, а не вытянуты)
-WEIGHT_DROP = 0.12  # м, на выдохе ниже, на вдохе выше
+# покой с весом: корпус садится на сгибаемые колени (ноги стоят на стопах, а не вытянуты). Вес — на задних
+# лапах: корпус наклонён носом вверх, плечи выше таза, передние лапы стоят почти столбом (у передней лапы
+# длинное плечо и короткое предплечье — при глубоком приседе она складывалась зигзагом, «лишняя кость»).
+WEIGHT_DROP = 0.10  # м, на выдохе ниже, на вдохе выше
+WEIGHT_PITCH = 10.0  # °, наклон корпуса: плечи поднимаются на ≈ 8 см (опускаются всего на ≈ 2), таз — на ≈ 13
 
 
 def clip_stand(rig_, t):
@@ -112,16 +115,20 @@ def clip_stand(rig_, t):
     b = math.sin(2 * math.pi * t)
     root = Vector((0.0, 0.0, -WEIGHT_DROP * (0.85 + 0.15 * b)))
     pose = {}
+    pose["Root"] = rx(-WEIGHT_PITCH)  # отрицательный — плечи вверх (нос рига смотрит в −Y)
     pose["Pelvis"] = ry(1.2 * b)
     anim._spine(rig_, pose, pitch=math.radians(1.5) * b, roll=-math.radians(1.0) * b)
-    pose["Neck1"] = rx(3.0 * b)
-    pose["Head"] = rz(5.0 * math.sin(2 * math.pi * t + 1.2)) @ rx(2.0 * math.sin(4 * math.pi * t))
+    # шея и голова гасят наклон корпуса: взгляд остаётся ровным
+    pose["Neck1"] = rx(3.0 * b + WEIGHT_PITCH * 0.6)
+    pose["Head"] = rz(5.0 * math.sin(2 * math.pi * t + 1.2)) @ rx(2.0 * math.sin(4 * math.pi * t) + WEIGHT_PITCH * 0.4)
     anim._tail(rig_, pose, t, amp=math.radians(8), lag=0.6)
+    # хвост гасит наклон корпуса — иначе кончик уходит под землю
+    pose["Tail1"] = rx(WEIGHT_PITCH) @ pose.get("Tail1", Quaternion())
     rig_.plant(pose, root)
     return pose, root, None
 
 
-def alive(fn, amp=1.0):
+def alive(fn, amp=1.0, replant=False):
     """Живость поверх базового клипа: дыхание грудью, покачивание головы и шеи, хвост волной от основания
     к кончику с запаздыванием по сегментам, лёгкое шевеление крыльев и вес с ноги на ногу. Все частоты —
     целые числа циклов на отрезок t ∈ [0, 1), поэтому петля клипа замыкается без рывка."""
@@ -146,6 +153,9 @@ def alive(fn, amp=1.0):
             add(f"Tail{i}", rz(amp * 3.0 * math.sin(k - d)) @ rx(amp * 1.5 * math.sin(2 * k - 0.3 * i)))
         add("WingArm2.L", ry(amp * 2.5 * math.sin(2 * k + 0.8)))
         add("WingArm2.R", ry(-amp * 2.5 * math.sin(2 * k + 0.8)))
+        # покой: грудь и корень сдвинули плечи и таз — стопы ставим на место заново (в шаге стопы ведёт сам шаг)
+        if replant:
+            rig_.plant(pose, root if root is not None else Vector((0, 0, 0)))
         return pose, root, sc
     return f
 
@@ -270,7 +280,7 @@ def clip_death_collapse(t, dur=2.6):
 
 # ---- клипы: (имя, кадров, петля, функция(rig, t)); базовые — из генератора с обёртками ----
 CLIPS = [
-    ("Idle", 90, True, alive(with_wings(clip_stand, 6.0, 1), 1.0)),
+    ("Idle", 90, True, alive(with_wings(clip_stand, 6.0, 1), 1.0, replant=True)),
     ("Walk", 48, True, alive(with_wings(anim.clip_walk, 4.0, 1), 0.6)),
     ("Run", 30, True, alive(with_wings(anim.clip_run, 12.0, 2), 0.5)),
     ("AttackBite", 36, False, None),  # генератор: quad, style "bite"
