@@ -149,33 +149,66 @@ def stance(p, k=1.0):
 IDLE_SEC = 3.0
 
 
+# Покой — тот, что понравился пользователю (версия 4e69079c, 2026-10-21), перенесён формула в формулу.
+# Отличие одно: крылья и хвост приподняты на несколько градусов — их кончики уходили под землю на ≈6 см.
+IDLE_WING_LIFT = 7.0  # °
+IDLE_TIP_LIFT = 2.5  # °
+
+
+def _rx(deg):
+    return Quaternion((1, 0, 0), D(deg))
+
+
+def _ry(deg):
+    return Quaternion((0, 1, 0), D(deg))
+
+
+def _rz(deg):
+    return Quaternion((0, 0, 1), D(deg))
+
+
 def clip_idle(rig_, u):
-    """Покой: дыхание (грудь и брюхо), вес переходит с ноги на ногу, голова оглядывается рывками с паузами,
-    шея и хвост живут своей волной, раз за цикл крылья поправляются (встряхнуть и сложить)."""
-    s = u * IDLE_SEC
+    """Покой: корпус сидит на задних лапах (наклон и присед), на вдохе поднимается, на выдохе опускается;
+    грудь дышит, голова и шея покачиваются, хвост — волной от основания к кончику, крылья мягко дышат,
+    вес переходит с ноги на ногу. Стопы стоят на земле (IK)."""
     k = 2 * math.pi * u
-    p = P()
-    stance(p)
-    breath = math.sin(k)  # один вдох за цикл (3 с)
-    p.root.z += 0.012 * breath
-    p.root.x += 0.018 * math.sin(k + 0.6)  # вес — на левые, потом на правые лапы
-    p.rot("Pelvis", ay=1.4 * math.sin(k + 0.6))
-    p.rot("Spine1", ax=-1.2 * breath)
-    p.rot("Chest", ax=-2.2 * breath, ay=-1.0 * math.sin(k + 0.6))
-    # взгляд: быстрый поворот, пауза, другой бок, пауза, вперёд (петля замыкается на 0)
-    look = K([(0, 0), (0.35, 14, "o"), (1.1, 12), (1.35, -9, "o"), (2.2, -8), (2.5, 0, "o"), (3.0, 0)], s)
-    tilt = K([(0, 0), (0.35, -4, "o"), (1.1, -3), (1.35, 3, "o"), (2.2, 2), (2.5, 0, "o"), (3.0, 0)], s)
-    p.neck(ax=1.5 * breath, az=look * 0.6)
-    p.rot("Head", ax=1.2 * math.sin(2 * k + 0.4), ay=tilt, az=look * 0.4)
-    p.rot("Jaw", ax=2.0 * max(0.0, breath))
-    # хвост: медленная волна, кончик подворачивается
-    # хвост лежит расслабленно: дальние звенья чуть к земле, медленная волна, кончик подворачивается
-    p.tail(lambda i: (-0.5 * (i > 2) + 0.6 * math.sin(k - 0.4 * i), 0.0, (2.0 + 0.8 * i) * math.sin(k - 0.5 * i)))
-    # крылья: дышат вместе с грудью, на 1.6–2.3 с — поправить (приподнять, развести пальцы, сложить)
-    fix = K([(0, 0), (1.6, 0), (1.85, 1, "o"), (2.05, 0.6), (2.3, 0, "s"), (3.0, 0)], s)
-    p.wings(spread=3 + 10 * fix, lift=1.5 * breath + 9 * fix, fan=8 * fix,
-            lag=1.5 * breath + 9 * K([(0, 0), (1.68, 0), (1.93, 1, "o"), (2.13, 0.6), (2.38, 0), (3.0, 0)], s))
-    return p.done()
+    b = math.sin(k)
+    root = Vector((0.0, 0.0, -WEIGHT_DROP * (0.85 + 0.15 * b)))
+    pose = {}
+    # стойка с весом
+    pose["Root"] = _rx(-WEIGHT_PITCH)
+    pose["Pelvis"] = _ry(1.2 * b)
+    anim._spine(rig_, pose, pitch=D(1.5) * b, roll=-D(1.0) * b)
+    pose["Neck1"] = _rx(3.0 * b + WEIGHT_PITCH * 0.6)
+    pose["Head"] = _rz(5.0 * math.sin(k + 1.2)) @ _rx(2.0 * math.sin(2 * k) + WEIGHT_PITCH * 0.4)
+    anim._tail(rig_, pose, u, amp=D(8), lag=0.6)
+    pose["Tail1"] = _rx(WEIGHT_PITCH + IDLE_TIP_LIFT) @ pose.get("Tail1", I)
+    # крылья: один мягкий взмах за цикл (> 0 — вниз, правое зеркально)
+    flap = 6.0 * b - IDLE_WING_LIFT
+    pose["WingArm1.L"] = _ry(flap)
+    pose["WingArm1.R"] = _ry(-flap)
+    pose["WingArm2.L"] = _ry(flap * 0.7)
+    pose["WingArm2.R"] = _ry(-flap * 0.7)
+
+    # живость поверх: дыхание грудью, голова и шея, хвост волной, шевеление крыльев, вес с ноги на ногу
+    def add(bone, q):
+        pose[bone] = pose.get(bone, I) @ q
+
+    add("Chest", _rx(2.5 * math.sin(k)))
+    add("Spine1", _rx(1.2 * math.sin(k - 0.4)))
+    add("Neck1", _rx(-1.5 * math.sin(k)))
+    add("Neck2", _rx(-1.0 * math.sin(k - 0.2)))
+    add("Head", _ry(7.0 * math.sin(k)) @ _rx(2.0 * math.sin(k + 0.5)))
+    add("Head", _ry(2.5 * math.sin(2 * k + 1.2)))
+    add("Jaw", _rx(2.2 * max(0.0, math.sin(k))))
+    add("Root", _rz(0.8 * math.sin(k)))
+    for i in range(1, 9):
+        add(f"Tail{i}", _rz(3.0 * math.sin(k - 0.45 * i)) @ _rx(1.5 * math.sin(2 * k - 0.3 * i)))
+    add("WingArm2.L", _ry(2.5 * math.sin(2 * k + 0.8)))
+    add("WingArm2.R", _ry(-2.5 * math.sin(2 * k + 0.8)))
+    # грудь и корень сдвинули плечи и таз — стопы на место
+    rig_.plant(pose, root)
+    return pose, root, None
 
 
 # ---------------------------------------------------------------- шаг и бег
