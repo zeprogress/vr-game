@@ -1148,9 +1148,9 @@ export class PcInventory {
       all.title = `Все камни по ${RING.combine} одинаковых → уровнем выше, пока есть что соединять`;
       foot.append(all);
     } else if (f === "all" || f === "weapon" || f === "armor") {
-      // Разобрать всё, кроме избранного ★, рубиновых и надетого — с подтверждением (рубиновые — только поштучно, как на сервере).
+      // Разобрать всё, кроме избранного ★, рубиновых, редких мастерских и надетого — с подтверждением (они — только поштучно, как на сервере).
       // Вкладка «Оружие» — только оружие, «Броня» — только броня, «Все» — и то и другое.
-      const ws = f === "armor" ? [] : bagW.filter((w) => w.tier !== "ruby" && w.tier !== "craft");
+      const ws = f === "armor" ? [] : bagW.filter((w) => w.tier !== "ruby" && !isCraftRare(w));
       const as = f === "weapon" || !this.hooks.armorAct ? [] : bag.flatMap((e) => ("a" in e && !e.a.fav ? [e.a] : []));
       // Вкладка «Все» — и кольца тоже (как «Разобрать все кольца»: надетые и ★ остаются).
       const rs = f === "all" ? bagR : [];
@@ -1159,14 +1159,14 @@ export class PcInventory {
       const what = f === "weapon" ? "оружие" : f === "armor" ? "броню" : "оружие, броню и кольца";
       const all = button(f === "all" ? `Разобрать всё, кроме ${glyph("ui.fav")}` : `Разобрать ${what}, кроме ${glyph("ui.fav")}`, () =>
         this.askConfirm(
-          `Разобрать ${what} — ${n} шт. на ${scrapSum} лома? Избранное ${glyph("ui.fav")}, рубиновое, мастерское и надетое останутся.${rs.length ? " Камни из колец вернутся в сумку." : ""}`,
+          `Разобрать ${what} — ${n} шт. на ${scrapSum} лома? Избранное ${glyph("ui.fav")}, рубиновое, редкое мастерское и надетое останутся.${rs.length ? " Камни из колец вернутся в сумку." : ""}`,
           "Разобрать",
           () => this.hooks.act({ act: "scrapAll", id: f, idx: 0 }),
         ),
       );
       all.className = "pcinv-btn";
       all.disabled = n === 0;
-      all.title = `${what[0].toUpperCase()}${what.slice(1)} из сумки в лом (${n} шт., +${scrapSum}). Избранное, рубиновое и надетое останутся`;
+      all.title = `${what[0].toUpperCase()}${what.slice(1)} из сумки в лом (${n} шт., +${scrapSum}). Избранное, рубиновое, редкое мастерское и надетое останутся`;
       foot.append(all);
     } else if (f === "fav") {
       const all = button(`${glyph("ui.fav")} Избранное не разбирается`, () => {});

@@ -163,6 +163,7 @@ import {
   rollWeaponInstance,
   swapRubyClass,
   scrapValue,
+  isCraftRare,
   takeOne,
   weaponDef,
   weaponKey,
@@ -5892,7 +5893,7 @@ export class ZoneRoom extends Room<ZoneState> {
       return { ok: true, text: w.fav ? `★ В избранном: ${instanceName(w)} — не разбирается` : `Убрано из избранного: ${instanceName(w)}` };
     }
     if (act === "scrapAll") {
-      // Разобрать всё, кроме избранного ★, надетого и рубинового (кнопка внизу сумки).
+      // Разобрать всё, кроме избранного ★, надетого, рубинового и редкого мастерского (кнопка внизу сумки).
       // id — вкладка сумки: "weapon" — только оружие, "armor" — только броня, "all" — оружие, броня и кольца, иначе — оружие и броня.
       const kinds = id === "weapon" ? { w: true, a: false, r: false } : id === "armor" ? { w: false, a: true, r: false } : { w: true, a: true, r: id === "all" };
       const none = { ok: false, text: "Разбирать нечего — всё в избранном или надето." };
@@ -5914,8 +5915,8 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       if (t) {
         const held = this.liveHeldIds(t.p, t.rt);
-        // Рубиновые и мастерские (крафт) массовой разборкой не трогаем — только поштучно.
-        const ws = kinds.w ? t.rt.weapons.filter((w) => !w.fav && w.tier !== "ruby" && w.tier !== "craft" && !held.has(w.id)) : [];
+        // Рубиновые и редкие мастерские (исход крафта выше рубинового) массовой разборкой не трогаем — только поштучно.
+        const ws = kinds.w ? t.rt.weapons.filter((w) => !w.fav && w.tier !== "ruby" && !isCraftRare(w) && !held.has(w.id)) : [];
         const worn = new Set(Object.values(t.rt.armorWorn));
         const as = kinds.a ? t.rt.armor.filter((x) => !x.fav && !worn.has(x.id)) : [];
         if (!ws.length && !as.length && !ringCount) return none;
@@ -5933,7 +5934,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
       const weapons = rec.weapons ?? [];
       const held = recHeldIds(rec);
-      const ws = kinds.w ? weapons.filter((w) => !w.fav && w.tier !== "ruby" && w.tier !== "craft" && !held.has(w.id)) : [];
+      const ws = kinds.w ? weapons.filter((w) => !w.fav && w.tier !== "ruby" && !isCraftRare(w) && !held.has(w.id)) : [];
       const { armor, armorWorn } = armorFromRec(rec);
       const worn = new Set(Object.values(armorWorn));
       const as = kinds.a ? armor.filter((x) => !x.fav && !worn.has(x.id)) : [];
