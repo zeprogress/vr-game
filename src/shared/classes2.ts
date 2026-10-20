@@ -568,8 +568,8 @@ export const BLAST_ARROW = { splash: 1.2, radius: 5, range: 22 } as const; // р
  * попадания; задетые замедлены на slow на slowSec с.
  */
 // fall — сколько падают стрелы волны с неба (событие волны уходит на fall с раньше удара; first — после залпа вверх).
-// Задето за все волны ≥ bonusTargets врагов — лечение healFrac макс. HP (2026-10-20: лечение перенесено с «Роя»).
-export const ARROW_STORM = { radius: 12, waves: 3, first: 0.7, gap: 0.5, fall: 0.3, slow: 0.3, slowSec: 2, bonusTargets: 3, healFrac: 0.15 } as const;
+// Каждая волна, задевшая хотя бы одного врага, — лечение healFrac макс. HP (2026-10-20: лечение перенесено с «Роя»).
+export const ARROW_STORM = { radius: 12, waves: 3, first: 0.7, gap: 0.5, fall: 0.3, slow: 0.3, slowSec: 2, healFrac: 0.15 } as const;
 /**
  * 🧪 «Стрела-призрак»: duration с (× МДР — SkillDef.attr) обычные мобы не видят стрелка и не бьют его
  * (боссы видят); его урон ×dmgMul; каждое попадание стрелой (у бота — выстрел) лечит healFrac макс. HP.
@@ -708,7 +708,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   arrowStorm: {
     name: "Шквал стрел", icon: glyph("s.arrowStorm"), test: true,
-    desc: `${ARROW_STORM.waves} волны стрел по всем врагам в ${ARROW_STORM.radius} м вокруг тебя: ×1 каждому за волну (свой крит), задетые замедлены на ${pctR(ARROW_STORM.slow)} на ${ARROW_STORM.slowSec} с; задел ${ARROW_STORM.bonusTargets}+ врагов — лечение ${pctR(ARROW_STORM.healFrac)} здоровья`,
+    desc: `${ARROW_STORM.waves} волны стрел по всем врагам в ${ARROW_STORM.radius} м вокруг тебя: ×1 каждому за волну (свой крит), задетые замедлены на ${pctR(ARROW_STORM.slow)} на ${ARROW_STORM.slowSec} с; за каждую волну, задевшую хотя бы одного врага, — лечение ${pctR(ARROW_STORM.healFrac)} здоровья`,
     cooldown: 16, castTime: 0.3, radius: ARROW_STORM.radius, dmgMult: 1, hits: ARROW_STORM.waves,
   },
   ghostArrow: {

@@ -985,7 +985,34 @@ if (ONLY.has("skilltest")) {
     // ≥: в 12 м может оказаться и чужой слизень мира — его волна тоже бьёт.
     check("Шквал: волны по всем рядом", ok && hits >= 5 * C2.ARROW_STORM.waves && lost(far) === 0, `попаданий ${hits} (≥ 5 мобов × ${C2.ARROW_STORM.waves} волны), дальний −${Math.round(lost(far))}`);
     check("Шквал: замедляет", slowed === near.length, `замедлено ${slowed} из ${near.length}, урон ${near.map((m: any) => Math.round(lost(m))).join(" / ")}`);
-    check("Шквал: лечение за 3+", t.p.hp >= hpS + t.p.maxHp * C2.ARROW_STORM.healFrac * 0.99, `HP ${Math.round(hpS)} → ${Math.round(t.p.hp)} (+${Math.round(C2.ARROW_STORM.healFrac * 100)}%)`);
+    const healAll = C2.ARROW_STORM.healFrac * C2.ARROW_STORM.waves;
+    check("Шквал: лечение за каждую волну", t.p.hp >= hpS + t.p.maxHp * healAll * 0.99, `HP ${Math.round(hpS)} → ${Math.round(t.p.hp)} (+${Math.round(healAll * 100)}% = ${C2.ARROW_STORM.waves} волны по ${Math.round(C2.ARROW_STORM.healFrac * 100)}%)`);
+
+    // Один враг рядом тоже лечит за каждую волну (порог — хотя бы один).
+    const t2 = bowScene(["arrowStorm", "mark"]);
+    const solo = pack(t2.mobs, 1, t2.mobs[0].x, t2.mobs[0].z, 0);
+    for (const m of t2.mobs.slice(1)) {
+      m.x += 500;
+      m.homeX += 500;
+    }
+    t2.room.sim.stunMob(solo[0].id, 99);
+    put(t2.p, solo[0].x + 3, solo[0].z);
+    t2.p.hp = t2.p.maxHp * 0.5;
+    const hp1 = t2.p.hp;
+    t2.room.castSkill("arrowStorm", t2.x.id, t2.p, t2.rt, NaN, NaN);
+    secs(t2.step, C2.ARROW_STORM.first + C2.ARROW_STORM.gap * C2.ARROW_STORM.waves + 0.3);
+    check("Шквал: один враг — лечение за каждую волну", lost(solo[0]) > 0 && t2.p.hp >= hp1 + t2.p.maxHp * healAll * 0.99, `урон −${Math.round(lost(solo[0]))}, HP ${Math.round(hp1)} → ${Math.round(t2.p.hp)} (+${Math.round(healAll * 100)}%)`);
+
+    // Никого рядом — без лечения (регенерация — в порог 2%).
+    const t3 = bowScene(["arrowStorm", "mark"]);
+    for (const m of t3.mobs) {
+      m.x += 500;
+      m.homeX += 500;
+    }
+    const hp3 = t3.p.hp;
+    t3.room.castSkill("arrowStorm", t3.x.id, t3.p, t3.rt, NaN, NaN);
+    secs(t3.step, C2.ARROW_STORM.first + C2.ARROW_STORM.gap * C2.ARROW_STORM.waves + 0.3);
+    check("Шквал: никого рядом — без лечения", t3.p.hp - hp3 < t3.p.maxHp * 0.02, `HP ${Math.round(hp3)} → ${Math.round(t3.p.hp)}`);
   }
 
   // 3. Стрела-призрак: моб рядом перестаёт бить, урон ×0.7, попадание стрелой лечит, плашка.
