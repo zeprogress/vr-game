@@ -138,6 +138,16 @@ function withRandomMechs(b: CatBoss): CatBoss {
 /** Ключ записи на катакомбы — ник в нижнем регистре: переживает перезапуск (сессии героев меняются). */
 export const catQueueKey = (nick: string): string => nick.trim().toLowerCase();
 
+/**
+ * Добыча забега: одинаковое складывается. Камень и кольцо — с заглушкой id ("scrap"), различает их только jw,
+ * поэтому сравниваем и его; иначе все камни склеивались в одну строку, а лом из сундуков писался на неё.
+ */
+export function addLoot(list: LootItem[], it: LootItem): void {
+  const same = list.find((l) => l.id === it.id && l.jw === it.jw && !!l.aegis === !!it.aegis);
+  if (same) same.count += it.count;
+  else list.push({ ...it });
+}
+
 export class CatacombDirector {
   phase: number = CAT_PHASE.none;
   readonly party = new Set<string>();
@@ -264,9 +274,7 @@ export class CatacombDirector {
     if (!this.inRun(id)) return;
     const mine = this.lootBy.get(id) ?? [];
     this.lootBy.set(id, mine);
-    const same = mine.find((l) => l.jw === it.jw && l.id === it.id && !!l.aegis === !!it.aegis);
-    if (same) same.count += it.count;
-    else mine.push({ ...it });
+    addLoot(mine, it);
   }
 
   inRun(id: string): boolean {
@@ -1050,11 +1058,7 @@ export class CatacombDirector {
         const mine = this.lootBy.get(id) ?? [];
         this.lootBy.set(id, mine);
         for (const it of this.host.chest(id, st.chest)) {
-          for (const list of [loot, mine]) {
-            const same = list.find((l) => l.id === it.id && !!l.aegis === !!it.aegis);
-            if (same) same.count += it.count;
-            else list.push({ ...it });
-          }
+          for (const list of [loot, mine]) addLoot(list, it);
         }
       }
       if (!final) {
