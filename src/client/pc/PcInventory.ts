@@ -1727,23 +1727,24 @@ export class PcInventory {
       bt.innerHTML = `${iconHtml("i.scrap")}<span>${next.cost} · ${fmtPct(next.chance * 100)}%</span>`;
       bt.title = `Точить: ${next.cost} лома, шанс ${fmtPct(next.chance * 100)}%`;
       bt.disabled = d.scrap < next.cost || this.forging;
-      bt.onclick = () => {
-        this.hooks.act({ act: "sharpen", id: w.id, idx: 0 });
-        window.setTimeout(() => this.refresh(), 300);
-      };
+      // Точка атаки — тот же молот и итог, что у заточки аффиксов (forge с sharpen).
+      bt.onclick = () => this.forge(w.id, 0, true);
       box.append(bt);
     }
     return box;
   }
 
-  private forge(id: string, idx: number): void {
+  private forge(id: string, idx: number, sharpen = false): void {
     if (this.forging) return;
     this.forging = true;
     this.hammerDone = false;
     this.pendingResult = null;
     this.lastResult = null;
     this.render();
-    this.hooks.act(this.data?.armor?.some((x) => x.id === id) ? { act: "armorEnchant", id, idx } : { act: "enchant", id, idx });
+    this.hooks.act(
+      sharpen ? { act: "sharpen", id, idx: 0 }
+        : this.data?.armor?.some((x) => x.id === id) ? { act: "armorEnchant", id, idx } : { act: "enchant", id, idx },
+    );
     // Три удара молотом — пусть напряжение настоится, потом итог.
     window.setTimeout(() => {
       this.hammerDone = true;
@@ -1757,8 +1758,9 @@ export class PcInventory {
     this.forging = false;
     if (r) {
       const e = r.enchant;
+      // Точка атаки отвечает без e (только текст и ok) — успех берём из ok.
       this.lastResult = {
-        up: !!e?.up,
+        up: e ? !!e.up : r.ok,
         text: e ? (e.up ? `Успех! ${e.label}: +${e.gain} очк.` : `Неудача — ${e.cost} лома сгорело`) : r.text,
       };
     }
