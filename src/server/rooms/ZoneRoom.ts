@@ -4714,19 +4714,11 @@ export class ZoneRoom extends Room<ZoneState> {
       return;
     }
     if (tokens < item.price) return this.sendShop(client, `Не хватает жетонов: нужно ${item.price} ◈`);
-    let note: string;
-    if (item.item) {
-      const bag = readBag(p);
-      if (addToBag(bag, item.item, item.count ?? 1) > 0) return this.sendShop(client, "Сумка полна");
-      writeBag(p, bag);
-      note = `Куплено: ${item.name}`;
-    } else {
-      const w = this.rollChestWeapon(p);
-      rt.weapons.push(w);
-      store.put(token, { weapons: rt.weapons });
-      this.announcePickup(p.nick, w.cls, w.tier, w);
-      note = `Из сундука: ${instanceName(w)} ${instanceStars(w)}`;
-    }
+    if (!item.item) return this.sendShop(client, "Этого товара больше нет");
+    const bag = readBag(p);
+    if (addToBag(bag, item.item, item.count ?? 1) > 0) return this.sendShop(client, "Сумка полна");
+    writeBag(p, bag);
+    let note = `Куплено: ${item.name}`;
     store.put(token, { tokens: tokens - item.price });
     // Что потрачено и что осталось — видно и в VR (там тост в шлеме).
     note += ` · −${item.price} ◈ (осталось ${tokens - item.price} ◈)`;
@@ -4757,19 +4749,9 @@ export class ZoneRoom extends Room<ZoneState> {
       note = `Обмен: −${item.fishCost} рыб · +${gain} ◈ (теперь ${tokens + gain} ◈)`;
     } else {
       if (tokens < item.price) return { ok: false, text: `Не хватает жетонов: нужно ${item.price} ◈` };
-      if (item.item) {
-        if (addToBag(bag, item.item, item.count ?? 1) > 0) return { ok: false, text: "Сумка полна" };
-        note = `Куплено: ${item.name}`;
-      } else {
-        // Сундук — оружие класса, что сейчас в правой руке (живого — из мира, иначе — из записи).
-        const held = t ? t.p.rightCls : (rec.held?.right?.cls ?? "");
-        const w = this.rollChestWeapon(t?.p ?? null, isWeaponClass(held) && held !== "shield" ? held : undefined);
-        if (t) {
-          t.rt.weapons.push(w);
-          this.announcePickup(t.p.nick, w.cls, w.tier, w);
-        } else patch.weapons = [...(rec.weapons ?? []), w];
-        note = `Из сундука: ${instanceName(w)} ${instanceStars(w)}`;
-      }
+      if (!item.item) return { ok: false, text: "Такого товара в лавке нет." };
+      if (addToBag(bag, item.item, item.count ?? 1) > 0) return { ok: false, text: "Сумка полна" };
+      note = `Куплено: ${item.name}`;
       patch.tokens = tokens - item.price;
       note += ` · −${item.price} ◈ (осталось ${tokens - item.price} ◈)`;
     }

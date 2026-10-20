@@ -608,7 +608,6 @@ export class PcInventory {
       scroll_wind: "i.scroll_wind",
       scroll_xp: "i.scroll_xp",
       fish_trade: "i.fish",
-      chest: "w.sword.gold",
     };
     const box = div("pcinv-shop");
     const head = div("pcinv-shop-head");

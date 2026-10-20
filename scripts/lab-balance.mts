@@ -1723,7 +1723,7 @@ if (ONLY.has("shop")) {
   store.put(token, { tokens: 3 });
   const b0 = bagN("potion");
   const r1 = r.room.invAct(x.norm, "shop", "potions", 0);
-  check("Лавка: зелья за 1 жетон", r1.ok && tk() === 2 && bagN("potion") > b0, `${r1.text} · жетонов ${tk()}, зелий +${bagN("potion") - b0}`);
+  check("Лавка: банки хп 50 шт за 1 жетон", r1.ok && tk() === 2 && bagN("potion") - b0 === 50, `${r1.text} · жетонов ${tk()}, зелий +${bagN("potion") - b0}`);
   store.put(token, { tokens: 0 });
   const r2 = r.room.invAct(x.norm, "shop", "scroll_xp", 0);
   check("Лавка: без жетонов — отказ", !r2.ok && tk() === 0, r2.text);
@@ -1735,11 +1735,13 @@ if (ONLY.has("shop")) {
   }
   const r3 = r.room.invAct(x.norm, "shop", "fish_trade", 0);
   check("Лавка: 25 рыб → 5 ◈", r3.ok && tk() === 5 && bagN("fish") === 0, `${r3.text}; жетонов ${tk()}, рыб ${bagN("fish")}`);
-  // Сундук: оружие класса из правой руки — на склад героя, 10 ◈.
-  store.put(token, { tokens: 12 });
-  const w0 = x.bot.rt.weapons.length;
-  const r4 = r.room.invAct(x.norm, "shop", "chest", 0);
-  check("Лавка: сундук — оружие на склад", r4.ok && x.bot.rt.weapons.length === w0 + 1 && tk() === 2, r4.text);
+  // Свитки ветра: 10 шт за 1 жетон; сундука в лавке больше нет.
+  store.put(token, { tokens: 1 });
+  const s0 = bagN("scroll_wind");
+  const r4 = r.room.invAct(x.norm, "shop", "scroll_wind", 0);
+  check("Лавка: свитки ветра 10 шт за 1 жетон", r4.ok && tk() === 0 && bagN("scroll_wind") - s0 === 10, `${r4.text} · свитков +${bagN("scroll_wind") - s0}`);
+  const r5 = r.room.invAct(x.norm, "shop", "chest", 0);
+  check("Лавка: сундука больше нет", !r5.ok, r5.text);
 }
 
 say(`\n=== АНОМАЛИИ (${anomalies.length}) ===`);
