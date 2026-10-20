@@ -322,6 +322,9 @@ export class Mob {
   hitsFixed = false;
   /** Лом за убийство моба (попадает в mobKills → сумка убийцы). */
   readonly scrapN: number;
+  /** Делится ли лом между участниками; участники, которых посчитали при смерти (scrapParts). */
+  readonly scrapShared: boolean;
+  scrapParts: string[] | null = null;
   /** Фаза дракона охоты (1..4), 0 — не он. */
   huntPhase = 0;
   /** Кто уже бил дракона охоты: каждый новый бьющий добавляет EVENT.eliteHunt.hitsPerHero ударов. */
@@ -956,8 +959,10 @@ export class Mob {
       hp?: number;
       dmgMul?: number;
       xp?: number;
-      /** Лом за убийство (по умолчанию 1; ледяной гигант — 30 в лагере, 5 в нашествии). */
+      /** Лом за убийство (по умолчанию 1; ледяной гигант — 100 в подземелье, 5 в нашествии). */
       scrap?: number;
+      /** Лом делится поровну между всеми, кто бил моба (а не только добившему). */
+      scrapShared?: boolean;
       scaleMul?: number;
       flying?: boolean;
       visLift?: number;
@@ -1084,6 +1089,7 @@ export class Mob {
     this.dodge = opts.dodge ?? 0;
     this.regen = opts.regen ?? 0;
     this.scrapN = opts.scrap ?? 1;
+    this.scrapShared = opts.scrapShared ?? false;
     this.puller = opts.puller ?? false;
     this.charger = opts.charger ?? false;
     this.reflector = opts.reflector ?? false;
@@ -2915,7 +2921,7 @@ export class ZoneSim {
     const dunCamps: (typeof MOB_CAMPS)[number][] = DUN_MOB_CAMPS.map((d) => {
       const w = dunWorld(d.u, d.v);
       // Вожак есть и в подземелье: первый моб каждой группы (как в лагерях мира).
-      return { x: w.x, z: w.z, type: d.type, count: d.count, spread: d.spread, noChamp: d.noChamp, ring: d.ring, dmgMul: d.dmgMul, atkMul: d.atkMul };
+      return { x: w.x, z: w.z, type: d.type, count: d.count, spread: d.spread, noChamp: d.noChamp, ring: d.ring, dmgMul: d.dmgMul, atkMul: d.atkMul, shareScrap: d.shareScrap };
     });
     for (const camp of [...MOB_CAMPS, ...dunCamps]) {
       const def = ELITE_MOBS[camp.type];
@@ -2939,6 +2945,7 @@ export class ZoneSim {
           hp: def.hp * (champ?.hpMul ?? 1) * (def.champHpMul ?? 1),
           dmgMul: def.dmgMul * (champ?.dmgMul ?? 1) * (camp.dmgMul ?? 1),
           attackCooldown: (def.attackCooldown ?? MOB.attackCooldown) / (camp.atkMul ?? 1),
+          scrapShared: camp.shareScrap === true,
           scaleMul: (def.scaleMul ?? 1) * (champ ? (def.champScaleMul ?? champ.scaleMul) : 1),
           xp: def.xp * (champ?.xpMul ?? 1),
         });
@@ -3493,7 +3500,7 @@ export class ZoneSim {
   readonly mobMisses: { mobId: string; attacker: string; x: number; y: number; z: number }[] = [];
   /** Добивания за тик: кто и кого добил (для счётчика kills и кил-фида). */
   /** jm — множитель шанса колец/камней (shared/jewels.ts RING): 0 — не роняет (фантомы, осколки); jl — уровень моба для золотого/уникального кольца. */
-  readonly mobKills: { owner: string; kind: MobKind; name: string; campType: string; champ: boolean; jm: number; jr: number; jl: number; sc: number; quest: string[] }[] = [];
+  readonly mobKills: { owner: string; kind: MobKind; name: string; campType: string; champ: boolean; jm: number; jr: number; jl: number; sc: number; /** Кто бил (делёжка лома), null — не делится. */ pt: string[] | null; quest: string[] }[] = [];
 
   /** Множитель шанса колец/камней с моба: фантомы/осколки — 0, боссы — RING.bossMul, элита — RING.eliteMul. */
   private jewelMul(m: Mob): number {
@@ -3662,6 +3669,8 @@ export class ZoneSim {
     if (attacker && dealt > 0 && this.catMobs.has(id)) this.catDamage.set(attacker, (this.catDamage.get(attacker) ?? 0) + dealt);
     if (attacker && dealt > 0) {
       m.bump(attacker, "dmg", dealt, this.elapsed);
+      // Участников лома берём до того, как опыт поделит и очистит вклад (splitXpPool).
+      if (killed && m.scrapShared) m.scrapParts = this.contribParts(m);
       if (this.eventMobs.has(id)) this.eventDamagers.add(attacker);
       if (!dot && !m.dead) this.onHeroHit?.(attacker, id, dealt);
     }
@@ -3686,7 +3695,7 @@ export class ZoneSim {
     // успевал бы сработать до обработки смерти (см. Mob.checkSplitThreshold).
     if (m.checkSplitThreshold(hpBefore)) {
       // Вожак-голем «побеждён», когда раскололся — задание засчитываем сразу.
-      if (m.champ && attacker) this.mobKills.push({ owner: attacker, kind: m.kind, name: m.eliteName, campType: m.campType, champ: true, jm: this.jewelMul(m), jr: m.ringMul, jl: this.jewelLevel(m), sc: m.scrapN, quest: this.questCredit(m, attacker) });
+      if (m.champ && attacker) this.mobKills.push({ owner: attacker, kind: m.kind, name: m.eliteName, campType: m.campType, champ: true, jm: this.jewelMul(m), jr: m.ringMul, jl: this.jewelLevel(m), sc: m.scrapN, pt: m.scrapParts, quest: this.questCredit(m, attacker) });
       this.splitGolem(m);
       return null;
     }
@@ -3710,7 +3719,7 @@ export class ZoneSim {
       if (attacker) this.catKills.set(attacker, (this.catKills.get(attacker) ?? 0) + 1);
       this.spawnLoot(m, attacker);
       this.splitMobXp(m);
-      if (attacker) this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ, jm: this.jewelMul(m), jr: m.ringMul, jl: this.jewelLevel(m), sc: m.scrapN, quest });
+      if (attacker) this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ, jm: this.jewelMul(m), jr: m.ringMul, jl: this.jewelLevel(m), sc: m.scrapN, pt: m.scrapParts, quest });
       return kind;
     }
     if (kind === "shard" || this.eventMobs.has(m.id) || m.cloneOf) {
@@ -3718,7 +3727,7 @@ export class ZoneSim {
       this.mobs.delete(m.id); // осколки и мобы события не возрождаются
       if (kind !== "shard") this.splitMobXp(m);
       if (attacker && kind !== "shard") {
-        this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ, jm: this.jewelMul(m), jr: m.ringMul, jl: this.jewelLevel(m), sc: m.scrapN, quest });
+        this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ, jm: this.jewelMul(m), jr: m.ringMul, jl: this.jewelLevel(m), sc: m.scrapN, pt: m.scrapParts, quest });
       }
       return kind;
     } else {
@@ -3736,7 +3745,7 @@ export class ZoneSim {
       this.splitMobXp(m);
     }
     if (attacker) {
-      this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ, jm: this.jewelMul(m), jr: m.ringMul, jl: this.jewelLevel(m), sc: m.scrapN, quest });
+      this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ, jm: this.jewelMul(m), jr: m.ringMul, jl: this.jewelLevel(m), sc: m.scrapN, pt: m.scrapParts, quest });
     }
     // Осколок голема сам НЕ возрождается (иначе за игровую сессию все
     // големы лагеря необратимо усыхали бы до вечных мелких копий — баг,
@@ -3925,6 +3934,13 @@ export class ZoneSim {
    * общий алгоритм для обычной смерти моба (пул = m.xp) и раскола голема
    * (пул = m.splitXp, см. splitGolem). Уровневый потолок накладывает комната.
    */
+  /** Кто бил моба за последние CONTRIB_RECENCY с — тот, кому делится лом. */
+  private contribParts(m: Mob): string[] {
+    const out: string[] = [];
+    for (const [owner, c] of m.contrib) if (this.elapsed - c.last <= CONTRIB_RECENCY && c.dmg > 0) out.push(owner);
+    return out;
+  }
+
   private splitXpPool(m: Mob, pool: number): void {
     const RECENCY = CONTRIB_RECENCY;
     let total = 0;

@@ -737,8 +737,8 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     iceGiant: true, walksOnly: true, gait: true, noSquash: true, blendAnims: true,
     strikeDelay: 0.6, attackSec: 1.3, walkClipSpeed: 2.4, runClipSpeed: 5.8,
     killXpMul: 125, respawnSec: 5, legendaryChance: 0.12, ringMul: 6, // респавн 5 с (2026-10-20; было 30)
-    /** Лом за убийство (2026-10-20): вместо обычной единицы. */
-    scrap: 30,
+    /** Лом за убийство (2026-10-20): в подземелье 100 — делятся между участниками (CAMP shareScrap); в нашествии свой. */
+    scrap: 100,
   },
 };
 
@@ -970,6 +970,8 @@ export const MOB_CAMPS: {
   dmgMul?: number;
   /** Множитель скорости ближних ударов: перезарядка ÷ atkMul (2026-10-20: гиганты подземелья — ×1.5). */
   atkMul?: number;
+  /** Лом с моба делится поровну между всеми, кто бил (2026-10-20: гиганты подземелья). */
+  shareScrap?: boolean;
 }[] = [
   // Расставлены по силе от лагеря (HUB на (-55,-55)): слабые рядом,
   // сильные — дальше. Дистанция от лагеря указана в комментарии.

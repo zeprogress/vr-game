@@ -23,7 +23,7 @@ test("за раз падает один лом", () => {
   assert.equal(SCRAP_DROP.amount, 1);
 });
 
-test("с ледяного гиганта лом — 30 за убийство, падает всегда (70 ур.)", () => {
-  assert.equal(ELITE_MOBS.iceGiant.scrap, 30);
+test("с ледяного гиганта лом — 100 за убийство, падает всегда (70 ур.)", () => {
+  assert.equal(ELITE_MOBS.iceGiant.scrap, 100);
   assert.equal(scrapDropChance(ELITE_MOBS.iceGiant.level), 1);
 });

@@ -5264,6 +5264,20 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Кольцо/камень с добитого моба — сразу в запись героя (не на землю: боты и игроки одинаково). */
   /** Лом с моба: шанс 10% на 1 ур. → 100% на 70 ур. (shared/scrapDrop.ts). Падает в сумку убийцы. */
+  /** Лом, который делится: один бросок шанса, потом поровну всем, кто бил моба (остаток — первым по списку). */
+  private scrapShare(owners: string[], level: number, total: number): void {
+    if (Math.random() >= scrapDropChance(level)) return;
+    const ps = owners.map((id) => this.state.players.get(id)).filter((p): p is PlayerState => !!p);
+    if (ps.length === 0) return;
+    const base = Math.floor(total / ps.length);
+    const rem = total - base * ps.length;
+    ps.forEach((p, i) => {
+      const bag = readBag(p);
+      addToBag(bag, "scrap", base + (i < rem ? 1 : 0));
+      writeBag(p, bag);
+    });
+  }
+
   private scrapDrop(owner: string, level: number, amount: number): void {
     if (Math.random() >= scrapDropChance(level)) return;
     const p = this.state.players.get(owner);
@@ -10603,7 +10617,8 @@ export class ZoneRoom extends Room<ZoneState> {
       this.killRates.add(k.owner, nowSec);
       if (k.jm > 0) {
         this.jewelDrop(k.owner, k.jm, k.jr, k.jl);
-        this.scrapDrop(k.owner, k.jl, k.sc);
+        if (k.pt) this.scrapShare(k.pt.length ? k.pt : [k.owner], k.jl, k.sc);
+        else this.scrapDrop(k.owner, k.jl, k.sc);
       }
       this.craftDrop(k.owner, k.campType, k.name, k.champ);
       this.chatQuestKill(k.owner, k.champ);
