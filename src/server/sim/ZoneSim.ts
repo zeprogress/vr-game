@@ -2915,7 +2915,7 @@ export class ZoneSim {
     const dunCamps: (typeof MOB_CAMPS)[number][] = DUN_MOB_CAMPS.map((d) => {
       const w = dunWorld(d.u, d.v);
       // Вожак есть и в подземелье: первый моб каждой группы (как в лагерях мира).
-      return { x: w.x, z: w.z, type: d.type, count: d.count, spread: d.spread, noChamp: d.noChamp, ring: d.ring, dmgMul: d.dmgMul };
+      return { x: w.x, z: w.z, type: d.type, count: d.count, spread: d.spread, noChamp: d.noChamp, ring: d.ring, dmgMul: d.dmgMul, atkMul: d.atkMul };
     });
     for (const camp of [...MOB_CAMPS, ...dunCamps]) {
       const def = ELITE_MOBS[camp.type];
@@ -2938,6 +2938,7 @@ export class ZoneSim {
           name: champ ? `Вожак — ${def.name}` : def.name,
           hp: def.hp * (champ?.hpMul ?? 1) * (def.champHpMul ?? 1),
           dmgMul: def.dmgMul * (champ?.dmgMul ?? 1) * (camp.dmgMul ?? 1),
+          attackCooldown: (def.attackCooldown ?? MOB.attackCooldown) / (camp.atkMul ?? 1),
           scaleMul: (def.scaleMul ?? 1) * (champ ? (def.champScaleMul ?? champ.scaleMul) : 1),
           xp: def.xp * (champ?.xpMul ?? 1),
         });

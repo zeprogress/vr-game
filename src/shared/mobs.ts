@@ -736,7 +736,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     attackCooldown: 2, meleeReach: 6, speedMul: 1, sepMul: 0.6,
     iceGiant: true, walksOnly: true, gait: true, noSquash: true, blendAnims: true,
     strikeDelay: 0.6, attackSec: 1.3, walkClipSpeed: 2.4, runClipSpeed: 5.8,
-    killXpMul: 125, respawnSec: 30, legendaryChance: 0.12, ringMul: 6,
+    killXpMul: 125, respawnSec: 5, legendaryChance: 0.12, ringMul: 6, // респавн 5 с (2026-10-20; было 30)
     /** Лом за убийство (2026-10-20): вместо обычной единицы. */
     scrap: 30,
   },
@@ -968,6 +968,8 @@ export const MOB_CAMPS: {
   jitter?: number;
   /** Множитель урона мобов лагеря сверх ELITE_MOBS (2026-10-20: гиганты на точках подземелья — ×2). */
   dmgMul?: number;
+  /** Множитель скорости ближних ударов: перезарядка ÷ atkMul (2026-10-20: гиганты подземелья — ×1.5). */
+  atkMul?: number;
 }[] = [
   // Расставлены по силе от лагеря (HUB на (-55,-55)): слабые рядом,
   // сильные — дальше. Дистанция от лагеря указана в комментарии.
