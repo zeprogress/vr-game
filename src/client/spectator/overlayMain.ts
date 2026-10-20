@@ -1,4 +1,5 @@
 import { showCatReport } from "../ui/CatReport";
+import { EVENT_BUFF_MINUTES } from "#shared/constants";
 import { NetClient } from "../net/NetClient";
 import { Overlay } from "./Overlay";
 import type { SpecCmd } from "#shared/net/messages";
@@ -72,7 +73,7 @@ net.onWorldEvent = (phase, name, _x, _z, loot) => {
     if (tower) return;
     ov.showCard(
       hunt ? "Огнекрылый дракон повержен" : `${name} отражено`,
-      "участникам — ×2 опыт и урон" + (hunt ? "" : " на 15 мин"),
+      `участникам — ×2 опыт и урон на ${EVENT_BUFF_MINUTES} мин`,
       10,
       loot,
     );

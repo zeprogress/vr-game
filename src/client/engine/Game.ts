@@ -129,7 +129,7 @@ import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
 import { AEGIS_NAME, aegisTier, bothHandsCls, ITEMS, sharpPctOfText, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
 import { sharpGlowTune } from "../items/sharpGlowTune";
-import { BOT, EVENT, PLAYER, POTION_CD, RESPAWN, SKILL, isAdminNick } from "#shared/constants";
+import { BOT, EVENT, EVENT_BUFF_MINUTES, PLAYER, POTION_CD, RESPAWN, SKILL, isAdminNick } from "#shared/constants";
 import { BLINK, BOSS, PULL, CHARGE, SPIKES, CHIEF_HEAL, FREEZE, SPORE } from "#shared/mobs";
 import { MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
@@ -3731,8 +3731,8 @@ export class Game {
         this.notifyBanner(
           hunt ? "Огнекрылый дракон повержен" : `${name} отражено`,
           hunt
-            ? "Легендарка в эпицентре · участникам — ×2 опыт и урон"
-            : "Награда в эпицентре · участникам — благословение: ×2 опыт и урон на 15 мин",
+            ? `Легендарка в эпицентре · участникам — ×2 опыт и урон на ${EVENT_BUFF_MINUTES} мин`
+            : `Награда в эпицентре · участникам — благословение: ×2 опыт и урон на ${EVENT_BUFF_MINUTES} мин`,
           "win",
           loot,
         );

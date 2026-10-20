@@ -1,4 +1,4 @@
-import { WORLD } from "./constants";
+import { EVENT_BUFF_MINUTES, WORLD } from "./constants";
 import { CAT_GUARDS, CAT_SUPERBOSSES, type CatBoss, type CatWave } from "./mobs";
 export type { CatBoss, CatMech, CatWave, CatSeal, CatChampion } from "./mobs";
 import { HUB_CENTER } from "./hub";
@@ -333,7 +333,7 @@ export const CATACOMBS = {
   xpCurve: [[1, 10], [36, 0.1], [100, 0.01]] as readonly (readonly [number, number])[],
   guardShare: 0.25,
   finalShare: 0.5,
-  buffMinutes: 30,
+  buffMinutes: EVENT_BUFF_MINUTES,
   stages: [
     {
       // 2026-10-06: больше мобов и видов — 4 волны по 3 вида из 8 (было 3 волны по 2 вида из 6).

@@ -15,7 +15,7 @@ import { Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
 import type { Room } from "colyseus.js";
 
-import { BOT, EVENT, PLAYER, SKILL, daylightAt } from "#shared/constants";
+import { BOT, EVENT, EVENT_BUFF_MINUTES, PLAYER, SKILL, daylightAt } from "#shared/constants";
 import { BLINK, BOSS, CAT_BOSS_NAMES, MOB, PULL, CHARGE, SPIKES, CHIEF_HEAL, FREEZE, SPORE } from "#shared/mobs";
 import { TOWER, TOWER_HIDE } from "#shared/tower";
 import type { ZoneState, PlayerState } from "#shared/net/schema";
@@ -552,7 +552,7 @@ export class Spectator {
         if (tower) return;
         this.overlay?.showCard(
           hunt ? "Огнекрылый дракон повержен" : `${name} отражено`,
-          "участникам — ×2 опыт и урон" + (hunt ? "" : " на 15 мин"),
+          `участникам — ×2 опыт и урон на ${EVENT_BUFF_MINUTES} мин`,
           10,
           loot,
         );
