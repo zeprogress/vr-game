@@ -413,7 +413,7 @@ export const DUN_SPOTS = {
  * Лагеря мобов подземелья — в начальных залах (u, v зоны). Отдельно от MOB_CAMPS: боты и задания
  * лагеря мира не выбирают, а этот — внутри подземелья. Спавн — ZoneSim (как у лагерей мира).
  */
-export const DUN_MOB_CAMPS: readonly { u: number; v: number; type: keyof typeof ELITE_MOBS; count: number; spread: number; noChamp?: boolean; ring?: number }[] = [
+export const DUN_MOB_CAMPS: readonly { u: number; v: number; type: keyof typeof ELITE_MOBS; count: number; spread: number; noChamp?: boolean; ring?: number; dmgMul?: number }[] = [
   // Зал руин (B): три плотные группы — запад, восток и дальняя стена; в центре зала — свободно,
   // боты приходят к центру (см. ZoneRoom CAMP_SPOTS) и достают жнецов со всех сторон.
   // Не у края провала (провал — у северной стены, v≈−116), от портала ~74 м.
@@ -425,12 +425,12 @@ export const DUN_MOB_CAMPS: readonly { u: number; v: number; type: keyof typeof 
   { u: 0, v: 10, type: "spider", count: 18, spread: 6 },
   { u: -20, v: -10, type: "spider", count: 18, spread: 6 },
   { u: 0, v: -80, type: "spider", count: 12, spread: 8 },
-  // Ледяной гигант 70 ур.: только в подземелье, по три в центре каждого зала (кольцом ~7 м, чтобы не слипались): Шахтные выработки (K), Каменный лес (Q),
+  // Ледяной гигант 70 ур.: только в подземелье, по одному — ровно на точке (центр зала): Шахтные выработки (K), Каменный лес (Q),
   // Преддверие храма (G), Кристальная пещера (D). Стоянка = центр зоны (DUN_ZONES): от него бот берёт дом стоянки (ZoneRoom CAMP_SPOTS). Тест: tests/shared/giantCamps.test.ts.
-  { u: 144, v: -146, type: "iceGiant", count: 3, spread: 12, ring: 0.6, noChamp: true }, // зал K: центр широкого забоя (K1), 24 м до края
-  { u: 82, v: -6, type: "iceGiant", count: 3, spread: 12, ring: 0.6, noChamp: true },
-  { u: 0, v: 60, type: "iceGiant", count: 3, spread: 12, ring: 0.6, noChamp: true },
-  { u: -86, v: -80, type: "iceGiant", count: 3, spread: 12, ring: 0.6, noChamp: true },
+  { u: 144, v: -146, type: "iceGiant", count: 1, spread: 0, ring: 0, noChamp: true, dmgMul: 2 }, // зал K: центр широкого забоя (K1), 24 м до края
+  { u: 82, v: -6, type: "iceGiant", count: 1, spread: 0, ring: 0, noChamp: true, dmgMul: 2 },
+  { u: 0, v: 60, type: "iceGiant", count: 1, spread: 0, ring: 0, noChamp: true, dmgMul: 2 },
+  { u: -86, v: -80, type: "iceGiant", count: 1, spread: 0, ring: 0, noChamp: true, dmgMul: 2 },
 ];
 
 // ---------------------------------------------------------------------------

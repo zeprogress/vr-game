@@ -5,9 +5,9 @@ import { ELITE_MOBS, MOB } from "../../src/shared/mobs";
 
 const giants = DUN_MOB_CAMPS.filter((c) => c.type === "iceGiant");
 
-test("ледяные гиганты: четыре стоянки по три — залы K, Q, G, D", () => {
+test("ледяные гиганты: четыре стоянки по одному — залы K, Q, G, D", () => {
   assert.equal(giants.length, 4);
-  for (const c of giants) assert.equal(c.count, 3);
+  for (const c of giants) assert.equal(c.count, 1);
 });
 
 test("стоянка гиганта — в центре своего зала (центр зоны совпадает со стоянкой, до 1 м)", () => {
@@ -19,7 +19,7 @@ test("стоянка гиганта — в центре своего зала (�
   }
 });
 
-test("кольцо гигантов вокруг стоянки стоит на полу в любую сторону (тело — с запасом)", () => {
+test("гигант стоит ровно на стоянке — пол под ним с запасом на тело", () => {
   const pad = MOB.bodyRadius * ELITE_MOBS.iceGiant.scaleMul;
   for (const c of giants) {
     const ring = c.spread * (c.ring ?? 1);

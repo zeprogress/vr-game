@@ -2987,6 +2987,22 @@ export class ZoneRoom extends Room<ZoneState> {
         }
       }
     }
+    // Последняя волна — ледяные гиганты: удары, а не HP; число ударов не растёт от бьющих, фаз нет.
+    if (i === EVENT.invasion.waves.length - 1) {
+      const g = EVENT.invasion.giants;
+      const ge = ELITE_MOBS[g.type];
+      for (let k = 0; k < g.count; k++) {
+        const [x, z] = at();
+        const id = this.sim.spawnEventMob(ge.kind, x, z, {
+          ...eliteMobOpts(ge), hp: g.hits, dmgMul: ge.dmgMul * g.dmgMul, scaleMul: (ge.scaleMul ?? 1) * g.sizeMul,
+        });
+        const m = this.sim.mobs.get(id);
+        if (m) {
+          m.hitCounter = true;
+          m.hitsFixed = true;
+        }
+      }
+    }
   }
 
   private eventName(): string {

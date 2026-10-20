@@ -318,6 +318,8 @@ export class Mob {
    * настоящий урон копится в dmgLog — по нему комната считает DPS и фазы.
    */
   hitCounter = false;
+  /** Удары не растут от числа бьющих (нашествие: гиганты — фикс. 100 ударов); у дракона охоты — растут. */
+  hitsFixed = false;
   /** Фаза дракона охоты (1..4), 0 — не он. */
   huntPhase = 0;
   /** Кто уже бил дракона охоты: каждый новый бьющий добавляет EVENT.eliteHunt.hitsPerHero ударов. */
@@ -2908,7 +2910,7 @@ export class ZoneSim {
     const dunCamps: (typeof MOB_CAMPS)[number][] = DUN_MOB_CAMPS.map((d) => {
       const w = dunWorld(d.u, d.v);
       // Вожак есть и в подземелье: первый моб каждой группы (как в лагерях мира).
-      return { x: w.x, z: w.z, type: d.type, count: d.count, spread: d.spread, noChamp: d.noChamp, ring: d.ring };
+      return { x: w.x, z: w.z, type: d.type, count: d.count, spread: d.spread, noChamp: d.noChamp, ring: d.ring, dmgMul: d.dmgMul };
     });
     for (const camp of [...MOB_CAMPS, ...dunCamps]) {
       const def = ELITE_MOBS[camp.type];
@@ -2930,7 +2932,7 @@ export class ZoneSim {
           respawnSec: champ ? CHAMP_RESPAWN : def.respawnSec,
           name: champ ? `Вожак — ${def.name}` : def.name,
           hp: def.hp * (champ?.hpMul ?? 1) * (def.champHpMul ?? 1),
-          dmgMul: def.dmgMul * (champ?.dmgMul ?? 1),
+          dmgMul: def.dmgMul * (champ?.dmgMul ?? 1) * (camp.dmgMul ?? 1),
           scaleMul: (def.scaleMul ?? 1) * (champ ? (def.champScaleMul ?? champ.scaleMul) : 1),
           xp: def.xp * (champ?.xpMul ?? 1),
         });
@@ -3611,7 +3613,7 @@ export class ZoneSim {
     // Дракон охоты (hitCounter): здоровье — удары, попадание снимает одно; вклад, цифры и DPS — по урону.
     if (m.hitCounter && attacker && !m.dead && !m.hitters.has(attacker)) {
       // Новый бьющий — дракону ещё доля ударов (первый бьющий — уже в запасе при появлении).
-      if (m.hitters.size > 0) {
+      if (m.hitters.size > 0 && !m.hitsFixed) {
         m.maxHp += EVENT.eliteHunt.hitsPerHero;
         m.hp += EVENT.eliteHunt.hitsPerHero;
       }
