@@ -420,7 +420,13 @@ export type SkillId =
   | "soulSteal"
   | "abyss"
   | "lifeArrow"
-  | "cleave";
+  | "cleave"
+  | "blastArrow"
+  | "doubleShot"
+  | "ghostArrow"
+  | "swarmArrow"
+  | "barrierArrow"
+  | "webArrow";
 
 export interface ClassDef {
   name: string;
@@ -448,7 +454,9 @@ export const CLASSES2: Record<ClassId, ClassDef> = {
   },
   archer: {
     name: "Лучник", icon: glyph("c.archer"), role: "Дальний урон", weapons: "лук", main: "bow",
-    skills: ["arrowRain", "shadowStep", "mark", "chain", "lifeArrow"], defaultSkills: ["arrowRain", "mark"],
+    // «Грозовая стрела» (chain) убрана у лучника 2026-10-20; 🧪 шесть новых стрел — на отборе.
+    skills: ["arrowRain", "shadowStep", "mark", "lifeArrow", "blastArrow", "doubleShot", "ghostArrow", "swarmArrow", "barrierArrow", "webArrow"],
+    defaultSkills: ["arrowRain", "mark"],
     build: { str: 4, agi: 2.5, luc: 2.5, con: 1.2, wis: 0.8 },
   },
   support: {
@@ -539,6 +547,41 @@ export const HAMMER_FIELD = { duration: 5, radius: 8, boltMul: 0.1625, stunSec: 
 export const THUNDER_SPIN = { range: 7, minMul: 2, maxMul: 3, intFull: 30 } as const; // молния ×2 → ×3 (было ×3 → ×4, 2026-10-15)
 /** «Цепная молния» молота: hops скачков; задетые получают +vulnMul% урона от молота на vulnSec. */
 export const CHAIN_HAMMER = { hops: 5, vulnMul: 1.2, vulnSec: 5 } as const;
+
+/**
+ * 🧪 Лучник «Разрывная стрела» (2026-10-20): стрела в цель до range м — ×dmgMult (SKILLS2), взрыв задевает
+ * всех в radius м вокруг цели (по краю тела) — ×splash. Крит — у каждого попадания отдельно (УДЧ).
+ */
+export const BLAST_ARROW = { splash: 1.2, radius: 3, range: 22 } as const;
+/** 🧪 «Двойной выстрел»: arrows стрел в одну цель до range м с паузой gap с; у каждой свой крит. */
+export const DOUBLE_SHOT = { arrows: 2, gap: 0.1, range: 22 } as const;
+/**
+ * 🧪 «Стрела-призрак»: duration с (× МДР — SkillDef.attr) обычные мобы не видят стрелка и не бьют его
+ * (боссы видят); его урон ×dmgMul; каждое попадание стрелой (у бота — выстрел) лечит healFrac макс. HP.
+ */
+export const GHOST_ARROW = { duration: 4, dmgMul: 0.7, healFrac: 0.03 } as const;
+/**
+ * 🧪 «Стрела-рой»: arrows стрел веером ±halfAngle рад вперёд на range м; стрела бьёт первого моба в коридоре
+ * ±lane м (+ радиус тела) — ×dmgMult (SKILLS2) и взрывается: ×blast всем в blastR м. Задето ≥ bonusTargets
+ * врагов — лечение healFrac макс. HP и бег +run на runSec с.
+ */
+export const SWARM_ARROW = { arrows: 5, halfAngle: 0.5, range: 20, lane: 0.9, blast: 0.5, blastR: 3, bonusTargets: 3, healFrac: 0.05, run: 0.2, runSec: 3 } as const;
+/**
+ * 🧪 «Стрела-барьер»: кольцо радиусом SKILLS2.barrierArrow.radius на duration с там, где стоял стрелок. Моб,
+ * вошедший в кольцо, — ×dmgMult (SKILLS2) и отброс наружу силой shove (≈3 м); стрелок внутри кольца —
+ * +dodge уворота и healFracPerSec макс. HP в секунду.
+ */
+// shove — сила отброса (без толчка от попадания): 6 → 1.2 м, 8 → 1.9 м, 10 → 2.7 м, 12 → 4 м; в бою (с толчком попадания) 8 → 2.5 м, 9 ≈ 3 м, 11 → 4.5 м (замер 2026-10-20).
+export const BARRIER_ARROW = { duration: 4, dodge: 0.3, healFracPerSec: 0.03, shove: 9 } as const;
+/**
+ * 🧪 «Стрела-паук»: паутина радиусом SKILLS2.webArrow.radius на duration с (оба × МДР — SkillDef.attr) в точке
+ * до range м. Мобы в ней пригвождены (боссы — нет) и получают ×dmgMult (SKILLS2) в секунду; стрелок лечится
+ * на healPerEnemy макс. HP за каждого врага в паутине в секунду, не больше healCap в секунду. Тик — tick с.
+ */
+export const WEB_ARROW = { duration: 5, range: 22, healPerEnemy: 0.01, healCap: 0.04, tick: 0.5 } as const;
+
+/** Доля → «30%» для описаний умений. */
+const pctR = (v: number): string => `${Math.round(v * 100)}%`;
 
 export const SKILLS2: Record<SkillId, SkillDef> = {
   stunBash: {
@@ -638,6 +681,38 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     desc: "Тяжёлая стрела в цель до 22 м: ×2 урона; лечит тебя на половину нанесённого урона и ещё на 25% здоровья",
     cooldown: 12, castTime: 0.2, radius: 22, dmgMult: 2, hits: 1,
   },
+  blastArrow: {
+    name: "Разрывная стрела", icon: glyph("s.blastArrow"), test: true,
+    desc: `Стрела в цель до ${BLAST_ARROW.range} м: ×2.5 урона и взрыв — всем в ${BLAST_ARROW.radius} м вокруг ×${BLAST_ARROW.splash}; крит — у каждого попадания`,
+    cooldown: 8, castTime: 0.2, radius: BLAST_ARROW.range, dmgMult: 2.5, hits: 1,
+  },
+  doubleShot: {
+    name: "Двойной выстрел", icon: glyph("s.doubleShot"), test: true,
+    desc: `Две стрелы разом в одну цель до ${DOUBLE_SHOT.range} м: ×1 каждая, у каждой свой крит`,
+    cooldown: 8, castTime: 0.15, radius: DOUBLE_SHOT.range, dmgMult: 1, hits: DOUBLE_SHOT.arrows,
+  },
+  ghostArrow: {
+    name: "Стрела-призрак", icon: glyph("s.ghostArrow"), test: true,
+    desc: `${GHOST_ARROW.duration} с ты призрак: обычные мобы тебя не видят и не бьют (боссы видят); урон −${pctR(1 - GHOST_ARROW.dmgMul)}, каждое попадание стрелой лечит ${pctR(GHOST_ARROW.healFrac)} здоровья`,
+    cooldown: 15, castTime: 0, radius: 0, dmgMult: 0, hits: 1,
+    attr: { attr: "wis", per: 0.01, what: "длительность" },
+  },
+  swarmArrow: {
+    name: "Стрела-рой", icon: glyph("s.swarmArrow"), test: true,
+    desc: `${SWARM_ARROW.arrows} стрел веером вперёд (${SWARM_ARROW.range} м): каждая ×0.8 и взрыв ${SWARM_ARROW.blastR} м ×${SWARM_ARROW.blast}; задел ${SWARM_ARROW.bonusTargets}+ врагов — лечение ${pctR(SWARM_ARROW.healFrac)} здоровья и бег +${pctR(SWARM_ARROW.run)} на ${SWARM_ARROW.runSec} с`,
+    cooldown: 10, castTime: 0.25, radius: SWARM_ARROW.range, dmgMult: 0.8, hits: SWARM_ARROW.arrows,
+  },
+  barrierArrow: {
+    name: "Стрела-барьер", icon: glyph("s.barrierArrow"), test: true,
+    desc: `Кольцо стрел 4 м вокруг тебя на ${BARRIER_ARROW.duration} с: вошедший враг получает ×0.8 и отброшен; ты в кольце — +${pctR(BARRIER_ARROW.dodge)} уворота и ${pctR(BARRIER_ARROW.healFracPerSec)} здоровья в секунду`,
+    cooldown: 14, castTime: 0.3, radius: 4, dmgMult: 0.8, hits: 1,
+  },
+  webArrow: {
+    name: "Стрела-паук", icon: glyph("s.webArrow"), test: true,
+    desc: `Паутина 6 м на ${WEB_ARROW.duration} с в точке до ${WEB_ARROW.range} м: враги в ней пригвождены (боссы — нет) и получают ×0.2 в секунду; ты лечишься на ${pctR(WEB_ARROW.healPerEnemy)} здоровья в секунду за каждого врага в паутине (до ${pctR(WEB_ARROW.healCap)})`,
+    cooldown: 12, castTime: 0.3, radius: 6, dmgMult: 0.2, hits: 1,
+    attr: { attr: "wis", per: 0.01, what: "радиус и длительность паутины" },
+  },
   cleave: {
     name: "Рассекающий удар", icon: glyph("s.cleave"),
     desc: "Широкий удар мечом перед собой (конус 120°, 6 м): ×2.2 урона всем в секторе, отбрасывает и замедляет на 40% на 3 с",
@@ -647,7 +722,6 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     name: "Цепная молния", icon: glyph("s.chain"), desc: "Разряд скачет по 4 врагам (каждый скачок слабее на 20%) и оглушает каждого на 0.5 с",
     cooldown: 11, castTime: 0.3, radius: 14, dmgMult: 1.6, hits: 4,
     variants: {
-      archer: { name: "Грозовая стрела", desc: "Стрела-молния: ×2 по первой цели, затем 2 слабых скачка" },
       battlemage: { name: "Цепная молния", desc: `Разряд скачет по ${CHAIN_HAMMER.hops} врагам (каждый скачок слабее на 20%); задетые на ${CHAIN_HAMMER.vulnSec} с получают +${Math.round((CHAIN_HAMMER.vulnMul - 1) * 100)}% урона от молота` },
     },
   },

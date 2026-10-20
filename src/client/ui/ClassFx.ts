@@ -282,6 +282,15 @@ export class ClassFx {
     else this.timers.push({ t: sec, fn });
   }
 
+  private readonly onceAt = new Map<string, number>();
+  /** true не чаще раза в `sec` с на ключ — один звук на пачку одинаковых событий (веер стрел). */
+  once(key: string, sec: number): boolean {
+    const now = performance.now() / 1000;
+    if (now - (this.onceAt.get(key) ?? -1e9) < sec) return false;
+    this.onceAt.set(key, now);
+    return true;
+  }
+
   /** Грозовое поле: каждые 0.5 с молния с неба в случайную точку круга. */
   stormZone(x: number, y: number, z: number, r: number, dur: number): void {
     for (let t = 0.2; t < dur; t += 0.5) {
@@ -1192,6 +1201,103 @@ export function playClassAct(
           vfx.pillar(x2, ty - 1.2, z2, 0.7, 3.4, REFLECT_BOLT, 0.45);
         });
       }
+      return true;
+    }
+    // ---- 🧪 новые стрелы лучника (сервер — ZoneRoom.castSkill / tickBarriers / tickWebs) ----
+    case "blastArrow":
+      // Разрывная: огненная стрела в цель, взрыв — вспышка, ударная волна радиусом r и искры.
+      if (x2 !== undefined && z2 !== undefined) {
+        const toY = d ?? y;
+        const R = r ?? 3;
+        vfx.bolt(x, y, z, x2, toY, z2, FXC.fire, 0.22, 0.1);
+        c.fx.later(0.08, () => {
+          vfx.burst(x2, toY, z2, FXC.fireCore, { count: 26, speed: 9, life: 0.5, grav: 4, size: 0.3 });
+          vfx.burst(x2, toY, z2, FXC.fire, { count: 18, speed: 5, life: 0.8, grav: -1, size: 0.55 });
+          vfx.decal(x2, toY - 0.9, z2, R, FXC.fire, 0.5, 0, 1);
+          c.fx.ring(x2, toY - 0.9, z2, 0.3, R, FXC.fireCore, 0.35, 0.8);
+          c.sound({ x: x2, y: toY, z: z2 }, "fire");
+        });
+      }
+      return true;
+    case "doubleShot":
+      // Двойной выстрел: две стрелы подряд (вторая — через r с), у цели — по вспышке.
+      if (x2 !== undefined && z2 !== undefined) {
+        const toY = d ?? y;
+        for (let i = 0; i < 2; i++) {
+          c.fx.later(i * (r ?? 0.1), () => {
+            const off = i === 0 ? -0.12 : 0.12;
+            vfx.bolt(x + off, y, z, x2, toY, z2, FXC.gold, 0.2, 0.07);
+            vfx.burst(x2, toY, z2, FXC.gold, { count: 10, speed: 5, life: 0.35, grav: 2, size: 0.18 });
+          });
+        }
+        c.sound(at, "swing");
+      }
+      return true;
+    case "ghostOn":
+      // Стрела-призрак: бледный круг и столб ходят за героем, вихрь инея (мобы теряют его из виду).
+      vfx.decal(x, y, z, 1.3, FXC.frost, d ?? 4, 1, 0.8, { kind: "hero", id, dy: 0 });
+      vfx.pillar(x, y, z, 0.75, 2.6, FXC.frost, d ?? 4, { kind: "hero", id });
+      vfx.burst(x, y + 1, z, FXC.iceRim, { count: 24, speed: 3, life: 0.7, grav: -2, size: 0.3 });
+      c.sound(at, "swing");
+      return true;
+    case "swarmArrow":
+      // Стрела роя: след стрелы, попала (r > 0) — маленький взрыв радиусом r.
+      if (x2 !== undefined && z2 !== undefined) {
+        const toY = d ?? y;
+        vfx.bolt(x, y, z, x2, toY, z2, FXC.buff, 0.22, 0.06);
+        if ((r ?? 0) > 0) {
+          c.fx.later(0.08, () => {
+            vfx.burst(x2, toY, z2, FXC.fire, { count: 14, speed: 6, life: 0.45, grav: 3, size: 0.24 });
+            vfx.decal(x2, toY - 0.9, z2, r ?? 3, FXC.buff, 0.4, 0, 0.8);
+          });
+        }
+        // Звук — один на веер (стрелы приходят пачкой одного героя).
+        if (c.fx.once(`swarm:${id}`, 0.3)) c.sound(at, "volley");
+      }
+      return true;
+    case "arrowBarrier": {
+      // Стрела-барьер: печать-кольцо на всё время, по краю — частокол искр-стрел вверх.
+      const R = r ?? 4;
+      const dur = d ?? 4;
+      c.fx.seal(x, y, z, R, DEF, dur);
+      vfx.decal(x, y, z, R, DEF, dur, 1, 0.7);
+      c.fx.ring(x, y, z, 0.5, R, DEF, 0.4, 0.9);
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        vfx.burst(x + Math.cos(a) * R, y + 0.1, z + Math.sin(a) * R, FXC.gold, { count: 5, speed: 5, life: 0.5, grav: 6, size: 0.14, dir: [0, 1, 0], spread: 0.15 });
+      }
+      c.sound(at, "volley");
+      return true;
+    }
+    case "barrierHit":
+      // Барьер отбросил моба: вспышка на нём и полоса от центра кольца.
+      vfx.burst(x, y, z, DEF, { count: 14, speed: 6, life: 0.4, grav: 4, size: 0.22 });
+      if (x2 !== undefined && z2 !== undefined) c.fx.streak(x2, y - 1, z2, x, z, DEF, 0.35, 0.3);
+      c.sound(at, "thud");
+      return true;
+    case "webShot":
+      // Стрела-паук: стрела в землю, в точке — клубок нитей.
+      if (x2 !== undefined && z2 !== undefined) {
+        const toY = d ?? y;
+        vfx.bolt(x, y, z, x2, toY + 0.2, z2, FXC.shadow, 0.25, 0.06);
+        c.fx.later(0.1, () => vfx.burst(x2, toY + 0.3, z2, FXC.iceRim, { count: 20, speed: 5, life: 0.5, grav: 6, size: 0.16 }));
+        c.sound(at, "swing");
+      }
+      return true;
+    case "webZone": {
+      // Паутина: светлый круг на всё время и нити, которые время от времени вздрагивают.
+      const R = r ?? 6;
+      const dur = d ?? 5;
+      vfx.decal(x, y, z, R, FXC.shadow, dur, 1, 0.85);
+      c.fx.ring(x, y, z, 0.4, R, FXC.iceRim, 0.5, 0.7);
+      for (let i = 0; i < Math.ceil(dur); i++) {
+        c.fx.later(0.15 + i, () => {
+          const a = Math.random() * Math.PI * 2;
+          const rr = Math.random() * R * 0.8;
+          vfx.burst(x + Math.cos(a) * rr, y + 0.15, z + Math.sin(a) * rr, FXC.iceRim, { count: 10, speed: 2, life: 0.6, grav: 1, size: 0.12 });
+        });
+      }
+      c.sound(at, "thud");
       return true;
     }
     case "lifeArrow":

@@ -202,7 +202,7 @@ import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand }
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
 import { leashCut } from "../sim/leash";
 import { ATTR2 } from "#shared/attrs2";
-import { ABYSS, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { ABYSS, BARRIER_ARROW, BLAST_ARROW, DOUBLE_SHOT, GHOST_ARROW, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC, ULT_PULL_PULSES, ULT_PULL_POWER } from "#shared/ultimates";
 import {
   MAGIC,
@@ -351,6 +351,10 @@ interface Runtime {
   abyssStrike: boolean;
   /** Ускорение темпа после выхода из тени — до этого момента. */
   hasteUntil: number;
+  /** 🧪 «Стрела-призрак»: до этого момента обычные мобы не видят героя (урон ниже, попадания лечат). */
+  ghostUntil: number;
+  /** 🧪 «Стрела-рой»: бег быстрее (SWARM_ARROW.run) до этого момента. */
+  runUntil: number;
   /** Класс, под который сейчас выставлены skill1/skill2 (смена оружия — другой набор). */
   skillCls: string;
   /** Последний присланный поворот — чтобы сохранить его и при выходе. */
@@ -2493,6 +2497,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (weapon === "dagger") this.afterDaggerHit(heroId, p, rt, struck);
     // Пронзание (ролл лука): стрела насквозь — моб позади цели получает долю урона.
     if (weapon === "arrow" && this.sim.rollPierce(heroId)) this.sim.pierceBehind(struck.id, sx, sz, dx, dz, dmg * BOW.pierceDmg, heroId);
+    if (weapon === "arrow") this.ghostHeal(heroId, p, rt);
     // Вампиризм (ролл на оружии ближнего боя) — часть нанесённого урона возвращается как HP.
     const vamp = isMeleeClass(weapon) ? heldVamp(p, rt) : 0;
     const vamped = vamp > 0;
@@ -2631,6 +2636,8 @@ export class ZoneRoom extends Room<ZoneState> {
     let m = !inCat && rt.eventBuffUntil > now ? (which === "xp" ? EVENT.invasion.buffXpMult : EVENT.invasion.buffDmgMult) : 1;
     // «Боевой клич»/«Благословение» — +25% урона.
     if (which === "dmg" && rt.cryUntil > this.elapsed && rt.cryKind !== 2) m *= 1 + WARCRY.dmg;
+    // 🧪 «Стрела-призрак»: пока невидим — урон ниже.
+    if (which === "dmg" && rt.ghostUntil > this.elapsed) m *= GHOST_ARROW.dmgMul;
     // Свиток мудрости — бонус складывается с благословением: ×1.5 и ×1.5 → ×2.
     if (which === "xp" && !inCat && rt.token && (store.get(rt.token)?.scrollXpUntil ?? 0) > now) m += SCROLL.xpMul - 1;
     return m;
@@ -6631,6 +6638,8 @@ export class ZoneRoom extends Room<ZoneState> {
       abyssUntil: -999,
       abyssStrike: false,
       hasteUntil: -999,
+      ghostUntil: -999,
+      runUntil: -999,
       whirlKind: 0,
       skillCls: "",
       yaw: 0,
@@ -7728,7 +7737,8 @@ export class ZoneRoom extends Room<ZoneState> {
     for (const w of words) {
       const hit = def.skills.find((k) => {
         const names = [skillName(k, cls), SKILLS2[k].name, k].map((n) => n.toLowerCase());
-        return names.some((n) => n.startsWith(w) || n.split(" ").some((part) => part.startsWith(w)));
+        // По началу любого слова, в том числе через дефис: «призрак» → «Стрела-призрак».
+        return names.some((n) => n.startsWith(w) || n.split(/[\s-]+/).some((part) => part.startsWith(w)));
       });
       if (hit && !pick.includes(hit)) pick.push(hit);
     }
@@ -8563,7 +8573,8 @@ export class ZoneRoom extends Room<ZoneState> {
     // медленнее ради читаемости на стриме.
     const botSpeed =
       moveSpeedFor(p.level, p) * (p.scrollWindSecs > 0 ? SCROLL.windMul : 1) * (bot.rt.slowUntil > this.elapsed ? 1 - bot.rt.slowFrac : 1) *
-      (bot.rt.abyssStrike && bot.rt.abyssUntil > this.elapsed ? 1 + ABYSS.move : 1);
+      (bot.rt.abyssStrike && bot.rt.abyssUntil > this.elapsed ? 1 + ABYSS.move : 1) *
+      (bot.rt.runUntil > this.elapsed ? 1 + SWARM_ARROW.run : 1);
     // Дальник отходит, если моб подобрался ближе shootKeepDist.
     const retreat =
       !escape && ((ranged && chasingMob && dist < shootKeep - 1) || (kiter && kiteRetreatAt > kiteBody && dist < kiteRetreatAt));
@@ -8755,6 +8766,8 @@ export class ZoneRoom extends Room<ZoneState> {
           weaponDamage("arrow", p.level, p, mult) * critM * this.buffMult(bot.id, "dmg"),
           bot.id, 2.5, 1, 0, 0, critM > 1,
         );
+        // 🧪 «Стрела-призрак»: у бота лечит сам выстрел (стрелу ведёт симуляция, попадание сюда не возвращается).
+        this.ghostHeal(bot.id, p, bot.rt);
       } else {
         // Крит посоха у бота раньше вообще не считался (ни урон, ни эффект) —
         // в отличие от лука-бота выше и живого игрока-мага (см. MSG.cast).
@@ -8986,6 +8999,18 @@ export class ZoneRoom extends Room<ZoneState> {
       if (k === "lifeArrow" && (nd > SKILLS2.lifeArrow.radius - 2 || p.hp > p.maxHp * LIFE_ARROW.botBelow)) continue;
       if (k === "smoke" && this.mobsInRadius(p, 4).length < 2 && p.hp > p.maxHp * 0.6) continue;
       if (k === "abyss" && (nd > 3 || (p.hp > p.maxHp * 0.7 && this.mobsInRadius(p, 5).length < 3))) continue;
+      // 🧪 Новые стрелы лучника.
+      if (k === "swarmArrow" && this.mobsInRadius(p, SWARM_ARROW.range - 4).length < 2) continue;
+      if (k === "ghostArrow" && p.hp > p.maxHp * 0.6 && this.mobsInRadius(p, 5).length < 2) continue;
+      if (k === "barrierArrow" && this.mobsInRadius(p, SKILLS2.barrierArrow.radius).length < 1) continue;
+      if (k === "webArrow") {
+        // Паутина — в кучу (как град), нет кучи — в ближнего, если рядом хотя бы двое.
+        const spot = this.bestRainSpot(p);
+        if (spot) {
+          tx = spot.x;
+          tz = spot.z;
+        } else if (near.length < 2) continue;
+      }
       if (this.castSkill(k, bot.id, p, bot.rt, tx, tz)) {
         bot.emoteFreezeUntil = Date.now() + 600;
         return;
@@ -9076,6 +9101,14 @@ export class ZoneRoom extends Room<ZoneState> {
     /** Печать стража: мобы в круге бросаются на хозяина. */
     taunt: boolean;
   }[] = [];
+
+  /**
+   * 🧪 «Стрела-барьер»: кольцо на земле. `inside` — мобы, бывшие в кольце на прошлом тике (бьём только
+   * вошедших); `healT` — накопленное лечение стрелка (цифра — раз в тик).
+   */
+  private readonly barriers: { x: number; z: number; r: number; until: number; owner: string; dmg: number; inside: Set<string>; tickT: number }[] = [];
+  /** 🧪 «Стрела-паук»: паутина на земле — пригвождает мобов, жалит, лечит стрелка за каждого пойманного. */
+  private readonly webs: { x: number; z: number; r: number; until: number; owner: string; dps: number; tickT: number }[] = [];
 
   /** Множитель отката умений: у магов (посох/молот) — МДР ускоряет. */
   private skillCdMul(p: PlayerState): number {
@@ -9637,6 +9670,15 @@ export class ZoneRoom extends Room<ZoneState> {
       return [(m.x - x) / d, (m.z - z) / d];
     };
     const act = (r: Omit<ActRelay, "id" | "v">): void => this.broadcast(MSG.act, { ...r, id: ownerId, v } as ActRelay);
+    /** Стрела умения в моба: урон ×mul силы удара, крит — как у выстрела (роллы лука, УДЧ), у каждой стрелы свой. */
+    const arrowHit = (m: Mob, mul: number, fromX: number, fromZ: number): void => {
+      if (m.dead) return;
+      const rc = rolledCrit(p, p.rightCls === "bow" ? "right" : "left", rt);
+      const c = rollCritMult("arrow", Math.random, false, rc.chance, rc.mult, BOW.critMult, attrOf(p, "luc"));
+      if (c > 1) this.critFx(m.x, m.y, m.z, ownerId);
+      const [dx, dz] = dirTo(m, fromX, fromZ);
+      this.sim.hitMob(m.id, mul * pow.dmg * c, dx, dz, ownerId, true, false, false, c > 1);
+    };
 
     switch (kind) {
       case "stunBash": {
@@ -9957,14 +9999,13 @@ export class ZoneRoom extends Room<ZoneState> {
           rt.skillAt[kind] = -999;
           return false;
         }
-        const archer = cls === "archer";
         const hammer = cls === "battlemage";
-        const hits = archer ? 3 : hammer ? CHAIN_HAMMER.hops : sk.hits;
+        const hits = hammer ? CHAIN_HAMMER.hops : sk.hits;
         const hitSet = new Set<string>();
         let fromX = p.head.x;
         let fromY = p.head.y - 0.3;
         let fromZ = p.head.z;
-        let dmg = sk.dmgMult * pow.dmg * (archer ? 2 / 1.6 : 1);
+        let dmg = sk.dmgMult * pow.dmg;
         for (let i = 0; i < hits && cur; i++) {
           const m: Mob = cur;
           hitSet.add(m.id);
@@ -9976,9 +10017,9 @@ export class ZoneRoom extends Room<ZoneState> {
           this.clock.setTimeout(() => {
             this.sim.hitMob(m.id, dd, dx, dz, ownerId, false, false, true);
             if (hammer) this.sim.vulnMob(m.id, CHAIN_HAMMER.vulnSec, CHAIN_HAMMER.vulnMul);
-            else if (!archer) this.sim.stunMob(m.id, 0.5);
+            else this.sim.stunMob(m.id, 0.5);
           }, i * 90);
-          dmg *= archer && i === 0 ? 0.35 : CHAIN.falloff;
+          dmg *= CHAIN.falloff;
           fromX = m.x;
           fromY = toY;
           fromZ = m.z;
@@ -10097,6 +10138,112 @@ export class ZoneRoom extends Room<ZoneState> {
             this.sim.slowMob(m.id, CLEAVE.slowSec, 1 - CLEAVE.slow);
           }
         }, sk.castTime * 1000);
+        return true;
+      }
+      case "blastArrow": {
+        // 🧪 Разрывная стрела: удар в цель, взрыв задевает всех вокруг неё.
+        const m = this.skillTarget(p, tx, tz, BLAST_ARROW.range, fwd());
+        if (!m) {
+          rt.skillAt[kind] = -999;
+          return false;
+        }
+        const cx = m.x;
+        const cz = m.z;
+        act({ k: "blastArrow", x: p.head.x, y: p.head.y - 0.3, z: p.head.z, x2: cx, z2: cz, d: m.y + MOB.bodyRadius * m.scale, r: BLAST_ARROW.radius });
+        arrowHit(m, sk.dmgMult, p.head.x, p.head.z);
+        for (const o of around(cx, cz, BLAST_ARROW.radius)) if (o.id !== m.id) arrowHit(o, BLAST_ARROW.splash, cx, cz);
+        return true;
+      }
+      case "doubleShot": {
+        // 🧪 Двойной выстрел: две стрелы в одну цель, у каждой свой крит.
+        const m = this.skillTarget(p, tx, tz, DOUBLE_SHOT.range, fwd());
+        if (!m) {
+          rt.skillAt[kind] = -999;
+          return false;
+        }
+        const ox = p.head.x;
+        const oz = p.head.z;
+        act({ k: "doubleShot", x: ox, y: p.head.y - 0.3, z: oz, x2: m.x, z2: m.z, d: m.y + MOB.bodyRadius * m.scale, r: DOUBLE_SHOT.gap });
+        arrowHit(m, sk.dmgMult, ox, oz);
+        for (let i = 1; i < DOUBLE_SHOT.arrows; i++) this.clock.setTimeout(() => arrowHit(m, sk.dmgMult, ox, oz), i * DOUBLE_SHOT.gap * 1000);
+        return true;
+      }
+      case "ghostArrow": {
+        // 🧪 Стрела-призрак: обычные мобы не видят (список героев для мобов), урон ниже, попадания лечат.
+        const sec = GHOST_ARROW.duration * skillAttrMul("ghostArrow", p);
+        rt.ghostUntil = this.elapsed + sec;
+        act({ k: "ghostOn", x: p.head.x, y: feetY, z: p.head.z, d: sec });
+        return true;
+      }
+      case "swarmArrow": {
+        // 🧪 Стрела-рой: веер стрел; каждая бьёт первого моба в своём коридоре и взрывается.
+        const S = SWARM_ARROW;
+        const [fx, fz] = fwd();
+        const yaw = Math.atan2(fx, fz);
+        const ox = p.head.x;
+        const oz = p.head.z;
+        const oy = p.head.y - 0.3;
+        const touched = new Set<string>();
+        for (let i = 0; i < S.arrows; i++) {
+          const a = yaw + (S.arrows > 1 ? (i / (S.arrows - 1) - 0.5) * 2 * S.halfAngle : 0);
+          const ax = Math.sin(a);
+          const az = Math.cos(a);
+          let hit: Mob | null = null;
+          let best: number = S.range;
+          for (const m of this.sim.mobs.values()) {
+            if (m.dead) continue;
+            const vx = m.x - ox;
+            const vz = m.z - oz;
+            const along = vx * ax + vz * az;
+            if (along <= 0 || along > S.range + 8) continue;
+            const rad = this.sim.targetRadius("mob", m.id);
+            if (Math.abs(vx * az - vz * ax) > S.lane + rad) continue;
+            const t = Math.max(0, along - rad);
+            if (t < best) {
+              best = t;
+              hit = m;
+            }
+          }
+          if (!hit) {
+            act({ k: "swarmArrow", x: ox, y: oy, z: oz, x2: ox + ax * S.range, z2: oz + az * S.range, d: oy - 0.6, r: 0 });
+            continue;
+          }
+          const m: Mob = hit;
+          const cx = m.x;
+          const cz = m.z;
+          act({ k: "swarmArrow", x: ox, y: oy, z: oz, x2: cx, z2: cz, d: m.y + MOB.bodyRadius * m.scale, r: S.blastR });
+          touched.add(m.id);
+          arrowHit(m, sk.dmgMult, ox, oz);
+          for (const o of around(cx, cz, S.blastR)) {
+            touched.add(o.id);
+            arrowHit(o, S.blast, cx, cz);
+          }
+        }
+        if (touched.size >= S.bonusTargets) {
+          this.skillHeal(ownerId, p, p.maxHp * S.healFrac);
+          rt.runUntil = this.elapsed + S.runSec;
+        }
+        return true;
+      }
+      case "barrierArrow": {
+        // 🧪 Стрела-барьер: кольцо там, где стоит стрелок (тик — tickBarriers).
+        const dur = BARRIER_ARROW.duration;
+        this.barriers.push({ x: p.head.x, z: p.head.z, r: sk.radius, until: this.elapsed + dur, owner: ownerId, dmg: sk.dmgMult * pow.dmg, inside: new Set(), tickT: 0 });
+        act({ k: "arrowBarrier", x: p.head.x, y: feetY, z: p.head.z, d: dur, r: sk.radius });
+        return true;
+      }
+      case "webArrow": {
+        // 🧪 Стрела-паук: паутина на цели (или в точке), радиус и длительность — от МДР (тик — tickWebs).
+        const k = skillAttrMul("webArrow", p);
+        const tgt = this.skillTarget(p, tx, tz, WEB_ARROW.range, fwd());
+        const [cx, cz] = tgt ? [tgt.x, tgt.z] : clampPoint(WEB_ARROW.range, 10);
+        // Пол паутины: под наземной целью — её высота (и в подземелье), под летуном — земля, без цели — уровень стрелка.
+        const cy = tgt ? (tgt.grounded ? tgt.y : terrainHeight(cx, cz)) : feetY;
+        const r = sk.radius * k;
+        const sec = WEB_ARROW.duration * k;
+        this.webs.push({ x: cx, z: cz, r, until: this.elapsed + sec, owner: ownerId, dps: sk.dmgMult * pow.dmg, tickT: 0 });
+        act({ k: "webShot", x: p.head.x, y: p.head.y - 0.3, z: p.head.z, x2: cx, z2: cz, d: cy });
+        act({ k: "webZone", x: cx, y: cy, z: cz, d: sec, r });
         return true;
       }
       case "abyss": {
@@ -10279,6 +10426,92 @@ export class ZoneRoom extends Room<ZoneState> {
     }
   }
 
+  /** Лечение героя умением: HP до максимума и зелёная цифра над ним. */
+  private skillHeal(heroId: string, p: PlayerState, amount: number): void {
+    if (p.dead || amount <= 0 || p.hp >= p.maxHp) return;
+    const before = p.hp;
+    p.hp = Math.min(p.maxHp, p.hp + amount);
+    const healed = Math.round(p.hp - before);
+    if (healed > 0) this.sim.dmgHits.push({ x: p.head.x, y: p.head.y + 0.4, z: p.head.z, dmg: healed, by: heroId, c: "heal" });
+  }
+
+  /** 🧪 «Стрела-призрак»: пока он действует, попадание стрелой (у бота — выстрел) лечит стрелка. */
+  private ghostHeal(heroId: string, p: PlayerState, rt: Runtime): void {
+    if (rt.ghostUntil > this.elapsed) this.skillHeal(heroId, p, p.maxHp * GHOST_ARROW.healFrac);
+  }
+
+  /** 🧪 Стрелок стоит в своём кольце «Стрелы-барьера». */
+  private inOwnBarrier(heroId: string, p: PlayerState): boolean {
+    for (const b of this.barriers) if (b.owner === heroId && Math.hypot(p.head.x - b.x, p.head.z - b.z) <= b.r) return true;
+    return false;
+  }
+
+  /**
+   * 🧪 «Стрела-барьер»: моб, вошедший в кольцо (на прошлом тике его там не было), — урон и отброс наружу;
+   * стоящий внутри (босс, пригвождённый) второй раз не бьётся. Стрелок в кольце лечится.
+   */
+  private tickBarriers(dt: number): void {
+    for (let i = this.barriers.length - 1; i >= 0; i--) {
+      const b = this.barriers[i];
+      if (this.elapsed > b.until) {
+        this.barriers.splice(i, 1);
+        continue;
+      }
+      const now = new Set<string>();
+      for (const m of this.sim.mobs.values()) {
+        if (m.dead) continue;
+        const dx = m.x - b.x;
+        const dz = m.z - b.z;
+        if (Math.abs(dx) > b.r + 10 || Math.abs(dz) > b.r + 10) continue;
+        const d = Math.hypot(dx, dz);
+        if (d - this.sim.targetRadius("mob", m.id) > b.r) continue;
+        now.add(m.id);
+        if (b.inside.has(m.id)) continue;
+        const ux = d > 0.01 ? dx / d : 1;
+        const uz = d > 0.01 ? dz / d : 0;
+        this.sim.hitMob(m.id, b.dmg, ux, uz, b.owner, true);
+        this.sim.shoveMob(m.id, ux, uz, BARRIER_ARROW.shove);
+        this.broadcast(MSG.act, { k: "barrierHit", id: b.owner, x: m.x, y: m.y + MOB.bodyRadius * m.scale, z: m.z, x2: b.x, z2: b.z } satisfies ActRelay);
+      }
+      b.inside = now;
+      b.tickT -= dt;
+      if (b.tickT > 0) continue;
+      b.tickT = 0.5;
+      const p = this.state.players.get(b.owner);
+      if (p && !p.dead && Math.hypot(p.head.x - b.x, p.head.z - b.z) <= b.r) this.skillHeal(b.owner, p, p.maxHp * BARRIER_ARROW.healFracPerSec * 0.5);
+    }
+  }
+
+  /** 🧪 «Стрела-паук»: мобы в паутине пригвождены (боссы — нет) и жалятся; стрелок лечится за каждого пойманного. */
+  private tickWebs(dt: number): void {
+    for (let i = this.webs.length - 1; i >= 0; i--) {
+      const w = this.webs[i];
+      if (this.elapsed > w.until) {
+        this.webs.splice(i, 1);
+        continue;
+      }
+      w.tickT -= dt;
+      if (w.tickT > 0) continue;
+      w.tickT = WEB_ARROW.tick;
+      let caught = 0;
+      for (const m of this.sim.mobs.values()) {
+        if (m.dead) continue;
+        const dx = m.x - w.x;
+        const dz = m.z - w.z;
+        if (Math.abs(dx) > w.r + 10 || Math.abs(dz) > w.r + 10) continue;
+        const d = Math.hypot(dx, dz);
+        if (d - this.sim.targetRadius("mob", m.id) > w.r) continue;
+        caught++;
+        this.sim.rootMob(m.id, WEB_ARROW.tick + 0.15);
+        this.sim.hitMob(m.id, w.dps * WEB_ARROW.tick, dx / (d || 1), dz / (d || 1), w.owner, true, true);
+      }
+      const p = this.state.players.get(w.owner);
+      if (caught > 0 && p && !p.dead) {
+        this.skillHeal(w.owner, p, p.maxHp * Math.min(WEB_ARROW.healCap, WEB_ARROW.healPerEnemy * caught) * WEB_ARROW.tick);
+      }
+    }
+  }
+
   /** Самый «кучный» моб в радиусе залпа — вокруг него и наметим круг. */
   private bestRainSpot(p: PlayerState): { x: number; z: number } | null {
     let best: { x: number; z: number } | null = null;
@@ -10452,6 +10685,8 @@ export class ZoneRoom extends Room<ZoneState> {
     this.maybeSayTip(dt);
 
     this.tickSeals(dt);
+    this.tickBarriers(dt);
+    this.tickWebs(dt);
     this.tickHealAuras(dt);
     this.tickMarks();
     // «Боевой клич»: секунды для клиента (темп атак) и плашки баффов.
@@ -10466,6 +10701,10 @@ export class ZoneRoom extends Room<ZoneState> {
       if (p.abyssSecs !== abyss) p.abyssSecs = abyss;
       const smoke = p.dead ? 0 : Math.ceil(this.sim.smokeLeft(p.head.x, p.head.z));
       if (p.smokeSecs !== smoke) p.smokeSecs = smoke;
+      const ghost = p.dead ? 0 : sec(rt?.ghostUntil);
+      if (p.ghostSecs !== ghost) p.ghostSecs = ghost;
+      const run = p.dead ? 0 : sec(rt?.runUntil);
+      if (p.runSecs !== run) p.runSecs = run;
       const kind = left > 0 ? (rt?.cryKind ?? 0) : 0;
       if (p.cryKind !== kind) p.cryKind = kind;
     });
@@ -10511,7 +10750,9 @@ export class ZoneRoom extends Room<ZoneState> {
         prt.hasteUntil = this.elapsed + ABYSS.hasteSec;
       }
       if (prt && prt.abyssUntil > this.elapsed) return;
-      players.push({ sessionId: id, x: p.head.x, y: p.head.y, z: p.head.z });
+      // 🧪 «Стрела-призрак»: обычные мобы героя не видят, боссы — видят (ZoneSim.tick).
+      const ghost = !!prt && prt.ghostUntil > this.elapsed;
+      players.push({ sessionId: id, x: p.head.x, y: p.head.y, z: p.head.z, ...(ghost ? { ghost } : {}) });
     });
 
     const perfS0 = serverPerf.now();
@@ -10914,7 +11155,10 @@ export class ZoneRoom extends Room<ZoneState> {
     const srcMob = h.byMob ? this.sim.mobs.get(h.byMob) : undefined;
     const smokeMiss = !!srcMob && this.sim.inSmoke(srcMob.x, srcMob.z) && Math.random() < SMOKE.miss;
     const smokeDodge = this.sim.inSmoke(p.head.x, p.head.z) ? SMOKE.dodge : 0;
-    const dodged = !h.dot && (smokeMiss || Math.random() < dodgeChance(p, oneHanded, p.leftCls === "dagger" || p.rightCls === "dagger") + smokeDodge);
+    // 🧪 «Стрела-барьер»: стрелок в своём кольце — +уворот.
+    const barrierDodge = this.inOwnBarrier(h.target, p) ? BARRIER_ARROW.dodge : 0;
+    const dodged =
+      !h.dot && (smokeMiss || Math.random() < dodgeChance(p, oneHanded, p.leftCls === "dagger" || p.rightCls === "dagger") + smokeDodge + barrierDodge);
     const block = h.dot
       ? { mult: 1, by: 0 as BlockedBy }
       : dodged
@@ -11566,6 +11810,8 @@ export class ZoneRoom extends Room<ZoneState> {
       abyssUntil: -999,
       abyssStrike: false,
       hasteUntil: -999,
+      ghostUntil: -999,
+      runUntil: -999,
       whirlKind: 0,
       skillCls: "",
       yaw: rec?.yaw ?? 0,

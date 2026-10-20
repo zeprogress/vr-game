@@ -23,6 +23,8 @@ export function buffList(p: {
   plagueSecs?: number;
   abyssSecs?: number;
   smokeSecs?: number;
+  ghostSecs?: number;
+  runSecs?: number;
   towerFloor?: number;
 }): BuffEntry[] {
   if ((p.towerFloor ?? 0) > 0) return []; // в башне баффы не действуют
@@ -34,6 +36,8 @@ export function buffList(p: {
     plague: p.plagueSecs ?? 0,
     abyss: p.abyssSecs ?? 0,
     smoke: p.smokeSecs ?? 0,
+    ghost: p.ghostSecs ?? 0,
+    run: p.runSecs ?? 0,
   };
   return BUFF_ORDER.filter((id) => secs[id] > 0).map((id) => ({
     id,

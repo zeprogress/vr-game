@@ -150,6 +150,13 @@ export interface SimPlayer {
   x: number;
   y: number;
   z: number;
+  /** 🧪 «Стрела-призрак»: обычные мобы героя не видят и не бьют (боссы — видят, см. seesGhosts). */
+  ghost?: boolean;
+}
+
+/** Видит ли моб «призрака» (🧪 «Стрела-призрак»): только боссы — Багровый, боссы событий и катакомб, рейд-босс. */
+export function seesGhosts(m: { kind: string; bossFight: boolean; anchored: boolean }): boolean {
+  return m.kind === "boss" || m.bossFight || m.anchored;
 }
 
 /** Вклад одного участника в бой с боссом. */
@@ -3231,7 +3238,9 @@ export class ZoneSim {
     }
     // Катакомбы: моб знает открытые залы (таран и рывок не уводят его за стены).
     for (const m of this.mobs.values()) m.catHalls = this.catMobs.has(m.id) ? this.catOpen : null;
-    if (this.mobsEnabled) for (const m of this.mobs.values()) m.tick(dt, players, hits, spit);
+    // 🧪 «Стрела-призрак»: обычным мобам и их снарядам — герои без призраков, боссам — все.
+    const seen = players.some((p) => p.ghost) ? players.filter((p) => !p.ghost) : players;
+    if (this.mobsEnabled) for (const m of this.mobs.values()) m.tick(dt, seesGhosts(m) ? players : seen, hits, spit);
     // Упавший моб: сорвался с уступа подземелья и застрял в провале — ниже поверхности больше чем на 50 м
     // и не на полу (ни вне подземелья, ни в его зале/коридоре). Такой моб не виден игрокам и не возвращается —
     // отправляем его домой, в свой лагерь.
@@ -3319,8 +3328,8 @@ export class ZoneSim {
     this.tickBurning(dt);
     this.separateMobs(players);
     for (const d of this.dummies.values()) d.tick(dt);
-    for (const [id, b] of this.balls) if (b.tick(dt, players, hits, this.onBallLand)) this.balls.delete(id);
-    this.tickCaltrops(dt, players, hits);
+    for (const [id, b] of this.balls) if (b.tick(dt, seen, hits, this.onBallLand)) this.balls.delete(id);
+    this.tickCaltrops(dt, seen, hits);
     for (const [id, bo] of this.bolts) if (this.tickBolt(bo, dt)) this.bolts.delete(id);
     for (const [id, d] of this.drops) if (d.tick(dt)) this.drops.delete(id);
     // Полученный от босса урон — тоже вклад в бой (танк/приманка).

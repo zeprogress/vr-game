@@ -5,8 +5,8 @@
  */
 import { ATTR2, attrOf } from "./attrs2";
 import {
-  ASSASSIN_LEAP, CHAIN, CHAIN_HAMMER, FAN, HAMMER_FIELD, PLAGUE, SEAL, SKILLS2, SOUL_STEAL, SPEAR_FLURRY, STORM_CRUSH, THUNDER_SPIN,
-  WEAPONS2, skillAttrMul, type ClassId, type SkillAttrs, type SkillId,
+  ASSASSIN_LEAP, BLAST_ARROW, CHAIN, CHAIN_HAMMER, DOUBLE_SHOT, FAN, HAMMER_FIELD, PLAGUE, SEAL, SKILLS2, SOUL_STEAL, SPEAR_FLURRY,
+  STORM_CRUSH, SWARM_ARROW, THUNDER_SPIN, WEAPONS2, skillAttrMul, type ClassId, type SkillAttrs, type SkillId,
 } from "./classes2";
 import { SKILL } from "./constants";
 
@@ -59,7 +59,6 @@ export function skillDamageText(id: SkillId, cls: ClassId, strike: number, a: Sk
       return `Урон ${n(base)} за удар × ${sk.hits}`;
     case "chain":
       if (cls === "support") return `Лечение по цепи: ${hops(strike * 2.2, 4, CHAIN.falloff)}`;
-      if (cls === "archer") return `Урон: ${n(2 * strike)} → ${hops(2 * strike * 0.35, 2, CHAIN.falloff)}`;
       if (cls === "battlemage") return `Урон по скачкам: ${hops(base, CHAIN_HAMMER.hops, CHAIN.falloff)}`;
       return `Урон по скачкам: ${hops(base, sk.hits, CHAIN.falloff)}`;
     case "plague": {
@@ -73,6 +72,18 @@ export function skillDamageText(id: SkillId, cls: ClassId, strike: number, a: Sk
     case "lifeArrow":
     case "cleave":
       return `Урон ${n(base)}`;
+    case "blastArrow":
+      return `Урон ${n(base)} в цель, взрыв ${n(BLAST_ARROW.splash * strike)} вокруг`;
+    case "doubleShot":
+      return `Урон ${n(base)} × ${DOUBLE_SHOT.arrows} стрелы`;
+    case "swarmArrow":
+      return `Урон ${n(base)} за стрелу × ${SWARM_ARROW.arrows}, взрыв ${n(SWARM_ARROW.blast * strike)}`;
+    case "barrierArrow":
+      return `Урон ${n(base)} вошедшему в кольцо`;
+    case "webArrow":
+      return `Урон ${n(base)} в секунду в паутине`;
+    case "ghostArrow":
+      return null;
     default:
       return base > 0 ? `Урон ${n(base)}` : null;
   }

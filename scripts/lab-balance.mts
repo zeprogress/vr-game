@@ -921,6 +921,145 @@ if (ONLY.has("skilltest")) {
     secs(t.step, 0.6);
     check("Танец клинков: замедляет", m.slowT > 0 && m.slowMul < 1, `замедление ${m.slowT.toFixed(1)} с, скорость ×${m.slowMul}`);
   }
+
+  // ---- 🧪 Новые стрелы лучника (бот заморожен, умения — вручную; мобы — слизни с запасом HP) ----
+  say(`\n── 🧪 Проверка стрел лучника (настоящий серверный код) ──`);
+  const bow = LOADOUTS.find((l) => l.id === "лук")!;
+  const bowScene = (skills: [SkillId, SkillId]) => {
+    const r = makeRoom((m) => m.kind === "slime" && !m.campType);
+    const x = addBot(r.room, "t1", { lvl: 33, load: bow, skills });
+    r.room.tickBot = () => {};
+    for (let i = 0; i < 3; i++) r.step();
+    const mobs = [...r.room.sim.mobs.values()].filter((m: any) => !m.dead);
+    for (const m of mobs) m.hp = m.maxHp = 1e6;
+    return { ...r, x, p: x.bot.state, rt: x.bot.rt, mobs };
+  };
+  /** Поставить мобов кучкой: первый — в (cx, cz), остальные по кругу радиусом ring. */
+  const pack = (mobs: any[], n: number, cx: number, cz: number, ring: number): any[] => {
+    const out = mobs.slice(0, n);
+    out.forEach((m, i) => {
+      m.x = i === 0 ? cx : cx + ring * Math.cos(i * 2.1);
+      m.z = i === 0 ? cz : cz + ring * Math.sin(i * 2.1);
+      m.y = terrainHeight(m.x, m.z);
+      m.homeX = m.x;
+      m.homeZ = m.z;
+    });
+    return out;
+  };
+  const lost = (m: any): number => m.maxHp - m.hp;
+
+  // 1. Разрывная стрела: цель — ×2.5, соседи в 3 м — ×1.2, дальше 3 м — ничего.
+  {
+    const t = bowScene(["blastArrow", "mark"]);
+    const [a, b, c, far] = pack(t.mobs, 4, t.mobs[0].x, t.mobs[0].z, 1.8);
+    far.x = a.x + 9;
+    far.z = a.z;
+    for (const m of [a, b, c, far]) t.room.sim.stunMob(m.id, 99);
+    put(t.p, a.x + 12, a.z);
+    const ok = t.room.castSkill("blastArrow", t.x.id, t.p, t.rt, a.x, a.z);
+    const ratio = lost(b) > 0 ? lost(a) / ((lost(b) + lost(c)) / 2) : 0;
+    check("Разрывная: удар и взрыв", ok && lost(a) > 0 && lost(b) > 0 && lost(c) > 0 && lost(far) === 0, `цель −${Math.round(lost(a))}, соседи −${Math.round(lost(b))} / −${Math.round(lost(c))}, дальний −${Math.round(lost(far))}`);
+    check("Разрывная: цель ≈ ×2.1 к соседу", ratio > 1.2, `цель / сосед = ${f(ratio, 2)} (без критов 2.5 / 1.2 ≈ 2.08)`);
+  }
+
+  // 2. Двойной выстрел: два попадания в одну цель.
+  {
+    const t = bowScene(["doubleShot", "mark"]);
+    const m = t.mobs[0];
+    t.room.sim.stunMob(m.id, 99);
+    put(t.p, m.x + 10, m.z);
+    const h0 = t.meter.hits.get(t.x.id) ?? 0;
+    const ok = t.room.castSkill("doubleShot", t.x.id, t.p, t.rt, m.x, m.z);
+    secs(t.step, 0.4);
+    const hits = (t.meter.hits.get(t.x.id) ?? 0) - h0;
+    check("Двойной выстрел: две стрелы", ok && hits === 2, `попаданий ${hits}, урон −${Math.round(lost(m))}`);
+  }
+
+  // 3. Стрела-призрак: моб рядом перестаёт бить, урон ×0.7, попадание стрелой лечит, плашка.
+  {
+    const t = bowScene(["ghostArrow", "mark"]);
+    const m = t.mobs[0];
+    put(t.p, m.x + 1.2, m.z);
+    t.p.maxHp = t.p.hp = 1e5;
+    let hits = 0;
+    const hurt = t.room.hurtPlayer.bind(t.room);
+    t.room.hurtPlayer = (h: any) => (h.target === t.x.id && !h.dot && hits++, hurt(h));
+    secs(t.step, 3, () => (t.rt.invuln = 0));
+    const before = hits;
+    t.room.castSkill("ghostArrow", t.x.id, t.p, t.rt, NaN, NaN);
+    secs(t.step, 0.4);
+    hits = 0;
+    let buff = 0;
+    secs(t.step, 3, () => {
+      t.rt.invuln = 0;
+      if (t.p.ghostSecs > 0) buff++;
+    });
+    check("Призрак: моб не бьёт", before > 0 && hits === 0, `ударов моба: 3 с до ${before}, в призраке ${hits}`);
+    check("Призрак: плашка баффа", buff > 0, `ghostSecs > 0 ${buff} тиков`);
+    const mul = t.room.buffMult(t.x.id, "dmg");
+    check("Призрак: урон ×0.7", Math.abs(mul - C2.GHOST_ARROW.dmgMul) < 1e-6, `множитель урона ×${f(mul, 2)}`);
+    t.p.hp = t.p.maxHp * 0.5;
+    const hp0 = t.p.hp;
+    t.room.heroStrike(t.x.id, t.p, t.rt, "right", "arrow", m, 1, 0);
+    check("Призрак: попадание лечит 3%", t.p.hp - hp0 >= t.p.maxHp * C2.GHOST_ARROW.healFrac * 0.99, `+${Math.round(t.p.hp - hp0)} HP из ${t.p.maxHp}`);
+    secs(t.step, 2);
+    hits = 0;
+    secs(t.step, 3, () => (t.rt.invuln = 0));
+    check("Призрак: кончился — снова бьют", hits > 0, `ударов после призрака ${hits}`);
+  }
+
+  // 4. Стрела-рой: веер по кучке впереди; задето 3+ — лечение и бег.
+  {
+    const t = bowScene(["swarmArrow", "mark"]);
+    const ms = pack(t.mobs, 5, t.mobs[0].x, t.mobs[0].z, 2.2);
+    for (const m of ms) t.room.sim.stunMob(m.id, 99);
+    put(t.p, ms[0].x + 10, ms[0].z);
+    t.p.hp = t.p.maxHp * 0.5;
+    const hp0 = t.p.hp;
+    const ok = t.room.castSkill("swarmArrow", t.x.id, t.p, t.rt, ms[0].x, ms[0].z);
+    const touched = ms.filter((m: any) => lost(m) > 0).length;
+    t.step();
+    check("Рой: задевает кучку", ok && touched >= 3, `задето ${touched} из ${ms.length}, урон ${ms.map((m: any) => Math.round(lost(m))).join(" / ")}`);
+    check("Рой: лечение и бег за 3+", t.p.hp > hp0 && t.p.runSecs > 0, `HP ${Math.round(hp0)} → ${Math.round(t.p.hp)}, бег ${t.p.runSecs} с`);
+  }
+
+  // 5. Стрела-барьер: вошедший моб — урон и отброс наружу; стрелок в кольце лечится и увёртывается.
+  {
+    const t = bowScene(["barrierArrow", "mark"]);
+    const m = t.mobs[0];
+    put(t.p, m.x + 7, m.z);
+    t.p.hp = t.p.maxHp * 0.5;
+    const hp0 = t.p.hp;
+    t.room.castSkill("barrierArrow", t.x.id, t.p, t.rt, NaN, NaN);
+    const cx = t.p.head.x;
+    const cz = t.p.head.z;
+    // Моб «вошёл» в кольцо — в 2 м от центра.
+    m.x = cx - 2;
+    m.z = cz;
+    m.y = terrainHeight(m.x, m.z);
+    let maxD = 0;
+    secs(t.step, 0.6, () => (maxD = Math.max(maxD, Math.hypot(m.x - cx, m.z - cz))));
+    const inside = t.room.inOwnBarrier(t.x.id, t.p);
+    secs(t.step, 2);
+    check("Барьер: вошедшему урон и отброс", lost(m) > 0 && maxD - 2 >= 2.5, `урон −${Math.round(lost(m))}, отброшен на ${f(maxD - 2, 1)} м (≈3 м): от центра 2 → ${f(maxD, 1)} м`);
+    check("Барьер: стрелок лечится, уворот", inside && t.p.hp > hp0, `в кольце ${inside}, HP ${Math.round(hp0)} → ${Math.round(t.p.hp)} за 2.6 с`);
+  }
+
+  // 6. Стрела-паук: мобы в паутине пригвождены и жалятся, стрелок лечится за каждого.
+  {
+    const t = bowScene(["webArrow", "mark"]);
+    const ms = pack(t.mobs, 3, t.mobs[0].x, t.mobs[0].z, 2);
+    put(t.p, ms[0].x + 12, ms[0].z);
+    t.p.hp = t.p.maxHp * 0.5;
+    const hp0 = t.p.hp;
+    const ok = t.room.castSkill("webArrow", t.x.id, t.p, t.rt, ms[0].x, ms[0].z);
+    let rooted = 0;
+    secs(t.step, 2, () => (rooted = Math.max(rooted, ms.filter((m: any) => m.rooted).length)));
+    const healed = t.p.hp - hp0;
+    const want = t.p.maxHp * C2.WEB_ARROW.healPerEnemy * 3 * 2;
+    check("Паутина: пригвождает", ok && rooted === 3, `пригвождено ${rooted} из 3, урон ${ms.map((m: any) => Math.round(lost(m))).join(" / ")}`);
+    check("Паутина: лечит за пойманных", healed > want * 0.6, `за 2 с +${Math.round(healed)} HP (≈1% × 3 врага × 2 с = ${Math.round(want)})`);
+  }
 }
 
 // Обычная охота для сравнения с катакомбами (--only xpfarm --players … --roster …): герои с прода

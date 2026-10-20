@@ -425,7 +425,8 @@ export class WristMenu {
     y += 40;
     // Умений больше четырёх (тестовые 🧪) — строки компактнее, иначе не влезут в панель.
     const compact = def.skills.length > 4;
-    const rowH = compact ? 66 : 92;
+    // У лучника 10 умений (🧪 стрелы) — строки ужимаются по месту, чтобы последняя не уходила за край панели.
+    const rowH = Math.min(compact ? 66 : 92, Math.floor((TEX_H - y - 8) / def.skills.length) - 8);
     // Откат и бонусы — как у сервера: атрибуты героя + прибавка от колец и камней.
     const live = { ...this.prog.stats, gb: this.bonus() };
     const strike = this.strikeOf();

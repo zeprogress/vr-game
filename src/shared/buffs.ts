@@ -2,14 +2,14 @@ import { CAMPFIRE, EVENT } from "./constants";
 import type { IconKey } from "./icons";
 import { FX_RGB, rgbHex, type FxColor } from "./look";
 import { SCROLL } from "./shop";
-import { ABYSS, SMOKE } from "./classes2";
+import { ABYSS, GHOST_ARROW, SMOKE, SWARM_ARROW } from "./classes2";
 
 /**
  * Баффы героя — ОДНА таблица на всё: значок и строка в списке баффов (рамка
  * героя ПК/телефона, «смотрим» у спектатора, строка в VR) и светящиеся
  * фигурки, кружащие вокруг героя (BuffOrbitFx). Цвет — из палитры shared/look.ts.
  */
-export type BuffId = "victory" | "camp" | "scrollXp" | "scrollWind" | "plague" | "abyss" | "smoke";
+export type BuffId = "victory" | "camp" | "scrollXp" | "scrollWind" | "plague" | "abyss" | "smoke" | "ghost" | "run";
 /** Форма фигурки вокруг героя. */
 export type BuffShape = "shield" | "sword" | "boot" | "arrow";
 
@@ -89,10 +89,29 @@ export const BUFFS: Record<BuffId, BuffDef> = {
     size: 0.42,
     slot: 6,
   },
+  // ---- 🧪 стрелы лучника ----
+  ghost: {
+    name: "Стрела-призрак",
+    desc: `обычные мобы тебя не видят; урон −${Math.round((1 - GHOST_ARROW.dmgMul) * 100)}%, попадание лечит ${Math.round(GHOST_ARROW.healFrac * 100)}%`,
+    icon: "s.ghostArrow",
+    color: "frost",
+    shape: "shield",
+    size: 0.42,
+    slot: 7,
+  },
+  run: {
+    name: "Стрела-рой",
+    desc: `+${Math.round(SWARM_ARROW.run * 100)}% скорости бега`,
+    icon: "s.swarmArrow",
+    color: "buff",
+    shape: "boot",
+    size: 0.4,
+    slot: 8,
+  },
 };
 
 /** Порядок в списке баффов. */
-export const BUFF_ORDER: readonly BuffId[] = ["abyss", "plague", "smoke", "victory", "camp", "scrollXp", "scrollWind"];
+export const BUFF_ORDER: readonly BuffId[] = ["abyss", "ghost", "plague", "smoke", "run", "victory", "camp", "scrollXp", "scrollWind"];
 
 /** Цвет баффа для HTML/CSS. */
 export function buffHex(id: BuffId): string {

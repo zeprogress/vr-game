@@ -11,7 +11,7 @@ import { BOT_SKIN_MODELS } from "../world/models";
 import "./billboardFix";
 import { vrLights } from "../world/vrLights";
 import { STAT_NAMES } from "#shared/progression";
-import { ABYSS, SMOKE, JUMP_BEHIND, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, ASSASSIN_WHIRL_DASH, SOUL_STEAL, WHIRL, classOf2, hopDistance, hopsBack, skillCdMul2, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { ABYSS, SMOKE, JUMP_BEHIND, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, ASSASSIN_WHIRL_DASH, BLAST_ARROW, SOUL_STEAL, SWARM_ARROW, WEB_ARROW, WHIRL, classOf2, hopDistance, hopsBack, skillCdMul2, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
@@ -2494,7 +2494,10 @@ export class Game {
     this.player.setHp(self.hp);
     const inTower = (self.towerFloor ?? 0) > 0; // в башне баффы не действуют — не показываем
     this.localAvatar?.setBuffed(!inTower && (self.buffSecs ?? 0) > 0);
-    this.localAvatar?.setSkillBuffs({ plague: !inTower && self.plagueSecs > 0, abyss: !inTower && self.abyssSecs > 0, smoke: !inTower && self.smokeSecs > 0 });
+    this.localAvatar?.setSkillBuffs({
+      plague: !inTower && self.plagueSecs > 0, abyss: !inTower && self.abyssSecs > 0, smoke: !inTower && self.smokeSecs > 0,
+      ghost: !inTower && self.ghostSecs > 0, run: !inTower && self.runSecs > 0,
+    });
     this.localAvatar?.setStunned(self.stunned === 1);
     this.localAvatar?.setRooted(self.rooted === 1);
     this.player.setRooted(self.rooted === 1);
@@ -2507,7 +2510,8 @@ export class Game {
     this.localAvatar?.setCampWarm(!inTower && camp > 0);
     this.localAvatar?.setScrolls(!inTower && (self.scrollWindSecs ?? 0) > 0, !inTower && (self.scrollXpSecs ?? 0) > 0);
     this.player.speedMul =
-      (!inTower && (self.scrollWindSecs ?? 0) > 0 ? SCROLL.windMul : 1) * (!inTower && self.abyssSecs > 0 ? 1 + ABYSS.move : 1);
+      (!inTower && (self.scrollWindSecs ?? 0) > 0 ? SCROLL.windMul : 1) * (!inTower && self.abyssSecs > 0 ? 1 + ABYSS.move : 1) *
+      (!inTower && self.runSecs > 0 ? 1 + SWARM_ARROW.run : 1);
     if (camp > this.lastCampBuff + 60) this.notifyToast("🔥 Тепло костра: защита +20% на 10 минут");
     this.lastCampBuff = camp;
     const buffs = buffList(self);
@@ -3449,9 +3453,21 @@ export class Game {
     } else if (id === "cleave") {
       // Рассекающий удар — замах мечом вперёд, конус считает сервер по взгляду.
       this.combat.onMeleeSwing?.();
-    } else if (id === "mark" || id === "chain" || id === "lifeArrow") {
+    } else if (id === "swarmArrow") {
+      // 🧪 Стрела-рой: веер — на выбранную цель, иначе по взгляду.
+      const sel = this.selectedTargetPos();
+      msg.x = sel ? sel.x : p.x + fx * 10;
+      msg.z = sel ? sel.z : p.z + fz * 10;
+      this.combat.onMeleeSwing?.();
+    } else if (id === "webArrow") {
+      // 🧪 Стрела-паук: паутина на цель (выбранную или ближайшую впереди), иначе — в точку впереди.
+      const sel = this.selectedTargetPos() ?? frontTarget(WEB_ARROW.range);
+      msg.x = sel ? sel.x : p.x + fx * 10;
+      msg.z = sel ? sel.z : p.z + fz * 10;
+      this.combat.onMeleeSwing?.();
+    } else if (id === "mark" || id === "chain" || id === "lifeArrow" || id === "blastArrow" || id === "doubleShot") {
       // По выбранной цели (ПК/телефон), иначе — ближайшая впереди.
-      const sel = this.selectedTargetPos() ?? frontTarget(id === "chain" ? 14 : 22);
+      const sel = this.selectedTargetPos() ?? frontTarget(id === "chain" ? 14 : BLAST_ARROW.range);
       // Цели нет — сервер откажет; не тратим откат и подсказываем.
       if (!sel) {
         this.notifyToast("Нет цели впереди");

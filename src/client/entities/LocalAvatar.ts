@@ -66,7 +66,7 @@ export class LocalAvatar {
   /** Баффы — кружащие мечи (×2 опыт/урон) и щиты («Тепло костра»). */
   private readonly buffAura: BuffOrbitFx;
   /** 🧪 Умения ассасина в силе — фигурки вокруг героя (яд, тень, дым). */
-  private skillBuffs = { plague: false, abyss: false, smoke: false };
+  private skillBuffs = { plague: false, abyss: false, smoke: false, ghost: false, run: false };
   private campWarm = false;
   /** Свитки: ветер (башмаки) и мудрость (стрелки вверх). */
   private windBuff = false;
@@ -97,7 +97,7 @@ export class LocalAvatar {
   }
 
   /** 🧪 Умения ассасина в силе (яд, тень, дым) — фигурки по кругу. */
-  setSkillBuffs(b: { plague: boolean; abyss: boolean; smoke: boolean }): void {
+  setSkillBuffs(b: { plague: boolean; abyss: boolean; smoke: boolean; ghost: boolean; run: boolean }): void {
     this.skillBuffs = b;
   }
 
@@ -312,6 +312,8 @@ export class LocalAvatar {
       plague: show && this.skillBuffs.plague,
       abyss: show && this.skillBuffs.abyss,
       smoke: show && this.skillBuffs.smoke,
+      ghost: show && this.skillBuffs.ghost,
+      run: show && this.skillBuffs.run,
     });
     this.buffAura.update(dt);
     this.stunStars.setActive(this.stunned && !this.hidden);
