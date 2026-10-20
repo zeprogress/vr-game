@@ -3129,7 +3129,16 @@ export class ZoneRoom extends Room<ZoneState> {
       let n = 0;
       // Получают только участники: были в зоне события или били его мобов.
       const recipients = new Set<string>([...this.eventParticipants, ...this.sim.eventDamagers]);
+      // Лом — каждому участнику сразу в сумку (как лом с мобов), не на землю.
+      const scrap = hunt ? EVENT.eliteHunt.rewardScrap : EVENT.invasion.rewardScrap;
+      winLoot.push({ id: "scrap", count: scrap });
       for (const owner of recipients) {
+        const sp = this.state.players.get(owner);
+        if (sp) {
+          const bag = readBag(sp);
+          addToBag(bag, "scrap", scrap);
+          writeBag(sp, bag);
+        }
         const rt = this.rt.get(owner);
         if (rt && this.state.players.has(owner)) {
           rt.eventBuffUntil = until;
@@ -3141,7 +3150,8 @@ export class ZoneRoom extends Room<ZoneState> {
         this.reply(
           (hunt ? `${ELITE_MOBS[EVENT.eliteHunt.eliteKey].name} повержен! ` : "Нашествие отражено! ") +
             `${n} героям — благословение на ${minutes} мин: ` +
-            `×${EVENT.invasion.buffXpMult} опыта и ×${EVENT.invasion.buffDmgMult} урона.`,
+            `×${EVENT.invasion.buffXpMult} опыта и ×${EVENT.invasion.buffDmgMult} урона. ` +
+            `Участникам — по ${scrap} лома в сумку.`,
         );
       }
     }
