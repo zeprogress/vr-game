@@ -577,7 +577,7 @@ export interface WeaponInstance {
 export const FAV_MAX = 24;
 
 /** Текущая версия формата роллов (WeaponInstance.lv). */
-export const LOOT_VER = 11;
+export const LOOT_VER = 12;
 
 /** Оружие ближнего боя — только на нём выпадает вампиризм. */
 export function isMeleeClass(cls: string): boolean {
@@ -623,11 +623,12 @@ const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
   critMult: [0.3, 1.0],
   vamp: [0.02, 0.1],
   block: [0.07, 0.2],
-  reflect: [0.035, 0.1],
+  /** Отражение щита: ×2 (2026-10-20: максимум 10% → 20%); выпавшие роллы пересчитывает migrateLoot (lv 12). */
+  reflect: [0.07, 0.2],
   physDef: [0.07, 0.2],
   magDef: [0.07, 0.2],
-  /** Регенерация щита: доля МАКС. HP в секунду (и в бою). */
-  regen: [0.003, 0.01],
+  /** Регенерация щита: доля МАКС. HP в секунду (и в бою). ×2 (2026-10-20); выпавшие роллы — migrateLoot (lv 12). */
+  regen: [0.006, 0.02],
   /** Пронзание (лук): шанс, что стрела пройдёт насквозь и ранит моба позади цели (BOW.pierceDmg урона). 2026-10-06: максимум 15% → 25%. */
   pierce: [0.05, 0.4], // 2026-10-07: потолок шанса 25% → 40%
   /** Поджог (посох): шанс поджечь цель огнешаром (горение — от ИНТ, как прежний врождённый поджог). */
@@ -637,7 +638,7 @@ const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
   /** Яд (только крафт, катализатор «Ядовитое жало»): шанс удара наложить стак яда (CRAFT_PROC.venom). */
   venom: [0.05, 0.25],
 };
-/** Диапазоны роллов Эгиды, где они свои (макс.: Блок 20% — как у щита, Отражение 10%, Физ. защита 15%). */
+/** Диапазоны роллов Эгиды, где они свои (макс.: Блок 20% — как у щита, Отражение 20%, Физ. защита 15%). */
 const AEGIS_RANGES: Partial<Record<AffixSub, readonly [number, number]>> = {
   physDef: [0.05, 0.15],
 };
@@ -649,6 +650,11 @@ const V6_RANGES = {
 } as const;
 /** Старый диапазон Блока (до 2026-10-02) — для пересчёта уже выпавших щитов. */
 const OLD_BLOCK_RANGE = [0.02, 0.06] as const;
+/** Регенерация и Отражение до 2026-10-20 (×2 сейчас) — для пересчёта выпавших роллов (lv 12, те же очки). */
+const OLD_SHIELD_RANGES: Partial<Record<AffixSub, readonly [number, number]>> = {
+  regen: [0.003, 0.01],
+  reflect: [0.035, 0.1],
+};
 
 /** Ролл скрытого рецепта крафта — потолок ×STAR_CAP («сверх предела»), сразу на максимуме. */
 export const STAR_CAP = 1.5;
@@ -1185,6 +1191,15 @@ export function migrateLoot(w: WeaponInstance): boolean {
       if (a.sub !== "pierce") continue;
       const t = Math.max(0, Math.min(1, (a.value - 0.05) / (0.25 - 0.05)));
       a.value = atT("pierce", Math.round(t * 32) / 32);
+    }
+  }
+  // lv 12: регенерация щита и отражение Эгиды ×2 (2026-10-20) — выпавшие роллы с теми же очками.
+  if (ver < 12) {
+    for (const a of w.affixes) {
+      const old = OLD_SHIELD_RANGES[a.sub];
+      if (!old) continue;
+      const t = Math.max(0, Math.min(1, (a.value - old[0]) / (old[1] - old[0])));
+      a.value = atT(a.sub, t, isAegis(w), a.cap ?? 1);
     }
   }
   w.lv = LOOT_VER;
