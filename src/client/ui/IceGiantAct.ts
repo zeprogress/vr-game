@@ -178,7 +178,9 @@ export function playIceGiantAct(
     case "mobEncase": {
       // «Ледяная глыба»: стаки сгорели, герой (или моб) в клетке из кристаллов d с, потом лёд разлетается.
       ice.clearOrbit(id);
-      const p = ctx.follow(k === "mobEncase" ? "mob" : "hero", id) ?? { x, y: ctx.ground(x, z), z };
+      // Клетка — от земли: у моба follow даёт высоту середины тела, а у героя — уже пол; ставим на пол в обоих случаях.
+      const f = ctx.follow(k === "mobEncase" ? "mob" : "hero", id);
+      const p = f ? { x: f.x, y: ctx.ground(f.x, f.z), z: f.z } : { x, y: ctx.ground(x, z), z };
       const T = d ?? G.frost.freezeSec;
       ice.shards(SHARD.cage, p, { r: r ?? 0.62, hold: T, size: 2.1, count: 14 });
       ice.decal(DECAL.frost, p.x, p.y, p.z, 1.6, T + 0.8, 0.9);
