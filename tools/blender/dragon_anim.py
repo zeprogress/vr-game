@@ -70,6 +70,63 @@ TAIL = [f"Tail{k}" for k in range(1, 9)]
 PIVOT_Y = ((rig.head["HindLeg1.L"].y + rig.head["HindLeg1.R"].y) / 2 + rig.head["Tail1"].y) / 2 - rig.head["Root"].y
 
 
+# Передние лапы нигде не выпрямляются полностью — полусогнуты (как в покое: 98–132°). Угол в локте не больше:
+FRONT_ELBOW_MAX = 135.0  # °, 180 — прямая лапа
+# Сколько корпус может осесть, чтобы опорная передняя лапа осталась согнутой; дальше (на дыбах) лапа
+# поджимается и отрывается от земли — иначе корпус проседал и задние лапы уходили в землю.
+FRONT_DROP_MAX = 0.03  # м
+
+
+def _reach(lg, deg):
+    """Расстояние плечо → стопа при угле в локте deg."""
+    return math.sqrt(lg["l1"] ** 2 + lg["l2"] ** 2 - 2 * lg["l1"] * lg["l2"] * math.cos(D(deg)))
+
+
+def _hip(T, Hn, lg):
+    """Где сейчас верх ноги (плечо/бедро) — как в anim.Rig.leg_ik."""
+    th = lg["bones"][0]
+    par = rig.parent[th]
+    return T[par] @ (lg["H"] - rig.head[par]) + Hn[par]
+
+
+def plant_legs(pose, root, feet, pitch):
+    """Стопы — обратная кинематика. Передние лапы не разгибаются больше FRONT_ELBOW_MAX: опорная лапа тянется —
+    корпус чуть оседает (вес на лапе, не больше FRONT_DROP_MAX), остальное — лапа поджимается к плечу
+    (на дыбах отрывается от земли). Возвращает корень (мог опуститься)."""
+    root = root.copy()
+    targets = []
+    for i, lg in enumerate(rig.legs):
+        t = lg["A"] + feet[i]
+        # пятка отрывается — стопа перекатывается через носок (×1.15 — когти длиннее кости стопы)
+        t.z += 1.15 * lg["flen"] * math.sin(max(0.0, pitch[i]))
+        targets.append(t)
+    T, Hn = rig.fk(pose, root)
+    drop = 0.0
+    for i in (FL, FR):
+        lg = rig.legs[i]
+        if feet[i].z > 0.01:
+            continue
+        h, t = _hip(T, Hn, lg), targets[i]
+        r = _reach(lg, FRONT_ELBOW_MAX)
+        horiz = math.hypot(t.x - h.x, t.y - h.y)
+        if (t - h).length > r and horiz < r:
+            drop = max(drop, h.z - (t.z + math.sqrt(r * r - horiz * horiz)))
+    drop = min(drop, FRONT_DROP_MAX)
+    if drop > 0:
+        root.z -= drop
+        T, Hn = rig.fk(pose, root)
+    for i in (FL, FR):
+        lg = rig.legs[i]
+        h = _hip(T, Hn, lg)
+        r = _reach(lg, FRONT_ELBOW_MAX)
+        d = targets[i] - h
+        if d.length > r:
+            targets[i] = h + d * (r / d.length)
+    for i, lg in enumerate(rig.legs):
+        rig.leg_ik(pose, root, lg, targets[i], pitch[i])
+    return root
+
+
 class P:
     """Поза кадра: повороты костей (оси арматуры), сдвиг корня, сдвиги стоп от покоя; done() ставит стопы."""
 
@@ -119,18 +176,16 @@ class P:
 
     def done(self):
         pose = dict(self.q)
-        for i, lg in enumerate(rig.legs):
-            t = lg["A"] + self.feet[i]
-            # пятка отрывается — стопа перекатывается через носок: лодыжка поднимается, носок не уходит в землю
-            t.z += 1.15 * lg["flen"] * math.sin(max(0.0, self.pitch[i]))  # ×1.15 — когти длиннее кости стопы
-            rig.leg_ik(pose, self.root, lg, t, self.pitch[i])
-        return pose, self.root.copy(), None
+        root = plant_legs(pose, self.root, self.feet, self.pitch)
+        return pose, root, None
 
 
 # ---------------------------------------------------------------- стойка с весом (основа покоя и атак)
 
-WEIGHT_DROP = 0.10  # м: корпус сидит на сгибаемых коленях — лапы не вытянуты
-WEIGHT_PITCH = 10.0  # °: вес на задних лапах — плечи выше таза, передние лапы стоят почти столбом
+# Стойка, которая понравилась пользователю (версия 5326ceaf): корпус ровный и низко, все четыре лапы согнуты
+# (передние — в локте; раньше риг ломал их в двух местах, теперь веса и суставы исправлены).
+WEIGHT_DROP = 0.12  # м: корпус ближе к земле, на выдохе ниже, на вдохе выше
+WEIGHT_PITCH = 0.0  # °: без наклона (вариант «вес на задних, плечи выше» — не тот)
 
 
 def stance(p, k=1.0):
@@ -149,10 +204,10 @@ def stance(p, k=1.0):
 IDLE_SEC = 3.0
 
 
-# Покой — тот, что понравился пользователю (версия 4e69079c, 2026-10-21), перенесён формула в формулу.
-# Отличие одно: крылья и хвост приподняты на несколько градусов — их кончики уходили под землю на ≈6 см.
-IDLE_WING_LIFT = 7.0  # °
-IDLE_TIP_LIFT = 2.5  # °
+# Покой — тот, что понравился пользователю (версия 5326ceaf, 2026-10-21: ровный корпус, присед 12 см,
+# передние лапы согнуты), формулы те же. Стопы перекладываются после дыхания (раньше чуть скользили).
+IDLE_WING_LIFT = 0.0  # ° — подъём крыльев, если кончики уйдут под землю
+IDLE_TIP_LIFT = 0.0  # ° — подъём хвоста, если кончик уйдёт под землю
 
 
 def _rx(deg):
@@ -168,7 +223,7 @@ def _rz(deg):
 
 
 def clip_idle(rig_, u):
-    """Покой: корпус сидит на задних лапах (наклон и присед), на вдохе поднимается, на выдохе опускается;
+    """Покой: корпус низко на согнутых лапах, на вдохе поднимается, на выдохе опускается;
     грудь дышит, голова и шея покачиваются, хвост — волной от основания к кончику, крылья мягко дышат,
     вес переходит с ноги на ногу. Стопы стоят на земле (IK)."""
     k = 2 * math.pi * u
@@ -206,8 +261,8 @@ def clip_idle(rig_, u):
         add(f"Tail{i}", _rz(3.0 * math.sin(k - 0.45 * i)) @ _rx(1.5 * math.sin(2 * k - 0.3 * i)))
     add("WingArm2.L", _ry(2.5 * math.sin(2 * k + 0.8)))
     add("WingArm2.R", _ry(-2.5 * math.sin(2 * k + 0.8)))
-    # грудь и корень сдвинули плечи и таз — стопы на место
-    rig_.plant(pose, root)
+    # грудь и корень сдвинули плечи и таз — стопы на место (передние лапы — полусогнуты)
+    root = plant_legs(pose, root, [Vector((0.0, 0.0, 0.0))] * 4, [0.0] * 4)
     return pose, root, None
 
 
@@ -243,7 +298,7 @@ def clip_walk(rig_, u):
     p = P()
     for i, ph in enumerate(WALK["phase"]):
         p.feet[i], p.pitch[i] = foot_cycle(u, ph, WALK)
-    p.root.z = -0.035 - 0.012 * math.cos(2 * k)
+    p.root.z = -0.10 - 0.012 * math.cos(2 * k)  # низкая посадка, как в покое: передние лапы полусогнуты
     p.root.x = 0.018 * math.sin(k)
     p.rot("Root", ax=-3.0, az=2.0 * math.sin(k))
     p.rot("Pelvis", ay=2.0 * math.sin(k), az=3.0 * math.sin(k))
@@ -271,9 +326,10 @@ def clip_run(rig_, u):
     p.rot("Spine1", ax=5.0 * math.sin(k + 0.9))
     p.rot("Chest", ax=-3.5 * math.sin(k + 0.9))
     p.neck(ax=8.0 - 3.0 * math.sin(k + 1.4), az=1.0 * math.sin(k))
-    p.rot("Head", ax=-9.0 + 2.5 * math.sin(k + 1.8))
+    # голова покачивается по инерции — с запаздыванием за качкой корпуса (вверх-вниз и чуть в стороны)
+    p.rot("Head", ax=-9.0 + 2.5 * math.sin(k + 1.8) + 4.0 * math.sin(k - 0.9), az=2.5 * math.sin(k - 1.2))
     p.rot("Jaw", ax=6.0 + 3.0 * max(0.0, math.sin(k + 2.0)))
-    p.rot("Tail1", ax=8.0)
+    p.rot("Tail1", ax=2.0)  # хвост ближе к земле
     p.tail(lambda i: (2.0 * math.sin(k - 0.5 * i), 0.0, (2.5 + 1.1 * i) * math.sin(k - 0.6 * i)))
     p.wings(spread=18, lift=6 + 12 * math.sin(k - 0.5), fan=6, lag=6 + 12 * math.sin(k - 0.65))
     return p.done()
@@ -281,7 +337,7 @@ def clip_run(rig_, u):
 
 # ---------------------------------------------------------------- атаки
 
-BITE_SEC, CLAW_SEC, TAIL_SEC, WINGS_SEC, BREATH_SEC, CHARGE_SEC = 1.2, 1.4, 2.0, 1.8, 2.4, 2.0
+BITE_SEC, CLAW_SEC, TAIL_SEC, WINGS_SEC, BREATH_SEC, CHARGE_SEC = 1.2, 1.4, 2.4, 1.8, 2.4, 2.0
 BITE_HIT = 0.5  # с — пасть захлопывается
 
 
@@ -338,26 +394,91 @@ def clip_claw(rig_, u):
     return p.done()
 
 
-TAIL_HIT = 0.85  # с — хвост проходит перед мордой цели
+# Разворот на месте: лапы переставляются парами по диагонали (задняя левая + передняя правая, потом другая
+# пара), стопа стоит, пока не шагнёт — ничего не скользит. Шаги считаются заранее по кадрам (plan_turn).
+PIVOT = Vector((rig.head["Root"].x, rig.head["Root"].y, 0.0))  # вокруг корня крутится и корпус
+PAIRS = ((HL, 0), (FR, 0), (HR, 1), (FL, 1))  # нога → пара
+
+
+def plan_turn(theta, dur, thr=10.0, step=0.15, lead=0.12):
+    """Шаги разворота по кадрам: пара шагает, когда отстала от корпуса больше thr°, — к углу корпуса с
+    упреждением по скорости; пары чередуются; когда корпус встал, пары догоняют его точно (без остатка).
+    Возвращает (угол стопы по паре [кадр], подъём по паре [кадр] 0..1)."""
+    n = round(dur * FPS) + 1
+    yaw, act, last = [0.0, 0.0], [None, None], -1.0
+    psi = [[0.0] * n for _ in range(2)]
+    up = [[0.0] * n for _ in range(2)]
+    for f in range(n):
+        t = f / FPS
+        th = theta(t)
+        om = (theta(t + 0.02) - theta(t - 0.02)) / 0.04
+        for q in (0, 1):
+            if act[q]:
+                t0, a0, a1 = act[q]
+                k = (t - t0) / step
+                if k >= 1.0:
+                    yaw[q], act[q] = a1, None
+                else:
+                    psi[q][f], up[q][f] = a0 + (a1 - a0) * smooth(k), math.sin(math.pi * k)
+                    continue
+            psi[q][f] = yaw[q]
+        q = max((0, 1), key=lambda j: abs(th - yaw[j]) if act[j] is None else -1.0)
+        lag = abs(th - yaw[q])
+        other = act[1 - q]
+        free = other is None or (t - other[0]) > step * 0.45
+        if act[q] is None and free and t - last >= step * 0.4 and (lag > thr or (abs(om) < 5.0 and lag > 0.5)):
+            act[q], last = (t, yaw[q], th + max(-22.0, min(22.0, om * lead))), t
+    return psi, up
+
+
+TAIL_TURN = 120.0  # ° — корпус разворачивается, хвост дохлёстывает вперёд, к морде цели
+# Хлёст по звеньям (°): длина хвоста — в основании (0.52, 0.48, 0.35 м … кончик по 0.11), поэтому гнётся
+# сильнее основание — иначе длинная часть оставалась сбоку, а заворачивался один кончик.
+TAIL_WHIP = (22.0, 20.0, 16.0, 12.0, 10.0, 8.0, 6.0, 6.0)
+TAIL_HIT = 0.95  # с — хвост проходит спереди
+
+
+def _tail_theta(t):
+    return K([(0, 0), (0.3, -12), (0.85, TAIL_TURN - 8, "s"), (1.05, TAIL_TURN, "o"), (1.5, TAIL_TURN),
+              (2.15, 0, "s"), (TAIL_SEC, 0)], t)
+
+
+TAIL_STEPS = plan_turn(_tail_theta, TAIL_SEC)
 
 
 def clip_tail(rig_, u):
-    """Удар хвостом: корпус закручивается в одну сторону, хвост взводится; затем корпус раскручивается,
-    а хвост хлещет в другую сторону волной от основания к кончику, перелетает и гаснет с покачиванием."""
+    """Удар хвостом вперёд: корпус закручивается в другую сторону (взвод), затем разворачивается на ~100°,
+    переставляя лапы парами; хвост сначала отстаёт (тянется против поворота), а когда корпус тормозит —
+    хлещет вперёд в сторону поворота и проходит перед мордой цели, перелетает и гаснет; голова держит цель,
+    пока может; затем корпус так же, шагами, разворачивается обратно."""
     s = u * TAIL_SEC
+    f = min(round(s * FPS), len(TAIL_STEPS[0][0]) - 1)
     p = P()
     stance(p)
-    p.root.z += K([(0, 0), (0.45, -0.03), (TAIL_HIT, 0.01, "i"), (1.3, -0.01), (TAIL_SEC, 0)], s)
-    p.body(az=K([(0, 0), (0.45, 12), (TAIL_HIT, -14, "i"), (1.3, -8), (TAIL_SEC, 0)], s))
-    p.rot("Pelvis", az=K([(0, 0), (0.45, 10), (TAIL_HIT, -16, "i"), (1.3, -6), (TAIL_SEC, 0)], s))
-    p.rot("Chest", az=K([(0, 0), (0.45, -6), (TAIL_HIT, 8, "i"), (1.3, 3), (TAIL_SEC, 0)], s))
-    p.neck(az=K([(0, 0), (0.45, -14), (TAIL_HIT, 10, "i"), (1.3, 4), (TAIL_SEC, 0)], s),
-           ax=K([(0, 0), (0.45, -6), (TAIL_HIT, 4), (TAIL_SEC, 0)], s))
-    p.tail(lambda i: (K([(0, 0), (0.45, 2), (TAIL_HIT + 0.03 * i, 5), (TAIL_SEC, 0)], s), 0.0,
-                      K([(0, 0), (0.45 + 0.02 * i, 14 + 2.5 * i), (TAIL_HIT + 0.035 * i, -(16 + 3.2 * i), "b"),
-                         (1.35 + 0.03 * i, 4 + 0.6 * i), (1.7 + 0.02 * i, -1.0), (TAIL_SEC, 0)], s)))
-    p.wings(spread=K([(0, 3), (0.45, 16), (TAIL_HIT, 10), (TAIL_SEC, 3)], s),
-            lift=K([(0, 0), (0.45, 16), (TAIL_HIT, 4), (TAIL_SEC, 0)], s))
+    th = _tail_theta(s)
+    om = (_tail_theta(s + 0.02) - _tail_theta(s - 0.02)) / 0.04  # °/с
+    p.body(az=th)
+    p.root.z += K([(0, 0), (0.3, -0.03), (0.85, 0.0), (TAIL_HIT, -0.02), (1.5, -0.01), (TAIL_SEC, 0)], s)
+    psi, up = TAIL_STEPS
+    for leg, q in PAIRS:
+        a_ = rig.legs[leg]["A"]
+        turned = PIVOT + Quaternion((0, 0, 1), D(psi[q][f])) @ (a_ - PIVOT)
+        p.feet[leg] = turned - a_ + Vector((0.0, 0.0, 0.10 * up[q][f]))
+        p.pitch[leg] = D(20) * up[q][f]
+    p.rot("Chest", az=-0.02 * om)  # грудь чуть отстаёт от таза на развороте
+    p.neck(az=-0.45 * th, ax=K([(0, 0), (0.3, -6), (TAIL_HIT, 4), (TAIL_SEC, 0)], s))
+    p.rot("Jaw", ax=K([(0, 0), (0.8, 10), (TAIL_HIT, 24), (1.4, 6), (TAIL_SEC, 0)], s))
+
+    def tail_seg(i):
+        drag = -om * (0.012 + 0.002 * i)  # отстаёт от поворота
+        w = TAIL_WHIP[i - 1]
+        whip = K([(0, 0), (TAIL_HIT - 0.12 + 0.015 * i, 0), (TAIL_HIT + 0.02 * i, w, "b"),
+                  (1.5 + 0.02 * i, 0.25 * w), (2.1, -2), (TAIL_SEC, 0)], s)  # хлёст вперёд, в сторону поворота
+        return K([(0, 0), (0.3, 1), (TAIL_HIT, 3), (TAIL_SEC, 0)], s), 0.0, drag + whip
+
+    p.tail(tail_seg)
+    p.wings(spread=K([(0, 3), (0.3, 10), (0.85, 22), (TAIL_HIT, 16), (1.5, 8), (TAIL_SEC, 3)], s),
+            lift=K([(0, 0), (0.3, 6), (0.85, 14), (TAIL_HIT, 6), (TAIL_SEC, 0)], s))
     return p.done()
 
 
@@ -377,8 +498,8 @@ def clip_wings(rig_, u):
     p.neck(ax=K([(0, 0), (0.6, -18), (WINGS_HIT, 16, "i"), (1.15, 10), (WINGS_SEC, 0)], s))
     p.rot("Jaw", ax=K([(0, 0), (0.7, 6), (WINGS_HIT, 34, "i"), (1.2, 30), (1.6, 0), (WINGS_SEC, 0)], s))
     spread = K([(0, 3), (0.6, 62, "o"), (WINGS_HIT, 64), (1.15, 56), (WINGS_SEC, 3)], s)
-    lift = K([(0, 0), (0.6, 45, "o"), (WINGS_HIT, -6, "i"), (1.15, -3), (1.5, 3), (WINGS_SEC, 0)], s)
-    lag = K([(0, 0), (0.64, 45, "o"), (WINGS_HIT + 0.03, -6, "i"), (1.18, -3), (1.53, 3), (WINGS_SEC, 0)], s)
+    lift = K([(0, 0), (0.6, 45, "o"), (WINGS_HIT, -1, "i"), (1.15, 0), (1.5, 3), (WINGS_SEC, 0)], s)
+    lag = K([(0, 0), (0.64, 45, "o"), (WINGS_HIT + 0.03, -1, "i"), (1.18, 0), (1.53, 3), (WINGS_SEC, 0)], s)
     p.wings(spread=spread, lift=lift, fan=12 * min(1.0, spread / 60.0), lag=lag)
     p.tail(lambda i: (K([(0, 0), (0.6, 0.5), (WINGS_HIT + 0.04 * i, 3, "b"), (1.3, 0.5), (WINGS_SEC, 0)], s), 0.0,
                       shake(s, WINGS_HIT + 0.03 * i, 1.6, 1.5 + 0.4 * i, hz=3)))
