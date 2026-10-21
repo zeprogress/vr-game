@@ -10,22 +10,21 @@ test("Аура раскалённой стали: режим по оружию �
   assert.equal(steelModeOf("sword", ""), "sword");
 });
 
-test("Аура раскалённой стали: урон в секунду — 500% регенерации; дуалы — вдвое слабее", () => {
-  const regen = 4;
-  assert.equal(steelAuraTick("shield", regen, 1000).dmg, regen * 5);
-  assert.equal(steelAuraTick("sword", regen, 1000).dmg, regen * 5);
-  assert.equal(steelAuraTick("dual", regen, 1000).dmg, regen * 5 * STEEL_AURA.dualMul);
-  assert.equal(STEEL_AURA.dualMul, 0.5);
+test("Аура раскалённой стали: урон в секунду — 500% регенерации; дуалы не жгут", () => {
+  assert.equal(steelAuraTick("shield", 4).dmg, 20);
+  assert.equal(steelAuraTick("sword", 4).dmg, 20);
+  assert.equal(steelAuraTick("dual", 4).dmg, 0);
 });
 
-test("Аура раскалённой стали: щит лечит 1% HP за врага, меч замедляет, остальные — нет", () => {
-  const t = steelAuraTick("shield", 1, 800);
-  assert.equal(t.healPerEnemy, 8);
-  assert.equal(t.slow, false);
-  assert.equal(steelAuraTick("sword", 1, 800).healPerEnemy, 0);
-  assert.equal(steelAuraTick("sword", 1, 800).slow, true);
-  assert.equal(steelAuraTick("dual", 1, 800).slow, false);
+test("Аура раскалённой стали: один меч замедляет врагов; дуалы дают воину 10% защиты; лечения нет", () => {
+  assert.equal(steelAuraTick("sword", 1).slow, true);
+  assert.equal(steelAuraTick("shield", 1).slow, false);
+  assert.equal(steelAuraTick("dual", 1).slow, false);
+  assert.equal(steelAuraTick("dual", 1).defense, 0.1);
+  assert.equal(steelAuraTick("sword", 1).defense, 0);
   assert.equal(STEEL_AURA.slowMul, 0.8, "замедление 20%");
+  assert.equal(STEEL_AURA.dualDef, 0.1, "защита 10%");
+  assert.ok(!("healPerEnemy" in steelAuraTick("shield", 1)), "у ауры нет лечения");
 });
 
 test("Аура раскалённой стали: радиус 6 м, откат 15 с, на длительность 6 с; у воина в списке умений", () => {

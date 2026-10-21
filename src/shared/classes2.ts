@@ -695,7 +695,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   steelAura: {
     name: "Аура раскалённой стали", icon: glyph("s.steelAura"), test: true,
-    desc: "Аура 6 м на 6 с, ходит за тобой: каждую секунду жжёт врагов в ней на 500% твоей регенерации HP. С щитом — лечит тебя на 1% HP за каждого горящего врага в секунду; с одним мечом — замедляет их на 20%; с двумя — бьёт вдвое слабее, а каждый твой удар по горящему врагу — доп. урон",
+    desc: "Аура 6 м на 6 с, ходит за тобой: каждую секунду жжёт врагов в ней на 500% твоей регенерации HP. С одним мечом — враги замедлены на 20%, а ты неуязвим к контролю и замедлению; с двумя — тебе +10% защиты, аура не жжёт; со щитом — только жжёт",
     cooldown: 15, castTime: 0, radius: 6, dmgMult: 0, hits: 1,
   },
   abyss: {
@@ -859,13 +859,13 @@ export const LIFE_ARROW = { healDmg: 0.5, healMax: 0.25, botBelow: 0.85 } as con
 export const SOUL_STEAL = { transfer: 0.5, healthy: 0.85, reach: 6 } as const;
 /**
  * 🧪 «Аура раскалённой стали» (воин, 2026-10-21): аура SKILLS2.steelAura.radius м на duration с, ходит за воином.
- * Каждую секунду жжёт всех врагов в ней на dmgPerRegen × регенерация воина (HP/с). Оружие меняет эффект:
- * щит — воин лечится на shieldHealFrac макс. HP за каждого горящего врага в секунду; один меч — враги замедлены
- * (×slowMul, на slowSec с после последнего тика); два меча — аура бьёт ×dualMul, а каждый удар воина по горящему
- * врагу — доп. урон dualHitFrac от этого удара.
+ * Каждую секунду жжёт всех врагов в ней на dmgPerRegen × регенерация воина (HP/с). Оружие меняет эффект
+ * (2026-10-21, вторая правка): щит — только жжёт; один меч — враги замедлены (×slowMul, на slowSec с после
+ * последнего тика), а сам воин неуязвим к контролю и замедлению; два меча — аура не жжёт, зато воин получает
+ * защиту dualDef (входящий урон меньше на эту долю).
  */
 export const STEEL_AURA = {
-  duration: 6, dmgPerRegen: 5, shieldHealFrac: 0.01, slowMul: 0.8, slowSec: 1.2, dualMul: 0.5, dualHitFrac: 0.3,
+  duration: 6, dmgPerRegen: 5, slowMul: 0.8, slowSec: 1.2, dualDef: 0.1,
 } as const;
 export type SteelMode = "shield" | "sword" | "dual";
 /** Режим ауры по оружию воина: щит в руке → лечение; два меча → дуалы; иначе — один меч (замедление). */
@@ -874,12 +874,12 @@ export function steelModeOf(left: string, right: string): SteelMode {
   if (left === "sword" && right === "sword") return "dual";
   return "sword";
 }
-/** Значения одного тика ауры: урон одному врагу, лечение воину за одного врага, замедляет ли. */
-export function steelAuraTick(mode: SteelMode, regenPerSec: number, maxHp: number): { dmg: number; healPerEnemy: number; slow: boolean } {
+/** Значения ауры по режиму: урон врагу за секунду, замедляет ли врагов, защита воина (доля входящего урона). */
+export function steelAuraTick(mode: SteelMode, regenPerSec: number): { dmg: number; slow: boolean; defense: number } {
   return {
-    dmg: regenPerSec * STEEL_AURA.dmgPerRegen * (mode === "dual" ? STEEL_AURA.dualMul : 1),
-    healPerEnemy: mode === "shield" ? maxHp * STEEL_AURA.shieldHealFrac : 0,
+    dmg: mode === "dual" ? 0 : regenPerSec * STEEL_AURA.dmgPerRegen,
     slow: mode === "sword",
+    defense: mode === "dual" ? STEEL_AURA.dualDef : 0,
   };
 }
 /** «Призрак бездны»: сколько в тени, ускорение после выхода. */

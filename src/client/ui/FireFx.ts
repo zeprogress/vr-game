@@ -592,7 +592,7 @@ export class FireFx {
     }
 
     const sq = quads(SPARKS);
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 20; i++) {
       const mesh = new Mesh(`fireSparks${i}`, scene);
       const vd = new VertexData();
       vd.positions = sq.pos;

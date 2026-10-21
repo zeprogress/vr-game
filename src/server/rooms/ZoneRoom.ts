@@ -2499,14 +2499,6 @@ export class ZoneRoom extends Room<ZoneState> {
     if (critM > 1) this.critFx(sx, sy, sz, heroId);
     // Опыт, счётчик убийств и кил-фид — через общий делёж (sim.mobXpShare / sim.mobKills).
     const killed = !!this.sim.hitMob(struck.id, dmg, dx, dz, heroId, weapon === "arrow", false, false, critM > 1);
-    // 🔥 Дуалы в «Ауре раскалённой стали»: удар по горящему врагу (в ауре воина) — доп. урон.
-    if (weapon === "sword" && !killed && !struck.dead) {
-      const steel = this.steelAuras.find((a) => a.owner === heroId && a.mode === "dual" && this.elapsed <= a.until);
-      if (steel && this.steelTargets(steel).includes(struck)) {
-        this.sim.hitMob(struck.id, dmg * STEEL_AURA.dualHitFrac, dx, dz, heroId, false, true, true);
-        this.broadcast(MSG.act, { k: "steelHit", id: heroId, x: sx, y: sy, z: sz, v: 2 } satisfies ActRelay, except ? { except } : undefined);
-      }
-    }
     if (weapon === "dagger") this.afterDaggerHit(heroId, p, rt, struck);
     // Пронзание (ролл лука): стрела насквозь — моб позади цели получает долю урона.
     if (weapon === "arrow" && this.sim.rollPierce(heroId)) this.sim.pierceBehind(struck.id, sx, sz, dx, dz, dmg * BOW.pierceDmg, heroId);
@@ -10104,8 +10096,8 @@ export class ZoneRoom extends Room<ZoneState> {
         // Аура раскалённой стали: режим — по оружию (щит / один меч / дуалы); регенерация — на момент каста.
         const mode = steelModeOf(p.leftCls, p.rightCls);
         const regen = maxHpFor(p.level, p) * (hpRegenFrac(p) + shieldRegen(shieldOf(p, rt)?.inst));
-        const tick = steelAuraTick(mode, regen, p.maxHp);
-        this.steelAuras.push({ owner: ownerId, r: sk.radius, until: this.elapsed + STEEL_AURA.duration, mode, dmg: tick.dmg, heal: tick.healPerEnemy, tickT: 0 });
+        const tick = steelAuraTick(mode, regen);
+        this.steelAuras.push({ owner: ownerId, r: sk.radius, until: this.elapsed + STEEL_AURA.duration, mode, dmg: tick.dmg, tickT: 0 });
         this.broadcast(MSG.act, {
           k: "steelAura", id: ownerId, x: p.head.x, y: feetY, z: p.head.z, d: STEEL_AURA.duration, r: sk.radius,
           v: ["shield", "sword", "dual"].indexOf(mode),
@@ -10491,7 +10483,12 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** 🔥 Ауры раскалённой стали: ходят за воином; тик раз в секунду — урон врагам в радиусе (и лечение, замедление по режиму). */
-  private readonly steelAuras: { owner: string; r: number; until: number; mode: SteelMode; dmg: number; heal: number; tickT: number }[] = [];
+  private readonly steelAuras: { owner: string; r: number; until: number; mode: SteelMode; dmg: number; tickT: number }[] = [];
+
+  /** Аура воина в этом режиме действует сейчас (режим — по оружию при касте). */
+  private steelMode(id: string, mode: SteelMode): boolean {
+    return this.steelAuras.some((a) => a.owner === id && a.mode === mode && this.elapsed <= a.until);
+  }
 
   /** Враги в ауре воина (по краю тела). */
   private steelTargets(a: { owner: string; r: number }): Mob[] {
@@ -10517,13 +10514,14 @@ export class ZoneRoom extends Room<ZoneState> {
         const hp0 = m.hp;
         const x = m.x;
         const z = m.z;
-        // Огонь — магия; тик без кулдауна удара и без вздрагивания (как яд), число урона — своё.
-        this.sim.hitMob(m.id, a.dmg, 0, 0, a.owner, false, true, true);
-        const dealt = Math.round(Math.max(0, hp0 - (m.dead ? 0 : m.hp)));
-        if (dealt > 0) this.sim.dmgHits.push({ x, y: m.y + MOB.bodyRadius * m.scale * 1.6, z, dmg: dealt, by: a.owner, mob: m.id, c: "fire" });
+        if (a.dmg > 0) {
+          // Огонь — магия; тик без кулдауна удара и без вздрагивания (как яд), число урона — своё.
+          this.sim.hitMob(m.id, a.dmg, 0, 0, a.owner, false, true, true);
+          const dealt = Math.round(Math.max(0, hp0 - (m.dead ? 0 : m.hp)));
+          if (dealt > 0) this.sim.dmgHits.push({ x, y: m.y + MOB.bodyRadius * m.scale * 1.6, z, dmg: dealt, by: a.owner, mob: m.id, c: "fire" });
+        }
         if (a.mode === "sword") this.sim.slowMob(m.id, STEEL_AURA.slowSec, STEEL_AURA.slowMul);
       }
-      if (a.mode === "shield" && hit.length > 0) o.hp = Math.min(o.maxHp, o.hp + a.heal * hit.length);
       // Огонь на каждом горящем (клиенту — не больше восьми за тик, чтобы не спамить сеть).
       for (const m of hit.slice(0, 8)) {
         this.broadcast(MSG.act, { k: "steelBurn", id: a.owner, mobId: m.id, x: m.x, y: m.y, z: m.z, v } satisfies ActRelay);
@@ -11426,6 +11424,8 @@ export class ZoneRoom extends Room<ZoneState> {
     if (rt.cryUntil > this.elapsed && rt.cryKind === 3) dmg *= 1 - WARCRY.blessDef;
     // «Вихрь» воина — −30% урона, «Танец клинков» ассасина — неуязвимость.
     if (rt.whirlUntil > this.elapsed) dmg *= rt.whirlKind === 2 ? 0 : rt.whirlKind === 1 ? 1 - WHIRL.warriorDef : 1;
+    // 🔥 Аура раскалённой стали с двумя мечами: воин защищён на STEEL_AURA.dualDef.
+    if (this.steelMode(h.target, "dual")) dmg *= 1 - STEEL_AURA.dualDef;
     rt.sinceHurt = 0;
     if (dmg > 0) p.hp = Math.max(0, p.hp - dmg);
     // Уникальный щит — отражение: часть удара моба (до защиты) уходит
@@ -11491,6 +11491,8 @@ export class ZoneRoom extends Room<ZoneState> {
       const left = rt.frostUntil - this.elapsed;
       h = { ...h, slowSec: Math.max(h.slowSec ?? 0, left), slowFrac: Math.max(h.slowSec ? (h.slowFrac ?? 0.4) : 0, frac) };
     }
+    // 🔥 Аура раскалённой стали с одним мечом: воин неуязвим к контролю и замедлению (стан, корни, отброс, кровь, лёд).
+    if (this.steelMode(h.target, "sword")) h = { ...h, stunSec: undefined, slowSec: undefined, rootSec: undefined, knockback: undefined, bleedSec: undefined, frost: undefined };
     if (landed) {
       if (h.stunSec) rt.stunnedUntil = this.elapsed + h.stunSec;
       if (h.slowSec) {
