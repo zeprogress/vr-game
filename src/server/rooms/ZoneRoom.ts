@@ -5555,6 +5555,9 @@ export class ZoneRoom extends Room<ZoneState> {
         this.broadcast(MSG.act, relay);
       }
     }
+    // Яд аффикса не складывается с «Чумным клинком» (свой яд героя): пока клинки отравлены, аффикс молчит.
+    const rt = this.rt.get(attacker) ?? (attacker.startsWith("bot:") ? this.bots.get(attacker.slice(4))?.rt : undefined);
+    if (rt && rt.plagueUntil > this.elapsed) return;
     const venom = this.heroRoll(attacker, "venom");
     if (venom > 0 && Math.random() < venom) this.sim.poisonMob(mobId, dealt * CRAFT_PROC.venom.tickFrac, dealt * CRAFT_PROC.venom.burstFrac, attacker);
   }
