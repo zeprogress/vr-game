@@ -2846,6 +2846,8 @@ export class ZoneSim {
   /** Мобы активного динамического события (этап 14): не возрождаются, при
    *  смерти сразу удаляются, считаются для HUD-строки. */
   readonly eventMobs = new Set<string>();
+  /** Сколько мобов события появилось за всё событие (для доли «половина стадии»: убито из появившихся). */
+  eventSpawned = 0;
   /** Мобы катакомб (shared/catacombs.ts): не возрождаются, лут роняют, ходят только по открытым залам. */
   readonly catMobs = new Set<string>();
   /** Тела мобов катакомб после смерти: id → сколько секунд ещё лежат (см. CAT_CORPSE_LINGER_S). */
@@ -3063,6 +3065,7 @@ export class ZoneSim {
     m.forceAggro();
     this.mobs.set(m.id, m);
     this.eventMobs.add(m.id);
+    this.eventSpawned++;
     return m.id;
   }
 

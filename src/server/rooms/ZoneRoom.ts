@@ -3659,6 +3659,19 @@ export class ZoneRoom extends Room<ZoneState> {
     return true;
   }
 
+  /**
+   * Событие «в разгаре» — к нему можно телепортироваться (!event): охота — у босса осталось меньше половины HP,
+   * нашествие — убита половина из появившихся мобов (середина стадии). До этого бот бежит, как обычно.
+   */
+  private eventHalfway(): boolean {
+    if (this.activeEventKind === 2) {
+      const boss = this.sim.mobs.get(this.huntBossId);
+      return !!boss && !boss.dead && boss.hp <= boss.maxHp * 0.5;
+    }
+    const spawned = this.sim.eventSpawned;
+    return spawned > 0 && this.sim.eventMobsLeft() <= spawned * 0.5;
+  }
+
   private sendBotToEvent(nick: string, norm: string): void {
     if (!this.bots.has(norm) && this.humanGo(nick, norm, "event")) return;
     const bot = this.bots.get(norm);
@@ -3672,6 +3685,20 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     if (bot.eventing) {
       this.reply(`@${nick} герой уже там.`);
+      return;
+    }
+    // Событие уже в разгаре (половина HP босса или половина мобов стадии): герой не бежит, а сразу там.
+    if (this.eventHalfway()) {
+      bot.eventing = true;
+      bot.eventDoneAt = 0;
+      bot.raiding = false;
+      bot.followNorm = null;
+      // Телепорт — прямо в точку события (без пути по склонам), потом — из-под мобов.
+      bot.state.head.x = this.eventX;
+      bot.state.head.z = this.eventZ;
+      bot.state.head.y = terrainHeight(this.eventX, this.eventZ) + PLAYER.eyeHeight;
+      this.placeBotAt(bot.state, this.eventX, this.eventZ);
+      this.reply(`@${nick} герой телепортировался на ${this.activeEventKind === 2 ? "охоту" : "нашествие"} — там уже жарко.`);
       return;
     }
     bot.eventing = true;
