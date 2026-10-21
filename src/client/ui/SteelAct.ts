@@ -37,7 +37,7 @@ export function playSteelAct(
     }
     case "steelBurn":
       // Горящий враг: тонкий столбик искр вверх — «клеймо» (без накопления, к каждому тику — свежий).
-      fire.burst(x, y + 0.4, z, color, { count: 6, speed: 1.6, life: 0.7, grav: -1.2, size: 0.14, dir: [0, 1, 0], spread: 0.25 });
+      SteelAuraFx.of(ctx.scene).wisp(x, y, z, v ?? 0);
       break;
   }
   return true;
