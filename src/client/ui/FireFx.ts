@@ -155,6 +155,8 @@ interface Decal {
   life: number;
   mode: number;
   alpha: number;
+  /** Знак следит за точкой каждый кадр (аура у ног героя), null — стоит. */
+  track: (() => { x: number; y: number; z: number } | null) | null;
   /** Сколько секунд в начале и в конце жизни знак проявляется и гаснет. */
   fadeIn: number;
   fadeOut: number;
@@ -172,6 +174,8 @@ export interface FireShape {
   r0?: number;
   /** Заполнение и волна бегут по углу: 1 — от a0 к a1, −1 — от a1 к a0 (удар хвостом); нет — от центра. */
   sweep?: 1 | -1;
+  /** Знак каждый кадр — в эту точку (центр — её x/z; высота — точки). */
+  track?: () => { x: number; y: number; z: number } | null;
 }
 
 // ---------------------------------------------------------------- пламя
@@ -536,7 +540,7 @@ export class FireFx {
       mesh.isPickable = false;
       mesh.alwaysSelectAsActiveMesh = true;
       mesh.setEnabled(false);
-      this.decals.push({ mesh, mat, age: 1, life: 0, mode: 0, alpha: 1, fadeIn: 0.15, fadeOut: 0.25 });
+      this.decals.push({ mesh, mat, age: 1, life: 0, mode: 0, alpha: 1, fadeIn: 0.15, fadeOut: 0.25, track: null });
     }
 
     const quads = (n: number): { pos: number[]; idx: number[]; attr: number[] } => {
@@ -645,7 +649,7 @@ export class FireFx {
     m.setFloat("uRm", s.r);
     m.setFloat("uSweep", s.sweep ?? 0);
     Object.assign(d, {
-      age: 0, life, mode, alpha,
+      age: 0, life, mode, alpha, track: s.track ?? null,
       fadeIn: mode === FDECAL.wave ? 0 : mode === FDECAL.tele ? 0.12 : 0.3,
       fadeOut: mode === FDECAL.wave ? 0 : mode === FDECAL.tele ? 0.08 : mode === FDECAL.scorch ? Math.min(3, life * 0.5) : 0.8,
     });
@@ -786,6 +790,10 @@ export class FireFx {
       if (d.age >= d.life) {
         d.mesh.setEnabled(false);
         continue;
+      }
+      if (d.track) {
+        const p = d.track();
+        if (p) d.mesh.position.set(p.x, p.y + 0.06, p.z);
       }
       const prog = d.mode === FDECAL.tele || d.mode === FDECAL.wave;
       d.mat.setFloat("uT", prog ? d.age / d.life : d.age);

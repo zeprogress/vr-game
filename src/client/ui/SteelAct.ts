@@ -39,31 +39,30 @@ export function playSteelAct(
         r: R, inner: 0.55, dur, life: 0.8, size: 0.9, rise: 2.2, count: 40, heat: 0.95, track: hero,
       });
       fire.flame(FLAME.disc, { x, y: y + AIR_Y, z }, {
-        r: R * 0.8, inner: 0.4, dur, life: 1.1, size: 0.55, rise: 1.4, count: 26, heat: 0.7, track: airAt,
+        r: R * 0.9, inner: 0.35, dur, life: 1.3, size: 0.85, rise: 1.0, count: 44, heat: 0.85, track: airAt,
       });
-      // Раз в секунду — пятно жара у ног воина и россыпь искр вверх.
+      // Кольцо у ног — один знак, который каждый кадр идёт за воином (без рывков по секундам).
+      fire.decal(FDECAL.burn, { x, y, z, r: R, track: hero }, dur, 0.55);
+      // Раз в секунду — россыпь искр от воина вверх.
       const pulse = (t: number): void => {
         const p = hero();
-        if (p) {
-          fire.decal(FDECAL.burn, { x: p.x, y: p.y, z: p.z, r: R }, 1.1, 0.45);
-          fire.burst(p.x, p.y + 0.6, p.z, color, { count: 12, speed: 3, life: 0.6, grav: -2, size: 0.2, dir: [0, 1, 0], spread: 1 });
-        }
+        if (p) fire.burst(p.x, p.y + 0.6, p.z, color, { count: 14, speed: 3, life: 0.7, grav: -2, size: 0.22, dir: [0, 1, 0], spread: 1 });
         if (t + 1 < dur) fire.after(1, () => pulse(t + 1));
       };
       pulse(0);
-      // В воздухе: искры кружат на высоте 1–3 м по кольцу и тянутся вверх (каждые 0.4 с, без сети).
+      // В воздухе: искры кружат на высоте 1–3 м по кольцу и тянутся вверх (каждые 0.3 с, без сети).
       const air = (t: number): void => {
         const p = hero();
         if (p) {
-          for (let i = 0; i < 2; i++) {
+          for (let i = 0; i < 3; i++) {
             const a = Math.random() * Math.PI * 2;
             const rr = R * (0.6 + 0.35 * Math.random());
             fire.burst(p.x + Math.cos(a) * rr, p.y + 1 + Math.random() * 2, p.z + Math.sin(a) * rr, color, {
-              count: 5, speed: 1.2, life: 0.9, grav: -1.2, size: 0.16, dir: [0, 1, 0], spread: 0.35,
+              count: 7, speed: 1.2, life: 1.0, grav: -1.2, size: 0.22, dir: [0, 1, 0], spread: 0.35,
             });
           }
         }
-        if (t + 0.4 < dur) fire.after(0.4, () => air(t + 0.4));
+        if (t + 0.3 < dur) fire.after(0.3, () => air(t + 0.3));
       };
       air(0);
       break;
