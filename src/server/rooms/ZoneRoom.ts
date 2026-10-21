@@ -8120,7 +8120,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (bot.eventing) {
       if (this.state.eventKind === 0) {
         // Событие кончилось — ещё немного собираем награду в эпицентре, потом домой.
-        if (bot.eventDoneAt === 0) bot.eventDoneAt = Date.now() + 20_000;
+        if (bot.eventDoneAt === 0) bot.eventDoneAt = Date.now() + BOT.eventLootSec * 1000;
         if (Date.now() >= bot.eventDoneAt) {
           bot.eventing = false;
           bot.eventDoneAt = 0;
