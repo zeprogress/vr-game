@@ -35,14 +35,16 @@ def draw_start():
 
 
 def draw_pull():
-    """Металл летит по воздуху: короткий свист с падением тона и шорох звеньев."""
-    sec = 0.32
+    """Металл тянется по воздуху: низкий шелест звеньев с нарастанием и спадом, редкие мягкие щелчки.
+    Без свиста: свист — это полоса, ведущая частоту вниз; здесь полоса низкая и ровная."""
+    sec = 0.34
     n = int(sec * SR)
     t = t_axis(sec)
-    f0 = 2200 - 1400 * np.clip(t / sec, 0, 1)
-    x = sweep_band(noise(sec), f0, 0.7) * np.exp(-((t - 0.12) / 0.14) ** 2) * 0.7
-    x += clicks(n, np.sort(rng.random(14) * sec), 2500, 7500, 0.18)
-    return finish(reverb(x, 0.35, 0.15), 0.8)
+    env_ = np.sin(np.pi * np.clip(t / sec, 0, 1)) ** 1.5  # мягко вверх и вниз
+    x = band(noise(sec), 180, 900) * env_ * 0.6
+    x += clicks(n, np.sort(rng.random(12) * sec), 900, 2600, 0.12)  # звенья, не визг
+    x = band(x, 120, 2400)
+    return finish(reverb(x, 0.3, 0.12), 0.7)
 
 
 def draw_impact():
