@@ -1,31 +1,32 @@
 import type { Scene } from "@babylonjs/core/scene";
 import type { Observer } from "@babylonjs/core/Misc/observable";
-import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { Effect } from "@babylonjs/core/Materials/effect";
 import { Constants } from "@babylonjs/core/Engines/constants";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { FXC } from "./fxColors";
 import { GROUND_LIFT_GLSL } from "./groundLift";
 import { groundFxThrough } from "./groundFx";
 import { MV_HEAD, MV_OUT } from "./FireFx";
 
 /**
- * «Аура раскалённой стали» (воин) — свой визуал, без колец пламени:
- *  blades — шесть раскалённых клинков кружат вокруг воина на поясе (билборды; белое ядро → оранжевый край);
- *  column — мягкое марево-столб: вертикальные струи жара поднимаются вверх и гаснут;
- *  ring   — светящийся кольцевой узор на земле: расплавленные швы бегут по кругу, внутри — тлеющая сталь;
- *  rays   — излучение: лучи от героя до границы ауры, по ним бегут яркие импульсы наружу.
- * Всё ведёт шейдер по времени и позиции (uC), из JS — пара чисел за кадр; меши пулом, два экземпляра на сцену.
+ * «Аура раскалённой стали» (воин) — визуал шейдерами, в пуле (два экземпляра на сцену), из JS — позиция и время:
+ *  vortex — спираль раскалённых искр: поднимается от ног к пояснице и гаснет (белое → оранжевое);
+ *  halo   — раскалённый ореол над головой: тонкое кольцо, по которому бегут яркие дуги;
+ *  ring   — светящийся кольцевой узор на земле (швы расплава по кругу);
+ *  rays   — излучение от героя до границы ауры: по лучам бегут яркие импульсы наружу.
  * Цвет по режиму: 0 щит (жар), 1 один меч (холодная сталь — замедление), 2 дуалы (багрянец).
  */
 
-const BLADES = 6;
 const HIDE = "gl_Position = vec4(2.0, 2.0, 2.0, 1.0);";
+const VORTEX = 24;
+const RAYS = 18;
+const HALO_Y = 2.3;
+const VORTEX_H = 2.6;
 
-Effect.ShadersStore["steelBladeVertexShader"] = `
+Effect.ShadersStore["steelVortexVertexShader"] = `
 precision highp float;
 attribute vec3 position;
 attribute float aIdx;
@@ -34,144 +35,78 @@ uniform mat4 view;
 ${MV_HEAD}
 uniform vec3 uC;
 uniform float uT;
-uniform float uR;
 uniform float uH;
+uniform float uR;
 uniform float uCount;
-uniform float uSpin;
+uniform float uRate;
 varying vec2 vUV;
+varying float vPh;
 varying float vA;
 void main() {
   float i = aIdx;
-  if (i >= uCount) { ${HIDE} vUV = vec2(0.0); vA = 0.0; return; }
-  float a = i / uCount * 6.2831853 + uT * uSpin;
-  float bob = sin(uT * 2.3 + i * 1.7) * 0.12;
-  float tilt = 0.55 + 0.25 * sin(uT * 1.1 + i * 2.0);
-  vec3 c = uC + vec3(cos(a) * uR, uH + bob, sin(a) * uR);
-  vec3 tang = vec3(-sin(a), 0.0, cos(a));
-  vec3 along = normalize(tang * cos(tilt) + vec3(0.0, 1.0, 0.0) * sin(tilt));
+  if (i >= uCount) { ${HIDE} vUV = vec2(0.0); vPh = 0.0; vA = 0.0; return; }
+  float ph = fract(i / uCount + uT * uRate);             // 0 у ног → 1 у пояса
+  float a = i * 2.39996 + ph * 6.2831853 * 1.6;          // спираль
+  float r = uR * (1.0 - 0.4 * ph);
+  vec3 c = uC + vec3(cos(a) * r, 0.1 + ph * uH, sin(a) * r);
   vec3 right = vec3(view[0][0], view[1][0], view[2][0]);
-  vec3 p = c + along * (position.y - 0.4) * 0.62 + right * position.x * 0.085;
-  vUV = vec2(position.x + 0.5, position.y);
-  vA = 0.75 + 0.25 * sin(uT * 9.0 + i * 2.1);
+  vec3 up = vec3(view[0][1], view[1][1], view[2][1]);
+  float s = 0.13 * (1.0 - 0.5 * ph);
+  vec3 p = c + (right * position.x + up * position.y) * s;
+  vUV = position.xy + 0.5;
+  vPh = ph;
+  vA = smoothstep(0.0, 0.12, ph) * (1.0 - smoothstep(0.7, 1.0, ph));
   ${MV_OUT("p")}
 }`;
-Effect.ShadersStore["steelBladeFragmentShader"] = `
+Effect.ShadersStore["steelVortexFragmentShader"] = `
 precision highp float;
 varying vec2 vUV;
+varying float vPh;
 varying float vA;
 uniform vec3 uHot;
 uniform vec3 uMid;
-uniform vec3 uEdge;
 uniform float uAlpha;
 void main() {
-  float w = 1.0 - abs(vUV.x - 0.5) * 2.0;           // поперёк: светлая сердцевина, мягкий край
-  float along = vUV.y;                              // вдоль: раскалённое основание → остывающий кончик
-  float core = smoothstep(0.0, 0.7, w);
-  vec3 col = mix(uEdge, uMid, smoothstep(0.0, 0.8, along));
-  col = mix(col, uHot, core * (1.0 - along * 0.8));
-  float tip = smoothstep(1.0, 0.55, along);
-  float a = w * w * tip * vA * uAlpha;
+  float d = length(vUV - 0.5) * 2.0;
+  float a = pow(1.0 - clamp(d, 0.0, 1.0), 2.0) * vA * uAlpha;
   if (a <= 0.002) discard;
+  vec3 col = mix(uHot, uMid, vPh);
   gl_FragColor = vec4(col * a, a);
 }`;
 
-// Излучение: лучи от героя до границы радиуса; по каждому бегут яркие импульсы наружу.
-Effect.ShadersStore["steelRaysVertexShader"] = `
+Effect.ShadersStore["steelHaloVertexShader"] = `
 precision highp float;
 attribute vec3 position;
-attribute float aIdx;
 uniform mat4 viewProjection;
 uniform vec3 cameraPosition;
 ${MV_HEAD}
 uniform vec3 uC;
-uniform float uT;
 uniform float uR;
-uniform float uCount;
-varying vec2 vUV;
-varying float vI;
-varying float vA;
-float h(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
-void main() {
-  float i = aIdx;
-  if (i >= uCount) { ${HIDE} vUV = vec2(0.0); vI = 0.0; vA = 0.0; return; }
-  float a = (i + 0.35 * h(i)) / uCount * 6.2831853;
-  vec3 dir = vec3(cos(a), 0.0, sin(a));
-  vec3 s0 = uC + vec3(0.0, 1.2, 0.0) + dir * 0.9;     // у пояса, чуть от центра
-  vec3 s1 = uC + vec3(0.0, 1.2, 0.0) + dir * uR;      // граница ауры
-  vec3 p = mix(s0, s1, position.y);
-  vec3 toCam = normalize(cameraPosition - p);
-  vec3 side = normalize(cross(dir, toCam) + vec3(0.0001));
-  float w = 0.05 * (1.0 - 0.55 * position.y);
-  p += side * position.x * w;
-  vUV = vec2(position.x + 0.5, position.y);
-  vI = h(i + 7.0);
-  vA = 1.0;
-  ${MV_OUT("p")}
-}`;
-Effect.ShadersStore["steelRaysFragmentShader"] = `
-precision highp float;
-varying vec2 vUV;
-varying float vI;
-varying float vA;
-uniform float uT;
-uniform float uAlpha;
-uniform vec3 uHot;
-uniform vec3 uMid;
-void main() {
-  float s = vUV.y;                                    // 0 — у героя, 1 — на границе
-  float across = 1.0 - abs(vUV.x - 0.5) * 2.0;        // ядро луча
-  // импульсы: яркий гребень бежит от героя наружу, у каждого луча свой ритм
-  float speed = 0.55 + 0.35 * vI;
-  float ph = fract(s * 1.1 - uT * speed + vI * 3.0);
-  float pulse = pow(ph, 5.0) * (1.0 - smoothstep(0.6, 1.0, ph));
-  float base = 0.12 * (1.0 - s);
-  float fade = smoothstep(0.0, 0.12, s) * (1.0 - smoothstep(0.85, 1.0, s));
-  float a = (base + pulse) * across * across * fade * uAlpha;
-  if (a <= 0.002) discard;
-  vec3 col = mix(uHot, uMid, s);
-  gl_FragColor = vec4(col * a, a);
-}`;
-
-Effect.ShadersStore["steelColumnVertexShader"] = `
-precision highp float;
-attribute vec3 position;
-uniform mat4 viewProjection;
-uniform mat4 view;
-${MV_HEAD}
-uniform vec3 uC;
-uniform float uW;
 uniform float uH;
 varying vec2 vUV;
 void main() {
-  vec3 right = normalize(vec3(view[0][0], 0.0, view[2][0]));
-  vec3 p = uC + right * position.x * uW + vec3(0.0, position.y * uH, 0.0);
-  vUV = vec2(position.x + 0.5, position.y);
-  ${MV_OUT("p")}
+  // чуть наклонён: с боку виден как эллипс, сверху — кольцо
+  vec4 wp = vec4(uC + vec3(position.x * uR, uH + position.z * uR * 0.22, position.z * uR), 1.0);
+  vUV = position.xz * 0.5 + 0.5;
+  ${MV_OUT("wp.xyz")}
 }`;
-Effect.ShadersStore["steelColumnFragmentShader"] = `
+Effect.ShadersStore["steelHaloFragmentShader"] = `
 precision highp float;
 varying vec2 vUV;
 uniform float uT;
+uniform float uAlpha;
 uniform vec3 uHot;
 uniform vec3 uMid;
-uniform float uAlpha;
-float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float vn(vec2 p) {
-  vec2 i = floor(p);
-  vec2 f = fract(p);
-  f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(h(i), h(i + vec2(1.0, 0.0)), f.x), mix(h(i + vec2(0.0, 1.0)), h(i + vec2(1.0, 1.0)), f.x), f.y);
-}
 void main() {
-  float x = abs(vUV.x - 0.5) * 2.0;                // 0 — ось столба, 1 — край
-  float y = vUV.y;                                 // 0 — земля, 1 — верх
-  float side = smoothstep(1.0, 0.25, x);
-  // струи жара: вытянутый шум, ползущий вверх
-  float streak = vn(vec2(vUV.x * 6.0, y * 2.0 - uT * 1.6)) * 0.7 + vn(vec2(vUV.x * 13.0 + 3.0, y * 3.5 - uT * 2.4)) * 0.3;
-  float rise = smoothstep(0.0, 0.25, y) * (1.0 - smoothstep(0.6, 1.0, y));
-  float a = side * rise * smoothstep(0.35, 0.8, streak) * uAlpha * 0.7;
+  vec2 p = vUV * 2.0 - 1.0;
+  float r = length(p);
+  if (r > 1.0) discard;
+  float ang = atan(p.y, p.x);
+  float arc = pow(0.5 + 0.5 * sin(ang * 3.0 - uT * 2.2), 4.0);   // яркие дуги бегут по кольцу
+  float band = smoothstep(0.80, 0.88, r) * (1.0 - smoothstep(0.93, 1.0, r));
+  float a = band * (0.25 + 0.75 * arc) * uAlpha;
   if (a <= 0.002) discard;
-  vec3 col = mix(uMid, uHot, streak);
+  vec3 col = mix(uMid, uHot, arc);
   gl_FragColor = vec4(col * a, a);
 }`;
 
@@ -202,7 +137,6 @@ void main() {
   float r = length(p);
   if (r > 1.0) discard;
   float ang = atan(p.y, p.x);
-  // швы расплавленного металла: бегут по кругу, перемежаются тёмной сталью
   float seams = 0.5 + 0.5 * sin(ang * 8.0 + uT * 1.2);
   float seam2 = 0.5 + 0.5 * sin(ang * 16.0 - uT * 2.0 + 1.7);
   float band = smoothstep(0.84, 0.92, r) * (1.0 - smoothstep(0.97, 1.0, r));
@@ -214,21 +148,76 @@ void main() {
   gl_FragColor = vec4(col * a, a);
 }`;
 
+// Излучение: лучи от героя до границы радиуса; по каждому бегут яркие импульсы наружу.
+Effect.ShadersStore["steelRaysVertexShader"] = `
+precision highp float;
+attribute vec3 position;
+attribute float aIdx;
+uniform mat4 viewProjection;
+uniform vec3 cameraPosition;
+${MV_HEAD}
+uniform vec3 uC;
+uniform float uT;
+uniform float uR;
+uniform float uCount;
+varying vec2 vUV;
+varying float vI;
+varying float vA;
+float h(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
+void main() {
+  float i = aIdx;
+  if (i >= uCount) { ${HIDE} vUV = vec2(0.0); vI = 0.0; vA = 0.0; return; }
+  float a = (i + 0.35 * h(i)) / uCount * 6.2831853;
+  vec3 dir = vec3(cos(a), 0.0, sin(a));
+  vec3 s0 = uC + vec3(0.0, 1.2, 0.0) + dir * 0.9;
+  vec3 s1 = uC + vec3(0.0, 1.2, 0.0) + dir * uR;
+  vec3 p = mix(s0, s1, position.y);
+  vec3 toCam = normalize(cameraPosition - p);
+  vec3 side = normalize(cross(dir, toCam) + vec3(0.0001));
+  float w = 0.05 * (1.0 - 0.55 * position.y);
+  p += side * position.x * w;
+  vUV = vec2(position.x + 0.5, position.y);
+  vI = h(i + 7.0);
+  vA = 1.0;
+  ${MV_OUT("p")}
+}`;
+Effect.ShadersStore["steelRaysFragmentShader"] = `
+precision highp float;
+varying vec2 vUV;
+varying float vI;
+varying float vA;
+uniform float uT;
+uniform float uAlpha;
+uniform vec3 uHot;
+uniform vec3 uMid;
+void main() {
+  float s = vUV.y;
+  float across = 1.0 - abs(vUV.x - 0.5) * 2.0;
+  float speed = 0.55 + 0.35 * vI;
+  float ph = fract(s * 1.1 - uT * speed + vI * 3.0);
+  float pulse = pow(ph, 5.0) * (1.0 - smoothstep(0.6, 1.0, ph));
+  float base = 0.12 * (1.0 - s);
+  float fade = smoothstep(0.0, 0.12, s) * (1.0 - smoothstep(0.85, 1.0, s));
+  float a = (base + pulse) * across * across * fade * uAlpha;
+  if (a <= 0.002) discard;
+  vec3 col = mix(uHot, uMid, s);
+  gl_FragColor = vec4(col * a, a);
+}`;
+
 interface Instance {
-  blades: Mesh;
-  bladesMat: ShaderMaterial;
-  rays: Mesh;
-  raysMat: ShaderMaterial;
-  column: Mesh;
-  columnMat: ShaderMaterial;
+  vortex: Mesh;
+  vortexMat: ShaderMaterial;
+  halo: Mesh;
+  haloMat: ShaderMaterial;
   ring: Mesh;
   ringMat: ShaderMaterial;
+  rays: Mesh;
+  raysMat: ShaderMaterial;
   age: number;
   dur: number;
   R: number;
   track: (() => { x: number; y: number; z: number } | null) | null;
   c: { x: number; y: number; z: number };
-  /** Центр в шейдерах (без новых векторов на кадр). */
   cv: Vector3;
   live: boolean;
 }
@@ -253,64 +242,51 @@ export class SteelAuraFx {
     this.obs = scene.onBeforeRenderObservable.add(() => this.update(Math.min(0.1, scene.getEngine().getDeltaTime() / 1000)));
   }
 
+  /** Квады с атрибутом aIdx (индекс элемента): n элементов. */
+  private quads(n: number, corners: [number, number][]): { pos: number[]; idx: number[]; attr: number[] } {
+    const pos: number[] = [];
+    const idx: number[] = [];
+    const attr: number[] = [];
+    const k = corners.length;
+    for (let i = 0; i < n; i++) {
+      for (const [x, y] of corners) {
+        pos.push(x, y, 0);
+        attr.push(i);
+      }
+      idx.push(i * k, i * k + 1, i * k + 2, i * k, i * k + 2, i * k + 3);
+    }
+    return { pos, idx, attr };
+  }
+
   private make(k: number): Instance {
-    // Клинки: восемь слотов, из них BLADES видимых — квад на клинок (x — ширина, y — длина).
-    const bladeQuads = { pos: [] as number[], idx: [] as number[], attr: [] as number[] };
-    for (let i = 0; i < 8; i++) {
-      for (const [x, y] of [[-0.5, 0], [0.5, 0], [0.5, 1], [-0.5, 1]]) {
-        bladeQuads.pos.push(x, y, 0);
-        bladeQuads.attr.push(i);
-      }
-      bladeQuads.idx.push(i * 4, i * 4 + 1, i * 4 + 2, i * 4, i * 4 + 2, i * 4 + 3);
-    }
-    const blades = new Mesh(`steelBlades${k}`, this.scene);
-    const bd = new VertexData();
-    bd.positions = bladeQuads.pos;
-    bd.indices = bladeQuads.idx;
-    bd.applyToMesh(blades);
-    blades.setVerticesData("aIdx", bladeQuads.attr, false, 1);
-    const bladesMat = this.mat("steelBlade", "steelBlade", ["position", "aIdx"], ["view", "uC", "uT", "uR", "uH", "uCount", "uSpin", "uHot", "uMid", "uEdge", "uAlpha"]);
-    blades.material = bladesMat;
-    bladesMat.setFloat("uCount", BLADES);
-    bladesMat.setFloat("uSpin", 1.6);
-    bladesMat.setFloat("uR", 1.6);
-    bladesMat.setFloat("uH", 1.1);
-    this.finish(blades);
+    // Спираль искр: квад на искру, центр в (0,0).
+    const v = this.quads(VORTEX, [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]]);
+    const vortex = new Mesh(`steelVortex${k}`, this.scene);
+    const vd = new VertexData();
+    vd.positions = v.pos;
+    vd.indices = v.idx;
+    vd.applyToMesh(vortex);
+    vortex.setVerticesData("aIdx", v.attr, false, 1);
+    const vortexMat = this.mat("steelVortex", "steelVortex", ["position", "aIdx"], ["view", "uC", "uT", "uH", "uR", "uCount", "uRate", "uHot", "uMid", "uAlpha"]);
+    vortex.material = vortexMat;
+    vortexMat.setFloat("uCount", VORTEX);
+    vortexMat.setFloat("uRate", 0.42);
+    vortexMat.setFloat("uH", VORTEX_H);
+    vortexMat.setFloat("uR", 1.05);
+    this.finish(vortex);
 
-    // Излучение: RAYS лучей, квад на луч (x — ширина, y — от героя до границы).
-    const RAYS = 18;
-    const rp: number[] = [];
-    const ri: number[] = [];
-    const ra: number[] = [];
-    for (let i = 0; i < RAYS; i++) {
-      for (const [x, y] of [[-0.5, 0], [0.5, 0], [0.5, 1], [-0.5, 1]]) {
-        rp.push(x, y, 0);
-        ra.push(i);
-      }
-      ri.push(i * 4, i * 4 + 1, i * 4 + 2, i * 4, i * 4 + 2, i * 4 + 3);
-    }
-    const rays = new Mesh(`steelRays${k}`, this.scene);
-    const rd2 = new VertexData();
-    rd2.positions = rp;
-    rd2.indices = ri;
-    rd2.applyToMesh(rays);
-    rays.setVerticesData("aIdx", ra, false, 1);
-    const raysMat = this.mat("steelRays", "steelRays", ["position", "aIdx"], ["view", "uC", "uT", "uR", "uCount", "uHot", "uMid", "uAlpha"]);
-    rays.material = raysMat;
-    raysMat.setFloat("uCount", RAYS);
-    this.finish(rays);
+    // Ореол: плоское кольцо над головой.
+    const halo = new Mesh(`steelHalo${k}`, this.scene);
+    const hd = new VertexData();
+    hd.positions = [-1, 0, -1, 1, 0, -1, 1, 0, 1, -1, 0, 1];
+    hd.indices = [0, 2, 1, 0, 3, 2];
+    hd.applyToMesh(halo);
+    const haloMat = this.mat("steelHalo", "steelHalo", ["position"], ["uC", "uR", "uH", "uT", "uAlpha", "uHot", "uMid", "cameraPosition"]);
+    halo.material = haloMat;
+    haloMat.setFloat("uH", HALO_Y);
+    this.finish(halo);
 
-    const column = new Mesh(`steelColumn${k}`, this.scene);
-    const cd = new VertexData();
-    cd.positions = [-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0];
-    cd.indices = [0, 1, 2, 0, 2, 3];
-    cd.applyToMesh(column);
-    const columnMat = this.mat("steelColumn", "steelColumn", ["position"], ["view", "uC", "uW", "uH", "uT", "uHot", "uMid", "uAlpha"]);
-    column.material = columnMat;
-    columnMat.setFloat("uW", 1.1);
-    columnMat.setFloat("uH", 3.2);
-    this.finish(column);
-
+    // Кольцо на земле.
     const ring = new Mesh(`steelRing${k}`, this.scene);
     const rd = new VertexData();
     rd.positions = [-1, 0, -1, 1, 0, -1, 1, 0, 1, -1, 0, 1];
@@ -321,8 +297,21 @@ export class SteelAuraFx {
     groundFxThrough(ring);
     this.finish(ring);
 
+    // Излучение: лучи от героя до границы.
+    const r = this.quads(RAYS, [[-0.5, 0], [0.5, 0], [0.5, 1], [-0.5, 1]]);
+    const rays = new Mesh(`steelRays${k}`, this.scene);
+    const rd2 = new VertexData();
+    rd2.positions = r.pos;
+    rd2.indices = r.idx;
+    rd2.applyToMesh(rays);
+    rays.setVerticesData("aIdx", r.attr, false, 1);
+    const raysMat = this.mat("steelRays", "steelRays", ["position", "aIdx"], ["view", "uC", "uT", "uR", "uCount", "uHot", "uMid", "uAlpha"]);
+    rays.material = raysMat;
+    raysMat.setFloat("uCount", RAYS);
+    this.finish(rays);
+
     return {
-      blades, bladesMat, rays, raysMat, column, columnMat, ring, ringMat,
+      vortex, vortexMat, halo, haloMat, ring, ringMat, rays, raysMat,
       age: 0, dur: 0, R: 6, track: null, c: { x: 0, y: 0, z: 0 }, cv: new Vector3(), live: false,
     };
   }
@@ -338,7 +327,6 @@ export class SteelAuraFx {
     m.backFaceCulling = false;
     m.setColor3("uHot", FXC.steelHot);
     m.setColor3("uMid", FXC.fire);
-    m.setColor3("uEdge", FXC.fireRed);
     return m;
   }
 
@@ -348,18 +336,21 @@ export class SteelAuraFx {
     mesh.setEnabled(false);
   }
 
+  private mats(i: Instance): ShaderMaterial[] {
+    return [i.vortexMat, i.haloMat, i.ringMat, i.raysMat];
+  }
+
   /**
-   * Запустить ауру: track — где воин (у ног), R — радиус кольца на земле, dur — сколько держится, mode — цвет
+   * Запустить ауру: track — где воин (у ног), R — радиус кольца и лучей, dur — сколько держится, mode — цвет
    * (0 щит — жар, 1 один меч — холодная сталь, 2 дуалы — багрянец). Занят — самый давний.
    */
   start(track: () => { x: number; y: number; z: number } | null, R: number, dur: number, mode: number): void {
     const i = this.inst.find((x) => !x.live) ?? this.inst.reduce((a, b) => (a.age > b.age ? a : b));
     const p = track() ?? { x: 0, y: 0, z: 0 };
-    const pal = mode === 1 ? [FXC.steel, FXC.steelHot, FXC.frost] : mode === 2 ? [FXC.fireRed, FXC.fire, FXC.fireRed] : [FXC.steelHot, FXC.fire, FXC.fireRed];
-    for (const m of [i.bladesMat, i.columnMat, i.ringMat, i.raysMat]) {
+    const pal = mode === 1 ? [FXC.steel, FXC.frost] : mode === 2 ? [FXC.fireRed, FXC.fire] : [FXC.steelHot, FXC.fire];
+    for (const m of this.mats(i)) {
       m.setColor3("uHot", pal[0]);
       m.setColor3("uMid", pal[1]);
-      m.setColor3("uEdge", pal[2]);
     }
     i.R = R;
     i.dur = dur;
@@ -367,10 +358,7 @@ export class SteelAuraFx {
     i.track = track;
     i.c = { ...p };
     i.live = true;
-    i.blades.setEnabled(true);
-    i.rays.setEnabled(true);
-    i.column.setEnabled(true);
-    i.ring.setEnabled(true);
+    for (const m of [i.vortex, i.halo, i.ring, i.rays]) m.setEnabled(true);
     this.apply(i, 0);
   }
 
@@ -379,15 +367,15 @@ export class SteelAuraFx {
     const fin = Math.min(1, i.age / 0.4);
     const fout = Math.min(1, (i.dur - i.age) / 0.7);
     const a = Math.max(0, Math.min(fin, fout));
-    const c = i.c;
-    i.cv.set(c.x, c.y, c.z);
-    for (const m of [i.bladesMat, i.columnMat, i.ringMat, i.raysMat]) {
+    i.cv.set(i.c.x, i.c.y, i.c.z);
+    for (const m of this.mats(i)) {
       m.setFloat("uAlpha", a);
       m.setFloat("uT", t);
       m.setVector3("uC", i.cv);
     }
-    i.raysMat.setFloat("uR", i.R);
+    i.haloMat.setFloat("uR", 0.85);
     i.ringMat.setFloat("uR", i.R);
+    i.raysMat.setFloat("uR", i.R);
   }
 
   private update(dt: number): void {
@@ -396,10 +384,7 @@ export class SteelAuraFx {
       i.age += dt;
       if (i.age >= i.dur) {
         i.live = false;
-        i.blades.setEnabled(false);
-        i.rays.setEnabled(false);
-        i.column.setEnabled(false);
-        i.ring.setEnabled(false);
+        for (const m of [i.vortex, i.halo, i.ring, i.rays]) m.setEnabled(false);
         continue;
       }
       const p = i.track?.();
@@ -411,11 +396,9 @@ export class SteelAuraFx {
   dispose(): void {
     this.scene.onBeforeRenderObservable.remove(this.obs);
     for (const i of this.inst) {
-      for (const m of [i.blades, i.rays, i.column, i.ring]) m.dispose();
-      for (const mt of [i.bladesMat, i.raysMat, i.columnMat, i.ringMat]) mt.dispose();
+      for (const m of [i.vortex, i.halo, i.ring, i.rays]) m.dispose();
+      for (const mt of this.mats(i)) mt.dispose();
     }
     pools.delete(this.scene);
   }
 }
-
-export const STEEL_RING_COLOR = new Color3(1, 0.62, 0.28);
