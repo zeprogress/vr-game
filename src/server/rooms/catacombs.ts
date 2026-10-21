@@ -78,7 +78,8 @@ export interface CatHost {
   clearMobs(ids: Iterable<string>): void;
   /** Финальный босс: включить атаки (волна/дыхание/дождь), тик атак и призыв свиты. */
   finalStart(id: string): void;
-  finalTick(id: string): void;
+  /** phase — стадия Владыки (1 Пламя, 2 Печать, 2.5 печать разбита, 3 Ярость): дракону — свои приёмы по стадиям. */
+  finalTick(id: string, phase?: number): void;
   finalStop(): void;
   /** Таблица забега: урон/убийства (из симуляции) — разослать зрителям; reset — обнулить к новому забегу. */
   stats(rows: { id: string; deaths: number }[], reset?: boolean): void;
@@ -920,8 +921,10 @@ export class CatacombDirector {
     // ---- Владыка Бездны: три стадии ----
     const F = CAT_FINAL;
     const H = CAT_HALLS[hall];
+    // Владыка Бездны — свои метеоры и кольца пламени (с клипами, server/rooms/dragonFight.ts), не общие опасности.
+    const dragon = b.key === "catDragon";
     if (this.finalPhase === 1) {
-      this.host.finalTick(this.bossId);
+      this.host.finalTick(this.bossId, 1);
       if (frac < F.sealAt) {
         // Стадия 2 — Печать: на трон под щит, хранители печати, метеоры.
         this.finalPhase = 2;
@@ -950,7 +953,8 @@ export class CatacombDirector {
         this.shieldFxAt = now + 5000;
         this.host.setImmune(this.bossId, true); // купол виден непрерывно (эффект живёт ~6 с)
       }
-      if (now >= this.meteorAt) {
+      if (dragon) this.host.finalTick(this.bossId, 2);
+      if (!dragon && now >= this.meteorAt) {
         this.meteorAt = now + F.meteorEvery * 1000;
         const pts: { x: number; z: number }[] = [];
         const n = 3 + this.party.size;
@@ -969,12 +973,12 @@ export class CatacombDirector {
         this.host.announce({ kind: "boss", title: "Печать разбита!", sub: `${b.name} оглушён на ${F.stunAfterSeal} с — бейте!`, secs: 5 });
       }
     } else if (this.finalPhase === 2.5) {
-      this.host.finalTick(this.bossId);
+      this.host.finalTick(this.bossId, 2.5);
       if (frac < F.rageAt) this.enterRage(now, hall, b);
     } else {
       // Стадия 3 — Ярость Бездны: кольца пламени от Владыки, всё чаще.
-      this.host.finalTick(this.bossId);
-      if (now >= this.ringAt) {
+      this.host.finalTick(this.bossId, 3);
+      if (!dragon && now >= this.ringAt) {
         this.ringAt = now + F.ringEvery * 1000;
         this.host.hazard(CAT_HAZARD.kinds[b.seal?.fx ?? 1], [{ x: info.x, z: info.z }], { r: F.ringR, dmg: 0.3, knock: 7, delay: 1.8 });
       }

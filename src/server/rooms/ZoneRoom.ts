@@ -82,6 +82,7 @@ import {
 } from "#shared/net/messages";
 import { ADMIN_NICK, NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, huntPhaseFor, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL } from "#shared/constants";
 import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, ICE_GIANT, mobArmorBits, type CatDefense } from "#shared/mobs";
+import { DragonFight, type DragonHost } from "./dragonFight";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
 import { skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
 import { RaidFight, type RaidHost } from "./raidFight";
@@ -6958,30 +6959,36 @@ export class ZoneRoom extends Room<ZoneState> {
         this.huntNovaFireAt = 0;
         this.huntLobFireAt = 0;
         this.huntBreathFireAt = 0;
+        this.dragonFight = m.model === ELITE_MOBS.catDragon.model ? new DragonFight(this.dragonHost()) : null;
+        this.dragonFight?.start(this.elapsed);
       },
-      finalTick: (id) => {
+      finalTick: (id, phase) => {
         const boss = this.sim.mobs.get(id);
         if (!boss || boss.dead) return;
         const eh = EVENT.eliteHunt;
         const now = Date.now();
-        if (!boss.raging && boss.hp / boss.maxHp < eh.enrageAt) {
+        const dragon = this.dragonFight;
+        // Ярость Владыки — стадия катакомб (catacombs.ts), у остальных — порог HP набора огнекрылого.
+        if (!dragon && !boss.raging && boss.hp / boss.maxHp < eh.enrageAt) {
           boss.raging = true;
           this.broadcast(MSG.catacomb, { kind: "boss", title: `${boss.eliteName} в ярости!`, sub: "держитесь — атаки чаще", secs: 4 } satisfies CatacombMsg);
         }
         // Призыв мертвецов из теней — миньоны катакомб (с лутом, без возрождения).
         if (now >= this.huntAddAt) {
           this.huntAddAt = now + eh.addGap * (boss.raging ? eh.enrageGapMul : 1) * 1000;
-          boss.swing(MOB_SWING.magic);
+          if (!dragon) boss.swing(MOB_SWING.magic); // у дракона клип заряда — для метеоров и ярости
           for (let i = 0; i < eh.addCount; i++) {
             const a = Math.random() * Math.PI * 2;
             const r = 3 + Math.random() * 3;
             this.catSpawn("boneWraith", boss.x + Math.cos(a) * r, boss.z + Math.sin(a) * r, { hpMul: 0.7, dmgMul: 1, partyLevel: this.catLevel });
           }
         }
-        this.tickHuntAttacks(now, boss, eh);
+        if (dragon) dragon.tick(this.elapsed, phase ?? 1);
+        else this.tickHuntAttacks(now, boss, eh);
       },
       finalStop: () => {
         this.huntBossId = "";
+        this.dragonFight = null;
       },
       chest: (id, kind) => this.catChest(id, kind),
       scrap: (ids, n) => {
@@ -7106,6 +7113,47 @@ export class ZoneRoom extends Room<ZoneState> {
         });
       }
     }, o.delay * 1000);
+  }
+
+  /** Хост боя Владыки Бездны (server/rooms/dragonFight.ts): дракон — huntBossId, герои — в забеге катакомб. */
+  private dragonHost(): DragonHost {
+    const boss = (): Mob | null => {
+      const m = this.sim.mobs.get(this.huntBossId);
+      return m && !m.dead ? m : null;
+    };
+    return {
+      boss: () => {
+        const m = boss();
+        return m ? { x: m.x, z: m.z, yaw: m.yaw, scale: m.scale } : null;
+      },
+      heroes: () => {
+        const out: { id: string; x: number; z: number }[] = [];
+        this.state.players.forEach((p, id) => {
+          if (!p.dead && this.cat.inRun(id)) out.push({ id, x: p.head.x, z: p.head.z });
+        });
+        return out;
+      },
+      swing: (kind) => boss()?.swing(kind),
+      lockFacing: (yaw, sec) => boss()?.castLock(yaw, sec),
+      act: (k, o) => {
+        this.broadcast(MSG.act, {
+          k, id: "", mobId: this.huntBossId, x: o.x, y: terrainHeight(o.x, o.z), z: o.z,
+          ...(o.x2 !== undefined && o.z2 !== undefined ? { x2: o.x2, z2: o.z2 } : {}),
+          ...(o.d !== undefined ? { d: o.d } : {}),
+          ...(o.r !== undefined ? { r: o.r } : {}),
+        } satisfies ActRelay);
+      },
+      danger: (x, z, r, sec) => this.addDanger(x, z, r, sec),
+      hurt: (id, frac, fromX, fromZ, o) => {
+        const pl = this.state.players.get(id);
+        if (!pl || pl.dead) return;
+        this.hurtPlayer({
+          target: id, dmg: pl.maxHp * frac * CATACOMBS.hazardScale * this.cat.sizeDmg, fromX, fromZ,
+          projectile: true, magic: !o?.phys, phys: !!o?.phys, byMob: this.huntBossId,
+          ...(o?.knock ? { knockback: o.knock } : {}),
+        });
+      },
+    };
   }
 
   /** Хост боя с рейд-боссом (server/rooms/raidFight.ts). */
@@ -11715,6 +11763,8 @@ export class ZoneRoom extends Room<ZoneState> {
   private activeEventKind: 1 | 2 | 3 = 1;
   /** Охота: id владыки (победа = его смерть), базовый урон спец-атак и таймеры. */
   private huntBossId = "";
+  /** Владыка Бездны — свои приёмы по стадиям (dragonFight.ts); у остальных финальных боссов — null. */
+  private dragonFight: DragonFight | null = null;
   private huntDmgBase = 0;
   private huntAddAt = 0;
   private huntNovaAt = 0;

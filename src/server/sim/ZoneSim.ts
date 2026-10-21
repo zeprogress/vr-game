@@ -774,6 +774,12 @@ export class Mob {
     this.attackSeq = (this.attackSeq + 1) & 0xffff;
   }
 
+  /** Умение босса из комнаты (дракон катакомб, server/rooms/dragonFight.ts): стоит лицом к yaw sec с, когтями не бьёт. */
+  castLock(yaw: number, sec: number): void {
+    this.giantCastT = Math.max(this.giantCastT, sec);
+    this.giantYaw = yaw;
+  }
+
   /** Ледяной гигант доигрывает клип умения: стоит на месте и когтями не бьёт. */
   get giantCasting(): boolean {
     return this.giantCastT > 0;
@@ -1581,6 +1587,7 @@ export class Mob {
     const busy = this.stunnedT > 0 || this.rootedT > 0;
     const rage45 = this.enraged ? BOSS.rageDamageMult : 1;
     if (this.iceGiant) this.tickGiant(dt, players, hits, chasing, np, busy);
+    else if (this.giantCastT > 0) this.giantCastT -= dt; // умение из комнаты (castLock) — доигрывает клип
     // 45 ур. Землерой: ныряет, под землёй неуязвим и ползёт к герою, круг под ним — и выныривает.
     if (this.burrower) {
       if (this.burrowCd > 0) this.burrowCd -= dt;

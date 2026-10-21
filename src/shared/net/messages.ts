@@ -723,6 +723,19 @@ export type ActKind =
   | "giantFissure" // «Ледяной разлом»: полоса от (x,z) до (x2,z2) полушириной r, через d с побегут шипы
   | "giantFissureGo" // разлом пошёл: шипы бегут от (x,z) до (x2,z2) за d с
   | "giantFury" // «Ледяная ярость»: рёв и метель (d — длина рёва)
+  // Владыка Бездны (server/rooms/dragonFight.ts); mobId — дракон
+  | "dragonBreath" // огненное дыхание: конус от пасти (x,z) к (x2,z2), полуугол r рад; через d с пламя
+  | "dragonBreathGo" // пламя пошло по конусу, d с
+  | "dragonBurn" // земля в конусе горит d с
+  | "dragonTail" // удар хвостом: сектор DRAGON.tail вокруг (x,z), взгляд — на (x2,z2), радиус r; через d с хлёст
+  | "dragonTailHit" // хвост хлестнул по сектору
+  | "dragonMeteorMark" // метеор: круг r в (x,z), упадёт через d с
+  | "dragonMeteorFall" // метеор летит в (x,z), d с
+  | "dragonMeteorHit" // метеор упал в (x,z), радиус r
+  | "dragonRingMark" // кольцо пламени: круг r вокруг (x,z), через d с удар
+  | "dragonRing" // кольцо пламени ударило, радиус r
+  | "dragonShieldBreak" // печать разбита: щит дракона рассыпается в (x,z)
+  | "dragonRage" // ярость: рёв к своду и пламя по телу, d с
   | "frostStack" // «Обморожение» на герое id: d — стаков (1..ICE_GIANT.frost.maxStacks−1)
   | "iceEncase" // герой id вмёрз в «Ледяную глыбу» на d с
   | "mobFrost" // «Обморожение» на мобе id (холодный ролл оружия): d — стаков

@@ -29,7 +29,7 @@ import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
-import { ELITE_MOBS, FLYER_HIT_BONUS, ICE_GIANT, MAGE_NOVA, MOB, MOB_SWING, SHARD_CFG, type EliteMobDef } from "#shared/mobs";
+import { DRAGON, ELITE_MOBS, FLYER_HIT_BONUS, ICE_GIANT, MAGE_NOVA, MOB, MOB_SWING, SHARD_CFG, type EliteMobDef } from "#shared/mobs";
 import { DECAL, IceFx, SHARD, type IceAura } from "../ui/IceFx";
 import { FXC } from "../ui/fxColors";
 import type { MobKind, MobState } from "#shared/net/schema";
@@ -59,11 +59,12 @@ const MODEL_YAW = (() => {
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 /** Клипы видов замаха босса (MOB_SWING): имя в rig (нижний регистр) и длительность, с. Укус — обычный atkClip. */
 const SWING_ANIM: Record<number, { clip: string; sec: number }> = {
-  [MOB_SWING.claw]: { clip: "attackclaw", sec: 1.4 },
-  [MOB_SWING.tail]: { clip: "attacktail", sec: 2 },
-  [MOB_SWING.breath]: { clip: "attackbreath", sec: 2 },
-  [MOB_SWING.wings]: { clip: "attackwings", sec: 1.8 },
-  [MOB_SWING.magic]: { clip: "magiccharge", sec: 2 },
+  // Драконы (DRAGON — длины клипов Владыки Бездны; у огнекрылого клипы те же по смыслу).
+  [MOB_SWING.claw]: { clip: "attackclaw", sec: DRAGON.clipSec.claw },
+  [MOB_SWING.tail]: { clip: "attacktail", sec: DRAGON.clipSec.tail },
+  [MOB_SWING.breath]: { clip: "attackbreath", sec: DRAGON.clipSec.breath },
+  [MOB_SWING.wings]: { clip: "attackwings", sec: DRAGON.clipSec.wings },
+  [MOB_SWING.magic]: { clip: "magiccharge", sec: DRAGON.clipSec.charge },
   // Ледяной гигант (ICE_GIANT): удар левой, раскол, бросок глыбы, разлом, рёв.
   [MOB_SWING.swipe2]: { clip: "attack2", sec: ICE_GIANT.clipSec.attack },
   [MOB_SWING.slam]: { clip: "slam", sec: ICE_GIANT.clipSec.slam },
