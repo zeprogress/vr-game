@@ -1,4 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
+import { turnClip, turnToward } from "./turnSteps";
 import { secNow, secAdd, secCount } from "../engine/secProf";
 import { createPinArrows } from "./PinArrows";
 import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
@@ -548,6 +549,10 @@ export class Mob implements Hittable {
   private atkClipT = 0;
   /** Модели с EliteMobDef.gait: стойка/бег (шаг — moveAnim) и сглаженная скорость по серверу, м/с. */
   private gaitIdle: AnimationGroup | null = null;
+  /** EliteMobDef.turnRate: клипы разворота на месте шагами и текущая скорость разворота модели, рад/с. */
+  private turnL: AnimationGroup | null = null;
+  private turnR: AnimationGroup | null = null;
+  private turnSpeed = 0;
   private gaitRun: AnimationGroup | null = null;
   private moveSpd = 0;
   private gaitX = NaN;
@@ -950,6 +955,10 @@ export class Mob implements Hittable {
       this.gaitIdle = rig.anims.get("idle") ?? null;
       this.gaitRun = rig.anims.get("run") ?? null;
     }
+    if (eliteDef?.turnRate) {
+      this.turnL = rig.anims.get("turnl") ?? null;
+      this.turnR = rig.anims.get("turnr") ?? null;
+    }
     // Клип «движения»: у разных моделей пака он называется по-разному
     // (Hop / Jump / Fast_Flying / Walk / Run). Запомним, что нашли.
     this.moveAnim =
@@ -1103,7 +1112,13 @@ export class Mob implements Hittable {
       pos.y += (ty - pos.y) * k;
       pos.z += (tz - pos.z) * k;
     }
-    if (this.eliteDef?.blendAnims && !far) {
+    this.turnSpeed = 0;
+    if (this.eliteDef?.turnRate && !far) {
+      // Разворот шагами (дракон): курс не быстрее turnRate — лапы успевают переставляться (клип разворота ниже).
+      const t = turnToward(this.root.rotation.y, s.yaw, dt, (this.eliteDef.turnRate * Math.PI) / 180);
+      this.root.rotation.y = t.yaw;
+      this.turnSpeed = t.speed;
+    } else if (this.eliteDef?.blendAnims && !far) {
       // Тяжёлый (гигант): разворот плавный, а не рывком за курсом сервера.
       let dy = s.yaw - this.root.rotation.y;
       dy = (((dy + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
@@ -1372,10 +1387,19 @@ export class Mob implements Hittable {
       }
       if (seen && this.atkNow && this.atkClipT > 0) this.playAnim(this.atkNow, false);
       else if (seen && this.gaitIdle) {
-        const clip =
-          this.moveSpd < GAIT_IDLE_SPEED ? this.gaitIdle : this.moveSpd > GAIT_RUN_SPEED && this.gaitRun ? this.gaitRun : this.moveAnim;
-        // Темп бега — от скорости моба, чтобы ноги не скользили по земле.
         const def = this.eliteDef;
+        let clip =
+          this.moveSpd < GAIT_IDLE_SPEED ? this.gaitIdle : this.moveSpd > GAIT_RUN_SPEED && this.gaitRun ? this.gaitRun : this.moveAnim;
+        // Стоит и поворачивается — разворот шагами (темп клипа под скорость поворота: стопы не скользят).
+        if (clip === this.gaitIdle && def?.turnRate) {
+          const tc = turnClip(this.turnSpeed, (def.turnRate * Math.PI) / 180);
+          const g = tc ? (tc.clip === "turnl" ? this.turnL : this.turnR) : null;
+          if (tc && g) {
+            g.speedRatio = tc.ratio;
+            clip = g;
+          }
+        }
+        // Темп бега — от скорости моба, чтобы ноги не скользили по земле.
         if (clip === this.gaitRun && clip) clip.speedRatio = Math.min(2, Math.max(0.5, this.moveSpd / (def?.runClipSpeed ?? RUN_CLIP_SPEED)));
         else if (clip === this.moveAnim && clip && def?.walkClipSpeed) clip.speedRatio = Math.min(1.6, Math.max(0.6, this.moveSpd / def.walkClipSpeed));
         this.playAnim(clip, true);

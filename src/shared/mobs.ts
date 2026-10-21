@@ -351,6 +351,12 @@ export interface EliteMobDef {
   runClipSpeed?: number;
   /** Плавный переход между клипами модели (без рывка позы). */
   blendAnims?: boolean;
+  /**
+   * Разворот на месте шагами, °/с: курс модели догоняет курс сервера не быстрее, а пока моб стоит — клип TurnL/TurnR
+   * с темпом «скорость разворота / turnRate» (стопы стоят, лапы переставляются; client/combat/turnSteps.ts).
+   * То же число — TURN_RATE в скрипте клипов модели (tools/blender/dragon_anim.py).
+   */
+  turnRate?: number;
   /** Опыт за убийство — во столько «убийств своего уровня» (делится по вкладу). Танк для толпы — щедрее. */
   killXpMul?: number;
   /** Возрождение, с (по умолчанию MOB.respawn) — редкие крупные мобы возвращаются не сразу. */
@@ -530,6 +536,10 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     model: "monDragonBest", name: "Владыка Бездны", level: 35, kind: "slime",
     hp: 30000, dmgMul: 9, xp: 150000, scaleMul: 3.6, tint: null, gait: true, attackClip: "attackbite", noSquash: true, walksOnly: true,
     rangedArmor: 0.3, meleeReach: 4.5, attackCooldown: 1.6,
+    // Не скользит по полу (2026-10-21): разворот шагами, плавные переходы, темп шага и бега под скорость.
+    // Скорость клипов в мире: шаг клипа (0.22 м/с ходьба, 1.05 м/с бег) × приведение модели (рост 1.93 м → 0.5)
+    // × масштаб супербосса (3.6 × 3) ≈ 1.2 и 5.7 м/с.
+    blendAnims: true, turnRate: 60, walkClipSpeed: 1.2, runClipSpeed: 5.7,
   },
   // Чародей руин: тучный дальний боец 20 ур. Панцирь плоти держит меч и
   // стрелы, зато магия и криты рвут его насквозь — контрплей магу и лучнику

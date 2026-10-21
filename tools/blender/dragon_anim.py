@@ -335,6 +335,49 @@ def clip_run(rig_, u):
     return p.done()
 
 
+# ---------------------------------------------------------------- разворот на месте (бой)
+# Игра крутит модель вокруг её начала координат не быстрее TURN_RATE и, пока дракон стоит, играет TurnL/TurnR
+# с темпом «скорость разворота / TURN_RATE». В клипе корпус неподвижен, а стоящие стопы плывут назад по дуге
+# ровно с этой скоростью — в мире стопа стоит на месте; шагает — вперёд, догоняя корпус. Пары по диагонали.
+TURN_RATE = 60.0  # °/с — то же число, что ELITE_MOBS.catDragon.turnRate в src/shared/mobs.ts
+TURN_SEC = 1.0
+TURN_PERIOD = 0.5  # с — каждая лапа шагает раз в 0.5 с (при обычном темпе)
+TURN_STEP = 0.2  # с — сам шаг
+TURN_PHASE = {HL: 0.0, FR: 0.0, HR: TURN_PERIOD / 2, FL: TURN_PERIOD / 2}
+MODEL_ORIGIN = Vector((0.0, 0.0, 0.0))  # вокруг начала координат модели её крутит игра (Mob.ts root.rotation.y)
+
+
+def clip_turn(sign):
+    """Разворот на месте: sign = +1 — влево, −1 — вправо. Корпус чуть клонится в поворот, голова ведёт
+    поворот, хвост отстаёт; лапы переставляются парами, стоящие стопы плывут против поворота."""
+    def f(rig_, u):
+        s = u * TURN_SEC
+        k = 2 * math.pi * u
+        p = P()
+        stance(p)
+        amp = TURN_RATE * (TURN_PERIOD - TURN_STEP) / 2  # стопа ходит вокруг корпуса ±amp
+        for leg, ph in TURN_PHASE.items():
+            tau = (s - ph) % TURN_PERIOD
+            planted = TURN_PERIOD - TURN_STEP
+            if tau < planted:
+                psi, h, pit = amp - TURN_RATE * tau, 0.0, 0.0
+            else:
+                q = (tau - planted) / TURN_STEP
+                psi, h, pit = -amp + 2 * amp * smooth(q), 0.07 * math.sin(math.pi * q), D(18) * math.sin(math.pi * q)
+            a0 = rig.legs[leg]["A"]
+            turned = MODEL_ORIGIN + Quaternion((0, 0, 1), D(sign * psi)) @ (a0 - MODEL_ORIGIN)
+            p.feet[leg] = turned - a0 + Vector((0.0, 0.0, h))
+            p.pitch[leg] = pit
+        # чуть ниже стойки (передним лапам — запас на сгиб) и проседает на каждой паре шагов
+        p.root.z -= 0.03 + 0.008 * (0.5 - 0.5 * math.cos(4 * k))
+        p.body(ay=2.0 * sign)
+        p.neck(az=14.0 * sign, ax=1.0 * math.sin(2 * k))
+        p.tail(lambda i: (0.0, 0.0, -sign * (1.5 + 0.5 * i) + 1.5 * math.sin(k - 0.5 * i)))
+        p.wings(spread=3, lift=1.5 * math.sin(2 * k))
+        return p.done()
+    return f
+
+
 # ---------------------------------------------------------------- атаки
 
 BITE_SEC, CLAW_SEC, TAIL_SEC, WINGS_SEC, BREATH_SEC, CHARGE_SEC = 1.2, 1.4, 2.6, 1.8, 2.4, 2.0
@@ -603,6 +646,8 @@ CLIPS = {
     "Idle": (clip_idle, round(IDLE_SEC * FPS), True),
     "Walk": (clip_walk, round(WALK_SEC * FPS), True),
     "Run": (clip_run, round(RUN_SEC * FPS), True),
+    "TurnL": (clip_turn(1), round(TURN_SEC * FPS), True),
+    "TurnR": (clip_turn(-1), round(TURN_SEC * FPS), True),
     "AttackBite": (clip_bite, round(BITE_SEC * FPS) + 1, False),
     "AttackClaw": (clip_claw, round(CLAW_SEC * FPS) + 1, False),
     "AttackTail": (clip_tail, round(TAIL_SEC * FPS) + 1, False),
