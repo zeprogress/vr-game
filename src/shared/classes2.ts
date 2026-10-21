@@ -420,6 +420,7 @@ export type SkillId =
   | "soulSteal"
   | "abyss"
   | "steelAura"
+  | "drawIn"
   | "lifeArrow"
   | "cleave"
   | "blastArrow"
@@ -450,7 +451,7 @@ export interface ClassDef {
 export const CLASSES2: Record<ClassId, ClassDef> = {
   warrior: {
     name: "Воин", icon: glyph("c.warrior"), role: "Танк, контроль", weapons: "меч + щит", main: "sword",
-    skills: ["stunBash", "whirlwind", "cleave", "warcry", "seal", "steelAura"], defaultSkills: ["cleave", "whirlwind"],
+    skills: ["stunBash", "whirlwind", "cleave", "warcry", "seal", "steelAura", "drawIn"], defaultSkills: ["cleave", "whirlwind"],
     build: { str: 3, con: 4, agi: 1.5, luc: 1, wis: 1.2 },
   },
   archer: {
@@ -692,6 +693,11 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     desc: "Удар по цели до 6 м, ×1.5; половина урона лечит самого раненого союзника рядом (все целы — тебя)",
     cooldown: 10, castTime: 0.2, radius: 12, dmgMult: 1.5, hits: 1,
     attr: { attr: "wis", per: 0.02, what: "сила лечения" },
+  },
+  drawIn: {
+    name: "Стягивание", icon: glyph("s.drawIn"), test: true,
+    desc: "Резко стягивает мобов в 10 м в одну точку, которую задаёт оружие: с щитом — перед тобой кучкой, с одним мечом (вторая рука свободна) — по бокам, с двумя мечами — вокруг тебя. Стянутые стоят 1 с",
+    cooldown: 14, castTime: 0, radius: 10, dmgMult: 0, hits: 1,
   },
   steelAura: {
     name: "Аура раскалённой стали", icon: glyph("s.steelAura"), test: true,

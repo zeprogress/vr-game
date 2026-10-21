@@ -202,6 +202,7 @@ import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand }
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
 import { leashCut } from "../sim/leash";
 import { ATTR2 } from "#shared/attrs2";
+import { DRAW_IN, drawInPlan, drawModeOf } from "#shared/drawIn";
 import { STEEL_AURA, steelAuraTick, steelModeOf, type SteelMode, ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, MARK_FOCUS, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC, ULT_PULL_PULSES, ULT_PULL_POWER } from "#shared/ultimates";
 import {
@@ -9121,6 +9122,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (k === "ghostArrow" && p.hp > p.maxHp * 0.6 && this.mobsInRadius(p, 5).length < 2) continue;
       if (k === "barrierArrow" && this.mobsInRadius(p, SKILLS2.barrierArrow.radius).length < 1) continue;
       if (k === "steelAura" && this.mobsInRadius(p, SKILLS2.steelAura.radius - 1).length < 1) continue;
+      if (k === "drawIn" && this.mobsInRadius(p, DRAW_IN.radius - 2).length < 2) continue;
       if (k === "webArrow") {
         // Паутина — в кучу (как град), нет кучи — в ближнего, если рядом хотя бы двое.
         const spot = this.bestRainSpot(p);
@@ -10117,6 +10119,35 @@ export class ZoneRoom extends Room<ZoneState> {
         const total = healAmountFor(p.level, p, BOT.healCharge) * BOT.healGroupFraction * rolledDmgMul(p, h, rt) * HEAL_AURA.totalMul;
         this.healAuras.push({ owner: ownerId, r: sk.radius, until: this.elapsed + HEAL_AURA.duration, perTick: total / (HEAL_AURA.duration * 2), tickT: 0 });
         act({ k: "healAura", x: p.head.x, y: feetY, z: p.head.z, d: HEAL_AURA.duration, r: sk.radius });
+        return true;
+      }
+      case "drawIn": {
+        // Стягивание: режим по рукам; мобы в радиусе (не боссы) идут к своей точке за DRAW_IN.sec и стоят holdSec.
+        const mode = drawModeOf(p.leftCls, p.rightCls);
+        const fx = Math.sin(rt.yaw);
+        const fz = Math.cos(rt.yaw);
+        const near = [...this.sim.mobs.values()].filter(
+          (m) => !m.dead && m.kind !== "boss" && !m.immune && Math.hypot(m.x - p.head.x, m.z - p.head.z) - this.sim.targetRadius("mob", m.id) <= DRAW_IN.radius,
+        );
+        const plan = drawInPlan(mode, fx, fz, p.head.x, p.head.z, near);
+        const feet = { x: p.head.x, y: feetY, z: p.head.z };
+        this.broadcast(MSG.act, { k: "drawIn", id: ownerId, ...feet, d: DRAW_IN.sec, r: DRAW_IN.radius, v: mode } satisfies ActRelay);
+        near.forEach((m, i) => {
+          const q = plan[i];
+          this.sim.pullMob(m.id, q.x, q.z, DRAW_IN.sec);
+          this.sim.stunMob(m.id, DRAW_IN.sec + DRAW_IN.holdSec);
+          if (i < 12) {
+            this.broadcast(MSG.act, {
+              k: "drawPull", id: ownerId, mobId: m.id, x: m.x, y: m.y + MOB.bodyRadius * m.scale, z: m.z, x2: q.x, z2: q.z, d: DRAW_IN.sec, v: mode,
+            } satisfies ActRelay);
+          }
+        });
+        // Удар о землю — в момент прихода; точки уникальны по кучкам, сообщаем до 6.
+        this.clock.setTimeout(() => {
+          for (const q of plan.slice(0, 6)) {
+            this.broadcast(MSG.act, { k: "drawImpact", id: ownerId, x: q.x, y: terrainHeight(q.x, q.z), z: q.z, v: mode } satisfies ActRelay);
+          }
+        }, DRAW_IN.sec * 1000);
         return true;
       }
       case "steelAura": {

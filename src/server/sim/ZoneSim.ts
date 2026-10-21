@@ -1299,6 +1299,17 @@ export class Mob {
     this.burnBy = by;
   }
 
+  /** Стягивание (воин): моб за sec с идёт в точку (x,z) — ход задаёт сам, без толчков; босса не тянет. */
+  pullT = 0;
+  pullX = 0;
+  pullZ = 0;
+  pullTo(x: number, z: number, sec: number): void {
+    if (this.dead || this.kind === "boss" || this.scarecrow || this.practice) return;
+    this.pullX = x;
+    this.pullZ = z;
+    this.pullT = sec;
+  }
+
   /** Отбросить моба: сильный импульс от источника (рассекающий удар и т.п.). */
   shove(dx: number, dz: number, power: number): void {
     if (this.dead || this.kind === "boss" || this.scarecrow || this.practice) return; // босса и пугало с места не сдвинуть
@@ -2225,7 +2236,25 @@ export class Mob {
       }
     }
 
-    if (this.anchored || this.rootedT > 0 || this.stunnedT > 0) {
+    if (this.pullT > 0) {
+      // Стягивание: тянет по прямой и приходит ровно за pullT (крутой склон не задерживает — это рывок,
+      // не ходьба); на землю ставим сами. Скорость по climbStep не идёт — шаг уже сделан здесь.
+      const rem = this.pullT;
+      const k = Math.min(1, dt / rem);
+      this.x += (this.pullX - this.x) * k;
+      this.z += (this.pullZ - this.z) * k;
+      this.pullT = rem - dt;
+      if (this.pullT <= 0) {
+        this.pullT = 0;
+        this.x = this.pullX;
+        this.z = this.pullZ;
+      }
+      this.vx = 0;
+      this.vz = 0;
+      this.y = terrainHeight(this.x, this.z) + 0.02;
+      this.vy = 0;
+      this.grounded = true;
+    } else if (this.anchored || this.rootedT > 0 || this.stunnedT > 0) {
       // Якорные (рейд-босс и его копии) стоят всегда; пригвождён (град стрел от героев) или оглушён (удар воина): с места не двигается.
       this.rootedT = Math.max(0, this.rootedT - dt);
       this.vx = 0;
@@ -3803,6 +3832,10 @@ export class ZoneSim {
   }
 
   /** Отбросить моба по id (рассекающий удар бота и т.п.). */
+  pullMob(id: string, x: number, z: number, sec: number): void {
+    this.mobs.get(id)?.pullTo(x, z, sec);
+  }
+
   shoveMob(id: string, dx: number, dz: number, power: number): void {
     this.mobs.get(id)?.shove(dx, dz, power);
   }

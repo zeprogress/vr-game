@@ -123,6 +123,14 @@ export class Sfx {
   };
   private readonly lordBufs: Partial<Record<LordSound, AudioBuffer>> = {};
   private lordLoading = false;
+  /** 🧲 «Стягивание» воина (tools/sfx/steel_draw_sfx.py). */
+  private static readonly DRAW_SFX = {
+    start: "/sfx/steel-draw-start.wav",
+    pull: "/sfx/steel-draw-pull.wav",
+    impact: "/sfx/steel-draw-impact.wav",
+  } as const;
+  private readonly drawBufs: Partial<Record<"start" | "pull" | "impact", AudioBuffer>> = {};
+  private drawLoading = false;
   /** Общая «ручка громкости» музыки → destination. */
   private musicBus: GainNode | null = null;
   /** Множитель громкости 0..1 (слайдер в меню). <0.03 — полная тишина. */
@@ -1000,6 +1008,35 @@ export class Sfx {
         .then((b) => (this.lordBufs[k] = b))
         .catch(() => {});
     }
+  }
+
+  /** Один раз подгрузить звуки «Стягивания» (зовёт воин при касте / лаборатория). */
+  preloadDraw(): void {
+    if (this.drawLoading || !this.ctx) return;
+    this.drawLoading = true;
+    for (const [k, url] of Object.entries(Sfx.DRAW_SFX) as ["start" | "pull" | "impact", string][]) {
+      fetch(url)
+        .then((r) => r.arrayBuffer())
+        .then((a) => new Promise<AudioBuffer>((res, rej) => this.ctx!.decodeAudioData(a, res, rej)))
+        .then((b) => (this.drawBufs[k] = b))
+        .catch(() => {});
+    }
+  }
+
+  /** Звук «Стягивания»: start — сбор, pull — полёт группы, impact — удар о землю. Объёмно внутри at(). */
+  draw(kind: "start" | "pull" | "impact", gain = 1, jitter = 0.05, delay = 0): void {
+    if (!this.ready()) return;
+    this.preloadDraw();
+    const buf = this.drawBufs[kind];
+    if (!buf) return;
+    const src = this.ctx!.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = 1 + (Math.random() * 2 - 1) * jitter;
+    const g = this.ctx!.createGain();
+    g.gain.value = gain;
+    src.connect(g);
+    g.connect(this.spatialAt ? this.panAt(this.spatialAt) : this.master!);
+    src.start(this.t + Math.max(0, delay));
   }
 
   /** Звук Владыки Бездны — как ice(): объёмно внутри at(), разброс темпа ±jitter, задержка delay с. */

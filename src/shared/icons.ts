@@ -193,6 +193,7 @@ export const ICONS = {
   "s.chain": { emoji: "⚡" },
   "s.plague": { emoji: "🧪" },
   "s.steelAura": { emoji: "🔥" },
+  "s.drawIn": { emoji: "🧲" },
   "s.smoke": { emoji: "🌫️" },
   "s.soulSteal": { emoji: "👻" },
   "s.abyss": { emoji: "🕳️" },

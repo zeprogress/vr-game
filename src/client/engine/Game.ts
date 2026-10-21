@@ -6,6 +6,7 @@ import { SkillVfx } from "../ui/SkillVfx";
 import { playIceGiantAct, type IceGiantCtx } from "../ui/IceGiantAct";
 import { playDragonAct } from "../ui/DragonAct";
 import { playSteelAct } from "../ui/SteelAct";
+import { playDrawAct } from "../ui/DrawAct";
 import { iconHtml } from "../ui/icons";
 import { glyph } from "#shared/icons";
 import { prewarmClassClips } from "../world/classPoses";
@@ -4120,6 +4121,7 @@ export class Game {
     if (playIceGiantAct(this.iceCtx, k, x, y, z, id, d, x2in, z2in, r)) return;
     if (playDragonAct(this.iceCtx, k, x, y, z, mobId ?? id, d, x2in, z2in, r)) return;
     if (playSteelAct(this.iceCtx, k, x, y, z, id, d, x2in, z2in, r, mobId, v)) return;
+    if (playDrawAct(this.iceCtx, k, x, y, z, id, d, x2in, z2in, r, mobId, v)) return;
     switch (k) {
       case "swing":
         this.sfx.swordSwing(at);

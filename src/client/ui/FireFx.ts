@@ -29,11 +29,11 @@ import "@babylonjs/core/Meshes/Builders/icoSphereBuilder";
  * FireFx.of(scene) — сам обновляется перед кадром.
  */
 
-const MV_HEAD = `
+export const MV_HEAD = `
 #ifdef MULTIVIEW
 uniform mat4 viewProjectionR;
 #endif`;
-const MV_OUT = (p: string) => `
+export const MV_OUT = (p: string) => `
 #ifdef MULTIVIEW
   if (gl_ViewID_OVR == 0u) { gl_Position = viewProjection * vec4(${p}, 1.0); } else { gl_Position = viewProjectionR * vec4(${p}, 1.0); }
 #else
