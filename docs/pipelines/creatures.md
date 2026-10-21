@@ -231,3 +231,21 @@ Act-обработчик, что в игре. Есть петли «стойка
 | Лаборатория | `src/client/lab/sceneFxIce.ts` |
 | Тесты | `tests/server/iceGiant.test.ts`, `tests/server/chill.test.ts` |
 | Живой тест | `scripts/stage-mob-test.mts` |
+
+## Второй образец — Владыка Бездны (переделка старого босса, 2026-10-21)
+
+Четвероногий, огонь; приёмы — отдельным классом боя по стадиям, а не в ZoneSim.
+
+| Слой | Файл |
+|---|---|
+| Риг и клипы | `art/models/DragonBest.json` (`noDeform`), `tools/blender/dragon_anim.py` (класс позы `P`, стопы IK, разворот шагами) |
+| Числа | `src/shared/mobs.ts` (`DRAGON`, `ELITE_MOBS.catDragon`: `dragonLord`, `turnRate`) |
+| Сервер | `src/server/rooms/dragonFight.ts` (хост `DragonHost` в `ZoneRoom.dragonHost`), стадии — `catacombs.ts` |
+| Эффекты | `src/client/ui/FireFx.ts` (огонь: знаки любой формы «сектор кольца», языки пламени и дым premultiplied, метеор), `src/client/ui/DragonAct.ts` |
+| Модель в игре | `src/client/combat/Mob.ts` (`updateLord`: шаги по касанию стоп `LordFeet`, фырканье, огонь ярости; `lordDeath`), `src/client/combat/turnSteps.ts` |
+| Звук | `tools/sfx/dragon_sfx.py` (сэмплы `ASSETS/SFX` ниже тоном + синтез), `Sfx.lord()` |
+| Лаборатория | `src/client/lab/sceneFxDragon.ts` |
+| Тесты | `tests/server/dragonFight.test.ts`, `tests/shared/turnSteps.test.ts`, `tests/shared/lordSfx.test.ts` |
+
+Шейдеры без запуска игры проверяются `glslangValidator` (brew `glslang`): выгрузить `Effect.ShadersStore` в файлы
+GLSL ES 3.00 и прогнать валидатор.

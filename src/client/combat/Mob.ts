@@ -31,6 +31,8 @@ import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { DRAGON, ELITE_MOBS, FLYER_HIT_BONUS, ICE_GIANT, MAGE_NOVA, MOB, MOB_SWING, SHARD_CFG, type EliteMobDef } from "#shared/mobs";
 import { DECAL, IceFx, SHARD, type IceAura } from "../ui/IceFx";
+import { FireFx, FLAME, type FireAura } from "../ui/FireFx";
+import { DUST, LordFeet, lordMouth, lordScale, lordStep } from "../ui/DragonAct";
 import { FXC } from "../ui/fxColors";
 import type { MobKind, MobState } from "#shared/net/schema";
 import type { RigInstance, ModelName } from "../world/models";
@@ -536,6 +538,11 @@ export class Mob implements Hittable {
   private iceAura: IceAura | null = null;
   private giantIdleT = 99;
   private stepU = -1;
+  /** Владыка Бездны: огонь ярости у лап; стопы (касание — шаг и пыль); метры мира на метр модели; когда фыркнет. */
+  private lordAura: FireAura | null = null;
+  private readonly lordFeet = new LordFeet();
+  private lordK = 0;
+  private lordSnortT = 4;
   /** Узлы костей модели по имени (рука с глыбой гиганта). */
   private readonly boneNodes = new Map<string, TransformNode | null>();
   /** Клип броска/удара (мобы 40 ур. с анимацией Weapon/Punch) и сколько ещё его держать, с. */
@@ -945,13 +952,14 @@ export class Mob implements Hittable {
       }
     }
     if (eliteDef?.iceGiant) this.sfx.preloadIceGiant();
+    if (eliteDef?.dragonLord) this.sfx.preloadLord();
     // Клипы видов замаха босса (MOB_SWING), если они есть в модели.
     this.swingAnims = {};
     for (const [kind, v] of Object.entries(SWING_ANIM)) {
       const a = rig.anims.get(v.clip);
       if (a) this.swingAnims[Number(kind)] = a;
     }
-    if ([MOB_SWING.claw, MOB_SWING.tail, MOB_SWING.breath, MOB_SWING.wings].some((k) => this.swingAnims[k])) this.sfx.preloadDragon();
+    if (!eliteDef?.dragonLord && [MOB_SWING.claw, MOB_SWING.tail, MOB_SWING.breath, MOB_SWING.wings].some((k) => this.swingAnims[k])) this.sfx.preloadDragon();
     if (eliteDef?.gait) {
       this.gaitIdle = rig.anims.get("idle") ?? null;
       this.gaitRun = rig.anims.get("run") ?? null;
@@ -1155,6 +1163,7 @@ export class Mob implements Hittable {
     }
     secAdd("mob.pos+view+shadow", sp);
     if (this.eliteDef?.iceGiant) this.updateIceAura(s, inView, pos, dt);
+    if (this.eliteDef?.dragonLord) this.updateLord(s, inView, pos, playerPos, dt);
 
     // Невидимый живой моб (вне лимита/за спиной/далеко): ни эффектов, ни анимации,
     // ни плашки — только держим счётчики событий в актуальном виде, чтобы при
@@ -1202,7 +1211,10 @@ export class Mob implements Hittable {
         this.atkClipT = this.atkNowSec;
       }
       // Голос дракона: огонь дыхания и рёв ударной волны (слышно издалека, как у большого босса).
-      if (!this.dead && s.attackKind === MOB_SWING.breath) this.playIfNear(playerPos, () => this.sfx.dragonBreath(pos), 45);
+      // Владыка Бездны — свои звуки: укус и взмах крыльев здесь, остальное — по событиям приёмов (DragonAct).
+      if (this.eliteDef?.dragonLord) {
+        if (!this.dead) this.lordSwing(s.attackKind, pos, playerPos);
+      } else if (!this.dead && s.attackKind === MOB_SWING.breath) this.playIfNear(playerPos, () => this.sfx.dragonBreath(pos), 45);
       else if (!this.dead && s.attackKind === MOB_SWING.wings) this.playIfNear(playerPos, () => this.sfx.dragonRoar(pos), 45);
     }
     if (this.atkClipT > 0) this.atkClipT = Math.max(0, this.atkClipT - dt);
@@ -1294,6 +1306,7 @@ export class Mob implements Hittable {
       this.setFarLod(false);
       if (this.rig) this.playAnim(this.rig.anims.get("death"), false);
       if (this.eliteDef?.iceGiant) this.giantDeath(pos, playerPos);
+      else if (this.eliteDef?.dragonLord) this.lordDeath(pos, playerPos);
       else this.playIfNear(playerPos, () => this.sfx.mobDie(pos));
     } else if (!s.dead && this.dead) {
       this.dead = false;
@@ -1660,6 +1673,98 @@ export class Mob implements Hittable {
     });
   }
 
+  /** Пасть Владыки (у кончика морды, идёт за клипом). */
+  private lordMouth(): { x: number; y: number; z: number } | null {
+    return lordMouth((n) => this.boneWorld(n));
+  }
+
+  /** Замах Владыки: укус — рык и щелчок пасти (искры в кадр укуса), крылья — тяжёлый взмах. */
+  private lordSwing(kind: number, pos: Vector3, playerPos: Vector3): void {
+    this.lordSnortT = Math.max(this.lordSnortT, 3);
+    if (kind === 0) {
+      const at = this.lordMouth() ?? pos;
+      this.playIfNear(playerPos, () => this.sfx.at(at, () => this.sfx.lord("bite", 0.9, 0.06)), 45);
+      const fire = FireFx.of(this.scene);
+      fire.after(DRAGON.hitSec.bite, () => {
+        const m = this.lordMouth();
+        if (m) fire.burst(m.x, m.y, m.z, FXC.fire, { count: 10, speed: 3, life: 0.45, grav: 3, size: 0.24 });
+      });
+    } else if (kind === MOB_SWING.wings) {
+      this.playIfNear(playerPos, () => this.sfx.at(pos, () => this.sfx.lord("wings")), 50);
+    }
+  }
+
+  /**
+   * Владыка каждый кадр: огонь ярости у лап (s.enraged — стадия «Ярость»), шаги по касанию стоп (кости
+   * передних и задних лап: поднялась выше порога — опустилась на землю → удар, пыль), в покое — фырканье дымом.
+   */
+  private updateLord(s: MobState, inView: boolean, pos: Vector3, playerPos: Vector3, dt: number): void {
+    const live = inView && !this.dead && !s.dead && !!this.rig;
+    if (!live) {
+      this.lordAura?.release();
+      this.lordAura = null;
+      this.lordFeet.reset();
+      return;
+    }
+    this.lordK ||= lordScale((n) => this.boneWorld(n));
+    if (!this.lordK) return;
+    const k = this.lordK;
+    const fire = FireFx.of(this.scene);
+    this.lordAura ??= fire.aura();
+    this.lordAura?.place(pos.x, pos.y, pos.z, 1.3 * k, s.enraged === 1);
+
+    const near = Vector3.DistanceSquared(pos, playerPos) < 45 * 45;
+    this.lordFeet.update((n) => this.boneWorld(n), pos.y, k, dt, (p) => {
+      if (near) lordStep(fire, this.sfx, p, pos.y, k, this.moveSpd > GAIT_RUN_SPEED ? 0.8 : 0.6);
+    });
+
+    // Фырканье: в покое раз в 5–9 с из ноздрей — дым (в ярости — с огнём).
+    this.lordSnortT -= dt;
+    if (this.atkClipT > 0) this.lordSnortT = Math.max(this.lordSnortT, 2);
+    if (this.lordSnortT <= 0 && near) {
+      this.lordSnortT = 5 + Math.random() * 4;
+      const m = this.lordMouth();
+      if (m) {
+        const yaw = this.root.rotation.y;
+        const rage = s.enraged === 1;
+        fire.flame(FLAME.puff, m, {
+          b: { x: m.x + Math.sin(yaw) * k, y: m.y - 0.4 * k, z: m.z + Math.cos(yaw) * k },
+          r: 0.5 * k, half: 0.5, life: 1.3, size: 0.2 * k, rise: 0.3 * k, count: 12, heat: rage ? 0.75 : 0.22,
+        });
+        this.sfx.at(m, () => this.sfx.lord("snort", rage ? 0.8 : 0.55, 0.08));
+      }
+    }
+  }
+
+  /** Смерть Владыки: предсмертный рёв; тело рушится (1.45 с) — пыль и искры, голова (1.8 с); потом дым над телом. */
+  private lordDeath(at: Vector3, playerPos: Vector3): void {
+    this.lordAura?.release();
+    this.lordAura = null;
+    const pos = { x: at.x, y: at.y, z: at.z }; // эффекты — через секунды, вектор вызывающего к тому времени другой
+    this.playIfNear(playerPos, () => this.sfx.at(pos, () => this.sfx.lord("death")), 60);
+    const k = this.lordK || 5.4;
+    const fire = FireFx.of(this.scene);
+    const yaw = this.root.rotation.y;
+    const fx = Math.sin(yaw);
+    const fz = Math.cos(yaw);
+    fire.after(1.45, () => {
+      for (const u of [-0.9, -0.3, 0.3, 0.9]) {
+        const px = pos.x + fx * u * k;
+        const pz = pos.z + fz * u * k;
+        fire.flame(FLAME.puff, { x: px, y: pos.y + 0.2 * k, z: pz }, { r: 0.9 * k, half: 1.4, life: 1.4, size: 0.45 * k, rise: 0.25 * k, count: 12, heat: 0, smoke: DUST });
+      }
+      fire.burst(pos.x, pos.y + 0.3 * k, pos.z, FXC.fire, { count: 24, speed: 7, life: 1, grav: 6, size: 0.3 });
+    });
+    fire.after(1.8, () => {
+      const px = pos.x + fx * 1.3 * k;
+      const pz = pos.z + fz * 1.3 * k;
+      fire.flame(FLAME.puff, { x: px, y: pos.y + 0.15 * k, z: pz }, { r: 0.6 * k, half: 1.4, life: 1.1, size: 0.35 * k, rise: 0.2 * k, count: 10, heat: 0, smoke: DUST });
+    });
+    fire.after(2.2, () => {
+      fire.flame(FLAME.disc, { x: pos.x, y: pos.y, z: pos.z }, { r: 1.1 * k, inner: 0, dur: 4, life: 2.2, size: 0.4 * k, rise: 1.2 * k, count: 18, heat: 0.18 });
+    });
+  }
+
   private playIfNear(playerPos: Vector3, fn: () => void, range = 28): void {
     if (Vector3.DistanceSquared(this.root.getAbsolutePosition(), playerPos) < range * range) fn();
   }
@@ -1854,6 +1959,8 @@ export class Mob implements Hittable {
   dispose(): void {
     this.iceAura?.release();
     this.iceAura = null;
+    this.lordAura?.release();
+    this.lordAura = null;
     this.reflectShield?.material?.dispose();
     this.reflectShield?.dispose();
     for (const l of this.lodSlots ?? []) l.batch.release(l.slot);

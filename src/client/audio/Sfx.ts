@@ -14,6 +14,10 @@ export interface SoundAt {
  */
 /** Звуки Ледяного гиганта (Sfx.ice). */
 export type IceSound = "step" | "swipe" | "slam" | "spikes" | "roar" | "throw" | "impact" | "freeze" | "shatter" | "death" | "stack";
+/** Звуки Владыки Бездны (tools/sfx/dragon_sfx.py). */
+export type LordSound =
+  | "step" | "bite" | "snort" | "breathIn" | "breath" | "burn" | "tail" | "tailHit" | "charge" | "meteorFall"
+  | "meteorHit" | "ringMark" | "wings" | "ring" | "shield" | "rage" | "death";
 
 /** Играющий трек: буфер-источник + свой gain (для кроссфейда). */
 interface MusicVoice {
@@ -98,6 +102,27 @@ export class Sfx {
   } as const;
   private readonly iceBufs: Partial<Record<IceSound, AudioBuffer>> = {};
   private iceLoading = false;
+  private static readonly LORD_SFX: Record<LordSound, string> = {
+    step: "/sfx/lord-step.wav",
+    bite: "/sfx/lord-bite.wav",
+    snort: "/sfx/lord-snort.wav",
+    breathIn: "/sfx/lord-breath-in.wav",
+    breath: "/sfx/lord-breath.wav",
+    burn: "/sfx/lord-burn.mp3",
+    tail: "/sfx/lord-tail.wav",
+    tailHit: "/sfx/lord-tail-hit.wav",
+    charge: "/sfx/lord-charge.mp3",
+    meteorFall: "/sfx/lord-meteor-fall.wav",
+    meteorHit: "/sfx/lord-meteor-hit.wav",
+    ringMark: "/sfx/lord-ring-mark.wav",
+    wings: "/sfx/lord-wings.wav",
+    ring: "/sfx/lord-ring.wav",
+    shield: "/sfx/lord-shield.wav",
+    rage: "/sfx/lord-rage.mp3",
+    death: "/sfx/lord-death.mp3",
+  };
+  private readonly lordBufs: Partial<Record<LordSound, AudioBuffer>> = {};
+  private lordLoading = false;
   /** Общая «ручка громкости» музыки → destination. */
   private musicBus: GainNode | null = null;
   /** Множитель громкости 0..1 (слайдер в меню). <0.03 — полная тишина. */
@@ -953,6 +978,35 @@ export class Sfx {
     if (!this.ready()) return;
     this.preloadIceGiant();
     const buf = this.iceBufs[kind];
+    if (!buf) return;
+    const src = this.ctx!.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = 1 + (Math.random() * 2 - 1) * jitter;
+    const g = this.ctx!.createGain();
+    g.gain.value = gain;
+    src.connect(g);
+    g.connect(this.spatialAt ? this.panAt(this.spatialAt) : this.master!);
+    src.start(this.t + Math.max(0, delay));
+  }
+
+  /** Один раз подгрузить звуки Владыки Бездны (зовёт моб при появлении — к первому приёму готово). */
+  preloadLord(): void {
+    if (this.lordLoading || !this.ctx) return;
+    this.lordLoading = true;
+    for (const [k, url] of Object.entries(Sfx.LORD_SFX) as [LordSound, string][]) {
+      fetch(url)
+        .then((r) => r.arrayBuffer())
+        .then((a) => new Promise<AudioBuffer>((res, rej) => this.ctx!.decodeAudioData(a, res, rej)))
+        .then((b) => (this.lordBufs[k] = b))
+        .catch(() => {});
+    }
+  }
+
+  /** Звук Владыки Бездны — как ice(): объёмно внутри at(), разброс темпа ±jitter, задержка delay с. */
+  lord(kind: LordSound, gain = 1, jitter = 0.04, delay = 0): void {
+    if (!this.ready()) return;
+    this.preloadLord();
+    const buf = this.lordBufs[kind];
     if (!buf) return;
     const src = this.ctx!.createBufferSource();
     src.buffer = buf;

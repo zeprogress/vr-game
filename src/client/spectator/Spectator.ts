@@ -3,6 +3,7 @@ import { showCatReport } from "../ui/CatReport";
 import { ClassFx, playClassAct, type ClassActCtx } from "../ui/ClassFx";
 import { SkillVfx } from "../ui/SkillVfx";
 import { playIceGiantAct, type IceGiantCtx } from "../ui/IceGiantAct";
+import { playDragonAct } from "../ui/DragonAct";
 import { prewarmClassClips } from "../world/classPoses";
 import { BOT_SKIN_MODELS } from "../world/models";
 import { LightFocus } from "../world/lightFocus";
@@ -1696,6 +1697,7 @@ export class Spectator {
     const at = { x, y, z };
     if (playClassAct(this.classCtx, k, x, y, z, id, d, x2in, z2in, v, r, mobId)) return;
     if (playIceGiantAct(this.iceCtx, k, x, y, z, id, d, x2in, z2in, r)) return;
+    if (playDragonAct(this.iceCtx, k, x, y, z, mobId ?? id, d, x2in, z2in, r)) return;
     switch (k) {
       case "swing":
         this.sfx.swordSwing(at);

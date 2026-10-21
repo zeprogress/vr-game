@@ -342,6 +342,8 @@ export interface EliteMobDef {
   noSquash?: boolean;
   /** Ледяной гигант: аура холода, стаки обморожения, раскол, бросок глыбы, разлом, ярость (см. ICE_GIANT). */
   iceGiant?: boolean;
+  /** Владыка Бездны: свои приёмы (server/rooms/dragonFight.ts, DRAGON), огонь (client/ui/DragonAct.ts) и звуки «lord-*». */
+  dragonLord?: boolean;
   /** Ближний удар: от замаха до урона, с (по клипу модели; без него — MOB.strikeDelay). */
   strikeDelay?: number;
   /** Сколько длится клип удара вблизи, с (клиент держит его поверх шага; без него — 0.8). */
@@ -539,7 +541,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     // Не скользит по полу (2026-10-21): разворот шагами, плавные переходы, темп шага и бега под скорость.
     // Скорость клипов в мире: шаг клипа (0.22 м/с ходьба, 1.05 м/с бег) × приведение модели (рост 1.93 м → 0.5)
     // × масштаб супербосса (3.6 × 3) ≈ 1.2 и 5.7 м/с.
-    blendAnims: true, turnRate: 60, walkClipSpeed: 1.2, runClipSpeed: 5.7,
+    blendAnims: true, turnRate: 60, walkClipSpeed: 1.2, runClipSpeed: 5.7, dragonLord: true,
   },
   // Чародей руин: тучный дальний боец 20 ур. Панцирь плоти держит меч и
   // стрелы, зато магия и криты рвут его насквозь — контрплей магу и лучнику

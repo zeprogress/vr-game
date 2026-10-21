@@ -3,6 +3,7 @@ import { BLINK, SPORE } from "#shared/mobs";
 import { SkillFx } from "../ui/SkillFx";
 import type { LabCtx } from "./main";
 import { iceGiantLab } from "./sceneFxIce";
+import { dragonLab } from "./sceneFxDragon";
 
 /** Эффекты умений из SkillFx — по кнопке в центре площадки, по кругу. */
 export async function build(ctx: LabCtx): Promise<void> {
@@ -20,4 +21,5 @@ export async function build(ctx: LabCtx): Promise<void> {
   ui.button("🦑 Щупальце спрута: хват", () => fx.tentacle(0, 1.6, 0, 6, 1.1, 8, 0.35, true));
   ui.button("🏹 Град стрел", () => fx.arrowRain(0, 0, 0, BOT.rainRadius, BOT.rainCastTime, SKILL.arrowRain.duration));
   await iceGiantLab(ctx);
+  await dragonLab(ctx);
 }

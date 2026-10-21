@@ -4,6 +4,7 @@ import { showCatReport } from "../ui/CatReport";
 import { ClassFx, playClassAct, type ClassActCtx } from "../ui/ClassFx";
 import { SkillVfx } from "../ui/SkillVfx";
 import { playIceGiantAct, type IceGiantCtx } from "../ui/IceGiantAct";
+import { playDragonAct } from "../ui/DragonAct";
 import { iconHtml } from "../ui/icons";
 import { glyph } from "#shared/icons";
 import { prewarmClassClips } from "../world/classPoses";
@@ -4116,6 +4117,7 @@ export class Game {
     if (k === "ultWarn" && id === this.net?.sessionId) this.player.applyStun(d ?? 0);
     if (playClassAct(this.classCtx, k, x, y, z, id, d, x2in, z2in, v, r, mobId)) return;
     if (playIceGiantAct(this.iceCtx, k, x, y, z, id, d, x2in, z2in, r)) return;
+    if (playDragonAct(this.iceCtx, k, x, y, z, mobId ?? id, d, x2in, z2in, r)) return;
     switch (k) {
       case "swing":
         this.sfx.swordSwing(at);
