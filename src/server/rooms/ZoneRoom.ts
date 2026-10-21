@@ -804,15 +804,20 @@ function sanitizeOverrides(v: unknown): Record<string, unknown> {
   return v as Record<string, unknown>;
 }
 
+/**
+ * Поза от клиента. Устройство может прислать NaN: JSON превращает его в null, а null в схеме ломает
+ * сериализацию состояния у всех спектаторов. Поэтому принимаем только конечные числа; мусор — прежнее значение.
+ */
 function applyXf(target: Xf, v: Xf7 | undefined): void {
   if (!Array.isArray(v) || v.length !== 7) return;
-  target.x = v[0];
-  target.y = v[1];
-  target.z = v[2];
-  target.qx = v[3];
-  target.qy = v[4];
-  target.qz = v[5];
-  target.qw = v[6];
+  const f = (n: unknown, prev: number): number => (typeof n === "number" && Number.isFinite(n) ? n : prev);
+  target.x = f(v[0], target.x);
+  target.y = f(v[1], target.y);
+  target.z = f(v[2], target.z);
+  target.qx = f(v[3], target.qx);
+  target.qy = f(v[4], target.qy);
+  target.qz = f(v[5], target.qz);
+  target.qw = f(v[6], target.qw);
 }
 
 function num(v: unknown, def: number): number {
