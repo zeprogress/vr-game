@@ -3660,13 +3660,13 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /**
-   * Событие «в разгаре» — к нему можно телепортироваться (!event): охота — у босса осталось меньше половины HP,
+   * Событие «в разгаре» — к нему можно телепортироваться (!event): охота — у босса меньше 80% HP,
    * нашествие — убита половина из появившихся мобов (середина стадии). До этого бот бежит, как обычно.
    */
   private eventHalfway(): boolean {
     if (this.activeEventKind === 2) {
       const boss = this.sim.mobs.get(this.huntBossId);
-      return !!boss && !boss.dead && boss.hp <= boss.maxHp * 0.5;
+      return !!boss && !boss.dead && boss.hp < boss.maxHp * 0.8;
     }
     const spawned = this.sim.eventSpawned;
     return spawned > 0 && this.sim.eventMobsLeft() <= spawned * 0.5;
@@ -3687,7 +3687,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.reply(`@${nick} герой уже там.`);
       return;
     }
-    // Событие уже в разгаре (половина HP босса или половина мобов стадии): герой не бежит, а сразу там.
+    // Событие уже в разгаре (меньше 80% HP босса охоты или половина мобов нашествия): герой не бежит, а сразу там.
     if (this.eventHalfway()) {
       bot.eventing = true;
       bot.eventDoneAt = 0;
