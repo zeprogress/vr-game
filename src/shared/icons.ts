@@ -192,6 +192,7 @@ export const ICONS = {
   "s.mark": { emoji: "🎯" },
   "s.chain": { emoji: "⚡" },
   "s.plague": { emoji: "🧪" },
+  "s.steelAura": { emoji: "🔥" },
   "s.smoke": { emoji: "🌫️" },
   "s.soulSteal": { emoji: "👻" },
   "s.abyss": { emoji: "🕳️" },

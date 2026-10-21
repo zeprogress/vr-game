@@ -419,6 +419,7 @@ export type SkillId =
   | "smoke"
   | "soulSteal"
   | "abyss"
+  | "steelAura"
   | "lifeArrow"
   | "cleave"
   | "blastArrow"
@@ -449,7 +450,7 @@ export interface ClassDef {
 export const CLASSES2: Record<ClassId, ClassDef> = {
   warrior: {
     name: "Воин", icon: glyph("c.warrior"), role: "Танк, контроль", weapons: "меч + щит", main: "sword",
-    skills: ["stunBash", "whirlwind", "cleave", "warcry", "seal"], defaultSkills: ["cleave", "whirlwind"],
+    skills: ["stunBash", "whirlwind", "cleave", "warcry", "seal", "steelAura"], defaultSkills: ["cleave", "whirlwind"],
     build: { str: 3, con: 4, agi: 1.5, luc: 1, wis: 1.2 },
   },
   archer: {
@@ -692,6 +693,11 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     cooldown: 10, castTime: 0.2, radius: 12, dmgMult: 1.5, hits: 1,
     attr: { attr: "wis", per: 0.02, what: "сила лечения" },
   },
+  steelAura: {
+    name: "Аура раскалённой стали", icon: glyph("s.steelAura"), test: true,
+    desc: "Аура 6 м на 6 с, ходит за тобой: каждую секунду жжёт врагов в ней на 500% твоей регенерации HP. С щитом — лечит тебя на 1% HP за каждого горящего врага в секунду; с одним мечом — замедляет их на 20%; с двумя — бьёт вдвое слабее, а каждый твой удар по горящему врагу — доп. урон",
+    cooldown: 15, castTime: 0, radius: 6, dmgMult: 0, hits: 1,
+  },
   abyss: {
     name: "Призрак бездны", icon: glyph("s.abyss"), test: true,
     desc: "3 с в тени: мобы теряют тебя, бег +40%; первый удар из тени — рывок за спину цели, ×2 и крит, затем +30% темпа на 3 с",
@@ -851,6 +857,31 @@ export const SMOKE = { duration: 6, miss: 0.5, dodge: 0.3, range: 12 } as const;
 /** Лучник «Стрела жизни»: лечение — доля нанесённого урона + доля своего макс. HP; бот стреляет ею, когда HP ниже botBelow. */
 export const LIFE_ARROW = { healDmg: 0.5, healMax: 0.25, botBelow: 0.85 } as const;
 export const SOUL_STEAL = { transfer: 0.5, healthy: 0.85, reach: 6 } as const;
+/**
+ * 🧪 «Аура раскалённой стали» (воин, 2026-10-21): аура SKILLS2.steelAura.radius м на duration с, ходит за воином.
+ * Каждую секунду жжёт всех врагов в ней на dmgPerRegen × регенерация воина (HP/с). Оружие меняет эффект:
+ * щит — воин лечится на shieldHealFrac макс. HP за каждого горящего врага в секунду; один меч — враги замедлены
+ * (×slowMul, на slowSec с после последнего тика); два меча — аура бьёт ×dualMul, а каждый удар воина по горящему
+ * врагу — доп. урон dualHitFrac от этого удара.
+ */
+export const STEEL_AURA = {
+  duration: 6, dmgPerRegen: 5, shieldHealFrac: 0.01, slowMul: 0.8, slowSec: 1.2, dualMul: 0.5, dualHitFrac: 0.3,
+} as const;
+export type SteelMode = "shield" | "sword" | "dual";
+/** Режим ауры по оружию воина: щит в руке → лечение; два меча → дуалы; иначе — один меч (замедление). */
+export function steelModeOf(left: string, right: string): SteelMode {
+  if (left === "shield" || right === "shield") return "shield";
+  if (left === "sword" && right === "sword") return "dual";
+  return "sword";
+}
+/** Значения одного тика ауры: урон одному врагу, лечение воину за одного врага, замедляет ли. */
+export function steelAuraTick(mode: SteelMode, regenPerSec: number, maxHp: number): { dmg: number; healPerEnemy: number; slow: boolean } {
+  return {
+    dmg: regenPerSec * STEEL_AURA.dmgPerRegen * (mode === "dual" ? STEEL_AURA.dualMul : 1),
+    healPerEnemy: mode === "shield" ? maxHp * STEEL_AURA.shieldHealFrac : 0,
+    slow: mode === "sword",
+  };
+}
 /** «Призрак бездны»: сколько в тени, ускорение после выхода. */
 /** «Призрак бездны»: сколько в тени, ускорение после выхода, бег в тени; удар из тени — рывок за спину цели (blink м). */
 export const ABYSS = { duration: 3, hasteSec: 3, haste: 0.3, move: 0.4, blink: 4 } as const;
