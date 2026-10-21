@@ -34,6 +34,10 @@ interface Sample {
   mats: number;
   tex: number;
   anims: number;
+  /** Компиляций шейдеров за окно выборки и сколько мс на них ушло (наибольшая — maxMs). */
+  sh: number;
+  shMs: number;
+  shMax: number;
 }
 
 /**
@@ -74,6 +78,13 @@ export class RenderWatch {
   private errCount = 0;
   private lastErr = "";
   private errSentAt = 0;
+  /** Компиляции шейдеров: всего за сеанс и в текущем окне выборки. */
+  private shTotal = 0;
+  private shTotalMs = 0;
+  private shWinCount = 0;
+  private shWinMs = 0;
+  private shWinMax = 0;
+  private shStartAt = 0;
 
   constructor(
     private readonly engine: Engine,
@@ -90,6 +101,19 @@ export class RenderWatch {
 
   /** Поднять сторожа: слушатели контекста, опрос, история. */
   start(): void {
+    // Компиляция шейдеров блокирует поток: новый материал на слабой видеокарте — сотни мс и больше.
+    // Считаем каждую компиляцию, чтобы в отчёте было видно, паузы это или тупик.
+    this.engine.onBeforeShaderCompilationObservable.add(() => {
+      this.shStartAt = performance.now();
+    });
+    this.engine.onAfterShaderCompilationObservable.add(() => {
+      const ms = performance.now() - this.shStartAt;
+      this.shTotal++;
+      this.shTotalMs += ms;
+      this.shWinCount++;
+      this.shWinMs += ms;
+      if (ms > this.shWinMax) this.shWinMax = ms;
+    });
     const canvas = this.engine.getRenderingCanvas();
     if (!canvas) return;
     const gl = (canvas.getContext("webgl2") ??
@@ -233,7 +257,13 @@ export class RenderWatch {
       mats: this.scene.materials.length,
       tex: this.scene.textures.length,
       anims: this.scene.animatables.length,
+      sh: this.shWinCount,
+      shMs: Math.round(this.shWinMs),
+      shMax: Math.round(this.shWinMax),
     });
+    this.shWinCount = 0;
+    this.shWinMs = 0;
+    this.shWinMax = 0;
     if (this.samples.length > SAMPLE_KEEP) this.samples.shift();
   }
 
@@ -311,11 +341,12 @@ export class RenderWatch {
       `ошибок=${this.errCount}`,
       `рендерер=${this.renderer()}`,
       `экран=${this.engine.getRenderWidth()}x${this.engine.getRenderHeight()}`,
+      `шейдеров=${this.shTotal} (${Math.round(this.shTotalMs)} мс всего)`,
     ].join(" ");
     const hist = this.samples
       .map(
         (s) =>
-          `${s.t}s fps${s.fps} heap${s.heap} m${s.meshes} mt${s.mats} tx${s.tex} an${s.anims}`,
+          `${s.t}s fps${s.fps} heap${s.heap} m${s.meshes} mt${s.mats} tx${s.tex} an${s.anims} sh${s.sh}/${s.shMs}мс(макс${s.shMax})`,
       )
       .join(" | ");
     return `${head} :: ${hist}`;
