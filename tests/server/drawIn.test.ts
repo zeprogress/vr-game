@@ -22,7 +22,7 @@ test("Стягивание: оглушённый моб после приход�
   const m = new Mob(d.kind, 6, 0, eliteOpts(d));
   const hero: SimPlayer = { sessionId: "h", x: 0, y: terrainHeight(0, 0) + 1.6, z: 0 };
   m.pullTo(0, 4, DRAW_IN.sec);
-  m.stunnedT = DRAW_IN.sec + DRAW_IN.holdSec;
+  m.stun(DRAW_IN.sec + DRAW_IN.holdSec);
   for (let t = 0; t < DRAW_IN.sec + DRAW_IN.holdSec * 0.5; t += DT) m.tick(DT, [hero], [], () => {});
   assert.ok(Math.hypot(m.x - 0, m.z - 4) < 0.05, "стоит в кучке, пока оглушён");
 });
