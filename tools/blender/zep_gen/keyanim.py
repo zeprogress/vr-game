@@ -172,7 +172,7 @@ def biped_gait(rig, pose, u, g, heel_back=0.07):
             v = (q - duty) / (1 - duty)
             y = S / 2 - S * smooth(v)
             zz = lift * math.sin(math.pi * v) ** 1.3
-            pit = g["heel"] * (1 - smooth(v * 2.2)) - g["toeUp"] * smooth(max(0.0, (v - 0.55) / 0.45))
+            pit = g["heel"] * (1 - smooth(min(1.0, v * 2.2))) - g["toeUp"] * smooth(max(0.0, (v - 0.55) / 0.45))
         p.feet[i] = Vector((0, y, zz)) + foot_roll(rig, i, pit, heel_back)
         p.pitch[i] = D(pit)
     return p.done()
