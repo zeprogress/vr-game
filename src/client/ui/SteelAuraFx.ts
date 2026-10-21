@@ -16,7 +16,8 @@ import { MV_HEAD, MV_OUT } from "./FireFx";
  * «Аура раскалённой стали» (воин) — свой визуал, без колец пламени:
  *  blades — шесть раскалённых клинков кружат вокруг воина на поясе (билборды; белое ядро → оранжевый край);
  *  column — мягкое марево-столб: вертикальные струи жара поднимаются вверх и гаснут;
- *  ring   — светящийся кольцевой узор на земле: расплавленные швы бегут по кругу, внутри — тлеющая сталь.
+ *  ring   — светящийся кольцевой узор на земле: расплавленные швы бегут по кругу, внутри — тлеющая сталь;
+ *  rays   — излучение: лучи от героя до границы ауры, по ним бегут яркие импульсы наружу.
  * Всё ведёт шейдер по времени и позиции (uC), из JS — пара чисел за кадр; меши пулом, два экземпляра на сцену.
  * Цвет по режиму: 0 щит (жар), 1 один меч (холодная сталь — замедление), 2 дуалы (багрянец).
  */
@@ -71,6 +72,63 @@ void main() {
   float tip = smoothstep(1.0, 0.55, along);
   float a = w * w * tip * vA * uAlpha;
   if (a <= 0.002) discard;
+  gl_FragColor = vec4(col * a, a);
+}`;
+
+// Излучение: лучи от героя до границы радиуса; по каждому бегут яркие импульсы наружу.
+Effect.ShadersStore["steelRaysVertexShader"] = `
+precision highp float;
+attribute vec3 position;
+attribute float aIdx;
+uniform mat4 viewProjection;
+uniform vec3 cameraPosition;
+${MV_HEAD}
+uniform vec3 uC;
+uniform float uT;
+uniform float uR;
+uniform float uCount;
+varying vec2 vUV;
+varying float vI;
+varying float vA;
+float h(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
+void main() {
+  float i = aIdx;
+  if (i >= uCount) { ${HIDE} vUV = vec2(0.0); vI = 0.0; vA = 0.0; return; }
+  float a = (i + 0.35 * h(i)) / uCount * 6.2831853;
+  vec3 dir = vec3(cos(a), 0.0, sin(a));
+  vec3 s0 = uC + vec3(0.0, 1.2, 0.0) + dir * 0.9;     // у пояса, чуть от центра
+  vec3 s1 = uC + vec3(0.0, 1.2, 0.0) + dir * uR;      // граница ауры
+  vec3 p = mix(s0, s1, position.y);
+  vec3 toCam = normalize(cameraPosition - p);
+  vec3 side = normalize(cross(dir, toCam) + vec3(0.0001));
+  float w = 0.05 * (1.0 - 0.55 * position.y);
+  p += side * position.x * w;
+  vUV = vec2(position.x + 0.5, position.y);
+  vI = h(i + 7.0);
+  vA = 1.0;
+  ${MV_OUT("p")}
+}`;
+Effect.ShadersStore["steelRaysFragmentShader"] = `
+precision highp float;
+varying vec2 vUV;
+varying float vI;
+varying float vA;
+uniform float uT;
+uniform float uAlpha;
+uniform vec3 uHot;
+uniform vec3 uMid;
+void main() {
+  float s = vUV.y;                                    // 0 — у героя, 1 — на границе
+  float across = 1.0 - abs(vUV.x - 0.5) * 2.0;        // ядро луча
+  // импульсы: яркий гребень бежит от героя наружу, у каждого луча свой ритм
+  float speed = 0.55 + 0.35 * vI;
+  float ph = fract(s * 1.1 - uT * speed + vI * 3.0);
+  float pulse = pow(ph, 5.0) * (1.0 - smoothstep(0.6, 1.0, ph));
+  float base = 0.12 * (1.0 - s);
+  float fade = smoothstep(0.0, 0.12, s) * (1.0 - smoothstep(0.85, 1.0, s));
+  float a = (base + pulse) * across * across * fade * uAlpha;
+  if (a <= 0.002) discard;
+  vec3 col = mix(uHot, uMid, s);
   gl_FragColor = vec4(col * a, a);
 }`;
 
@@ -159,6 +217,8 @@ void main() {
 interface Instance {
   blades: Mesh;
   bladesMat: ShaderMaterial;
+  rays: Mesh;
+  raysMat: ShaderMaterial;
   column: Mesh;
   columnMat: ShaderMaterial;
   ring: Mesh;
@@ -217,6 +277,29 @@ export class SteelAuraFx {
     bladesMat.setFloat("uH", 1.1);
     this.finish(blades);
 
+    // Излучение: RAYS лучей, квад на луч (x — ширина, y — от героя до границы).
+    const RAYS = 18;
+    const rp: number[] = [];
+    const ri: number[] = [];
+    const ra: number[] = [];
+    for (let i = 0; i < RAYS; i++) {
+      for (const [x, y] of [[-0.5, 0], [0.5, 0], [0.5, 1], [-0.5, 1]]) {
+        rp.push(x, y, 0);
+        ra.push(i);
+      }
+      ri.push(i * 4, i * 4 + 1, i * 4 + 2, i * 4, i * 4 + 2, i * 4 + 3);
+    }
+    const rays = new Mesh(`steelRays${k}`, this.scene);
+    const rd2 = new VertexData();
+    rd2.positions = rp;
+    rd2.indices = ri;
+    rd2.applyToMesh(rays);
+    rays.setVerticesData("aIdx", ra, false, 1);
+    const raysMat = this.mat("steelRays", "steelRays", ["position", "aIdx"], ["view", "uC", "uT", "uR", "uCount", "uHot", "uMid", "uAlpha"]);
+    rays.material = raysMat;
+    raysMat.setFloat("uCount", RAYS);
+    this.finish(rays);
+
     const column = new Mesh(`steelColumn${k}`, this.scene);
     const cd = new VertexData();
     cd.positions = [-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0];
@@ -239,7 +322,7 @@ export class SteelAuraFx {
     this.finish(ring);
 
     return {
-      blades, bladesMat, column, columnMat, ring, ringMat,
+      blades, bladesMat, rays, raysMat, column, columnMat, ring, ringMat,
       age: 0, dur: 0, R: 6, track: null, c: { x: 0, y: 0, z: 0 }, cv: new Vector3(), live: false,
     };
   }
@@ -273,7 +356,7 @@ export class SteelAuraFx {
     const i = this.inst.find((x) => !x.live) ?? this.inst.reduce((a, b) => (a.age > b.age ? a : b));
     const p = track() ?? { x: 0, y: 0, z: 0 };
     const pal = mode === 1 ? [FXC.steel, FXC.steelHot, FXC.frost] : mode === 2 ? [FXC.fireRed, FXC.fire, FXC.fireRed] : [FXC.steelHot, FXC.fire, FXC.fireRed];
-    for (const m of [i.bladesMat, i.columnMat, i.ringMat]) {
+    for (const m of [i.bladesMat, i.columnMat, i.ringMat, i.raysMat]) {
       m.setColor3("uHot", pal[0]);
       m.setColor3("uMid", pal[1]);
       m.setColor3("uEdge", pal[2]);
@@ -285,6 +368,7 @@ export class SteelAuraFx {
     i.c = { ...p };
     i.live = true;
     i.blades.setEnabled(true);
+    i.rays.setEnabled(true);
     i.column.setEnabled(true);
     i.ring.setEnabled(true);
     this.apply(i, 0);
@@ -297,11 +381,12 @@ export class SteelAuraFx {
     const a = Math.max(0, Math.min(fin, fout));
     const c = i.c;
     i.cv.set(c.x, c.y, c.z);
-    for (const m of [i.bladesMat, i.columnMat, i.ringMat]) {
+    for (const m of [i.bladesMat, i.columnMat, i.ringMat, i.raysMat]) {
       m.setFloat("uAlpha", a);
       m.setFloat("uT", t);
       m.setVector3("uC", i.cv);
     }
+    i.raysMat.setFloat("uR", i.R);
     i.ringMat.setFloat("uR", i.R);
   }
 
@@ -312,6 +397,7 @@ export class SteelAuraFx {
       if (i.age >= i.dur) {
         i.live = false;
         i.blades.setEnabled(false);
+        i.rays.setEnabled(false);
         i.column.setEnabled(false);
         i.ring.setEnabled(false);
         continue;
@@ -325,8 +411,8 @@ export class SteelAuraFx {
   dispose(): void {
     this.scene.onBeforeRenderObservable.remove(this.obs);
     for (const i of this.inst) {
-      for (const m of [i.blades, i.column, i.ring]) m.dispose();
-      for (const mt of [i.bladesMat, i.columnMat, i.ringMat]) mt.dispose();
+      for (const m of [i.blades, i.rays, i.column, i.ring]) m.dispose();
+      for (const mt of [i.bladesMat, i.raysMat, i.columnMat, i.ringMat]) mt.dispose();
     }
     pools.delete(this.scene);
   }
