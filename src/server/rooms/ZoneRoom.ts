@@ -5559,7 +5559,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const rt = this.rt.get(attacker) ?? (attacker.startsWith("bot:") ? this.bots.get(attacker.slice(4))?.rt : undefined);
     if (rt && rt.plagueUntil > this.elapsed) return;
     const venom = this.heroRoll(attacker, "venom");
-    if (venom > 0 && Math.random() < venom) this.sim.poisonMob(mobId, dealt * CRAFT_PROC.venom.tickFrac, dealt * CRAFT_PROC.venom.burstFrac, attacker);
+    if (venom > 0 && Math.random() < venom) this.sim.poisonMob(mobId, dealt * CRAFT_PROC.venom.tickFrac, dealt * CRAFT_PROC.venom.burstFrac, attacker, 1, true);
   }
 
   // ---------------------------------------------------------------- подарки (server/trade.ts — основа и для обмена)
@@ -11078,10 +11078,10 @@ export class ZoneRoom extends Room<ZoneState> {
       } satisfies ActRelay);
     }
     this.sim.mobMisses.length = 0;
-    // Яд: стак — зелёное кольцо под мобом, взрыв — зелёная вспышка по кругу.
+    // Яд: стак — кольцо под мобом, взрыв — вспышка по кругу. Фиолетовый — «Чумной клинок», зелёный — аффикс «Яд».
     for (const f of this.sim.poisonFx) {
-      if (f.burst) this.broadcast(MSG.act, { k: "plagueBurst", id: f.by, x: f.x, y: terrainHeight(f.x, f.z), z: f.z, r: PLAGUE.burstRadius, d: f.h } satisfies ActRelay);
-      else this.broadcast(MSG.act, { k: "poisonStack", id: f.by, x: f.x, y: f.y, z: f.z, mobId: f.mobId, r: f.stacks, d: PLAGUE.stackSec } satisfies ActRelay);
+      if (f.burst) this.broadcast(MSG.act, { k: f.venom ? "venomBurst" : "plagueBurst", id: f.by, x: f.x, y: terrainHeight(f.x, f.z), z: f.z, r: PLAGUE.burstRadius, d: f.h } satisfies ActRelay);
+      else this.broadcast(MSG.act, { k: f.venom ? "venomStack" : "poisonStack", id: f.by, x: f.x, y: f.y, z: f.z, mobId: f.mobId, r: f.stacks, d: PLAGUE.stackSec } satisfies ActRelay);
     }
     this.sim.poisonFx.length = 0;
     for (const b of this.sim.bleedTicks) this.broadcast(MSG.act, { k: "bleedTick", id: b.by, x: b.x, y: b.y, z: b.z, mobId: b.mobId } satisfies ActRelay);

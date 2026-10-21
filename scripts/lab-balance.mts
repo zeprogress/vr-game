@@ -887,10 +887,10 @@ if (ONLY.has("skilltest")) {
     t.room.castSkill("plague", t.x.id, t.p, t.rt, a.x, a.z);
     secs(t.step, 0.4);
     const d1 = Math.hypot(t.p.head.x - a.x, t.p.head.z - a.z);
-    check("Чума: рывок к цели", d1 < d0 - 2, `до цели ${f(d0, 1)} → ${f(d1, 1)} м, стаков на цели ${a.poisonStacks}`);
+    check("Чума: рывок к цели", d1 < d0 - 2, `до цели ${f(d0, 1)} → ${f(d1, 1)} м, стаков на цели ${a.plague.stacks}`);
     for (let i = 0; i < 3; i++) t.room.afterDaggerHit(t.x.id, t.p, t.rt, a, 50);
-    const infected = rest.filter((m: any) => m.poisonStacks > 0).length;
-    check("Чума: взрыв заражает соседей", infected === rest.length, `заражено соседей ${infected} из ${rest.length}, стаков у цели после взрыва ${a.poisonStacks}`);
+    const infected = rest.filter((m: any) => m.plague.stacks > 0).length;
+    check("Чума: взрыв заражает соседей", infected === rest.length, `заражено соседей ${infected} из ${rest.length}, стаков у цели после взрыва ${a.plague.stacks}`);
     t.rt.skillAt = {};
     put(t.p, a.x + 4, a.z);
     t.room.castSkill("soulSteal", t.x.id, t.p, t.rt, a.x, a.z);

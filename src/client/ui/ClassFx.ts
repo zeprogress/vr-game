@@ -1148,6 +1148,18 @@ export function playClassAct(
       vfx.burst(x, y + (d ?? 0.6), z, FXC.poison, { count: 26, speed: 6, life: 0.6, grav: 4, size: 0.24 });
       c.sound(at, "thud");
       return true;
+    case "venomStack": {
+      // Яд аффикса «Яд»: зелёное кольцо и брызги — как стак «Чумного клинка», но зелёные.
+      const n = r ?? 1;
+      if (mobId) vfx.decal(x, y, z, 0.3 + n * 0.11, FXC.venom, d ?? 3, 1, 0.45 + n * 0.1, { kind: "mob", id: mobId, dy: 0.1 });
+      vfx.burst(x, y + 0.8, z, FXC.venom, { count: 4 + n * 2, speed: 2.5, life: 0.45, grav: 3, size: 0.14 });
+      return true;
+    }
+    case "venomBurst":
+      vfx.decal(x, y, z, r ?? 3, FXC.venom, 0.6, 4, 1.1);
+      vfx.burst(x, y + (d ?? 0.6), z, FXC.venom, { count: 26, speed: 6, life: 0.6, grav: 4, size: 0.24 });
+      c.sound(at, "thud");
+      return true;
     case "smoke":
       // Дымовая бомба: серый круг на всё время и клубы дыма.
       vfx.decal(x, y, z, r ?? 3.5, SHADOW_GRAY, d ?? 6, 1, 0.9);
