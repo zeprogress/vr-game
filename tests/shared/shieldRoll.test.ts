@@ -19,7 +19,7 @@ test("регенерация щита ×2, отражение Эгиды до 35
 
 test("выпавшие щиты (lv 11) пересчитываются на новый диапазон с теми же очками", () => {
   const shield = (value: number, sub: "regen" | "reflect", cls: "shield" = "shield"): WeaponInstance =>
-    ({ id: "t", cls, tier: "base", affixes: [{ kind: sub, sub, value }], lv: LOOT_VER - 1 }) as unknown as WeaponInstance;
+    ({ id: "t", cls, tier: "base", affixes: [{ kind: sub, sub, value }], lv: 11 }) as unknown as WeaponInstance;
   // старый максимум 1% → новый 2%; старый минимум 0.3% → новый 0.6%
   const hi = shield(0.01, "regen");
   const lo = shield(0.003, "regen");

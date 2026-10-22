@@ -152,7 +152,7 @@ test("скрытый рецепт: ролл-звезда — потолок ×1.
   assert.equal(affixPoints(star, w), 33, "сразу на максимуме — точить нечего");
   assert.ok(close(star.value, affixRange(crusher.star, w)[1] * STAR_CAP));
   assert.match(affixLabel(star), /★$/);
-  for (const o of w.affixes) if (o !== star) assert.ok((o.cap ?? 1) < 1, `${o.sub}: остальные ▼`);
+  for (const o of w.affixes) if (o !== star) assert.equal(o.cap, undefined, `${o.sub}: без штрафа — потолок 1`);
 });
 
 test("кость на луке — пронзание, на посохе — поджог; особый катализатор — свой ролл", () => {

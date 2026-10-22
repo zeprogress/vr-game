@@ -573,7 +573,7 @@ export interface WeaponInstance {
 // ★ Избранное — без лимита (2026-10-20; было FAV_MAX = 24 на оружие, кольца и броню вместе).
 
 /** Текущая версия формата роллов (WeaponInstance.lv). */
-export const LOOT_VER = 12;
+export const LOOT_VER = 13;
 
 /** Оружие ближнего боя — только на нём выпадает вампиризм. */
 export function isMeleeClass(cls: string): boolean {
@@ -1196,6 +1196,18 @@ export function migrateLoot(w: WeaponInstance): boolean {
       if (!old) continue;
       const t = Math.max(0, Math.min(1, (a.value - old[0]) / (old[1] - old[0])));
       a.value = atT(a.sub, t, isAegis(w), a.cap ?? 1);
+    }
+  }
+  // lv 13: у оружия по скрытому рецепту нет штрафа по аффиксам (2026-10-22) — роллы с потолком ниже 1
+  // поднимаем до 1 с теми же очками (очки — по старому диапазону, как при выпадении).
+  if (ver < 13 && w.rc) {
+    for (const a of w.affixes) {
+      if (!(a.cap !== undefined && a.cap < 1)) continue;
+      const aegis = isAegis(w);
+      const [lo, hi] = rangeFor(a.sub, aegis, a.cap);
+      const t = hi > lo ? Math.max(0, Math.min(1, (a.value - lo) / (hi - lo))) : 0;
+      a.value = atT(a.sub, t, aegis, 1);
+      delete a.cap;
     }
   }
   w.lv = LOOT_VER;

@@ -280,7 +280,7 @@ import { randomUUID } from "node:crypto";
 import { attrOf } from "#shared/attrs2";
 import { giveItems, parseTradeItem, parseTradeList, takeItems, takenName, tradeLog, tradeViewOf, TRADE_ACTS, type InvSnap, type Taken, type TradeAct, type TradeItem, type TradeSession, type TradeSide } from "../trade";
 import { KillRates } from "../sim/killRate";
-import { addStock, CRAFT_ITEMS, CRAFT_PROC, CRAFT_SMELT, craftStockOf, craftWeapon, parseCraftCode, pcInvCraft, recipeBookOf, rollCraftDrop, smithLevel } from "#shared/craft";
+import { addStock, CRAFT, CRAFT_ITEMS, CRAFT_PROC, CRAFT_SMELT, craftStockOf, craftWeapon, parseCraftCode, pcInvCraft, recipeBookOf, rollCraftDrop, smithLevel } from "#shared/craft";
 import { applyJewelOp, gemName, JEWEL_ACTS, jewelBonus, jewelOpFrom, jewelsOf, pcInvJewels, RING_LOOK, ringName, rollJewelDrop, type JewelAct, type JewelSave } from "#shared/jewels";
 import { scrapDropChance } from "#shared/scrapDrop";
 
@@ -1011,7 +1011,9 @@ function rolledDmgMul(p: PlayerState, hand: "left" | "right", rt: Runtime): numb
   const main = rolledIn(p, hand, rt);
   const other = shieldRolledIn(p, hand, rt);
   // Точка атаки за лом — тоже лучшая из двух рук (как роллы «Урон»).
-  return (1 + handsRoll(main?.affixes, other?.affixes, "dmgFlat", "dmgPct")) * attackPointBest(main, other);
+  // Оружие по скрытому рецепту — базовая атака ×CRAFT.recipeDmg (все пути атаки и каста, в т.ч. посох и боты).
+  const recipe = main?.rc ? CRAFT.recipeDmg : 1;
+  return (1 + handsRoll(main?.affixes, other?.affixes, "dmgFlat", "dmgPct")) * attackPointBest(main, other) * recipe;
 }
 
 /** Доп. множитель скорости атаки/каста от ролла atkSpeedPct обеих рук: лучший из двух. */

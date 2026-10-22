@@ -156,6 +156,8 @@ export const CRAFT = {
   failRefund: 0.5,
   /** Скрытый рецепт: ролл-звезда — максимум вида × это. */
   starMul: STAR_CAP,
+  /** Оружие по скрытому рецепту: без штрафа по аффиксам (потолки — только свои копии), базовая атака ×. */
+  recipeDmg: 1.15,
 } as const;
 
 // ---------------------------------------------------------------- мастерство кузнеца
@@ -463,7 +465,8 @@ export function craftWeapon(
     rolls.push({ sub, copies: 0 });
   }
   // Очки — от исхода; потолки — от копий материалов (craftCaps).
-  const caps = craftCaps(rolls.map((r) => r.copies));
+  // Скрытый рецепт — без штрафа: у каждого ролла потолок только от своих копий (craftCaps делит прибавку между всеми).
+  const caps = recipe ? rolls.map((r) => 1 + CRAFT.capStep * Math.max(0, r.copies - 1)) : craftCaps(rolls.map((r) => r.copies));
   const affixes: RolledAffix[] = rolls.map((r, k) => affixAtPoints(r.sub, pts(floor), caps[k]));
   // Скрытый рецепт: ролл-звезда — потолок ×starMul, сразу на максимуме (если такого вида нет — встаёт вместо последнего).
   if (recipe) {
