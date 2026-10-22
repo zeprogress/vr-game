@@ -16,6 +16,8 @@ export const FLYER_HIT_BONUS = 0.35;
 export const MOB_SWING = {
   bite: 0, claw: 1, tail: 2, breath: 3, wings: 4, magic: 5,
   swipe2: 6, slam: 7, throw: 8, fissure: 9, roar: 10,
+  // Лавовый монстр (LAVA): удар о землю, разлив магмы (удар когтями), метка лавы, кольцо углей, рёв ярости.
+  lavaSlam: 11, lavaSpill: 12, lavaMark: 13, lavaRing: 14, lavaRoar: 15,
 } as const;
 
 export const MOB = {
@@ -788,16 +790,21 @@ export const LAVA = {
   hitSec: { attack: 0.6, slam: 1.3 },
   /** Страж: удар о землю (круг вокруг себя, оглушение), разлив магмы (линия, горение), ярость на доле HP. */
   guard: {
-    slam: { cooldown: 9, windup: 1.2, radius: 4, dmgMul: 2.0, stunSec: 1 },
-    spill: { cooldown: 12, windup: 1.0, length: 8, halfWidth: 1.2, dmgMul: 2.0, burnSec: 4 },
+    // windup — по кадру удара в клипе Slam (LAVA.hitSec.slam), чтобы урон и клип совпали.
+    slam: { cooldown: 9, windup: 1.3, radius: 4, dmgMul: 2.0, stunSec: 1 },
+    spill: { cooldown: 12, windup: 1.0, length: 8, halfWidth: 1.2, dmgMul: 2.0, burnSec: 4, burnTick: 1, burnFrac: 0.25 },
     // Клипа рёва нет: телеграф ярости — тот же клип удара о землю (замена до отдельного клипа Roar).
-    fury: { at: 0.4, windup: 1.5, radius: 6, speedMul: 1.3, cdMul: 0.8 },
+    fury: { at: 0.4, windup: 1.5, radius: 6, dmgMul: 2.0, knockback: 6, speedMul: 1.3, cdMul: 0.8 },
   },
   /** Маг: метка лавы (сильный удар с задержкой в круг), кольцо углей (слабый удар кругом и замедление). */
   mage: {
     mark: { cooldown: 10, windup: 1.5, radius: 3, dmgMul: 2.6, delaySec: 1.5 },
     ring: { cooldown: 14, windup: 1.0, radius: 5, dmgMul: 1.2, slowSec: 2, slowFrac: 0.5 },
+    /** Дальность, с которой маг метит и ставит кольцо, м. */
+    markRange: 14, ringRange: 6,
   },
+  /** Пауза между приёмами, с (клип доигрывает, моб стоит). */
+  gap: 1.5,
 };
 
 /**
