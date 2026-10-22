@@ -519,8 +519,8 @@ export function pcInvCraftFor(craft: PcInvCraft, owner: boolean): PcInvCraft {
 /** Что падает с элитных мобов (ключ ELITE_MOBS): шанс за убийство и сколько штук. Вожак — × CRAFT_DROP_CHAMP. */
 export const CRAFT_DROPS: Partial<Record<string, readonly { id: CraftItemId; chance: number; n?: number }[]>> = {
   spider: [
-    { id: "web", chance: 0.01 }, // 2026-10-19: было 0.25, потом 0.03 (пауков много — паутины было слишком много)
-    { id: "sting", chance: 0.001 }, // 2026-10-19: было 0.004 (катализатор не тратится — один на тысячу пауков)
+    { id: "web", chance: 0.002 }, // 2026-10-21: было 0.01 (в 5 раз реже); раньше 0.25, потом 0.03
+    { id: "sting", chance: 0.0001 }, // 2026-10-21: было 0.001 (в 10 раз реже); раньше 0.004
   ],
   // 2026-10-19: кость было 0.25/0.2/0.2 — стало 1%, как паутина.
   skeletonReaver: [{ id: "bone", chance: 0.01 }],
