@@ -10546,12 +10546,11 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /**
-   * Защита сериализации: в позе героя (голова и руки, Xf) иногда попадает NaN — тогда клиенты не получают
-   * состояние (картинка застывает у спектаторов). Находим такие значения, пишем в журнал героя и
-   * заменяем последним нормальным (кватернион — единичным). Раз в 30 с на героя — не спамим.
+   * Защита сериализации: в позе героя (голова и руки, Xf) иногда попадает некорректное значение — тогда
+   * клиенты не получают состояние (картинка застывает у спектаторов). Такие значения заменяем последним
+   * нормальным (кватернион — единичным).
    */
   private readonly lastFiniteHead = new Map<string, { x: number; y: number; z: number }>();
-  private readonly nanWarnAt = new Map<string, number>();
   private guardTransforms(): void {
     const FIELDS = ["x", "y", "z", "qx", "qy", "qz", "qw"] as const;
     this.state.players.forEach((p, id) => {
@@ -10561,11 +10560,6 @@ export class ZoneRoom extends Room<ZoneState> {
         if (bad.length === 0) {
           if (k === "head") this.lastFiniteHead.set(id, { x: v.x, y: v.y, z: v.z });
           continue;
-        }
-        const now = Date.now();
-        if (now - (this.nanWarnAt.get(id + k) ?? 0) > 30_000) {
-          this.nanWarnAt.set(id + k, now);
-          console.warn(`[nan] герой ${p.nick || id} ${k}: ${bad.map((f) => `${f}=${v[f]}`).join(" ")} — сброшено`);
         }
         const good = this.lastFiniteHead.get(id) ?? { x: 0, y: 0, z: 0 };
         for (const f of bad) {
