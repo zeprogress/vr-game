@@ -594,6 +594,17 @@ const ELITE_KEY_BY_NAME = new Map(Object.entries(ELITE_MOBS).map(([k, d]) => [d.
  * должен выходить с лучшим из когда-либо заработанного, а не только с тем,
  * что случайно осталось в руках на момент !stop.
  */
+/** Есть ли у героя хоть один предмет этого класса (bestOwnedTier даёт «base» и для отсутствующего). */
+function ownsClass(owned: readonly string[] | undefined, cls: string): boolean {
+  return (owned ?? []).some((k) => k.split(":")[0] === cls);
+}
+
+/** Левая рука по умолчанию для класса правой: второй кинжал — только если кинжал у героя есть. */
+function offHandDefault(owned: readonly string[] | undefined, rightCls: string): string {
+  const off = botOffHand(rightCls);
+  return off === "dagger" && !ownsClass(owned, "dagger") ? "" : off;
+}
+
 function bestOwnedTier(owned: readonly string[] | undefined, cls: WeaponClass): WeaponTier {
   let best: WeaponTier = "base";
   for (const key of owned ?? []) {
@@ -6678,11 +6689,13 @@ export class ZoneRoom extends Room<ZoneState> {
     // Руки уже сохранялись: есть оружие/владения или занятая рука (у новой записи held пустой по умолчанию).
     const handsSaved = !!rec && ((rec.weapons?.length ?? 0) > 0 || (rec.owned?.length ?? 0) > 0 || !!rec.held?.right || !!rec.held?.left);
     const leftSaved = savedHeld.left?.cls ?? "";
-    const off = handsSaved
+    let off = handsSaved
       ? (canHoldTogether(rc, leftSaved) ? leftSaved : "")
       : (pinR || savedRight?.cls === rc) && canHoldTogether(rc, pinL?.cls ?? leftSaved)
         ? (pinL?.cls ?? leftSaved)
-        : botOffHand(rc);
+        : offHandDefault(rec?.owned, rc);
+    // Кинжал в левой руке без кинжала в вещах — фантом (раньше появлялся при входе и выходе с бота).
+    if (off === "dagger" && !ownsClass(rec?.owned, "dagger") && pinL?.cls !== "dagger") off = "";
     p.leftCls = off;
     p.leftTier =
       pinL && pinL.cls === off
@@ -7841,7 +7854,7 @@ export class ZoneRoom extends Room<ZoneState> {
       preserveLegacyWeapon(bot.rt, p.leftCls, p.leftTier);
       p.rightCls = want;
       p.rightTier = bestOwnedTier([...bot.rt.owned], want);
-      const off = botOffHand(want);
+      const off = offHandDefault([...bot.rt.owned], want);
       p.leftCls = off;
       p.leftTier = off ? bestOwnedTier([...bot.rt.owned], off as WeaponClass) : "";
       bot.rt.equippedWeaponId = { left: null, right: null };
