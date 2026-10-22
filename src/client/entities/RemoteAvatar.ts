@@ -624,6 +624,16 @@ export class RemoteAvatar implements Hittable {
     }
   }
 
+  /**
+   * Модель героя (тело, руки, оружие) — включена или выключена. Ник, полоска, аура и эффекты — отдельно, не трогаем.
+   * Проверяем каждый кадр: модель бота грузится асинхронно, новые узлы сразу получают нужное состояние.
+   */
+  private syncBodyShown(show: boolean): void {
+    for (const n of [this.botBody, this.botHolder, this.capsule, this.head, this.handL, this.handR, this.gearL, this.gearR]) {
+      if (n && n.isEnabled(false) !== show) n.setEnabled(show);
+    }
+  }
+
   /** Далеко от камеры спектатора — не рисуем героя вовсе (весь узел выключен). */
   setCulled(culled: boolean): void {
     if (this.root.isEnabled() === !culled) return;
@@ -821,6 +831,8 @@ export class RemoteAvatar implements Hittable {
     this.lastUpdate = now;
     this.bubble?.update(dt);
     const show = !this.dead;
+    // Тень «Призрака бездны»: выключаем только модель героя; аура, ник, полоска и эффекты остаются.
+    this.syncBodyShown(!(this.skillBuffs.abyss && !this.dead) || this.dead);
     this.buffAura.set({
       victory: show && this.buffed,
       camp: show && this.campWarm,
