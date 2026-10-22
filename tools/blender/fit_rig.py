@@ -53,6 +53,38 @@ zmin = min(v.co.z for v in ob.data.vertices)
 ob.location.z -= zmin
 bpy.ops.object.transform_apply(location=True, rotation=False, scale=False)
 
+# ---- суставы: если в спецификации их нет — предварительный скелет по габаритам (правится в JSON и в .blend) ----
+def auto_joints(obj):
+    """Биped-скелет по габаритам меша (после масштаба; z от пола; лицо — −Y, левая сторона — +X).
+    Высоты и ширины — доли роста/ширины: грубо, но в нужных местах; дальше суставы двигает человек."""
+    xs = [v.co.x for v in obj.data.vertices]
+    ys = [v.co.y for v in obj.data.vertices]
+    H = max(v.co.z for v in obj.data.vertices)
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    W, D = x1 - x0, y1 - y0
+    j = {
+        "hips": [cx, cy, 0.5 * H], "spine": [cx, cy, 0.6 * H], "chest": [cx, cy, 0.72 * H],
+        "neck": [cx, cy - 0.05 * D, 0.82 * H], "head": [cx, cy - 0.12 * D, 0.9 * H], "headTop": [cx, cy - 0.12 * D, 0.98 * H],
+    }
+    for side, sx in (("L", 1), ("R", -1)):
+        j["clav." + side] = [cx + sx * 0.12 * W, cy, 0.76 * H]
+        j["shoulder." + side] = [cx + sx * 0.3 * W, cy, 0.74 * H]
+        j["elbow." + side] = [cx + sx * 0.42 * W, cy, 0.56 * H]
+        j["wrist." + side] = [cx + sx * 0.46 * W, cy, 0.4 * H]
+        j["hand." + side] = [cx + sx * 0.48 * W, cy, 0.36 * H]
+        j["hip." + side] = [cx + sx * 0.12 * W, cy, 0.5 * H]
+        j["knee." + side] = [cx + sx * 0.12 * W, cy, 0.27 * H]
+        j["ankle." + side] = [cx + sx * 0.12 * W, cy, 0.05 * H]
+        j["toe." + side] = [cx + sx * 0.12 * W, y0 + 0.05 * D, 0.02 * H]
+    return {k: [round(c, 4) for c in v] for k, v in j.items()}
+
+if "joints" not in sp:
+    sp["joints"] = auto_joints(ob)
+    with open(spec_path, "w", encoding="utf-8") as f:
+        json.dump(sp, f, ensure_ascii=False, indent=2)
+    print("auto joints written to", spec_path)
+
 # ---- чистка топологии и упрощение до бюджета ----
 bpy.context.view_layer.objects.active = ob
 bpy.ops.object.mode_set(mode="EDIT")
