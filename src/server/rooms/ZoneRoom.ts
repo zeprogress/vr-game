@@ -9119,8 +9119,10 @@ export class ZoneRoom extends Room<ZoneState> {
     if (near.length === 0) return;
     let nearest = near[0];
     let nd = Infinity;
+    // Расстояние до края тела, а не до центра: у гиганта центр далеко, и умения ближнего боя (яд, призрак)
+    // для бота не срабатывали — он стоит у края и центр всегда дальше порога.
     for (const m of near) {
-      const d = Math.hypot(m.x - p.head.x, m.z - p.head.z);
+      const d = Math.max(0, Math.hypot(m.x - p.head.x, m.z - p.head.z) - this.sim.targetRadius("mob", m.id));
       if (d < nd) {
         nd = d;
         nearest = m;
