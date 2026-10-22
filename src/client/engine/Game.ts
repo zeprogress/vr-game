@@ -127,6 +127,7 @@ import { VoiceChat } from "../voice/VoiceChat";
 import { FxaaPostProcess } from "@babylonjs/core/PostProcesses/fxaaPostProcess";
 import { SharpenPostProcess } from "@babylonjs/core/PostProcesses/sharpenPostProcess";
 import type { Camera } from "@babylonjs/core/Cameras/camera";
+import { KICK_ADMIN_CODE } from "#shared/net/messages";
 import type { ActKind, CharMsg, LootItem, MoveMsg, PcInvData, QuestActMsg, QuestData, SaveMsg, ShopData, Xf7 } from "#shared/net/messages";
 import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
@@ -3961,8 +3962,8 @@ export class Game {
     // Зашли этим же ником в другом месте — нас намеренно выгнали, не
     // переподключаемся; короткая пауза, чтобы игрок успел увидеть тост,
     // и назад на экран входа (соединение уже закрыто сервером).
-    net.onKicked = () => {
-      this.notifyToast("Вошли под этим ником в другом месте — выход");
+    net.onKicked = (code) => {
+      this.notifyToast(code === KICK_ADMIN_CODE ? "Тебя выгнал админ" : "Вошли под этим ником в другом месте — выход");
       this.saveNow();
       setTimeout(() => window.location.reload(), 1500);
     };

@@ -22,6 +22,7 @@ import {
 import {
   MSG,
   KICK_SAME_NICK_CODE,
+  KICK_ADMIN_CODE,
   type HitMobMsg,
   type MoveMsg,
   type SaveMsg,
@@ -4206,7 +4207,7 @@ export class ZoneRoom extends Room<ZoneState> {
    * гостевой токен") — по заявке ("можно хоть сколько угодно клонов
    * создавать") это признано нежелательным.
    */
-  private kickNick(norm: string): void {
+  private kickNick(norm: string, code = KICK_SAME_NICK_CODE, reason = "вошли под этим ником в другом месте"): void {
     const want = `nick:${norm}`;
     for (const [id, rt] of this.rt) {
       if (id.startsWith("bot:") || rt.token !== want) continue;
@@ -4214,7 +4215,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (c) {
         this.kickedSessions.add(id);
         try {
-          c.leave(KICK_SAME_NICK_CODE, "вошли под этим ником в другом месте");
+          c.leave(code, reason);
         } catch {
           /* сокет уже мёртв */
         }
@@ -4368,6 +4369,19 @@ export class ZoneRoom extends Room<ZoneState> {
         store.resetTowerStats();
         this.broadcastLeaderboard();
         this.reply(`@${nick} топ «Охотничьей башни» обнулён.`);
+      }
+    } else if (cmd === "!kick" || cmd === "!выгнать") {
+      // Точечно: бот — уходит из мира (как !stop), игрок — выкидывается с сохранением.
+      if (isAdminNick(nick)) {
+        const target = normNick((parts[1] ?? "").replace(/^@/, ""));
+        if (!target) this.reply(`@${nick} формат: !kick <ник>`);
+        else if (this.bots.has(target)) {
+          this.removeBot(target);
+          this.reply(`@${nick} бот ${target} убран из мира.`);
+        } else if (this.nickIsPlayed(target)) {
+          this.kickNick(target, KICK_ADMIN_CODE, "тебя выгнал админ");
+          this.reply(`@${nick} игрок ${target} выгнан.`);
+        } else this.reply(`@${nick} ${target} сейчас нет в мире.`);
       }
     } else if (cmd === "!stopbots" || cmd === "!выгнатьботов") {
       if (isAdminNick(nick)) {

@@ -4,6 +4,7 @@ import type { PlayerState, ZoneState } from "#shared/net/schema";
 import {
   MSG,
   KICK_SAME_NICK_CODE,
+  KICK_ADMIN_CODE,
   type CharMsg,
   type LeaderboardRow,
   type WeaponsListMsg,
@@ -203,7 +204,7 @@ export class NetClient {
   /** Переподключились — надо заново подписаться на комнату. */
   onReconnected: ((room: Room<ZoneState>) => void) | null = null;
   /** Выгнали намеренно (зашли под этим же ником в другой вкладке) — не переподключаться, показать сообщение. */
-  onKicked: (() => void) | null = null;
+  onKicked: ((code: number) => void) | null = null;
 
   /**
    * Персонаж, пришедший до того, как Game успела подписаться. В VR между
@@ -406,9 +407,9 @@ export class NetClient {
     room.onLeave((code) => {
       console.log(`[net] соединение закрыто (код ${code})`);
       this.room = null;
-      if (code === KICK_SAME_NICK_CODE) {
+      if (code === KICK_SAME_NICK_CODE || code === KICK_ADMIN_CODE) {
         this.closedByUs = true; // не пытаться переподключиться — нас намеренно выгнали
-        this.onKicked?.();
+        this.onKicked?.(code);
         return;
       }
       if (!this.closedByUs && !this.afkAway) void this.reconnectLoop();

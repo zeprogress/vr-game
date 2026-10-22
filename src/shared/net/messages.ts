@@ -22,6 +22,8 @@ import type { PlayerMode } from "./schema";
  * (4000/4002/4010/4201/4202/4210-4217, см. @colyseus/core/build/Protocol.js).
  */
 export const KICK_SAME_NICK_CODE = 4099;
+/** Выгнал админ командой !kick. Клиент не переподключается, но текст другой. */
+export const KICK_ADMIN_CODE = 4100;
 
 export const MSG = {
   /** клиент -> сервер: транспорт локального игрока (голова + кисти + защита). */
