@@ -509,23 +509,23 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     hp: 10, dmgMul: 0.55, xp: 6, scaleMul: 0.5, tint: null, flying: true,
   },
   spikyBlob: {
-    model: "monSpikyBlob", name: "Шипобрюх", blurb: "больно колется", level: 6, kind: "slime",
+    model: "monSpikyBlob", gait: true, noSquash: true, walksOnly: true, blendAnims: true, name: "Шипобрюх", blurb: "больно колется", level: 6, kind: "slime",
     hp: 60, dmgMul: 1.7, xp: 193, scaleMul: 1.15, tint: null,
   },
   frog: {
-    model: "monFrog", name: "Болотная жаба", blurb: "прыгучая", level: 7, kind: "slime",
+    model: "monFrog", gait: true, noSquash: true, walksOnly: true, blendAnims: true, name: "Болотная жаба", blurb: "прыгучая", level: 7, kind: "slime",
     hp: 95, dmgMul: 1.6, xp: 471, scaleMul: 1.125, // ×1.5 модели по заявке (было 0.75)
     tint: [0.24, 0.7, 0.26], // перекрас в зелёный
   },
   cactoro: {
-    model: "monCactoro", name: "Кактородо", blurb: "крупный, но слабый", level: 9, kind: "slime",
+    model: "monCactoro", gait: true, noSquash: true, walksOnly: true, blendAnims: true, name: "Кактородо", blurb: "крупный, но слабый", level: 9, kind: "slime",
     hp: 60, dmgMul: 1.1, xp: 193, scaleMul: 3.2, tint: null, // ×2 модели по заявке (было 1.6)
   },
   // Орк-стрелок: бронированный дальний боец 15 ур. Панцирь режет 65% урона
   // стрел/магии — для лучника это глухая стена, зато его залпы бьют больно и
   // далеко. Мечнику броня не мешает: подошёл вплотную — и рубит.
   orcGunner: {
-    model: "monOrc", name: "Орк-стрелок", blurb: "стреляет издалека, панцирь от стрел", level: 15, kind: "spitter",
+    model: "monOrc", gait: true, noSquash: true, walksOnly: true, blendAnims: true, name: "Орк-стрелок", blurb: "стреляет издалека, панцирь от стрел", level: 15, kind: "spitter",
     hp: 210, dmgMul: 1.7, xp: 2200, scaleMul: 2.8, tint: null, rangedArmor: 0.3,
   },
   // Цель события «Охота на элиту» (до 2026-09-28 — Грибной владыка 25 ур.,
@@ -553,7 +553,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // с «Луком охотника». Новая механика: заряд заклинания взрывается по
   // площади (см. MAGE_SPELL) — до этого мобы били только по одной цели.
   ruinMage: {
-    model: "monWizard", name: "Чародей руин", blurb: "магия по площади, волна с оглушением", level: 20, kind: "spitter",
+    model: "monWizard", gait: true, noSquash: true, walksOnly: true, blendAnims: true, name: "Чародей руин", blurb: "магия по площади, волна с оглушением", level: 20, kind: "spitter",
     hp: 230, dmgMul: 3, xp: 2100, scaleMul: 1.9, tint: null, // слабее: hp 680→340→290→230, dmgMul 8→5→4→3 (2026-10-02)
     physArmor: 0.55, magicVulnMul: 1.6, critVulnMul: 1.5, spellAoe: true,
     novaCaster: true,
@@ -570,7 +570,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // 1500. Имя осколков намеренно ДРУГОЕ, не "Голем-крушитель" — то же имя
   // у родителя и мгновенно расплодившихся копий подозревали в путанице.
   golem: {
-    model: "monYeti", name: "Голем-крушитель", blurb: "раскалывается на осколки", level: 26, kind: "slime",
+    model: "monYeti", gait: true, noSquash: true, walksOnly: true, blendAnims: true, name: "Голем-крушитель", blurb: "раскалывается на осколки", level: 26, kind: "slime",
     // Модельки голема вдвое крупнее просились — 1.7 → 2.55 (× 1.5).
     // xp: изначально втрое выше Чародея руин (ruinMage.xp=2100), затем ещё ×2
     // по просьбе — и за целого голема (xp), и за раскол (splitXp); осколки — как были.
@@ -592,7 +592,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // физ. броня толстой шляпки режет меч/стрелы.
   // Опыт ×2 (60000→120000) вместе с големами, 2026-09-28.
   mushColossus: {
-    model: "monMushColossus", name: "Грибной колосс", blurb: "ядовитые споры", level: 33, kind: "slime",
+    model: "monMushColossus", gait: true, noSquash: true, walksOnly: true, blendAnims: true, name: "Грибной колосс", blurb: "ядовитые споры", level: 33, kind: "slime",
     // Размер ×1.5 по просьбе (3.6 → 5.4, ≈5 м) — и руки длиннее (3.2 → 4.6).
     // Регенерация ~31 HP/с (и в бою): одиночка с малым уроном его еле
     // пересиливает, группа — не замечает. HP ×2 по просьбе (2600 → 5200);
@@ -633,7 +633,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // телеграф проносится по ней тараном — всех на пути сбивает и оглушает.
   // Уходи вбок с полосы!
   infernoDemon: {
-    model: "monDemon", name: "Адский демон", blurb: "огненный таран", level: 36, kind: "slime",
+    model: "monDemon", gait: true, noSquash: true, walksOnly: true, blendAnims: true, name: "Адский демон", blurb: "огненный таран", level: 36, kind: "slime",
     hp: 9500, dmgMul: 10, xp: 3630000, scaleMul: 3.2, tint: null,
     physArmor: 0.3, charger: true, meleeReach: 3.4, attackCooldown: 1.6,
     legendaryChance: 0.035,
@@ -642,7 +642,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // держится, часть урона отражается в атакующего. Под щитом — не бей
   // (или бей магией издалека, отражение то же — терпи). Рукой бьёт больно.
   frostDemon: {
-    model: "monBlueDemon", name: "Ледяной демон", blurb: "замораживает — замедляет, щит отражения", level: 36, kind: "slime",
+    model: "monBlueDemon", gait: true, noSquash: true, walksOnly: true, blendAnims: true, name: "Ледяной демон", blurb: "замораживает — замедляет, щит отражения", level: 36, kind: "slime",
     // 2026-10-02 ослаблен по просьбе: HP 5600→4800, урон 13→8 (+ REFLECT/FREEZE мягче).
     hp: 4800, dmgMul: 8, xp: 964000, scaleMul: 2.8, tint: null,
     freezer: true, reflector: true, magicVulnMul: 0.8, critVulnMul: 1.3, attackCooldown: 1.5,
@@ -652,7 +652,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Костяной вождь: бьёт по земле — из-под ног героев рядом (до трёх)
   // вырываются костяные шипы: больно и оглушает. Круг под ногами — беги.
   boneChief: {
-    model: "monOrcSkull", name: "Костяной вождь", blurb: "шипы с замедлением, лечит своих", level: 36, kind: "slime",
+    model: "monOrcSkull", gait: true, noSquash: true, walksOnly: true, blendAnims: true, name: "Костяной вождь", blurb: "шипы с замедлением, лечит своих", level: 36, kind: "slime",
     hp: 4800, dmgMul: 7.5, xp: 964000, scaleMul: 2.2, tint: null, // HP 6200→4800 (2026-09-30)→3800, урон 7→7.5 (2026-10-04); меньше (было 3), зато их больше
     physArmor: 0.15, rangedArmor: 0.2, spiker: true, healer: true, attackCooldown: 1.6,
     meleeReach: 2.6, // без этого крупное тело не дотягивалось до героя
@@ -661,13 +661,13 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // ---- 40 ур. (2026-10-02): дальний ФИЗИЧЕСКИЙ бой и новый ближний, самые окраины ----
   // Метатель копий: копьё летит прямо и пробивает всех героев на линии, оставляя кровотечение. Ловок — увороты.
   spearThrower: {
-    model: "monTribal", name: "Метатель копий", blurb: "копьё пробивает всех на линии, кровотечение", level: 40, kind: "spitter",
+    model: "monTribal", gait: true, noSquash: true, walksOnly: true, blendAnims: true, name: "Метатель копий", blurb: "копьё пробивает всех на линии, кровотечение", level: 40, kind: "spitter",
     hp: 5600, dmgMul: 9, xp: 1300000, scaleMul: 2.3, tint: null, dodge: 0.15, legendaryChance: 0.035,
     shot: { kind: "spear", range: 24, cooldown: 2.8, speed: 30, dmg: 1.1, pierce: true, bleed: { sec: 5, frac: 0.12 } },
   },
   // Шипохвост: веер из пяти шипов; упавшие мимо остаются колючками и замедляют. Панцирь гасит стрелы и магию издалека.
   spikeTail: {
-    model: "monDino", name: "Шипохвост", blurb: "веер шипов, колючки на земле замедляют", level: 40, kind: "spitter",
+    model: "monDino", gait: true, noSquash: true, walksOnly: true, blendAnims: true, name: "Шипохвост", blurb: "веер шипов, колючки на земле замедляют", level: 40, kind: "spitter",
     hp: 4400, dmgMul: 7, xp: 814000, scaleMul: 2.1, tint: null, rangedArmor: 0.3, legendaryChance: 0.03,
     shot: {
       kind: "spike", range: 16, cooldown: 3.2, speed: 18, dmg: 0.9, count: 5, spread: 0.45,
@@ -690,7 +690,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // ---- 45 ур. (2026-10-06): механики, которых раньше не было; самые дальние углы карты ----
   // Землерой: зарывается — неуязвим, к герою ползёт пыльный след; выныривает под ним с ударом по кругу.
   burrowBeast: {
-    model: "monMonkroose", name: "Землерой", blurb: "уходит под землю и выныривает под героем", level: 45, kind: "slime",
+    model: "monMonkroose", gait: true, noSquash: true, walksOnly: true, blendAnims: true, name: "Землерой", blurb: "уходит под землю и выныривает под героем", level: 45, kind: "slime",
     hp: 14000, dmgMul: 17, xp: 7710000, scaleMul: 3, tint: null, physArmor: 0.25, meleeReach: 3, attackCooldown: 1.4, // 2026-10-06: 9800/13 → 14000/17 (усилить)
     burrower: true, legendaryChance: 0.04,
   },
@@ -710,7 +710,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     shot: { kind: "spike", range: 26, cooldown: 2.4, speed: 24, dmg: 1.5, count: 5, spread: 0.35 },
   },
   shadowNinja: {
-    model: "monNinja", name: "Теневой ниндзя", blurb: "теневая стойка: отбивает удары и бьёт в ответ — переждите", level: 45, kind: "slime",
+    model: "monNinja", gait: true, noSquash: true, walksOnly: true, blendAnims: true, name: "Теневой ниндзя", blurb: "теневая стойка: отбивает удары и бьёт в ответ — переждите", level: 45, kind: "slime",
     hp: 12000, dmgMul: 16, xp: 5720000, scaleMul: 2.2, tint: null, dodge: 0.25, speedMul: 1.4, attackCooldown: 1, // 8400/12 → 12000/16
     meleeReach: 2.6, parry: true, legendaryChance: 0.04,
   },
