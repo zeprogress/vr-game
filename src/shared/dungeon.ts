@@ -430,12 +430,12 @@ export const DUN_MOB_CAMPS: readonly { u: number; v: number; type: keyof typeof 
   { u: 144, v: -146, type: "iceGiant", count: 2, spread: 10, ring: 0.5, noChamp: true, dmgMul: 3, atkMul: 1.5, shareScrap: true }, // зал K: центр широкого забоя (K1), 24 м до края
   { u: 82, v: -6, type: "iceGiant", count: 2, spread: 10, ring: 0.5, noChamp: true, dmgMul: 3, atkMul: 1.5, shareScrap: true },
   { u: 0, v: 60, type: "iceGiant", count: 2, spread: 10, ring: 0.5, noChamp: true, dmgMul: 3, atkMul: 1.5, shareScrap: true },
-  // Лавовый монстр 75 ур. — Тайный колодец (N, свободные уступы у входа, ≈173 м от портала): четыре точки спавна
-  // на уступах вокруг провала — по 4 моба, Стражи и Маги вперемешку. Урон ×3 — как у гиганта (dmgMul камеры).
-  { u: 152, v: -98, type: "lavaGuard", count: 4, spread: 3, ring: 0.5, noChamp: true, dmgMul: 3 },
-  { u: 190, v: -98, type: "lavaMage", count: 4, spread: 3, ring: 0.5, noChamp: true, dmgMul: 3 },
-  { u: 190, v: -52, type: "lavaGuard", count: 4, spread: 3, ring: 0.5, noChamp: true, dmgMul: 3 },
-  { u: 152, v: -52, type: "lavaMage", count: 4, spread: 3, ring: 0.5, noChamp: true, dmgMul: 3 },
+  // Лавовый монстр 75 ур. — Затопленные ступени (S) и Обвальная галерея (T): по две группы из четырёх мобов,
+  // Стражи и Маги вперемешку. Урон ×3 — как у гиганта (dmgMul камеры).
+  { u: -80, v: 4, type: "lavaGuard", count: 4, spread: 3, ring: 0.5, noChamp: true, dmgMul: 3 },
+  { u: -100, v: 24, type: "lavaMage", count: 4, spread: 3, ring: 0.5, noChamp: true, dmgMul: 3 },
+  { u: -110, v: -156, type: "lavaMage", count: 4, spread: 3, ring: 0.5, noChamp: true, dmgMul: 3 },
+  { u: -90, v: -170, type: "lavaGuard", count: 4, spread: 3, ring: 0.5, noChamp: true, dmgMul: 3 },
   { u: -86, v: -80, type: "iceGiant", count: 2, spread: 10, ring: 0.5, noChamp: true, dmgMul: 3, atkMul: 1.5, shareScrap: true },
 ];
 
