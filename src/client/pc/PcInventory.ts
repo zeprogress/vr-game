@@ -1408,6 +1408,7 @@ export class PcInventory {
       const tier = (w?.tier ?? held.tier) as WeaponTier;
       cell.classList.add(`t-${tier}`);
       if (isCraftRare(w)) cell.classList.add("craft-rare");
+      if (w?.rc) cell.classList.add("craft-recipe");
       if (this.card?.kind === "hand" && this.card.side === side) cell.classList.add("sel");
       setIcon(cell, held.cls, w?.name, tier);
       if (w?.affixes.length) cell.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
@@ -1524,7 +1525,7 @@ export class PcInventory {
   }
 
   private itemCell(w: PcInvWeapon): HTMLDivElement {
-    const c = div(`pcinv-cell t-${w.tier}${isCraftRare(w) ? " craft-rare" : ""}${this.card?.kind === "bag" && this.card.id === w.id ? " sel" : ""}`);
+    const c = div(`pcinv-cell t-${w.tier}${isCraftRare(w) ? " craft-rare" : ""}${w?.rc ? " craft-recipe" : ""}${this.card?.kind === "bag" && this.card.id === w.id ? " sel" : ""}`);
     setIcon(c, w.cls, w.name, w.tier);
     c.style.position = "relative";
     if (w.affixes.length) c.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
@@ -1635,7 +1636,7 @@ export class PcInventory {
     const tier = (w?.tier ?? held?.tier ?? "base") as WeaponTier;
     const name = w?.name ?? weaponDef(cls, tier).name;
     const inHand = !!side || (!!w && (d.equipped.left === w.id || d.equipped.right === w.id));
-    const ico = div(`pcinv-cell huge t-${tier}${isCraftRare(w) ? " craft-rare" : ""}`);
+    const ico = div(`pcinv-cell huge t-${tier}${isCraftRare(w) ? " craft-rare" : ""}${w?.rc ? " craft-recipe" : ""}`);
     setIcon(ico, cls, name, tier);
     if (w && attackPoints(w) > 0) ico.append(div("pcinv-sb", `+${attackPoints(w)}`));
     const q = w?.affixes.length ? qualityStarsShort(w.quality, w.affixes.length) : "";
@@ -2447,7 +2448,7 @@ export class PcInventory {
     if (rc) card.append(div("pcinv-fg-rfound", `📜 Найден скрытый рецепт «${rc.name}»`));
     if (w) {
       const top = div("pcinv-fg-rtop");
-      const ico = div(`pcinv-cell huge t-${w.tier}${isCraftRare(w) ? " craft-rare" : ""} pcinv-fg-rico`);
+      const ico = div(`pcinv-cell huge t-${w.tier}${isCraftRare(w) ? " craft-rare" : ""}${w?.rc ? " craft-recipe" : ""} pcinv-fg-rico`);
       setIcon(ico, w.cls, w.name, w.tier);
       const info = div("pcinv-fg-rinfo");
       info.append(div(`pcinv-card-name t-${w.tier}`, w.name));
@@ -2982,6 +2983,9 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 /* Рамка — как у тира (цвет и градиент те же), чуть толще; свечение заметно пульсирует. */
 .pcinv-cell.craft-rare { --bw:1.8px; animation:pcinvRareGlow 2.2s ease-in-out infinite; animation-delay:var(--now,0ms); }
 @keyframes pcinvRareGlow { 0%,100% { filter:drop-shadow(0 0 3px var(--tier-craft)); } 50% { filter:drop-shadow(0 0 10px var(--tier-craft)); } }
+/* Оружие по скрытому рецепту: перелив — оттенок ходит туда-обратно (золото ↔ тир), сам значок тот же. */
+.pcinv-cell.craft-recipe > .gico { animation:pcinvRecipeShimmer 3.4s ease-in-out infinite; animation-delay:var(--now,0ms); }
+@keyframes pcinvRecipeShimmer { 0%,100% { filter:hue-rotate(-18deg) saturate(1.25) brightness(1.06); } 50% { filter:hue-rotate(22deg) saturate(1.35) brightness(1.14); } }
 /* Само оружие на значке слегка светится цветом тира. */
 .pcinv-cell.craft-rare > .gico { filter:drop-shadow(0 0 3px var(--tier-craft)) drop-shadow(0 0 7px color-mix(in srgb,var(--tier-craft) 65%,transparent)) brightness(1.08); }
 .pcinv-cell.empty { --e:#1c2a3c; --f:linear-gradient(180deg,#08111e,#060d18); color:#2b3e58; }

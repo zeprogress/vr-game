@@ -279,6 +279,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
       ench: enchDetails(w),
       sharp: attackPoints(w),
       ...(w.cp ? { cp: w.cp } : {}),
+      ...(w.rc ? { rc: true } : {}),
       fav: !!w.fav,
     })),
     equipped: { left: leftInst && leftInst !== rightInst ? leftInst.id : null, right: rightInst?.id ?? null },

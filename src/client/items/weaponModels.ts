@@ -39,9 +39,11 @@ uniform float uT;
 uniform float uAmp;
 varying vec2 vUV;
 varying float vA;
+varying float vS;
 void main() {
   float p = 0.85 + sin(uT * 3.0) * 0.15;
   vA = (0.36 + p * 0.36) * uAmp;
+  vS = 0.5 + 0.5 * sin(uT * 2.1 + position.x * 4.0 + position.y * 3.0);
   vUV = uv;
   vec3 c = world[3].xyz;
   float sc = length(world[0].xyz) * p;
@@ -59,11 +61,16 @@ Effect.ShadersStore[`${GLOW}FragmentShader`] = `
 precision highp float;
 varying vec2 vUV;
 varying float vA;
+varying float vS;
 uniform sampler2D tex;
 uniform vec3 uCol;
+uniform vec3 uCol2;
+uniform float uShim;
 void main() {
+  // Перелив (крафт): цвет волной уходит к золотому и обратно; без uShim — ровный цвет тира.
+  vec3 col = mix(uCol, uCol2, vS * uShim);
   float a = texture2D(tex, vUV).a * vA;
-  gl_FragColor = vec4(uCol, a);
+  gl_FragColor = vec4(col, a);
 }
 `;
 
@@ -77,21 +84,26 @@ export function isGlowTier(t: string): t is GlowTier {
   return t in GLOW_COL;
 }
 
-function glowMaterial(scene: Scene, amp: number, col: Color3 = GLOW_COL.legendary): ShaderMaterial {
+/** Цвет перелива мастерского свечения (к нему уходит волна). */
+const GLOW_SHIMMER = new Color3(1, 0.82, 0.36);
+
+function glowMaterial(scene: Scene, amp: number, col: Color3 = GLOW_COL.legendary, shim = false): ShaderMaterial {
   let byAmp = glowMats.get(scene);
   if (!byAmp) glowMats.set(scene, (byAmp = new Map()));
-  const key = `${amp}|${col.toHexString()}`;
+  const key = `${amp}|${col.toHexString()}|${shim ? 1 : 0}`;
   let mat = byAmp.get(key);
   if (!mat) {
     mat = new ShaderMaterial(`${GLOW}Mat${key}`, scene, GLOW, {
       attributes: ["position", "uv"],
-      uniforms: ["world", "view", "viewProjection", "uT", "uAmp", "uCol"],
+      uniforms: ["world", "view", "viewProjection", "uT", "uAmp", "uCol", "uCol2", "uShim"],
       samplers: ["tex"],
       needAlphaBlending: true,
     });
     mat.setTexture("tex", radialGlowTexture(scene));
     mat.setFloat("uAmp", amp);
     mat.setColor3("uCol", col);
+    mat.setColor3("uCol2", GLOW_SHIMMER);
+    mat.setFloat("uShim", shim ? 1 : 0);
     mat.alphaMode = Constants.ALPHA_ADD;
     mat.backFaceCulling = false;
     mat.disableDepthWrite = true;
@@ -103,7 +115,7 @@ function glowMaterial(scene: Scene, amp: number, col: Color3 = GLOW_COL.legendar
 }
 
 /** Базовое свечение шелла, как его создали: сила и цвет — чтобы менять по точкам без пересборки. */
-const glowBase = new WeakMap<Mesh, { amp: number; col: Color3 }>();
+const glowBase = new WeakMap<Mesh, { amp: number; col: Color3; shim: boolean }>();
 /** Последняя применённая прибавка по корню оружия (и номер настройки): пересчёт только при смене. */
 const sharpApplied = new WeakMap<TransformNode, { pct: number; ver: number }>();
 
@@ -120,8 +132,8 @@ export function attachLegendaryGlow(
 ): void {
   const shell = MeshBuilder.CreatePlane("legGlow", { size: radius * 2 }, scene);
   const amp = Math.round(intensity * (tier === "ruby" ? 1.4 : tier === "craft" ? 1.2 : 1) * 1000) / 1000;
-  shell.material = glowMaterial(scene, amp, GLOW_COL[tier]);
-  glowBase.set(shell, { amp, col: GLOW_COL[tier] });
+  shell.material = glowMaterial(scene, amp, GLOW_COL[tier], tier === "craft");
+  glowBase.set(shell, { amp, col: GLOW_COL[tier], shim: tier === "craft" });
   shell.isPickable = false;
   shell.parent = host;
   shell.position.copyFrom(at);
@@ -153,7 +165,7 @@ export function applySharpGlow(root: TransformNode, pct: number): void {
     g.isVisible = pct > 0;
     if (pct <= 0) continue;
     g.scaling.setAll(radius);
-    g.material = glowMaterial(g.getScene(), Math.round(base.amp * strength * 1000) / 1000, base.col);
+    g.material = glowMaterial(g.getScene(), Math.round(base.amp * strength * 1000) / 1000, base.col, base.shim);
   }
 }
 
