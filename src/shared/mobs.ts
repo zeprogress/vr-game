@@ -746,7 +746,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Числа — первая прикидка: баланс смотреть в лаборатории (npm run lab:balance).
   lavaGuard: {
     model: "monLavaMonster", name: "Страж лавы", blurb: "удар о землю оглушает, магма под ногами, ярость ниже 40%",
-    level: 75, kind: "slime", hp: 9000000, dmgMul: 60, xp: 480000000000, scaleMul: 3, tint: null, killXpMul: 750,
+    level: 75, kind: "slime", hp: 9000000, dmgMul: 60, xp: 480000000000, scaleMul: 4.2, tint: null, killXpMul: 750,
     lavaGuard: true, gait: true, noSquash: true, walksOnly: true, blendAnims: true, turnRate: 60, // разворот шагами (TurnL/TurnR)
     strikeDelay: 0.6, attackSec: 1.3 /* = LAVA.clipSec.attack */, walkClipSpeed: 1.5, runClipSpeed: 3.5,
     attackCooldown: 2, meleeReach: 4.5, scrap: 100,
