@@ -9532,6 +9532,14 @@ export class ZoneRoom extends Room<ZoneState> {
     p.head.x += sx;
     p.head.z += sz;
     this.botBlockedByMobs(p, bot, x0, z0);
+    // Подземелье: шаг не проходит сквозь стену фигуры (иначе бот, скользя вдоль тел мобов, въезжал в стенку
+    // и застревал). Такой шаг отменяем и гасим скорость в ту сторону.
+    if (inDunRegion(x0, z0) && !dunClear(x0, z0, p.head.x, p.head.z)) {
+      p.head.x = x0;
+      p.head.z = z0;
+      bot.vx = 0;
+      bot.vz = 0;
+    }
     // Катакомбы: стены залов; иначе — та же граница, что у игроков (карта + пандус + плато рейда).
     if (inCatRegion(p.head.x, p.head.z)) [p.head.x, p.head.z] = catProject(p.head.x, p.head.z, this.cat.open, PLAYER.radius);
     else clampToPlay(p.head);
