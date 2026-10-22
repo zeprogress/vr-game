@@ -1571,7 +1571,7 @@ export class WristMenu {
       id: `wh:${wp.id}`, x, y, w, h, kind: "cell",
       info: [
         `${wp.fav ? `${glyph("ui.fav")} ` : ""}${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""} — нажми: действия`,
-        [attackLabel(wp.cls, wp.tier, sharpPctOf(wp), craftPow(wp) * 100), ...(wp.effects ?? []), ...wp.affixes].filter(Boolean).join(", ") || "без роллов",
+        [attackLabel(wp.cls, wp.tier, sharpPctOf(wp), craftPow(wp) * 100, !!wp.rc), ...(wp.effects ?? []), ...wp.affixes].filter(Boolean).join(", ") || "без роллов",
       ],
       act: () => this.openWarehousePopup(wp),
     });
@@ -1749,7 +1749,7 @@ export class WristMenu {
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
     this.popup = {
       title: `${wp.fav ? `${glyph("ui.fav")} ` : ""}${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""}`,
-      sub: [attackLabel(wp.cls, wp.tier, sharpPctOf(wp), craftPow(wp) * 100), ...(wp.effects ?? []), ...wp.affixes].filter(Boolean).join(", ") || "без роллов",
+      sub: [attackLabel(wp.cls, wp.tier, sharpPctOf(wp), craftPow(wp) * 100, !!wp.rc), ...(wp.effects ?? []), ...wp.affixes].filter(Boolean).join(", ") || "без роллов",
       color: TIER_COLOR[wp.tier],
       buttons,
     };

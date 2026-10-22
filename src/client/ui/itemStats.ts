@@ -3,6 +3,7 @@ import { attackSpeedFor } from "#shared/progression";
 import { attacksPerSec, dmgRollOfText, sharpAttackAdd, weaponHitDamage } from "#shared/heroStats";
 import { magicPowerFor } from "#shared/magic";
 import { DAGGER, HAMMER, WEAPONS2 } from "#shared/classes2";
+import { CRAFT } from "#shared/craft";
 import { BOW, COMBAT } from "#shared/constants";
 
 export interface WornWeapon {
@@ -31,7 +32,7 @@ const n1 = (v: number): string => (Math.round(v * 10) / 10).toFixed(1);
 
 /** Урон удара оружием в руке у героя — та же формула, что строка «Урон» в характеристиках (heroStats.weaponHitDamage), с роллом «Урон». */
 export function heldAttack(w: WornWeapon, s: HeroStats): number {
-  return weaponHitDamage(w.cls, w.tier, s.level, s, dmgRollOfText(w.affix));
+  return weaponHitDamage(w.cls, w.tier, s.level, s, dmgRollOfText(w.affix)) * (w.rc ? CRAFT.recipeDmg : 1);
 }
 
 /**
@@ -93,7 +94,7 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
     out.push(["Щит", "блок, защита, отражение и регенерация — от роллов"]);
   }
   // Точка атаки — сразу за ударом: прибавка в процентах и в «Атаке» (та же прибавка, что в подписи на складе).
-  if (sharp > 0) out.splice(1, 0, ["Точка атаки", `+${fmtPct(sharp)}% · +${sharpAttackAdd(w.cls, w.tier, sharp, craft).toFixed(1)} к атаке`]);
+  if (sharp > 0) out.splice(1, 0, ["Точка атаки", `+${fmtPct(sharp)}% · +${sharpAttackAdd(w.cls, w.tier, sharp, craft, !!w.rc).toFixed(1)} к атаке`]);
   if (craft > 0) out.splice(1, 0, ["Мастерство", `+${fmtPct(craft)}% к урону`]);
   // Свойство Эгиды идёт в тексте первым («Оплот: …») — отдельной строкой, не роллом.
   const parts = (w.affix ?? "").split(", ").filter(Boolean);

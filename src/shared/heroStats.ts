@@ -1,6 +1,7 @@
 import type { ArmorStat } from "./armor";
 import { BOW, CAMPFIRE, EVENT, SHIELD, SWORD_CRIT_MULT, STAFF_CRIT_MULT } from "./constants";
 import { SCROLL } from "./shop";
+import { CRAFT } from "./craft";
 import { fireboltDamage } from "./magic";
 import { armorFrac, dodgeChance, heroAttackInterval, holdsOneItem, hpRegenFrac, maxHpFor, moveSpeedFor, staffCastInterval } from "./progression";
 import { BASE_CRIT } from "./combat";
@@ -58,22 +59,22 @@ export function dmgRollOfText(text: string | undefined): number {
  * что строка «Урон» в характеристиках: урон героя растёт от этой базы с уровнем, атрибутами, роллами
  * и баффами — поэтому «Атака» никогда не больше «Урона». null — оружие не бьёт (щит).
  */
-export function attackValue(cls: string, tier: string, sharpPct = 0, craftPct = 0): { total: number; add: number } | null {
-  // «Мастерство» крафта — часть силы самого оружия (база), заточка — сверху.
-  const base = weaponHitDamage(cls, tier, 1, BASE_ATTRS) * (1 + craftPct / 100);
+export function attackValue(cls: string, tier: string, sharpPct = 0, craftPct = 0, recipe = false): { total: number; add: number } | null {
+  // «Мастерство» крафта — часть силы самого оружия (база), заточка — сверху. Скрытый рецепт — своя прибавка к базе.
+  const base = weaponHitDamage(cls, tier, 1, BASE_ATTRS) * (1 + craftPct / 100) * (recipe ? CRAFT.recipeDmg : 1);
   if (base <= 0) return null;
   const total = base * (1 + sharpPct / 100);
   return { total, add: total - base };
 }
 
 /** Прибавка «Атаки» от заточки — в единицах урона (как attackValue). */
-export function sharpAttackAdd(cls: string, tier: string, sharpPct: number, craftPct = 0): number {
-  return attackValue(cls, tier, sharpPct, craftPct)?.add ?? 0;
+export function sharpAttackAdd(cls: string, tier: string, sharpPct: number, craftPct = 0, recipe = false): number {
+  return attackValue(cls, tier, sharpPct, craftPct, recipe)?.add ?? 0;
 }
 
 /** Подпись «Атака 9.4»; с заточкой — «Атака 10.3 (+0.9 от заточки)». Щит — пусто. */
-export function attackLabel(cls: string, tier: string, sharpPct = 0, craftPct = 0): string {
-  const v = attackValue(cls, tier, sharpPct, craftPct);
+export function attackLabel(cls: string, tier: string, sharpPct = 0, craftPct = 0, recipe = false): string {
+  const v = attackValue(cls, tier, sharpPct, craftPct, recipe);
   if (!v) return "";
   return v.add >= 0.05 ? `Атака ${v.total.toFixed(1)} (+${v.add.toFixed(1)} от заточки)` : `Атака ${v.total.toFixed(1)}`;
 }

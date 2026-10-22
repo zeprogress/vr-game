@@ -261,7 +261,7 @@ export function drawEnchant(
   }
   if (w) {
     const qx = ui.text(qualityStars(w.quality, w.ench.length), PAD, 154, 40, QUALITY_COLOR, 800);
-    const atk = attackLabel(w.cls, w.tier, sharpPctOf(w), craftPow(w) * 100);
+    const atk = attackLabel(w.cls, w.tier, sharpPctOf(w), craftPow(w) * 100, !!w.rc);
     if (atk) ui.text(atk, PAD + qx + 30, 160, 32, ATTACK_COLOR, 800);
   }
   let y = 224;

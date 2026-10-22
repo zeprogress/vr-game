@@ -1641,7 +1641,7 @@ export class PcInventory {
     if (w && attackPoints(w) > 0) ico.append(div("pcinv-sb", `+${attackPoints(w)}`));
     const q = w?.affixes.length ? qualityStarsShort(w.quality, w.affixes.length) : "";
     const extra: HTMLElement[] = [];
-    const atk = attackLabel(cls, tier, w ? sharpPctOf(w) : 0, w ? craftPow(w) * 100 : 0);
+    const atk = attackLabel(cls, tier, w ? sharpPctOf(w) : 0, w ? craftPow(w) * 100 : 0, !!w?.rc);
     if (atk) extra.push(div("pcinv-tipatk", atk));
     for (const e of w?.effects ?? []) extra.push(div("pcinv-tipeff", e));
     this.cardHead(head, ico, name, `t-${tier}`, `${cap(TIER_LOOK[tier].name)}${q ? ` · оценка <b>${q}</b>` : ""}`, inHand ? "в руке" : "", extra);
@@ -2456,7 +2456,7 @@ export class PcInventory {
       const sub = div("pcinv-small");
       sub.innerHTML = `${cap(TIER_LOOK[w.tier].name)}${q ? ` · оценка <b>${q}</b>` : ""}`;
       info.append(sub);
-      const atk = attackLabel(w.cls, w.tier, sharpPctOf(w), craftPow(w) * 100);
+      const atk = attackLabel(w.cls, w.tier, sharpPctOf(w), craftPow(w) * 100, !!w.rc);
       if (atk) info.append(div("pcinv-tipatk", atk));
       top.append(ico, info);
       card.append(top);
@@ -2709,7 +2709,7 @@ export class PcInventory {
     this.tip.innerHTML = "";
     this.tip.append(div(`pcinv-name t-${tier}`, name));
     this.tip.append(div("pcinv-small", TIER_LOOK[tier]?.name ?? tier));
-    const atk = attackLabel(cls, tier, w ? sharpPctOf(w) : 0, w ? craftPow(w) * 100 : 0);
+    const atk = attackLabel(cls, tier, w ? sharpPctOf(w) : 0, w ? craftPow(w) * 100 : 0, !!w?.rc);
     if (atk) this.tip.append(div("pcinv-tipatk", atk));
     if (w && w.affixes.length) {
       const sc = div("pcinv-score");
@@ -2987,7 +2987,7 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-cell.craft-recipe > .gico { animation:pcinvRecipeShimmer 3.4s ease-in-out infinite; animation-delay:var(--now,0ms); }
 @keyframes pcinvRecipeShimmer { 0%,100% { filter:hue-rotate(-18deg) saturate(1.25) brightness(1.06) drop-shadow(0 0 3px #ffd76a) drop-shadow(0 0 7px rgba(255,215,106,.5)); } 50% { filter:hue-rotate(22deg) saturate(1.35) brightness(1.14) drop-shadow(0 0 3px var(--tier-craft)) drop-shadow(0 0 7px color-mix(in srgb,var(--tier-craft) 65%,transparent)); } }
 /* Само оружие на значке слегка светится цветом тира. */
-.pcinv-cell.craft-rare > .gico { filter:drop-shadow(0 0 3px var(--tier-craft)) drop-shadow(0 0 7px color-mix(in srgb,var(--tier-craft) 65%,transparent)) brightness(1.08); }
+.pcinv-cell.craft-rare > .gico { filter:drop-shadow(0 0 1.5px var(--tier-craft)) drop-shadow(0 0 3px color-mix(in srgb,var(--tier-craft) 35%,transparent)) brightness(1.04); }
 .pcinv-cell.empty { --e:#1c2a3c; --f:linear-gradient(180deg,#08111e,#060d18); color:#2b3e58; }
 .pcinv-cell.locked > * { opacity:.16; filter:grayscale(1) brightness(1.6); }
 .pcinv-cell.sel { --e:linear-gradient(180deg,#e8fbff,#7fd2ff 40%,#2f8fe0); --bw:2px; filter:drop-shadow(0 0 4px rgba(70,180,255,.95)) drop-shadow(0 0 10px rgba(40,140,240,.5)); }
