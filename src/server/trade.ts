@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { TradeItemView } from "#shared/net/messages";
-import { addToBag, bagCount, instanceName, ITEMS, takeFromBag, type ItemId, type Slot, type WeaponInstance } from "#shared/items";
+import { addToBag, attackPoints, bagCount, instanceName, ITEMS, takeFromBag, type ItemId, type Slot, type WeaponInstance } from "#shared/items";
 import { gemName, parseGem, ringName, type JewelSave } from "#shared/jewels";
 import { armorLabel, type ArmorInstance, type ArmorPart } from "#shared/armor";
 import { addStock, CRAFT_ITEMS, isCraftItem, type CraftItemId, type CraftStock } from "#shared/craft";
@@ -235,7 +235,10 @@ export function parseTradeList(raw: string): TradeItem[] | null {
 
 /** Предмет обмена для окна: название, число и то, что нужно для иконки. */
 export function itemView(t: Taken): TradeItemView {
-  if (t.k === "weapon") return { k: "weapon", name: instanceName(t.w), n: 1, cls: t.w.cls, tier: t.w.tier };
+  if (t.k === "weapon") {
+    const sharp = attackPoints(t.w);
+    return { k: "weapon", name: instanceName(t.w), n: 1, cls: t.w.cls, tier: t.w.tier, ...(sharp ? { sharp } : {}), ...(t.w.rc ? { rc: true } : {}) };
+  }
   if (t.k === "ring") return { k: "ring", name: ringName(t.r), n: 1, tier: t.r.tier, gems: [...t.r.gems] };
   if (t.k === "armor") return { k: "armor", name: armorLabel(t.a), n: 1, part: t.a.part, tier: t.a.tier };
   if (t.k === "gem") return { k: "gem", name: gemName(t.key), n: t.n, key: t.key };

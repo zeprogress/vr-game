@@ -665,7 +665,7 @@ export class PcInventory {
         label: w.name,
         max: 1,
         stack: false,
-        view: { k: "weapon", name: w.name, n: 1, cls: w.cls, tier: w.tier },
+        view: { k: "weapon", name: w.name, n: 1, cls: w.cls, tier: w.tier, ...(w.sharp ? { sharp: w.sharp } : {}), ...(w.rc ? { rc: true } : {}) },
       });
     }
     for (const a of d.armor ?? []) {
@@ -697,7 +697,12 @@ export class PcInventory {
   /** Иконка предмета обмена — из того же реестра значков, что и в инвентаре. */
   private tradeIcon(it: TradeItemView): HTMLDivElement {
     const box = div("pcinv-tic");
-    if (it.k === "weapon") setIconEl(box, weaponIcon(it.cls ?? "sword", false, it.tier ?? "base"));
+    box.style.position = "relative";
+    if (it.k === "weapon") {
+      // Вид — как в инвентаре: щит-Эгида своей картинкой, перелив рецепта, заточка значком «+N».
+      setIconEl(box, weaponIcon(it.cls ?? "sword", it.name === AEGIS_NAME, it.tier ?? "base"), undefined, !!it.rc);
+      if (it.sharp) box.append(div("pcinv-sb", `+${it.sharp}`));
+    }
     else if (it.k === "ring") box.innerHTML = ringHtml((it.tier ?? "base") as RingTier, it.gems ?? []);
     else if (it.k === "gem") box.innerHTML = gemHtml(it.key ?? "");
     else if (it.k === "mat") box.innerHTML = iconHtml(`m.${it.mat ?? "alloy"}` as IconKey);
