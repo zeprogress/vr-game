@@ -13,6 +13,8 @@ export interface SoundAt {
  * и слышен с той стороны, где источник (моб, взмах, плевок).
  */
 /** Звуки Ледяного гиганта (Sfx.ice). */
+export type LavaSound = "step" | "slam" | "spill" | "mark" | "ring" | "hit" | "roar" | "death";
+
 export type IceSound = "step" | "swipe" | "slam" | "spikes" | "roar" | "throw" | "impact" | "freeze" | "shatter" | "death" | "stack";
 /** Звуки Владыки Бездны (tools/sfx/dragon_sfx.py). */
 export type LordSound =
@@ -102,6 +104,19 @@ export class Sfx {
   } as const;
   private readonly iceBufs: Partial<Record<IceSound, AudioBuffer>> = {};
   private iceLoading = false;
+  /** Лавовый монстр (tools/sfx/lava_sfx.py): Страж и Маг — одни звуки. */
+  private static readonly LAVA_SFX = {
+    step: "/sfx/lava-step.wav",
+    slam: "/sfx/lava-slam.wav",
+    spill: "/sfx/lava-spill.wav",
+    mark: "/sfx/lava-mark.wav",
+    ring: "/sfx/lava-ring.wav",
+    hit: "/sfx/lava-hit.wav",
+    roar: "/sfx/lava-roar.mp3",
+    death: "/sfx/lava-death.mp3",
+  } as const;
+  private readonly lavaBufs: Partial<Record<LavaSound, AudioBuffer>> = {};
+  private lavaLoading = false;
   private static readonly LORD_SFX: Record<LordSound, string> = {
     step: "/sfx/lord-step.wav",
     bite: "/sfx/lord-bite.wav",
@@ -986,6 +1001,35 @@ export class Sfx {
     if (!this.ready()) return;
     this.preloadIceGiant();
     const buf = this.iceBufs[kind];
+    if (!buf) return;
+    const src = this.ctx!.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = 1 + (Math.random() * 2 - 1) * jitter;
+    const g = this.ctx!.createGain();
+    g.gain.value = gain;
+    src.connect(g);
+    g.connect(this.spatialAt ? this.panAt(this.spatialAt) : this.master!);
+    src.start(this.t + Math.max(0, delay));
+  }
+
+  /** Один раз подгрузить звуки Лавового монстра (зовёт моб при появлении — к первому приёму готово). */
+  preloadLava(): void {
+    if (this.lavaLoading || !this.ctx) return;
+    this.lavaLoading = true;
+    for (const [k, url] of Object.entries(Sfx.LAVA_SFX) as [LavaSound, string][]) {
+      fetch(url)
+        .then((r) => r.arrayBuffer())
+        .then((a) => new Promise<AudioBuffer>((res, rej) => this.ctx!.decodeAudioData(a, res, rej)))
+        .then((b) => (this.lavaBufs[k] = b))
+        .catch(() => {});
+    }
+  }
+
+  /** Звук Лавового монстра (объёмно, если вызван внутри at()); как ice(): разброс темпа и задержка по часам звука. */
+  lava(kind: LavaSound, gain = 1, jitter = 0.05, delay = 0): void {
+    if (!this.ready()) return;
+    this.preloadLava();
+    const buf = this.lavaBufs[kind];
     if (!buf) return;
     const src = this.ctx!.createBufferSource();
     src.buffer = buf;

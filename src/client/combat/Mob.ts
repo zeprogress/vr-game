@@ -958,6 +958,7 @@ export class Mob implements Hittable {
       }
     }
     if (eliteDef?.iceGiant) this.sfx.preloadIceGiant();
+    if (eliteDef?.lavaGuard || eliteDef?.lavaMage) this.sfx.preloadLava();
     if (eliteDef?.dragonLord) this.sfx.preloadLord();
     // Клипы видов замаха босса (MOB_SWING), если они есть в модели.
     this.swingAnims = {};
