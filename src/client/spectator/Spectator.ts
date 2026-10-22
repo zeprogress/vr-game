@@ -4,6 +4,7 @@ import { ClassFx, playClassAct, type ClassActCtx } from "../ui/ClassFx";
 import { SkillVfx } from "../ui/SkillVfx";
 import { playIceGiantAct, type IceGiantCtx } from "../ui/IceGiantAct";
 import { playDragonAct } from "../ui/DragonAct";
+import { playLavaAct } from "../ui/LavaAct";
 import { playSteelAct } from "../ui/SteelAct";
 import { playDrawAct } from "../ui/DrawAct";
 import { prewarmClassClips } from "../world/classPoses";
@@ -1700,6 +1701,7 @@ export class Spectator {
     if (playClassAct(this.classCtx, k, x, y, z, id, d, x2in, z2in, v, r, mobId)) return;
     if (playIceGiantAct(this.iceCtx, k, x, y, z, id, d, x2in, z2in, r)) return;
     if (playDragonAct(this.iceCtx, k, x, y, z, mobId ?? id, d, x2in, z2in, r)) return;
+    if (playLavaAct(this.iceCtx, k, x, y, z, mobId ?? id, d, x2in, z2in, r)) return;
     if (playSteelAct(this.iceCtx, k, x, y, z, id, d, x2in, z2in, r, mobId, v)) return;
     if (playDrawAct(this.iceCtx, k, x, y, z, id, d, x2in, z2in, r, mobId, v)) return;
     switch (k) {
