@@ -346,6 +346,8 @@ export interface EliteMobDef {
   iceGiant?: boolean;
   /** Владыка Бездны: свои приёмы (server/rooms/dragonFight.ts, DRAGON), огонь (client/ui/DragonAct.ts) и звуки «lord-*». */
   dragonLord?: boolean;
+  /** Опыт за убийство — поле xp целиком (делится по урону), а не кривая по уровню моба: время убийства задаёт xp. */
+  xpFixed?: boolean;
   /** Лавовый монстр 75 ур.: Страж (удар о землю, магма, ярость) и Маг (метки лавы, кольцо углей) — см. LAVA. */
   lavaGuard?: boolean;
   lavaMage?: boolean;
@@ -745,14 +747,14 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Числа — первая прикидка: баланс смотреть в лаборатории (npm run lab:balance).
   lavaGuard: {
     model: "monLavaMonster", name: "Страж лавы", blurb: "удар о землю оглушает, магма под ногами, ярость ниже 40%",
-    level: 75, kind: "slime", hp: 225000, dmgMul: 60, xp: 6638, scaleMul: 4.2, tint: null, physArmor: 0.4, // физическая броня: 40% физического урона съедает
+    level: 75, kind: "slime", hp: 225000, dmgMul: 60, xp: 26552, xpFixed: true, scaleMul: 4.2, tint: null, physArmor: 0.4, // физическая броня: 40% физического урона съедает
     lavaGuard: true, gait: true, noSquash: true, walksOnly: true, blendAnims: true, turnRate: 60, // разворот шагами (TurnL/TurnR)
     strikeDelay: 0.6, attackSec: 1.3 /* = LAVA.clipSec.attack */, walkClipSpeed: 1.5, runClipSpeed: 3.5,
     attackCooldown: 2, meleeReach: 4.5, scrap: 100,
   },
   lavaMage: {
     model: "monLavaMonster", name: "Маг лавы", blurb: "метка лавы с задержкой, кольцо углей замедляет",
-    level: 75, kind: "spitter", hp: 200000, dmgMul: 50, xp: 6638, scaleMul: 2.6, magicArmor: 0.4, // магическая броня: 40% урона магии съедает
+    level: 75, kind: "spitter", hp: 200000, dmgMul: 50, xp: 26552, xpFixed: true, scaleMul: 2.6, magicArmor: 0.4, // магическая броня: 40% урона магии съедает
     tint: [0.95, 0.42, 0.12], // раскалённый перекрас — отличается от стража
     lavaMage: true, gait: true, noSquash: true, walksOnly: true, blendAnims: true, turnRate: 60, // разворот шагами (TurnL/TurnR)
     strikeDelay: 0.6, attackSec: 1.3 /* = LAVA.clipSec.attack */, walkClipSpeed: 1.5, runClipSpeed: 3.5,
@@ -761,11 +763,11 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   iceGiant: {
     model: "monIceGiant", name: "Ледяной гигант",
     blurb: "аура холода и обморожение (5 стаков — вмерзаешь в лёд), раскол вокруг себя, глыба и разлом по дальним",
-    level: 70, kind: "slime",
+    level: 70, kind: "slime", xpFixed: true,
     // 2026-10-19: HP ×5 (260 000 → 1 300 000), урон ×1.5 (32 → 48), размер ×2 (≈11.5 м); опыт — за 125
     // убийств своего уровня (было 25: ×5 по HP), xp по кривой здоровья.
     // 2026-10-20: размер ×2/3 (≈7.7 м, scaleMul 12 → 8): радиусы умений и дальности — под него; урон умений ↑, перезарядки ↓.
-    hp: 1300000, dmgMul: 48, xp: 4279, scaleMul: 8, tint: null,
+    hp: 1300000, dmgMul: 48, xp: 85580, scaleMul: 8, tint: null,
     physArmor: 0.2, magicVulnMul: 1.2, // кристаллы держат удар; огонь магии их топит
     attackCooldown: 2, meleeReach: 6, speedMul: 1, sepMul: 0.6,
     iceGiant: true, walksOnly: true, gait: true, noSquash: true, blendAnims: true,

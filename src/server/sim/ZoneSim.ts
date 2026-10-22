@@ -673,6 +673,8 @@ export class Mob {
   /** Множитель радиуса расталкивания толпы (separateMobs); см. ELITE_MOBS.sepMul. */
   readonly sepMul: number;
   readonly eliteLevel: number;
+  /** Опыт за убийство — фиксированный (EliteMobDef.xpFixed): поле xp, а не кривая по уровню. */
+  readonly xpFixed: boolean;
   readonly campType: string;
   readonly champ: boolean;
   private readonly respawnSec: number;
@@ -1011,6 +1013,8 @@ export class Mob {
       hp?: number;
       dmgMul?: number;
       xp?: number;
+      /** Опыт за убийство фиксированный (поле xp): см. EliteMobDef.xpFixed. */
+      xpFixed?: boolean;
       /** Лом за убийство (по умолчанию 1; ледяной гигант — 100 в подземелье, 5 в нашествии). */
       scrap?: number;
       /** Лом делится поровну между всеми, кто бил моба (а не только добившему). */
@@ -1093,6 +1097,7 @@ export class Mob {
     this.ringMul = opts.ringMul ?? 1;
     this.sepMul = opts.sepMul ?? 1;
     this.eliteLevel = opts.level ?? 0;
+    this.xpFixed = opts.xpFixed ?? false;
     this.flying = opts.flying ?? false;
     this.magicMelee = opts.magicMelee ?? false;
     this.physEvery = opts.physEvery ?? 0;
@@ -2878,7 +2883,7 @@ class Bolt {
 export function eliteOpts(d: EliteMobDef): NonNullable<ConstructorParameters<typeof Mob>[3]> {
   return {
     model: d.model, name: d.name, level: d.level, hp: d.hp, dmgMul: d.dmgMul, scaleMul: d.scaleMul, xp: d.xp, ringMul: d.ringMul, sepMul: d.sepMul,
-    flying: d.flying, visLift: d.visLift, magicMelee: d.magicMelee, physEvery: d.physEvery, rangedArmor: d.rangedArmor, physArmor: d.physArmor, magicArmor: d.magicArmor,
+    xpFixed: d.xpFixed, flying: d.flying, visLift: d.visLift, magicMelee: d.magicMelee, physEvery: d.physEvery, rangedArmor: d.rangedArmor, physArmor: d.physArmor, magicArmor: d.magicArmor,
     magicVulnMul: d.magicVulnMul, critVulnMul: d.critVulnMul, spellAoe: d.spellAoe, novaCaster: d.novaCaster, enrageAt: d.enrageAt,
     splitAt: d.splitAt, splitCount: d.splitCount, splitScaleMul: d.splitScaleMul, splitHpFrac: d.splitHpFrac, splitDmgMul: d.splitDmgMul,
     splitSpeedMul: d.splitSpeedMul, splitReviveSec: d.splitReviveSec, splitXp: d.splitXp, splitChildXp: d.splitChildXp,
@@ -3594,7 +3599,7 @@ export class ZoneSim {
    */
   readonly bossXpShare: { owner: string; frac: number; lvl: number }[] = [];
   /** Доля убийства моба (с вкладом) и его уровень: опыт игроку считает комната по его уровню (killXp). */
-  readonly mobXpShare: { owner: string; frac: number; lvl: number }[] = [];
+  readonly mobXpShare: { owner: string; frac: number; lvl: number; fixed?: number }[] = [];
   /** Криты снарядов за тик: где показать красный «X». Комната разошлёт и очистит. */
   readonly critHits: { x: number; y: number; z: number; owner: string }[] = [];
   /** Числа урона у спектатора (?dmgNumbers) — комната сама решает, слать ли (см. state.dmgNumbers). */
@@ -4070,7 +4075,7 @@ export class ZoneSim {
     if (total <= 0 || pool <= 0) return;
     // Опыт — доля одного убийства (killXp), делится по вкладу; уровень моба — для соразмерности.
     for (const [owner, d] of parts) {
-      this.mobXpShare.push({ owner, frac: d / total, lvl: m.eliteLevel });
+      this.mobXpShare.push({ owner, frac: d / total, lvl: m.eliteLevel, fixed: m.xpFixed ? m.xp : undefined });
     }
   }
 

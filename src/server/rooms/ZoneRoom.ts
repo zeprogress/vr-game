@@ -11277,7 +11277,8 @@ export class ZoneRoom extends Room<ZoneState> {
       if (!kp) continue;
       // Доля убийства моба ЕГО уровня (killXp): соразмерно, не больше потребности уровня за раз.
       const lvlCap = xpToNext(kp.level);
-      const raw = killXp(k.lvl, kp.level) * k.frac * this.buffMult(k.owner, "xp");
+      // Фиксированный опыт моба (xpFixed) — поле xp; иначе кривая по уровню моба и героя.
+      const raw = (k.fixed ?? killXp(k.lvl, kp.level)) * k.frac * this.buffMult(k.owner, "xp");
       const xp = Number.isFinite(lvlCap) ? Math.min(raw, lvlCap) : raw;
       this.awardXp(this.clientOf(k.owner), kp, xp);
     }

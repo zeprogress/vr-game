@@ -42,3 +42,12 @@ test("лавовый монстр: урон (с множителем камер�
     assert.ok(d.dmgMul * 3 > g.dmgMul * 3, `${k}: урон ниже гиганта`);
   }
 });
+
+test("опыт за убийство по времени: гигант (~минута) — 20 убийств своего уровня, лава (~12 с) — 4", () => {
+  const g = ELITE_MOBS.iceGiant;
+  const l = ELITE_MOBS.lavaGuard;
+  assert.ok(g.xpFixed && l.xpFixed && ELITE_MOBS.lavaMage.xpFixed);
+  assert.equal(g.xp, 85580);
+  assert.equal(l.xp, 26552);
+  assert.equal(ELITE_MOBS.lavaMage.xp, 26552);
+});
