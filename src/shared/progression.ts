@@ -99,7 +99,7 @@ export function mobXpAt(level: number): number {
 
 /**
  * Опыт за полное убийство моба уровня `mobLevel` игроку уровня `level` (его доля — умножается на вклад).
- * Моб без уровня (обычные мобы) считается 1-го уровня. Моб ниже героя — его собственный опыт;
+ * Моб без уровня (обычные мобы) считается 1-го уровня. Моб ниже героя — опыт в квадрате доли (штраф);
  * выше — опыт «своего» моба × плавная прибавка (tanh-насыщение до XP_CURVE.bonusCap).
  */
 export function killXp(mobLevel: number, level: number, boss = false): number {
@@ -107,7 +107,8 @@ export function killXp(mobLevel: number, level: number, boss = false): number {
   const own = mobXpAt(level);
   const r = mobXpAt(mobLevel > 0 ? mobLevel : 1) / own;
   const cap = XP_CURVE.bonusCap;
-  const k = r <= 1 ? r : 1 + (cap - 1) * Math.tanh((r - 1) / (cap - 1));
+  // Моб ниже героя: доля в квадрате (2026-10-22, было линейно) — за мобов слабее себя опыта заметно меньше.
+  const k = r <= 1 ? r * r : 1 + (cap - 1) * Math.tanh((r - 1) / (cap - 1));
   return own * k * (boss ? XP_CURVE.bossMul : 1);
 }
 
