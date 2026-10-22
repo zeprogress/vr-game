@@ -1,0 +1,13 @@
+{
+  "name": "LavaMonster",
+  "type": "elite",
+  "rig": "fit",
+  "source": "/Users/zep/ASSETS/3D/lavaMonstr.glb",
+  "height": 2.2,
+  "tris": 12000,
+  "texture": 2048,
+  "mirror": true,
+  "jointsInSource": false,
+  "clips": [],
+  "notes": "Лавовый монстр (2026-10-22, 75 ур., два моба на одной модели: страж и маг). Модель — лавовый монстр из ASSETS/3D. Суставы расставляет пользователь в art/build/LavaMonster_rigZEP.blend."
+}
