@@ -303,8 +303,9 @@ export class LocalAvatar {
     }
     this.root.position.set(eyeX, eyeY, eyeZ);
     this.root.rotation.y = yaw;
-    // Тень «Призрака бездны»: модель (тело, руки, оружие) выключается; аура, ник и эффекты остаются.
-    if (this.holder && this.holder.isEnabled(false) !== !this.skillBuffs.abyss) this.holder.setEnabled(!this.skillBuffs.abyss);
+    // Тень («Призрак бездны», «Стрела-призрак»): модель (тело, руки, оружие) выключается; аура, ник и эффекты остаются.
+    const unseen = this.skillBuffs.abyss || this.skillBuffs.ghost;
+    if (this.holder && this.holder.isEnabled(false) !== !unseen) this.holder.setEnabled(!unseen);
     const show = !this.hidden;
     this.buffAura.set({
       victory: show && this.buffed,

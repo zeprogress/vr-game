@@ -831,8 +831,8 @@ export class RemoteAvatar implements Hittable {
     this.lastUpdate = now;
     this.bubble?.update(dt);
     const show = !this.dead;
-    // Тень «Призрака бездны»: выключаем только модель героя; аура, ник, полоска и эффекты остаются.
-    this.syncBodyShown(!(this.skillBuffs.abyss && !this.dead) || this.dead);
+    // Тень («Призрак бездны», «Стрела-призрак»): выключаем только модель героя; аура, ник и эффекты остаются.
+    this.syncBodyShown(!((this.skillBuffs.abyss || this.skillBuffs.ghost) && !this.dead) || this.dead);
     this.buffAura.set({
       victory: show && this.buffed,
       camp: show && this.campWarm,
