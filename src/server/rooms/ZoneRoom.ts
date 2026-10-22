@@ -11196,6 +11196,14 @@ export class ZoneRoom extends Room<ZoneState> {
           this.addDanger(f.x, f.z, f.r + 0.6, (f.d ?? 1) + 0.2, f.k === "leapMark" && inDunRegion(f.x, f.z));
         // Ледяной круг (ледяной демон, Лунный аватар) — тоже выбегают.
         if (f.k === "freezeMark") this.addDanger(f.x, f.z, FREEZE.radius + 0.6, (f.d ?? 1) + 0.2);
+        // Лавовый монстр: круги удара о землю, ярости, метки и кольца — боты выбегают; линия магмы — отдельно.
+        if ((f.k === "lavaSlam" || f.k === "lavaFury" || f.k === "lavaMark" || f.k === "lavaRing") && f.r) this.addDanger(f.x, f.z, f.r + 0.6, (f.d ?? 1) + 0.2);
+        if (f.k === "lavaSpill" && f.r && f.x2 !== undefined && f.z2 !== undefined) {
+          for (let k = 0; k <= 4; k++) {
+            const u = k / 4;
+            this.addDanger(f.x + (f.x2 - f.x) * u, f.z + (f.z2 - f.z) * u, f.r + 0.6, (f.d ?? 1) + 0.2);
+          }
+        }
         // Ледяной гигант: круг раскола, место падения глыбы и полоса разлома (кругами вдоль неё).
         if ((f.k === "giantSlam" || f.k === "giantThrowMark") && f.r) this.addDanger(f.x, f.z, f.r + 0.8, (f.d ?? 1) + 0.2);
         if (f.k === "giantFissure" && f.r && f.x2 !== undefined && f.z2 !== undefined) {

@@ -729,6 +729,12 @@ export type ActKind =
   | "giantFissure" // «Ледяной разлом»: полоса от (x,z) до (x2,z2) полушириной r, через d с побегут шипы
   | "giantFissureGo" // разлом пошёл: шипы бегут от (x,z) до (x2,z2) за d с
   | "giantFury" // «Ледяная ярость»: рёв и метель (d — длина рёва)
+  // Лавовый монстр (server/sim/lavaSkills.ts): телеграф и удар каждого приёма.
+  | "lavaSlam" | "lavaSlamHit" // удар о землю: круг r вокруг (x,z), через d с удар
+  | "lavaSpill" | "lavaSpillHit" // разлив магмы: линия от (x,z) до (x2,z2) полушириной r
+  | "lavaFury" | "lavaFuryHit" // ярость стража: рёв и кольцо r вокруг (x,z)
+  | "lavaMark" | "lavaMarkHit" // метка лавы: круг r под героем, удар через d с
+  | "lavaRing" | "lavaRingHit" // кольцо углей: круг r вокруг мага, удар через d с
   // Владыка Бездны (server/rooms/dragonFight.ts); mobId — дракон
   | "dragonBreath" // огненное дыхание: конус от пасти (x,z) к (x2,z2), полуугол r рад; через d с пламя
   | "dragonBreathGo" // пламя пошло по конусу, d с

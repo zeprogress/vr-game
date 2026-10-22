@@ -35,6 +35,7 @@ import {
 } from "#shared/items";
 import type { MobKind } from "#shared/net/schema";
 import { segDist } from "./math";
+import { LavaSkills, type LavaCtx, type LavaEvent, type LavaFxKind } from "./lavaSkills";
 
 /** Потолок здоровья для эффектов «% от HP цели» (см. Mob.pctHpBase). */
 const PCT_HP_CAP = 10_000;
@@ -208,7 +209,7 @@ export interface PlayerHit {
 
 /** Событие моба для визуала у клиентов (ZoneRoom рассылает как MSG.act). */
 export interface MobFx {
-  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "spikeMark" | "spikeHit" | "chiefHeal" | "freezeMark" | "freezeHit" | "leapMark" | "leapHit" | "caltrops" | "burrowDive" | "burrowTrail" | "burrowMark" | "burrowHit" | "stormMark" | "stormHit" | "stormJump" | "ninjaSmoke" | "parryOn" | "parryHit" | "pierceShot"
+  k: LavaFxKind | "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "spikeMark" | "spikeHit" | "chiefHeal" | "freezeMark" | "freezeHit" | "leapMark" | "leapHit" | "caltrops" | "burrowDive" | "burrowTrail" | "burrowMark" | "burrowHit" | "stormMark" | "stormHit" | "stormJump" | "ninjaSmoke" | "parryOn" | "parryHit" | "pierceShot"
     | "giantSlam" | "giantSlamHit" | "giantThrowMark" | "giantThrowFly" | "giantThrowHit" | "giantFissure" | "giantFissureGo" | "giantFury";
   /** Радиус области, м (прыжок Скалолома, колючки). */
   r?: number;
@@ -303,6 +304,31 @@ export class Mob {
   private strikeDmg = 0;
   /** От замаха до урона ближнего удара, с (EliteMobDef.strikeDelay; иначе MOB.strikeDelay). */
   private readonly strikeDelay: number;
+  /**
+   * Лавовый монстр (LAVA): приёмы Стража и Мага. Моб стоит, пока клип приёма идёт; события — урон, оглушение,
+   * эффекты (MobFx) и клип (swing). Оглушение посреди замаха срывает приём (внутри LavaSkills).
+   */
+  private tickLava(dt: number, players: SimPlayer[], hits: PlayerHit[]): void {
+    if (!this.lava) return;
+    const c: LavaCtx = {
+      x: this.x, z: this.z, yaw: this.yaw, hpFrac: this.hp / this.maxHp, aggroed: this.aggroed,
+      stunned: this.stunnedT > 0,
+      heroes: players.map((p) => ({ id: p.sessionId, x: p.x, z: p.z })),
+      base: MOB.attackDamage * this.dmgMul,
+    };
+    for (const ev of this.lava.tick(dt, c)) this.applyLava(ev, hits);
+  }
+
+  private applyLava(ev: LavaEvent, hits: PlayerHit[]): void {
+    if (ev.t === "swing") this.swing(ev.k);
+    else if (ev.t === "fx") this.fx.push({ k: ev.fx.k, x: ev.fx.x, z: ev.fx.z, r: ev.fx.r, x2: ev.fx.x2, z2: ev.fx.z2, d: ev.fx.d });
+    else
+      hits.push({
+        target: ev.target, dmg: ev.dmg, fromX: ev.fromX, fromZ: ev.fromZ, projectile: false, byMob: this.id,
+        stunSec: ev.stunSec, slowSec: ev.slowSec, slowFrac: ev.slowFrac, knockback: ev.knockback, dot: ev.dot,
+      });
+  }
+
   /** Ледяной гигант (ICE_GIANT): умения и их таймеры. */
   readonly iceGiant: boolean;
   /** Опыт за убийство — во столько «убийств своего уровня» (EliteMobDef.killXpMul). */
@@ -616,6 +642,8 @@ export class Mob {
   private blinkTarget: string | null = null;
   /** Очередь визуальных событий — ZoneRoom забирает каждый тик (drainFx). */
   readonly fx: MobFx[] = [];
+  /** Лавовый монстр (LAVA): Страж или Маг — приёмы; у остальных null. */
+  readonly lava: LavaSkills | null;
   private novaCd = 0;
   private novaWindupT = 0;
   /** ++ на каждую посадку заклинания — клиент рисует ударную волну. */
@@ -762,7 +790,7 @@ export class Mob {
    * Прыгун, ждущий готовности LEAP, стоит на дистанции прыжка. Без погони — бродит без пауз.
    */
   private walkDir(chasing: boolean, dist: number, dx: number, dz: number): [number, number] {
-    if (this.giantCastT > 0) return [0, 0]; // Ледяной гигант доигрывает умение
+    if (this.giantCastT > 0 || this.lava?.casting) return [0, 0]; // Ледяной гигант доигрывает умение; лавовый приём — стоит
     if (chasing) {
       // Стрелок (webber): встаёт на дистанции выстрела и плюётся сгустками; подошёл герой вплотную — бьёт вблизи.
       if (this.ranged) {
@@ -1050,11 +1078,14 @@ export class Mob {
       champ?: boolean;
       respawnSec?: number;
       iceGiant?: boolean;
+      /** Лавовый монстр: роль (Страж — удар о землю и ярость, Маг — метки и кольцо). */
+      lavaRole?: "guard" | "mage";
       strikeDelay?: number;
       killXpMul?: number;
     } = {},
   ) {
     this.iceGiant = opts.iceGiant ?? false;
+    this.lava = opts.lavaRole ? new LavaSkills(opts.lavaRole) : null;
     this.strikeDelay = opts.strikeDelay ?? MOB.strikeDelay;
     this.killXpMul = opts.killXpMul ?? 1;
     this.campType = opts.campType ?? "";
@@ -1615,6 +1646,7 @@ export class Mob {
     const busy = this.stunnedT > 0 || this.rootedT > 0;
     const rage45 = this.enraged ? BOSS.rageDamageMult : 1;
     if (this.iceGiant) this.tickGiant(dt, players, hits, chasing, np, busy);
+    if (this.lava) this.tickLava(dt, players, hits);
     else if (this.giantCastT > 0) this.giantCastT -= dt; // умение из комнаты (castLock) — доигрывает клип
     // 45 ур. Землерой: ныряет, под землёй неуязвим и ползёт к герою, круг под ним — и выныривает.
     if (this.burrower) {
@@ -2112,6 +2144,7 @@ export class Mob {
       (isBoss ? BOSS.hopSpeed : this.kind === "shard" ? SHARD.hopSpeed : MOB.hopSpeed) *
       rage *
       this.speedMul *
+      (this.lava?.speedMul ?? 1) *
       this.slowK;
     const hopInterval =
       (isBoss ? BOSS.hopInterval : this.kind === "shard" ? SHARD.hopInterval : MOB.hopInterval) /
@@ -2547,7 +2580,7 @@ export class Mob {
           this.swing();
           spit(this, np);
         }
-      } else if (dist < this.hitReach() && this.attackCd <= 0 && !this.giantCasting) {
+      } else if (dist < this.hitReach() && this.attackCd <= 0 && !this.giantCasting && !this.lava?.casting) {
         this.attackCd = this.atkCooldown;
         // Ледяной гигант чередует лапы: правой (Attack) и левой (Attack2).
         if (this.iceGiant) this.giantLeft = !this.giantLeft;
@@ -2857,7 +2890,8 @@ export function eliteOpts(d: EliteMobDef): NonNullable<ConstructorParameters<typ
     speedMul: d.speedMul, dodge: d.dodge, regen: d.regen, puller: d.puller, charger: d.charger, reflector: d.reflector,
     spiker: d.spiker, healer: d.healer, freezer: d.freezer, webber: d.web === true && Math.random() < WEB.share, quietMagic: d.quietMagic, shot: d.shot, leaper: d.leaper, leapCooldown: d.leapCooldown, walksOnly: d.walksOnly, packFrenzy: d.packFrenzy,
     burrower: d.burrower, stormCaller: d.stormCaller, cloner: d.cloner, parry: d.parry, anchored: d.anchored,
-    iceGiant: d.iceGiant, strikeDelay: d.strikeDelay, killXpMul: d.killXpMul, respawnSec: d.respawnSec, scrap: d.scrap,
+    iceGiant: d.iceGiant, lavaRole: d.lavaGuard ? "guard" : d.lavaMage ? "mage" : undefined,
+    strikeDelay: d.strikeDelay, killXpMul: d.killXpMul, respawnSec: d.respawnSec, scrap: d.scrap,
   };
 }
 
