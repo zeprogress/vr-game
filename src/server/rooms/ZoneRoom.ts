@@ -513,6 +513,8 @@ interface Bot {
   campPref: string | null;
   /** Случайный выбор среди равных по уровню лагерей (0..1). Перебрасывается при каждом возрождении (respawn). */
   campRand: number;
+  /** Номер стоянки выбранного вида (с 1), null — выбирает бот сам (campRand). */
+  campSpot: number | null;
   /** Свой лагерь опустел (все убиты) — бот ушёл на эту стоянку того же вида (индекс CAMP_SPOTS), пока там живы. */
   altSpot?: number;
   /** !рыбачить: идёт к озеру и рыбачит вместо обычного боя, пока не отменят. */
@@ -643,8 +645,13 @@ function botGate(home: { x: number; z: number }): { x: number; z: number } {
  * обычная поляна у спавна.
  */
 
-function botHome(level: number, pref: string | null = null, rand = 0): { x: number; z: number } {
+function botHome(level: number, pref: string | null = null, rand = 0, spot: number | null = null): { x: number; z: number } {
   if (pref) {
+    // Стоянок одного вида может быть несколько (Ледяной гигант — по одной на зал): зритель может назвать номер.
+    if (spot !== null) {
+      const chosen = CAMP_SPOTS.filter((c) => c.type === pref)[spot - 1];
+      if (chosen) return { x: chosen.x, z: chosen.z };
+    }
     // Стоянок одного вида может быть несколько (Ледяной гигант — по одной на зал): свою выбирает бот по rand.
     const same = CAMP_SPOTS.filter((c) => c.type === pref);
     if (same.length) {
@@ -3988,8 +3995,12 @@ export class ZoneRoom extends Room<ZoneState> {
       if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
       return;
     }
-    const a = arg.trim().toLowerCase();
-    const cur = bot.campPref ? ELITE_MOBS[bot.campPref].name : "авто";
+    // Номер стоянки последним словом: «гигант 2» — вторая стоянка ледяного гиганта.
+    const words = arg.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    let spotNo: number | null = null;
+    if (words.length > 1 && /^\d+$/.test(words[words.length - 1])) spotNo = Number(words.pop());
+    const a = words.join(" ");
+    const cur = bot.campPref ? ELITE_MOBS[bot.campPref].name + (bot.campSpot !== null ? ` №${bot.campSpot}` : "") : "авто";
     if (!a) {
       // Любой лагерь — на любом уровне (длинный ответ TwitchChat.say сам режет на части).
       const list = [...new Set(CAMPS_BY_POWER.map((c) => c.type))]
@@ -4001,7 +4012,8 @@ export class ZoneRoom extends Room<ZoneState> {
     const token = bot.rt.token ?? `nick:${norm}`;
     if (["авто", "auto", "сам", "случайно", "random"].includes(a)) {
       bot.campPref = null;
-      store.put(token, { campPref: undefined });
+      bot.campSpot = null;
+      store.put(token, { campPref: undefined, campSpot: undefined });
       this.reply(`@${nick} лагерь — на выбор героя.`);
       return;
     }
@@ -4014,10 +4026,17 @@ export class ZoneRoom extends Room<ZoneState> {
       return;
     }
     const def = ELITE_MOBS[type];
+    const count = CAMP_SPOTS.filter((c) => c.type === type).length;
+    if (spotNo !== null && (spotNo < 1 || spotNo > count)) {
+      this.reply(`@${nick} у «${def.name}» стоянок: ${count} — выбери номер от 1 до ${count}.`);
+      return;
+    }
     bot.campPref = type;
-    store.put(token, { campPref: type });
+    bot.campSpot = spotNo;
+    store.put(token, { campPref: type, campSpot: spotNo ?? undefined });
     const hard = def.level > bot.state.level + 5 ? ` (${def.level} ур. — будет тяжело)` : "";
-    this.reply(`@${nick} герой идёт качаться: ${def.name}${hard}.`);
+    const where = spotNo !== null ? ` №${spotNo}` : "";
+    this.reply(`@${nick} герой идёт качаться: ${def.name}${where}${hard}.`);
   }
 
   /** Ник → время (мс) последнего !focus: кулдаун на зрителя. */
@@ -6505,7 +6524,7 @@ export class ZoneRoom extends Room<ZoneState> {
         "идти рядом (и защищает, если на тебя напали) — !unfollow — назад к делам · " +
         "!катакомбы — записаться заранее или в отряд (от 3 героев, сбор 5 мин; !катакомбы выйти — снять запись; там !цель босс|свита|стрелки|слабых, !встать вперёд|назад|фланг, !режим осторожно|агрессивно) · " +
         "!inv — веб-инвентарь (надеть/на лом) · " +
-        "!camp <моб> — где качаться · " +
+        "!camp <моб> [номер] — где качаться (например !camp гигант 2) · " +
         "!пугало (!dps) — герой минуту бьёт пугало в лагере: над ним DPS и макс. удар · " +
         "!voice <номер|имя> — выбрать голос " +
         "озвучки своих сообщений (!voice list — список) · обычное сообщение в чат он " +
@@ -6603,8 +6622,9 @@ export class ZoneRoom extends Room<ZoneState> {
     // Расселение по уровню: слабых — на поляну, прокачанных — к сильным лагерям.
     const campPref = typeof rec?.campPref === "string" && ELITE_MOBS[rec.campPref] ? rec.campPref : null;
     const campRand = Math.random();
+    const campSpot = typeof rec?.campSpot === "number" && rec.campSpot >= 1 ? Math.floor(rec.campSpot) : null;
     const botMode: BotMode = rec?.botMode === "careful" || rec?.botMode === "brave" ? rec.botMode : "auto";
-    const home = botHome(p.level, campPref, campRand);
+    const home = botHome(p.level, campPref, campRand, campSpot);
     const sp = botSpawnAt(botGate(home));
     p.head.x = sp.x;
     p.head.z = sp.z;
@@ -6810,6 +6830,7 @@ export class ZoneRoom extends Room<ZoneState> {
       homeZ: home.z,
       campPref,
       campRand,
+      campSpot,
       mode: botMode,
       fishing: false,
       fishBiteAt: 0,
@@ -9432,8 +9453,10 @@ export class ZoneRoom extends Room<ZoneState> {
   private botLiveHome(bot: Bot, p: PlayerState): { x: number; z: number } {
     // Осторожный отход вне катакомб — дом у костра в лагере (там лечение у костра и нет мобов).
     if (bot.retreat && !this.cat.inRun(bot.id)) return { x: HUB_CENTER.x, z: HUB_CENTER.z };
-    const base = botHome(p.level, bot.campPref, bot.campRand);
+    const base = botHome(p.level, bot.campPref, bot.campRand, bot.campSpot);
     const i0 = CAMP_SPOTS.findIndex((c) => c.x === base.x && c.z === base.z);
+    // Указанная зрителем стоянка — бот сидит там, даже если пусто (без подмены на другую).
+    if (bot.campSpot !== null) return base;
     if (i0 < 0) {
       bot.altSpot = undefined; // поляна у спавна — не лагерь
       return base;
