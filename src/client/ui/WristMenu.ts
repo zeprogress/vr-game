@@ -1590,7 +1590,8 @@ export class WristMenu {
     // Само оружие на значке тоже слегка светится.
     if (rare) {
       ctx.shadowColor = TIER_COLOR[wp.tier];
-      ctx.shadowBlur = 10;
+      // Рецепт — как было (10); обычное редкое мастерское — слабее.
+      ctx.shadowBlur = wp.rc ? 10 : 4;
     }
     this.drawIconAt(ctx, weaponIcon(wp.cls, wp.name === AEGIS_NAME, wp.tier), x + 6, y + 22, 52, TIER_COLOR[wp.tier], !!wp.rc);
     ctx.shadowBlur = 0;
