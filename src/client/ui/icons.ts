@@ -24,7 +24,10 @@ export function ensureIconCss(): void {
     "img.gico{object-fit:contain}" +
     ".gico-e{width:auto;height:auto;line-height:1;vertical-align:baseline}" +
     // Картинки оружия и щитов — на 20% крупнее обычного значка (контур картинки занимает мало места).
-    "img.gico-gear{width:1.45em;height:1.45em;vertical-align:-.35em}";
+    "img.gico-gear{width:1.45em;height:1.45em;vertical-align:-.35em}" +
+    // Оружие по скрытому рецепту: перелив — оттенок ходит туда-обратно (золото ↔ тир).
+    ".gico-rc{animation:gicoRc 3.4s ease-in-out infinite}" +
+    "@keyframes gicoRc{0%,100%{filter:hue-rotate(-18deg) saturate(1.25) brightness(1.06)}50%{filter:hue-rotate(22deg) saturate(1.35) brightness(1.14)}}";
   document.head.appendChild(s);
 }
 
@@ -36,24 +39,51 @@ function svgMarkup(k: IconKey, color?: string, size?: number): string {
 }
 
 /** Значок строкой HTML (1em, цвет — текущий цвет текста места или `color`). */
-export function iconHtml(k: IconKey, color?: string): string {
+/** rc — оружие по скрытому рецепту: значок переливается (класс gico-rc). */
+export function iconHtml(k: IconKey, color?: string, rc = false): string {
   ensureIconCss();
   const d = ICONS[k] as { emoji: string; svg?: string; img?: string };
   const style = color ? ` style="color:${color}"` : "";
-  if (d.svg) return svgMarkup(k, color);
+  const extra = rc ? " gico-rc" : "";
+  if (d.svg) return svgMarkup(k, color).replace('class="gico"', `class="gico${extra}"`);
   if (d.img) {
-    const cls = k.startsWith("w.") ? "gico gico-gear" : "gico";
+    const cls = `${k.startsWith("w.") ? "gico gico-gear" : "gico"}${extra}`;
     return `<img class="${cls}" src="/icons/${d.img}" alt="" draggable="false">`;
   }
-  return `<span class="gico gico-e"${style}>${d.emoji}</span>`;
+  return `<span class="gico gico-e${extra}"${style}>${d.emoji}</span>`;
 }
 
 /** Положить значок в элемент (заменяет содержимое). */
-export function setIconEl(el: HTMLElement, k: IconKey, color?: string): void {
-  el.innerHTML = iconHtml(k, color);
+export function setIconEl(el: HTMLElement, k: IconKey, color?: string, rc = false): void {
+  el.innerHTML = iconHtml(k, color, rc);
 }
 
 // ---- холсты ----
+
+let shimCanvas: HTMLCanvasElement | null = null;
+/**
+ * Перелив на холсте: значок собирается во временном холсте, поверх его пикселей ложится золото
+ * (source-atop — только по самому значку), волна дышит по времени. Картинка оружия уже в цвете
+ * грейда — перекрасить её нельзя, поэтому перелив поверх.
+ */
+function drawShimmer(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, s: number): void {
+  if (typeof document === "undefined") return;
+  shimCanvas ??= document.createElement("canvas");
+  const px = Math.max(1, Math.round(s * 2));
+  if (shimCanvas.width !== px) shimCanvas.width = shimCanvas.height = px;
+  const c = shimCanvas.getContext("2d");
+  if (!c) return;
+  const wave = 0.5 + 0.5 * Math.sin((performance.now() / 1000) * (2 * Math.PI / 3.4));
+  c.clearRect(0, 0, px, px);
+  c.drawImage(img, 0, 0, px, px);
+  c.globalCompositeOperation = "source-atop";
+  c.globalAlpha = 0.14 + 0.2 * wave;
+  c.fillStyle = "#ffd76a";
+  c.fillRect(0, 0, px, px);
+  c.globalCompositeOperation = "source-over";
+  c.globalAlpha = 1;
+  ctx.drawImage(shimCanvas, x, y, s, s);
+}
 
 const imgCache = new Map<string, HTMLImageElement | null>();
 const waiting = new Map<string, Array<() => void>>();
@@ -94,13 +124,16 @@ export function drawIcon(
   s: number,
   color = "#e6e0d0",
   onReady?: () => void,
+  rc = false,
 ): void {
   const d = ICONS[k] as { emoji: string; svg?: string; img?: string };
   if (d.svg || d.img) {
     const img = imageFor(k, color, onReady);
     // Картинки оружия и щитов рисуем на 12% крупнее (как значки в HTML), остальные — как есть.
     const e = d.img && k.startsWith("w.") ? s * 0.12 : 0;
-    if (img) ctx.drawImage(img, x - e, y - e, s + 2 * e, s + 2 * e);
+    if (!img) return;
+    if (rc) drawShimmer(ctx, img, x - e, y - e, s + 2 * e);
+    else ctx.drawImage(img, x - e, y - e, s + 2 * e, s + 2 * e);
     return;
   }
   ctx.save();

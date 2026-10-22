@@ -1272,7 +1272,7 @@ export class WristMenu {
     const heldAegis =
       item.cls === "shield" &&
       this.warehouse.some((e) => e.cls === "shield" && e.name === AEGIS_NAME && (e.id === this.equippedIds.left || e.id === this.equippedIds.right));
-    this.drawIconAt(ctx, weaponIcon(item.cls, heldAegis, item.tier), x + 10, y + 28, iconS, TIER_COLOR[item.tier]);
+    this.drawIconAt(ctx, weaponIcon(item.cls, heldAegis, item.tier), x + 10, y + 28, iconS, TIER_COLOR[item.tier], !!item.rc);
     ctx.font = "bold 21px system-ui, sans-serif";
     ctx.fillStyle = TIER_COLOR[item.tier];
     ctx.fillText(this.heldName(item), x + iconS + 20, y + 28);
@@ -1592,7 +1592,7 @@ export class WristMenu {
       ctx.shadowColor = TIER_COLOR[wp.tier];
       ctx.shadowBlur = 10;
     }
-    this.drawIconAt(ctx, weaponIcon(wp.cls, wp.name === AEGIS_NAME, wp.tier), x + 6, y + 22, 52, TIER_COLOR[wp.tier]);
+    this.drawIconAt(ctx, weaponIcon(wp.cls, wp.name === AEGIS_NAME, wp.tier), x + 6, y + 22, 52, TIER_COLOR[wp.tier], !!wp.rc);
     ctx.shadowBlur = 0;
     ctx.font = "bold 17px system-ui, sans-serif";
     ctx.fillStyle = TIER_COLOR[wp.tier];
@@ -2302,8 +2302,10 @@ export class WristMenu {
     if (img.complete && img.naturalWidth > 0) ctx.drawImage(img, x, y, s, s);
   }
 
-  private drawIconAt(ctx: CanvasRenderingContext2D, k: IconKey, x: number, y: number, s: number, color?: string): void {
-    drawIcon(ctx, k, x, y, s, color, () => (this.dirty = true));
+  private drawIconAt(ctx: CanvasRenderingContext2D, k: IconKey, x: number, y: number, s: number, color?: string, rc = false): void {
+    // Перелив рецепта меняется со временем — холст перерисовываем, пока такой значок на экране.
+    if (rc) this.dirty = true;
+    drawIcon(ctx, k, x, y, s, color, () => (this.dirty = true), rc);
   }
 
   // ---- вкладка «Настройки» ----

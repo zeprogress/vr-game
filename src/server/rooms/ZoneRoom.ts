@@ -5173,6 +5173,7 @@ export class ZoneRoom extends Room<ZoneState> {
         ench: w.affixes.map((a, i) => ({ label: affixLabel(a), ...(affixCapNote(a, w) ? { capNote: affixCapNote(a, w) } : {}), ...enchantInfo(w, i)! })),
         sharp: attackPoints(w),
         ...(w.cp ? { cp: w.cp } : {}),
+        ...(w.rc ? { rc: true } : {}),
         fav: !!w.fav,
       })),
       // Что реально считается в руке (закреплённое или лучший экземпляр того же вида) —
@@ -11098,6 +11099,9 @@ export class ZoneRoom extends Room<ZoneState> {
         const rw = rolledIn(p, "right", rt);
         p.leftAffix = heldAffixText(lw);
         p.rightAffix = heldAffixText(rw);
+        // Перелив скрытого рецепта в руках (телефон/VR/ПК-рамка читают флаг).
+        p.leftRc = !!lw?.rc;
+        p.rightRc = !!rw?.rc;
       }
     });
 
@@ -11760,6 +11764,7 @@ export class ZoneRoom extends Room<ZoneState> {
         atkSpd: affixSum(w.affixes, "atkSpeedPct"),
         sharp: attackPoints(w),
         ...(w.cp ? { cp: w.cp } : {}),
+        ...(w.rc ? { rc: true } : {}),
         fav: !!w.fav,
         scrap: scrapValue(w),
       })),

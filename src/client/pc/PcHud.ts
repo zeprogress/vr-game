@@ -301,16 +301,16 @@ export class PcHud {
 
   // ---- рамка героя ----
 
-  setIdentity(nick: string, level: number, weapon: WeaponIcon): void {
-    const sig = `${nick}|${level}|${weapon}`;
+  setIdentity(nick: string, level: number, weapon: WeaponIcon, rc = false): void {
+    const sig = `${nick}|${level}|${weapon}|${rc ? 1 : 0}`;
     if (this.lastSig.id === sig) return;
     this.lastSig.id = sig;
     this.nameEl.textContent = `${nick} · ${level} ур.`;
     // Значок оружия — из общего реестра (shared/icons.ts).
-    this.portraitEl.innerHTML = iconHtml(weaponIcon(weapon));
+    this.portraitEl.innerHTML = iconHtml(weaponIcon(weapon), undefined, rc);
     // Класс по значку оружия — цвет фона рамки (CSS ниже).
     this.portraitEl.dataset.cls = weapon;
-    this.slotAtk.querySelector<HTMLElement>(".pc-slot-ico")!.innerHTML = iconHtml(weaponIcon(weapon));
+    this.slotAtk.querySelector<HTMLElement>(".pc-slot-ico")!.innerHTML = iconHtml(weaponIcon(weapon), undefined, rc);
   }
 
   /** Баффы: секунд осталось у баффа события (×2 опыт/урон) и «Тепла костра» (+10% урона). */

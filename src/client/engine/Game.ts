@@ -551,14 +551,14 @@ export class Game {
         arrow: bow?.cls === "bow",
         bothBy: bow?.cls,
         left: bow
-          ? ({ ...bow, affix: bowAffix } as WornWeapon)
+          ? ({ ...bow, affix: bowAffix, rc: self?.rightRc || self?.leftRc || undefined } as WornWeapon)
           : h.left
-            ? ({ ...h.left, affix: self?.leftAffix || undefined } as WornWeapon)
+            ? ({ ...h.left, affix: self?.leftAffix || undefined, rc: self?.leftRc || undefined } as WornWeapon)
             : null,
         right: bow
           ? null
           : h.right
-            ? ({ ...h.right, affix: self?.rightAffix || undefined } as WornWeapon)
+            ? ({ ...h.right, affix: self?.rightAffix || undefined, rc: self?.rightRc || undefined } as WornWeapon)
             : null,
         stowed: this.combat.stowedSnapshot(),
         stats: {
@@ -1942,8 +1942,8 @@ export class Game {
       const h = this.combat.handsSnapshot();
       const self = this.net?.self;
       this.wristPanel.setHands(
-        h.right ? ({ ...h.right, affix: self?.rightAffix || undefined } as WornWeapon) : null,
-        h.left ? ({ ...h.left, affix: self?.leftAffix || undefined } as WornWeapon) : null,
+        h.right ? ({ ...h.right, affix: self?.rightAffix || undefined, rc: self?.rightRc || undefined } as WornWeapon) : null,
+        h.left ? ({ ...h.left, affix: self?.leftAffix || undefined, rc: self?.leftRc || undefined } as WornWeapon) : null,
       );
     }
     if (this.vrCull && this.vrCull.vr !== this.player.inVR) {
@@ -2727,7 +2727,8 @@ export class Game {
     const hk = this.combat.heldKindOf("right") || this.combat.heldKindOf("left");
     const icon: WeaponIcon =
       hk === "sword" || hk === "bow" || hk === "staff" || hk === "dagger" || hk === "spear" || hk === "hammer" ? hk : "fist";
-    h.setIdentity(this.localNick || "Герой", prog.level, icon);
+    const rc = !!(this.net?.self?.rightRc || this.net?.self?.leftRc);
+    h.setIdentity(this.localNick || "Герой", prog.level, icon, rc);
     this.pcPlates.level = prog.level;
     h.setUnspent(prog.unspent);
     h.setMana(this.manaMax > 0 ? this.combat.mana / this.manaMax : 0, MANA_ENABLED && this.combat.holdsStaff);

@@ -91,6 +91,9 @@ export class PlayerState extends Schema {
   /** Текст роллов конкретного инстанса в руке ("+12% урона, +6% крит") — "" нет роллов. */
   @type("string") leftAffix = "";
   @type("string") rightAffix = "";
+  /** Оружие в руке по скрытому рецепту (перелив значка и свечения). */
+  @type("boolean") leftRc = false;
+  @type("boolean") rightRc = false;
 
   /** Сумка (этап 8). Длина фиксирована — BAG.slots. */
   @type([SlotState]) bag = new ArraySchema<SlotState>();
