@@ -1570,6 +1570,13 @@ export class Mob {
       const homeDist = Math.hypot(this.x - this.homeX, this.z - this.homeZ);
       if (homeDist > MOB.leashDistance) this.aggroed = false;
     }
+    // Герой скрыт (тень «Призрака бездны», умер, ушёл в безопасную зону) — моб его не видит: угроза и погоня
+    // сбрасываются, иначе он шёл бы по инерции туда, где герой был, и держал бы его как цель после тени.
+    if (np === null && this.aggroed && this.kind !== "boss") {
+      this.aggroed = false;
+      this.vx = 0;
+      this.vz = 0;
+    }
     const chasing = this.aggroed && np !== null;
     this.targetId = chasing ? (np?.sessionId ?? null) : null;
 
@@ -3227,6 +3234,11 @@ export class ZoneSim {
   }
 
   tick(dt: number, players: SimPlayer[]): PlayerHit[] {
+    // Угроза только к тем, кого сейчас видят: скрытые (тень, безопасная зона) забываются.
+    if (this.mobs.size) {
+      const visible = new Set(players.map((p) => p.sessionId));
+      for (const m of this.mobs.values()) for (const id of [...m.threat.keys()]) if (!visible.has(id)) m.threat.delete(id);
+    }
     const hits: PlayerHit[] = [];
     const spit = (mob: Mob, target: SimPlayer, web = false): void => {
       // «Пелена смерти»: из дыма не стреляют, и в героя, стоящего в дыму, — тоже (не видят цель).
