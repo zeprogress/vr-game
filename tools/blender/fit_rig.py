@@ -155,11 +155,21 @@ else:
             ("UpperArm." + side, "shoulder." + side, "elbow." + side, "Shoulder." + side),
             ("LowerArm." + side, "elbow." + side, "wrist." + side, "UpperArm." + side),
             ("Hand." + side, "wrist." + side, "hand." + side, "LowerArm." + side),
+            # Два пальца: большой отдельно (сгибание, отвод), остальные — одной костью (кулак).
+            ("Thumb." + side, "wrist." + side, "thumb." + side, "Hand." + side),
+            ("Fingers." + side, "hand." + side, "fingers." + side, "Hand." + side),
             ("UpperLeg." + side, "hip." + side, "knee." + side, "Hips"),
             ("LowerLeg." + side, "knee." + side, "ankle." + side, "UpperLeg." + side),
             ("Foot." + side, "ankle." + side, "toe." + side, "LowerLeg." + side),
         ]
 skel = SimpleNamespace(bones=[{"name": n, "head": h, "tail": t, "parent": p} for n, h, t, p in BONES])
+# Суставы пальцев, если их нет в спецификации: от кисти (wrist → hand), на длину кисти вперёд.
+for side in ("L", "R"):
+    w, hd = joints.get("wrist." + side), joints.get("hand." + side)
+    if w and hd:
+        vx, vy, vz = hd[0] - w[0], hd[1] - w[1], hd[2] - w[2]
+        joints.setdefault("fingers." + side, [hd[0] + vx * 0.5, hd[1] + vy * 0.5, hd[2] + vz * 0.5])
+        joints.setdefault("thumb." + side, [w[0] + vx * 0.5 + (-0.04 if side == "L" else 0.04), w[1] + vy * 0.5, w[2] + vz * 0.5])
 missing = sorted({j for _, h, t, _ in BONES for j in (h, t)} - set(joints))
 if missing:
     raise SystemExit(f"нет суставов в спецификации: {missing}")
