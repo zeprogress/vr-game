@@ -529,8 +529,8 @@ export const CRAFT_DROPS: Partial<Record<string, readonly { id: CraftItemId; cha
   frostDemon: [{ id: "frost", chance: 0.001 }], // 2026-10-19: было 0.01 (катализатор не тратится)
   iceGiant: [{ id: "frost", chance: 0.05 }], // Ледяной гигант — главный источник «Ледяного сердца» (их двое на карте, бьют толпой)
   // Чешуя дракона — снова ×3 всегда (2026-10-19, по просьбе; на день была одна штука с шансом 20–25%).
-  worldElite: [{ id: "scale", chance: 1, n: 3 }],
-  catDragon: [{ id: "scale", chance: 1, n: 3 }],
+  worldElite: [{ id: "scale", chance: 1, n: 6 }],
+  catDragon: [{ id: "scale", chance: 1, n: 6 }],
 };
 /** Вожак лагеря — шансы × это. */
 export const CRAFT_DROP_CHAMP = 4;
