@@ -430,10 +430,12 @@ export const DUN_MOB_CAMPS: readonly { u: number; v: number; type: keyof typeof 
   { u: 144, v: -146, type: "iceGiant", count: 2, spread: 10, ring: 0.5, noChamp: true, dmgMul: 3, atkMul: 1.5, shareScrap: true }, // зал K: центр широкого забоя (K1), 24 м до края
   { u: 82, v: -6, type: "iceGiant", count: 2, spread: 10, ring: 0.5, noChamp: true, dmgMul: 3, atkMul: 1.5, shareScrap: true },
   { u: 0, v: 60, type: "iceGiant", count: 2, spread: 10, ring: 0.5, noChamp: true, dmgMul: 3, atkMul: 1.5, shareScrap: true },
-  // Лавовый монстр 75 ур. — Кузня (Y, зал 152..196 × 36..108): пока все в центре зоны (центр спавна), по 2 моба на точку.
-  // Расстановку по залу — потом, по отзывам из игры.
-  { u: 174, v: 72, type: "lavaGuard", count: 2, spread: 4, ring: 0.5, noChamp: true },
-  { u: 174, v: 72, type: "lavaMage", count: 2, spread: 4, ring: 0.5, noChamp: true },
+  // Лавовый монстр 75 ур. — Кузня (Y, зал 152..196 × 36..108): четыре группы по 2 моба, по углам зала (Стражи и Маги
+  // вперемешку). Урон ×3 — как у гиганта (dmgMul камеры), здоровье и опыт выше.
+  { u: 160, v: 48, type: "lavaGuard", count: 2, spread: 3, ring: 0.5, noChamp: true, dmgMul: 3 },
+  { u: 188, v: 48, type: "lavaMage", count: 2, spread: 3, ring: 0.5, noChamp: true, dmgMul: 3 },
+  { u: 160, v: 96, type: "lavaMage", count: 2, spread: 3, ring: 0.5, noChamp: true, dmgMul: 3 },
+  { u: 188, v: 96, type: "lavaGuard", count: 2, spread: 3, ring: 0.5, noChamp: true, dmgMul: 3 },
   { u: -86, v: -80, type: "iceGiant", count: 2, spread: 10, ring: 0.5, noChamp: true, dmgMul: 3, atkMul: 1.5, shareScrap: true },
 ];
 

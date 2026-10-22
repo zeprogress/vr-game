@@ -5,8 +5,8 @@ import { ELITE_MOBS, MOB } from "../../src/shared/mobs";
 
 const lava = DUN_MOB_CAMPS.filter((c) => c.type === "lavaGuard" || c.type === "lavaMage");
 
-test("лавовый монстр: по два моба на точку, Стража и Мага — в Кузне (Y)", () => {
-  assert.equal(lava.length, 2);
+test("лавовый монстр: четыре группы по два моба, Стражи и Маги — в Кузне (Y)", () => {
+  assert.equal(lava.length, 4);
   for (const c of lava) {
     assert.equal(c.count, 2);
     const w = dunWorld(c.u, c.v);
@@ -14,11 +14,8 @@ test("лавовый монстр: по два моба на точку, Стр�
   }
 });
 
-test("лавовый монстр: стоянка — в центре зала Кузни (центр спавна), пол вокруг с запасом на тело", () => {
+test("лавовый монстр: стоянка группы — пол вокруг с запасом на тело", () => {
   for (const c of lava) {
-    const w = dunWorld(c.u, c.v);
-    const zone = dunZoneAt(w.x, w.z);
-    assert.ok(Math.hypot(zone.u - c.u, zone.v - c.v) <= 1, `${c.type}: стоянка не в центре зоны`);
     const pad = MOB.bodyRadius * ELITE_MOBS[c.type].scaleMul;
     const ring = c.spread * (c.ring ?? 1);
     for (let k = 0; k < 12; k++) {
