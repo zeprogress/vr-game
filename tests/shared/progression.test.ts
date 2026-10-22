@@ -100,10 +100,12 @@ test("killXp: моб своего уровня даёт базовый опыт,
   assert.ok(close(killXp(10, 10, true), mobXpAt(10) * XP_CURVE.bossMul));
 });
 
-test("killXp: слабый моб даёт меньше; сильнее героя — опыт как за своего, без прибавки", () => {
+test("killXp: слабый моб даёт меньше; сильнее героя — прибавка, и чем выше моб, тем она меньше", () => {
   assert.ok(killXp(5, 10) < killXp(10, 10));
-  assert.ok(close(killXp(20, 10), mobXpAt(10)));
-  assert.ok(close(killXp(60, 10), mobXpAt(10)));
+  assert.ok(killXp(11, 10) > killXp(15, 10));
+  assert.ok(killXp(15, 10) > killXp(20, 10));
+  assert.ok(killXp(20, 10) > mobXpAt(10));
+  assert.ok(close(killXp(11, 10), mobXpAt(10) * (1 + XP_CURVE.bonusFirst)));
 });
 
 test("killXp: моб без уровня считается 1-го; на максимуме опыта нет", () => {

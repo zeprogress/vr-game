@@ -78,6 +78,11 @@ export const XP_CURVE = {
   killsGrowth: 1.1266,
   /** Босс: во столько раз больше моба уровня бойца (делится по вкладу). */
   bossMul: 10,
+  /**
+   * Прибавка за моба выше героя: bonusFirst / разница уровней (2026-10-22). На 1 уровень выше — +10%, на 2 — +5%,
+   * на 5 — +2%, на 10 — +1%: чем выше моб, тем меньше прибавка.
+   */
+  bonusFirst: 0.1,
 } as const;
 
 /** Сколько опыта нужно для перехода с `level` на следующий. */
@@ -95,15 +100,16 @@ export function mobXpAt(level: number): number {
 /**
  * Опыт за полное убийство моба уровня `mobLevel` игроку уровня `level` (его доля — умножается на вклад).
  * Моб без уровня (обычные мобы) считается 1-го уровня. Моб ниже героя — опыт в квадрате доли (штраф);
- * выше — опыт как за «своего» моба (прибавки нет, 2026-10-22).
+ * выше — опыт «своего» моба × (1 + bonusFirst / разница уровней): чем выше моб, тем меньше прибавка.
  */
 export function killXp(mobLevel: number, level: number, boss = false): number {
   if (level >= PROGRESSION.maxLevel) return 0;
   const own = mobXpAt(level);
   const r = mobXpAt(mobLevel > 0 ? mobLevel : 1) / own;
   // Моб ниже героя: доля в квадрате (2026-10-22, было линейно) — за мобов слабее себя опыта заметно меньше.
-  // Моб выше героя: прибавки нет (2026-10-22) — опыт как за моба своего уровня.
-  const k = r <= 1 ? r * r : 1;
+  // Моб выше героя: прибавка убывает с разницей уровней (XP_CURVE.bonusFirst / разница).
+  const gap = Math.max(1, (mobLevel > 0 ? mobLevel : 1) - level);
+  const k = r <= 1 ? r * r : 1 + XP_CURVE.bonusFirst / gap;
   return own * k * (boss ? XP_CURVE.bossMul : 1);
 }
 
