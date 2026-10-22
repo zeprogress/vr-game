@@ -344,6 +344,9 @@ export interface EliteMobDef {
   iceGiant?: boolean;
   /** Владыка Бездны: свои приёмы (server/rooms/dragonFight.ts, DRAGON), огонь (client/ui/DragonAct.ts) и звуки «lord-*». */
   dragonLord?: boolean;
+  /** Лавовый монстр 75 ур.: Страж (удар о землю, магма, ярость) и Маг (метки лавы, кольцо углей) — см. LAVA. */
+  lavaGuard?: boolean;
+  lavaMage?: boolean;
   /** Ближний удар: от замаха до урона, с (по клипу модели; без него — MOB.strikeDelay). */
   strikeDelay?: number;
   /** Сколько длится клип удара вблизи, с (клиент держит его поверх шага; без него — 0.8). */
@@ -736,6 +739,24 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // (размах когтями по дуге), замедляет всех: аура «Стужа», стаки «Обморожения» → «Ледяная глыба».
   // Дальних достаёт броском глыбы и разломом, толпу вокруг — «Ледяным расколом». Механики — ICE_GIANT.
   // Модель: art/models/IceGiant.json + tools/blender/icegiant_anim.py → public/models/gen/IceGiant.glb.
+  // Лавовый монстр 75 ур. (2026-10-22): два моба одной модели. Страж — танк у входа, бьёт по земле и разливает магму;
+  // Маг — дальний, метит лаву и ставит кольцо углей. Приёмы и таймеры — LAVA (сервер — server/rooms/lavaFight.ts).
+  // Числа — первая прикидка: баланс смотреть в лаборатории (npm run lab:balance).
+  lavaGuard: {
+    model: "monLavaMonster", name: "Страж лавы", blurb: "удар о землю оглушает, магма под ногами, ярость ниже 40%",
+    level: 75, kind: "slime", hp: 900000, dmgMul: 40, xp: 25000000000, scaleMul: 3, tint: null,
+    lavaGuard: true, gait: true, noSquash: true, walksOnly: true, blendAnims: true,
+    strikeDelay: 0.6, attackSec: 1.3 /* = LAVA.clipSec.attack */, walkClipSpeed: 1.5, runClipSpeed: 3.5,
+    attackCooldown: 2, meleeReach: 4.5, scrap: 100,
+  },
+  lavaMage: {
+    model: "monLavaMonster", name: "Маг лавы", blurb: "метка лавы с задержкой, кольцо углей замедляет",
+    level: 75, kind: "spitter", hp: 600000, dmgMul: 30, xp: 11400000000, scaleMul: 2.6,
+    tint: [0.95, 0.42, 0.12], // раскалённый перекрас — отличается от стража
+    lavaMage: true, gait: true, noSquash: true, walksOnly: true, blendAnims: true,
+    strikeDelay: 0.6, attackSec: 1.3 /* = LAVA.clipSec.attack */, walkClipSpeed: 1.5, runClipSpeed: 3.5,
+    attackCooldown: 2, meleeReach: 3.5, scrap: 80,
+  },
   iceGiant: {
     model: "monIceGiant", name: "Ледяной гигант",
     blurb: "аура холода и обморожение (5 стаков — вмерзаешь в лёд), раскол вокруг себя, глыба и разлом по дальним",
@@ -751,6 +772,31 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     killXpMul: 125, respawnSec: 5, legendaryChance: 0.12, ringMul: 40, // кольца 10% за убийство (2026-10-21; было ×6 — 0.9%); респавн 5 с (2026-10-20; было 30)
     /** Лом за убийство (2026-10-20): в подземелье 100 — делятся между участниками (CAMP shareScrap); в нашествии свой. */
     scrap: 100,
+  },
+};
+
+/**
+ * Лавовый монстр (EliteMobDef.lavaGuard / lavaMage). Все приёмы — с телеграфом (клип и знак на земле);
+ * клип, урон и эффект бьют в один кадр: времена — те же числа, что в tools/blender/lavamonster_anim.py
+ * (*_SEC, *_HIT): поменял здесь — поменяй там (tests/shared/lavaMonster.test.ts сверяет).
+ * Урон приёмов — доля обычного удара моба (MOB.attackDamage · dmgMul): strong / medium / weak.
+ */
+export const LAVA = {
+  /** Клипы модели, с (lavamonster_anim.py). Ярость стража пока без своего клипа рёва — см. guard.fury. */
+  clipSec: { attack: 1.3, slam: 2.4, hit: 0.5, death: 2.0, idle: 3.0, walk: 1.5, run: 1.0 },
+  /** Кадр удара от начала клипа, с. */
+  hitSec: { attack: 0.6, slam: 1.3 },
+  /** Страж: удар о землю (круг вокруг себя, оглушение), разлив магмы (линия, горение), ярость на доле HP. */
+  guard: {
+    slam: { cooldown: 9, windup: 1.2, radius: 4, dmgMul: 2.0, stunSec: 1 },
+    spill: { cooldown: 12, windup: 1.0, length: 8, halfWidth: 1.2, dmgMul: 2.0, burnSec: 4 },
+    // Клипа рёва нет: телеграф ярости — тот же клип удара о землю (замена до отдельного клипа Roar).
+    fury: { at: 0.4, windup: 1.5, radius: 6, speedMul: 1.3, cdMul: 0.8 },
+  },
+  /** Маг: метка лавы (сильный удар с задержкой в круг), кольцо углей (слабый удар кругом и замедление). */
+  mage: {
+    mark: { cooldown: 10, windup: 1.5, radius: 3, dmgMul: 2.6, delaySec: 1.5 },
+    ring: { cooldown: 14, windup: 1.0, radius: 5, dmgMul: 1.2, slowSec: 2, slowFrac: 0.5 },
   },
 };
 

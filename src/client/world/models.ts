@@ -83,6 +83,8 @@ export const MODELS = {
   monStoneTroll: "/models/gen/Skalolom.glb",
   // Супербосс катакомб «Владыка Бездны»: дракон с ригом и атакующими клипами (art/models/DragonBest.json, tools/blender/dragon_clips.py).
   monDragonBest: "/models/gen/DragonBest.glb",
+  // Лавовый монстр 75 ур. (подземелье): Страж и Маг — одна модель; art/models/LavaMonster.json → lavamonster_anim.py.
+  monLavaMonster: "/models/gen/LavaMonster.glb",
   monMoonAvatar: "/models/gen/MoonAvatar.glb",
   // Костяной жнец 53 ур. (подземелье): скелет в броне со щитом и мечом, art/build/Skeleton_rig.blend → SkeletonShield.glb.
   monSkeletonReaver: "/models/gen/SkeletonShield.glb",
