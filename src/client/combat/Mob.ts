@@ -31,7 +31,7 @@ import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { DRAGON, ELITE_MOBS, FLYER_HIT_BONUS, ICE_GIANT, LAVA, MAGE_NOVA, MOB, MOB_SWING, SHARD_CFG, type EliteMobDef } from "#shared/mobs";
 import { DECAL, IceFx, SHARD, type IceAura } from "../ui/IceFx";
-import { FireFx, FLAME, type FireAura } from "../ui/FireFx";
+import { FDECAL, FireFx, FLAME, type FireAura } from "../ui/FireFx";
 import { DUST, LordFeet, lordMouth, lordScale, lordStep } from "../ui/DragonAct";
 import { FXC } from "../ui/fxColors";
 import type { MobKind, MobState } from "#shared/net/schema";
@@ -1314,6 +1314,7 @@ export class Mob implements Hittable {
       if (this.rig) this.playAnim(this.rig.anims.get("death"), false);
       if (this.eliteDef?.iceGiant) this.giantDeath(pos, playerPos);
       else if (this.eliteDef?.dragonLord) this.lordDeath(pos, playerPos);
+      else if (this.eliteDef?.lavaGuard || this.eliteDef?.lavaMage) this.lavaDeath(pos, playerPos);
       else this.playIfNear(playerPos, () => this.sfx.mobDie(pos));
     } else if (!s.dead && this.dead) {
       this.dead = false;
@@ -1425,6 +1426,7 @@ export class Mob implements Hittable {
         else if (clip === this.moveAnim && clip && def?.walkClipSpeed) clip.speedRatio = Math.min(1.6, Math.max(0.6, this.moveSpd / def.walkClipSpeed));
         this.playAnim(clip, true);
         if (def?.iceGiant) this.giantSteps(clip, pos, playerPos);
+        else if (def?.lavaGuard || def?.lavaMage) this.lavaSteps(clip, pos, playerPos);
       } else if (seen && (s.grounded === 0 || flyer)) this.playAnim(this.moveAnim, true);
       else this.stopAnim();
     }
@@ -1662,6 +1664,40 @@ export class Mob implements Hittable {
       this.sfx.at({ x: fx, y: pos.y, z: fz }, () => this.sfx.ice("step", 0.85, 0.08));
       IceFx.of(this.scene).burst(fx, pos.y + 0.3, fz, FXC.frost, { count: 8, speed: 2, life: 0.6, grav: 1, size: 0.5 });
     }, 45);
+  }
+
+  /** Шаги Лавового монстра: тот же разбор клипа ходьбы, что у гиганта; стопа — шипящая искра и звук. */
+  private lavaSteps(clip: AnimationGroup | null, pos: Vector3, playerPos: Vector3): void {
+    const an = clip?.animatables[0];
+    if (!clip || !an || clip.to <= clip.from) return;
+    const u = (((an.masterFrame - clip.from) / (clip.to - clip.from)) % 1 + 1) % 1;
+    const prev = this.stepU;
+    this.stepU = u;
+    if (prev < 0) return;
+    const crossed = (c: number): boolean => (prev <= u ? prev < c && u >= c : prev < c || u >= c);
+    const side = crossed(0.04) ? -1 : crossed(0.54) ? 1 : 0;
+    if (!side) return;
+    const k = (MOB.bodyRadius * 1.75 * this.scale) / 2;
+    const yaw = this.root.rotation.y;
+    const fx = pos.x + Math.cos(yaw) * side * 0.27 * k;
+    const fz = pos.z - Math.sin(yaw) * side * 0.27 * k;
+    this.playIfNear(playerPos, () => {
+      this.sfx.at({ x: fx, y: pos.y, z: fz }, () => this.sfx.lava("step", 0.7, 0.08));
+      FireFx.of(this.scene).burst(fx, pos.y + 0.3, fz, FXC.fireRed, { count: 8, speed: 2, life: 0.5, grav: 1, size: 0.35 });
+    }, 45);
+  }
+
+  /** Смерть Лавового монстра: рёв-стон, потом остывающая магма — пятно ожога и искры. */
+  private lavaDeath(pos: Vector3, playerPos: Vector3): void {
+    const yaw = this.root.rotation.y;
+    const k = (MOB.bodyRadius * 1.75 * this.scale) / 2;
+    const p = { x: pos.x + Math.sin(yaw) * 0.9 * k, y: pos.y, z: pos.z + Math.cos(yaw) * 0.9 * k };
+    this.playIfNear(playerPos, () => this.sfx.at(p, () => this.sfx.lava("death")), 60);
+    const fire = FireFx.of(this.scene);
+    fire.after(1.8, () => {
+      fire.decal(FDECAL.burn, { x: p.x, y: p.y, z: p.z, r: 1.4 * k }, 6);
+      fire.burst(p.x, p.y + 1, p.z, FXC.fireCore, { count: 24, speed: 7, life: 1, grav: 4, size: 0.4 });
+    });
   }
 
   /** Смерть гиганта: стон и грохот; когда тело рухнуло — лёд разлетается и земля покрывается инеем. */

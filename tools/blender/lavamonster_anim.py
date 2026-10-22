@@ -14,10 +14,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 import bpy  # noqa: E402
-from mathutils import Vector  # noqa: E402
+from mathutils import Quaternion, Vector  # noqa: E402
 import zep_lib as z  # noqa: E402
 from zep_gen import anim, build  # noqa: E402
-from zep_gen.keyanim import D, K, BipedPose, biped_gait, shake  # noqa: E402
+from zep_gen.keyanim import D, K, BipedPose, biped_gait, shake, smooth  # noqa: E402
 
 FPS = anim.FPS
 
@@ -263,6 +263,43 @@ def clip_ring(rig_, u):
     return p.done()
 
 
+# ---------------------------------------------------------------- разворот на месте (бой)
+# Игра крутит модель вокруг её начала координат не быстрее TURN_RATE и, пока монстр стоит, играет TurnL/TurnR
+# с темпом «скорость разворота / TURN_RATE» (то же число — ELITE_MOBS.lavaGuard/lavaMage.turnRate в src/shared/mobs.ts).
+# Стоящие стопы плывут назад по дуге ровно с этой скоростью, шагающие — вперёд; корпус почти неподвижен.
+TURN_RATE = 60.0  # °/с
+TURN_SEC = 1.0
+TURN_PERIOD = 0.6  # с — каждая нога шагает раз в период
+TURN_STEP = 0.25  # с — сам шаг
+
+
+def clip_turn(sign):
+    """Разворот на месте: sign = +1 — влево, −1 — вправо. Ноги переставляются по очереди, стоящие плывут по дуге."""
+    def f(rig_, u):
+        s = u * TURN_SEC
+        p = Pose()
+        amp = TURN_RATE * (TURN_PERIOD - TURN_STEP) / 2
+        for i, ph in enumerate((0.0, TURN_PERIOD / 2)):
+            tau = (s - ph) % TURN_PERIOD
+            planted = TURN_PERIOD - TURN_STEP
+            if tau < planted:
+                psi, h = amp - TURN_RATE * tau, 0.0
+            else:
+                q = (tau - planted) / TURN_STEP
+                psi, h = -amp + 2 * amp * smooth(q), 0.06 * math.sin(math.pi * q)
+            a0 = rig.legs[i]["A"]
+            turned = Quaternion((0.0, 0.0, 1.0), math.radians(sign * psi)) @ a0
+            p.feet[i] = (turned - a0) + Vector((0.0, 0.0, h))
+        p.root.z = -0.02
+        p.torso(0.0, 0.0, 2.0 * sign)
+        p.head(0.0, 0.0, -2.0 * sign)
+        for s_ in ("L", "R"):
+            p.arm(s_, (0, -2, 0), (-6, -9, 4), -22.0, -8.0)
+            fist(p, s_, 30)
+        return p.done()
+    return f
+
+
 
 CLIPS = {
     "Idle": (clip_idle, round(IDLE_SEC * FPS), True),
@@ -277,6 +314,9 @@ CLIPS = {
     "Roar": (clip_roar, round(ROAR_SEC * FPS) + 1, False),
     "Mark": (clip_mark, round(MARK_SEC * FPS) + 1, False),
     "Ring": (clip_ring, round(RING_SEC * FPS) + 1, False),
+    # Разворот на месте: игра играет их, пока монстр стоит и поворачивается (turnRate).
+    "TurnL": (clip_turn(1), round(TURN_SEC * FPS), True),
+    "TurnR": (clip_turn(-1), round(TURN_SEC * FPS), True),
 }
 only = z.opt(a, "--only")
 anim.CLIPS = {k: v for k, v in CLIPS.items() if not only or k in only.split(",")}

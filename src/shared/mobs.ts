@@ -747,7 +747,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   lavaGuard: {
     model: "monLavaMonster", name: "Страж лавы", blurb: "удар о землю оглушает, магма под ногами, ярость ниже 40%",
     level: 75, kind: "slime", hp: 900000, dmgMul: 40, xp: 25000000000, scaleMul: 3, tint: null,
-    lavaGuard: true, gait: true, noSquash: true, walksOnly: true, blendAnims: true,
+    lavaGuard: true, gait: true, noSquash: true, walksOnly: true, blendAnims: true, turnRate: 60, // разворот шагами (TurnL/TurnR)
     strikeDelay: 0.6, attackSec: 1.3 /* = LAVA.clipSec.attack */, walkClipSpeed: 1.5, runClipSpeed: 3.5,
     attackCooldown: 2, meleeReach: 4.5, scrap: 100,
   },
@@ -755,7 +755,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     model: "monLavaMonster", name: "Маг лавы", blurb: "метка лавы с задержкой, кольцо углей замедляет",
     level: 75, kind: "spitter", hp: 600000, dmgMul: 30, xp: 11400000000, scaleMul: 2.6,
     tint: [0.95, 0.42, 0.12], // раскалённый перекрас — отличается от стража
-    lavaMage: true, gait: true, noSquash: true, walksOnly: true, blendAnims: true,
+    lavaMage: true, gait: true, noSquash: true, walksOnly: true, blendAnims: true, turnRate: 60, // разворот шагами (TurnL/TurnR)
     strikeDelay: 0.6, attackSec: 1.3 /* = LAVA.clipSec.attack */, walkClipSpeed: 1.5, runClipSpeed: 3.5,
     attackCooldown: 2, meleeReach: 3.5, scrap: 80,
   },
