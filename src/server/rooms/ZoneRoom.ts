@@ -622,6 +622,10 @@ const CAMP_SPOTS: { x: number; z: number; type: keyof typeof ELITE_MOBS }[] = [
   ...DUN_MOB_CAMPS.map((d) => {
     // Дом бота в подземелье — центр зала, а не точка спавна у края провала: там боты толкались
     // и не могли дотянуться до жнецов. Сами мобы спавнятся где были (DUN_MOB_CAMPS).
+    if (d.home) {
+      const h = dunWorld(d.home.u, d.home.v);
+      return { x: h.x, z: h.z, type: d.type };
+    }
     const w = dunWorld(d.u, d.v);
     const hall = dunZoneAt(w.x, w.z);
     const c = dunWorld(hall.u, hall.v);

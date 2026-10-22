@@ -5,13 +5,16 @@ import { ELITE_MOBS, MOB } from "../../src/shared/mobs";
 
 const giants = DUN_MOB_CAMPS.filter((c) => c.type === "iceGiant");
 
-test("ледяные гиганты: четыре стоянки по два — залы K, Q, G, D", () => {
-  assert.equal(giants.length, 4);
+test("ледяные гиганты: три стоянки по два — залы K, Q, G (из Кристальной пещеры D убраны)", () => {
+  assert.equal(giants.length, 3);
+  assert.ok(!giants.some((c) => dunZoneAt(dunWorld(c.u, c.v).x, dunWorld(c.u, c.v).z).id === "D"), "гигант в D");
   for (const c of giants) assert.equal(c.count, 2);
 });
 
 test("стоянка гиганта — в центре своего зала (центр зоны совпадает со стоянкой, до 1 м)", () => {
   for (const c of giants) {
+    // Гигант в K — в первой комнате от входа: дом бота задан явно (home), центр зала не нужен.
+    if (c.home) continue;
     const w = dunWorld(c.u, c.v);
     const zone = dunZoneAt(w.x, w.z);
     const off = Math.hypot(zone.u - c.u, zone.v - c.v);

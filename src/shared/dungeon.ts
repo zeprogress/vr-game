@@ -413,7 +413,7 @@ export const DUN_SPOTS = {
  * Лагеря мобов подземелья — в начальных залах (u, v зоны). Отдельно от MOB_CAMPS: боты и задания
  * лагеря мира не выбирают, а этот — внутри подземелья. Спавн — ZoneSim (как у лагерей мира).
  */
-export const DUN_MOB_CAMPS: readonly { u: number; v: number; type: keyof typeof ELITE_MOBS; count: number; spread: number; noChamp?: boolean; ring?: number; dmgMul?: number; atkMul?: number; shareScrap?: boolean }[] = [
+export const DUN_MOB_CAMPS: readonly { u: number; v: number; type: keyof typeof ELITE_MOBS; count: number; spread: number; noChamp?: boolean; ring?: number; dmgMul?: number; atkMul?: number; shareScrap?: boolean; /** Дом бота (u, v), если не центр зала: ближайшая комната к телепорту. */ home?: { u: number; v: number } }[] = [
   // Зал руин (B): три плотные группы — запад, восток и дальняя стена; в центре зала — свободно,
   // боты приходят к центру (см. ZoneRoom CAMP_SPOTS) и достают жнецов со всех сторон.
   // Не у края провала (провал — у северной стены, v≈−116), от портала ~74 м.
@@ -427,7 +427,9 @@ export const DUN_MOB_CAMPS: readonly { u: number; v: number; type: keyof typeof 
   { u: 0, v: -80, type: "spider", count: 12, spread: 8 },
   // Ледяной гигант 70 ур.: только в подземелье, по одному — ровно на точке (центр зала): Шахтные выработки (K), Каменный лес (Q),
   // Преддверие храма (G), Кристальная пещера (D). Стоянка = центр зоны (DUN_ZONES): от него бот берёт дом стоянки (ZoneRoom CAMP_SPOTS). Тест: tests/shared/giantCamps.test.ts.
-  { u: 144, v: -146, type: "iceGiant", count: 2, spread: 10, ring: 0.5, noChamp: true, dmgMul: 3, atkMul: 1.5, shareScrap: true }, // зал K: центр широкого забоя (K1), 24 м до края
+  // Шахтные выработки (K): гигант — в первой комнате от входа из руин (K1), дом бота — там же, ближе к телепорту.
+  { u: 71, v: -139, type: "iceGiant", count: 2, spread: 10, ring: 0.5, noChamp: true, dmgMul: 3, atkMul: 1.5, shareScrap: true, home: { u: 71, v: -139 } }, // было: центр забоя (144, -146)
+  // Прежнее место гиганта — центр забоя K3 (144, −146), было далеко от входа.
   { u: 82, v: -6, type: "iceGiant", count: 2, spread: 10, ring: 0.5, noChamp: true, dmgMul: 3, atkMul: 1.5, shareScrap: true },
   { u: 0, v: 60, type: "iceGiant", count: 2, spread: 10, ring: 0.5, noChamp: true, dmgMul: 3, atkMul: 1.5, shareScrap: true },
   // Лавовый монстр 75 ур. — Затопленные ступени (S) и Обвальная галерея (T): по две группы из четырёх мобов,
@@ -436,7 +438,6 @@ export const DUN_MOB_CAMPS: readonly { u: number; v: number; type: keyof typeof 
   { u: -100, v: 24, type: "lavaMage", count: 4, spread: 3, ring: 0.5, noChamp: true, dmgMul: 3 },
   { u: -110, v: -156, type: "lavaMage", count: 4, spread: 3, ring: 0.5, noChamp: true, dmgMul: 3 },
   { u: -90, v: -170, type: "lavaGuard", count: 4, spread: 3, ring: 0.5, noChamp: true, dmgMul: 3 },
-  { u: -86, v: -80, type: "iceGiant", count: 2, spread: 10, ring: 0.5, noChamp: true, dmgMul: 3, atkMul: 1.5, shareScrap: true },
 ];
 
 // ---------------------------------------------------------------------------
