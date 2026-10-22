@@ -2986,6 +2986,9 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 /* Оружие по скрытому рецепту: перелив — оттенок ходит туда-обратно (золото ↔ тир), сам значок тот же. */
 .pcinv-cell.craft-recipe > .gico { animation:pcinvRecipeShimmer 3.4s ease-in-out infinite; animation-delay:var(--now,0ms); }
 @keyframes pcinvRecipeShimmer { 0%,100% { filter:hue-rotate(-18deg) saturate(1.25) brightness(1.06); } 50% { filter:hue-rotate(22deg) saturate(1.35) brightness(1.14); } }
+/* Редкое по рецепту: анимация перебивает свечение craft-rare (drop-shadow), поэтому оно повторено в кадрах. */
+.pcinv-cell.craft-recipe.craft-rare > .gico { animation:pcinvRecipeRareShimmer 3.4s ease-in-out infinite; animation-delay:var(--now,0ms); }
+@keyframes pcinvRecipeRareShimmer { 0%,100% { filter:hue-rotate(-18deg) saturate(1.25) brightness(1.06) drop-shadow(0 0 3px var(--tier-craft)) drop-shadow(0 0 7px color-mix(in srgb,var(--tier-craft) 65%,transparent)); } 50% { filter:hue-rotate(22deg) saturate(1.35) brightness(1.14) drop-shadow(0 0 3px var(--tier-craft)) drop-shadow(0 0 7px color-mix(in srgb,var(--tier-craft) 65%,transparent)); } }
 /* Само оружие на значке слегка светится цветом тира. */
 .pcinv-cell.craft-rare > .gico { filter:drop-shadow(0 0 3px var(--tier-craft)) drop-shadow(0 0 7px color-mix(in srgb,var(--tier-craft) 65%,transparent)) brightness(1.08); }
 .pcinv-cell.empty { --e:#1c2a3c; --f:linear-gradient(180deg,#08111e,#060d18); color:#2b3e58; }
