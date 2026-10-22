@@ -5,10 +5,10 @@ import { ELITE_MOBS, MOB } from "../../src/shared/mobs";
 
 const lava = DUN_MOB_CAMPS.filter((c) => c.type === "lavaGuard" || c.type === "lavaMage");
 
-test("лавовый монстр: четыре группы по два моба, Стражи и Маги — в Кузне (Y)", () => {
+test("лавовый монстр: четыре группы по четыре моба, Стражи и Маги — в Кузне (Y)", () => {
   assert.equal(lava.length, 4);
   for (const c of lava) {
-    assert.equal(c.count, 2);
+    assert.equal(c.count, 4);
     const w = dunWorld(c.u, c.v);
     assert.equal(dunZoneAt(w.x, w.z).id, "Y", `${c.type} вне Кузни`);
   }
