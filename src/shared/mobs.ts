@@ -365,7 +365,6 @@ export interface EliteMobDef {
    */
   turnRate?: number;
   /** Опыт за убийство — во столько «убийств своего уровня» (делится по вкладу). Танк для толпы — щедрее. */
-  killXpMul?: number;
   /** Возрождение, с (по умолчанию MOB.respawn) — редкие крупные мобы возвращаются не сразу. */
   respawnSec?: number;
 }
@@ -771,7 +770,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     attackCooldown: 2, meleeReach: 6, speedMul: 1, sepMul: 0.6,
     iceGiant: true, walksOnly: true, gait: true, noSquash: true, blendAnims: true,
     strikeDelay: 0.6, attackSec: 1.3, walkClipSpeed: 2.4, runClipSpeed: 5.8,
-    killXpMul: 125, respawnSec: 5, legendaryChance: 0.12, ringMul: 40, // кольца 10% за убийство (2026-10-21; было ×6 — 0.9%); респавн 5 с (2026-10-20; было 30)
+    respawnSec: 5, legendaryChance: 0.12, ringMul: 40, // кольца 10% за убийство (2026-10-21; было ×6 — 0.9%); респавн 5 с (2026-10-20; было 30)
     /** Лом за убийство (2026-10-20): в подземелье 100 — делятся между участниками (CAMP shareScrap); в нашествии свой. */
     scrap: 100,
   },

@@ -331,8 +331,6 @@ export class Mob {
 
   /** Ледяной гигант (ICE_GIANT): умения и их таймеры. */
   readonly iceGiant: boolean;
-  /** Опыт за убийство — во столько «убийств своего уровня» (EliteMobDef.killXpMul). */
-  readonly killXpMul: number;
   private giantAuraT = 0;
   /** Сколько ещё стоит на месте, доигрывая клип умения (раскол, бросок, разлом, рёв). */
   private giantCastT = 0;
@@ -1081,13 +1079,11 @@ export class Mob {
       /** Лавовый монстр: роль (Страж — удар о землю и ярость, Маг — метки и кольцо). */
       lavaRole?: "guard" | "mage";
       strikeDelay?: number;
-      killXpMul?: number;
     } = {},
   ) {
     this.iceGiant = opts.iceGiant ?? false;
     this.lava = opts.lavaRole ? new LavaSkills(opts.lavaRole) : null;
     this.strikeDelay = opts.strikeDelay ?? MOB.strikeDelay;
-    this.killXpMul = opts.killXpMul ?? 1;
     this.campType = opts.campType ?? "";
     this.champ = opts.champ ?? false;
     this.respawnSec = opts.respawnSec ?? MOB.respawn;
@@ -2891,7 +2887,7 @@ export function eliteOpts(d: EliteMobDef): NonNullable<ConstructorParameters<typ
     spiker: d.spiker, healer: d.healer, freezer: d.freezer, webber: d.web === true && Math.random() < WEB.share, quietMagic: d.quietMagic, shot: d.shot, leaper: d.leaper, leapCooldown: d.leapCooldown, walksOnly: d.walksOnly, packFrenzy: d.packFrenzy,
     burrower: d.burrower, stormCaller: d.stormCaller, cloner: d.cloner, parry: d.parry, anchored: d.anchored,
     iceGiant: d.iceGiant, lavaRole: d.lavaGuard ? "guard" : d.lavaMage ? "mage" : undefined,
-    strikeDelay: d.strikeDelay, killXpMul: d.killXpMul, respawnSec: d.respawnSec, scrap: d.scrap,
+    strikeDelay: d.strikeDelay, respawnSec: d.respawnSec, scrap: d.scrap,
   };
 }
 
@@ -4074,7 +4070,7 @@ export class ZoneSim {
     if (total <= 0 || pool <= 0) return;
     // Опыт — доля одного убийства (killXp), делится по вкладу; уровень моба — для соразмерности.
     for (const [owner, d] of parts) {
-      this.mobXpShare.push({ owner, frac: (d / total) * m.killXpMul, lvl: m.eliteLevel });
+      this.mobXpShare.push({ owner, frac: d / total, lvl: m.eliteLevel });
     }
   }
 
