@@ -27,7 +27,7 @@ export function ensureIconCss(): void {
     "img.gico-gear{width:1.45em;height:1.45em;vertical-align:-.35em}" +
     // Оружие по скрытому рецепту: перелив — оттенок ходит туда-обратно (золото ↔ тир).
     ".gico-rc{animation:gicoRc 3.4s ease-in-out infinite}" +
-    "@keyframes gicoRc{0%,100%{filter:hue-rotate(-18deg) saturate(1.25) brightness(1.06)}50%{filter:hue-rotate(22deg) saturate(1.35) brightness(1.14)}}";
+    "@keyframes gicoRc{0%,100%{filter:hue-rotate(-18deg) saturate(1.25) brightness(1.06) drop-shadow(0 0 3px #ffd76a) drop-shadow(0 0 7px rgba(255,215,106,.5))}50%{filter:hue-rotate(22deg) saturate(1.35) brightness(1.14) drop-shadow(0 0 3px #f0832a) drop-shadow(0 0 7px rgba(240,131,42,.65))}}";
   document.head.appendChild(s);
 }
 

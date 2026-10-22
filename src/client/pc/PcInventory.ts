@@ -2983,12 +2983,9 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 /* Рамка — как у тира (цвет и градиент те же), чуть толще; свечение заметно пульсирует. */
 .pcinv-cell.craft-rare { --bw:1.8px; animation:pcinvRareGlow 2.2s ease-in-out infinite; animation-delay:var(--now,0ms); }
 @keyframes pcinvRareGlow { 0%,100% { filter:drop-shadow(0 0 3px var(--tier-craft)); } 50% { filter:drop-shadow(0 0 10px var(--tier-craft)); } }
-/* Оружие по скрытому рецепту: перелив — оттенок ходит туда-обратно (золото ↔ тир), сам значок тот же. */
+/* Оружие по скрытому рецепту: перелив — оттенок и свечение значка ходят туда-обратно (золото ↔ тир). */
 .pcinv-cell.craft-recipe > .gico { animation:pcinvRecipeShimmer 3.4s ease-in-out infinite; animation-delay:var(--now,0ms); }
-@keyframes pcinvRecipeShimmer { 0%,100% { filter:hue-rotate(-18deg) saturate(1.25) brightness(1.06); } 50% { filter:hue-rotate(22deg) saturate(1.35) brightness(1.14); } }
-/* Редкое по рецепту: анимация перебивает свечение craft-rare (drop-shadow), поэтому оно повторено в кадрах. */
-.pcinv-cell.craft-recipe.craft-rare > .gico { animation:pcinvRecipeRareShimmer 3.4s ease-in-out infinite; animation-delay:var(--now,0ms); }
-@keyframes pcinvRecipeRareShimmer { 0%,100% { filter:hue-rotate(-18deg) saturate(1.25) brightness(1.06) drop-shadow(0 0 3px var(--tier-craft)) drop-shadow(0 0 7px color-mix(in srgb,var(--tier-craft) 65%,transparent)); } 50% { filter:hue-rotate(22deg) saturate(1.35) brightness(1.14) drop-shadow(0 0 3px var(--tier-craft)) drop-shadow(0 0 7px color-mix(in srgb,var(--tier-craft) 65%,transparent)); } }
+@keyframes pcinvRecipeShimmer { 0%,100% { filter:hue-rotate(-18deg) saturate(1.25) brightness(1.06) drop-shadow(0 0 3px #ffd76a) drop-shadow(0 0 7px rgba(255,215,106,.5)); } 50% { filter:hue-rotate(22deg) saturate(1.35) brightness(1.14) drop-shadow(0 0 3px var(--tier-craft)) drop-shadow(0 0 7px color-mix(in srgb,var(--tier-craft) 65%,transparent)); } }
 /* Само оружие на значке слегка светится цветом тира. */
 .pcinv-cell.craft-rare > .gico { filter:drop-shadow(0 0 3px var(--tier-craft)) drop-shadow(0 0 7px color-mix(in srgb,var(--tier-craft) 65%,transparent)) brightness(1.08); }
 .pcinv-cell.empty { --e:#1c2a3c; --f:linear-gradient(180deg,#08111e,#060d18); color:#2b3e58; }
