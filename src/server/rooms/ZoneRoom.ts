@@ -9361,7 +9361,12 @@ export class ZoneRoom extends Room<ZoneState> {
   private botDunNavDir(bot: Bot, p: PlayerState, tx: number, tz: number, dx: number, dz: number, dist: number): [number, number] {
     if (dist < 2) return [dx, dz];
     let nav = bot.nav;
-    if (!nav || this.elapsed - nav.at > 2 || Math.hypot(nav.tx - tx, nav.tz - tz) > 5) {
+    // Маршрут сбит: бот после боя или отскока далеко от старого пути (первая точка — за стеной или пустой путь
+    // при дальней цели) — строим заново, а не ведём напрямую через стену.
+    const offPath =
+      !!nav &&
+      (nav.path.length === 0 ? dist >= 2 : !dunClear(p.head.x, p.head.z, nav.path[0][0], nav.path[0][1]));
+    if (!nav || offPath || this.elapsed - nav.at > 2 || Math.hypot(nav.tx - tx, nav.tz - tz) > 5) {
       // Бот вне пола (вынесло за край уступа): маршрут строится от точки на полу, иначе он стоит на месте.
       if (dunFloorLocal(p.head.x - DUN_X, p.head.z - DUN_Z, 0.4) === null) {
         const [sx, sz] = dunProject(p.head.x, p.head.z, 0.4);
