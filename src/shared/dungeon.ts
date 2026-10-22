@@ -430,10 +430,10 @@ export const DUN_MOB_CAMPS: readonly { u: number; v: number; type: keyof typeof 
   { u: 144, v: -146, type: "iceGiant", count: 2, spread: 10, ring: 0.5, noChamp: true, dmgMul: 3, atkMul: 1.5, shareScrap: true }, // зал K: центр широкого забоя (K1), 24 м до края
   { u: 82, v: -6, type: "iceGiant", count: 2, spread: 10, ring: 0.5, noChamp: true, dmgMul: 3, atkMul: 1.5, shareScrap: true },
   { u: 0, v: 60, type: "iceGiant", count: 2, spread: 10, ring: 0.5, noChamp: true, dmgMul: 3, atkMul: 1.5, shareScrap: true },
-  // Лавовый монстр 75 ур. — Кузня (Y, зал 152..196 × 36..108): Страж у северной стены, Маг ближе к выходу.
-  // Расстановка — первая прикидка (2 моба на точку); стоянку ботов сверить в игре.
-  { u: 166, v: 66, type: "lavaGuard", count: 2, spread: 4, noChamp: true },
-  { u: 184, v: 84, type: "lavaMage", count: 2, spread: 3, noChamp: true },
+  // Лавовый монстр 75 ур. — Кузня (Y, зал 152..196 × 36..108): пока все в центре зоны (центр спавна), по 2 моба на точку.
+  // Расстановку по залу — потом, по отзывам из игры.
+  { u: 174, v: 72, type: "lavaGuard", count: 2, spread: 4, ring: 0.5, noChamp: true },
+  { u: 174, v: 72, type: "lavaMage", count: 2, spread: 4, ring: 0.5, noChamp: true },
   { u: -86, v: -80, type: "iceGiant", count: 2, spread: 10, ring: 0.5, noChamp: true, dmgMul: 3, atkMul: 1.5, shareScrap: true },
 ];
 

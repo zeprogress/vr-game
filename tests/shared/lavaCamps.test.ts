@@ -14,13 +14,17 @@ test("лавовый монстр: по два моба на точку, Стр�
   }
 });
 
-test("лавовый монстр: вокруг стоянки пол с запасом на тело (кольцо spread)", () => {
+test("лавовый монстр: стоянка — в центре зала Кузни (центр спавна), пол вокруг с запасом на тело", () => {
   for (const c of lava) {
+    const w = dunWorld(c.u, c.v);
+    const zone = dunZoneAt(w.x, w.z);
+    assert.ok(Math.hypot(zone.u - c.u, zone.v - c.v) <= 1, `${c.type}: стоянка не в центре зоны`);
     const pad = MOB.bodyRadius * ELITE_MOBS[c.type].scaleMul;
+    const ring = c.spread * (c.ring ?? 1);
     for (let k = 0; k < 12; k++) {
       const a = (k / 12) * Math.PI * 2;
-      const u = c.u + Math.cos(a) * c.spread;
-      const v = c.v + Math.sin(a) * c.spread;
+      const u = c.u + Math.cos(a) * ring;
+      const v = c.v + Math.sin(a) * ring;
       assert.notEqual(dunFloorLocal(u, v, pad), null, `${c.type}: точка ${k} — не на полу`);
     }
   }
