@@ -268,15 +268,19 @@ def clip_ring(rig_, u):
 # с темпом «скорость разворота / TURN_RATE» (то же число — ELITE_MOBS.lavaGuard/lavaMage.turnRate в src/shared/mobs.ts).
 # Стоящие стопы плывут назад по дуге ровно с этой скоростью, шагающие — вперёд; корпус почти неподвижен.
 TURN_RATE = 60.0  # °/с
-TURN_SEC = 1.0
 TURN_PERIOD = 0.6  # с — каждая нога шагает раз в период
 TURN_STEP = 0.25  # с — сам шаг
+TURN_SEC = 2 * TURN_PERIOD  # два периода — клип зацикливается без скачка
 
 
 def clip_turn(sign):
-    """Разворот на месте: sign = +1 — влево, −1 — вправо. Ноги переставляются по очереди, стоящие плывут по дуге."""
+    """Разворот на месте: sign = +1 — влево, −1 — вправо. Ноги переставляются по очереди, стоящие плывут по дуге;
+    всё тело живёт в такт: таз и корпус покачиваются и закручиваются в поворот, руки идут встречно ногам,
+    голова отстаёт, кулаки сжаты."""
     def f(rig_, u):
         s = u * TURN_SEC
+        w = 2 * math.pi / TURN_PERIOD  # один шаг каждой ноги
+        kb = 2 * w * s  # тело качается дважды за период (на каждый шаг)
         p = Pose()
         amp = TURN_RATE * (TURN_PERIOD - TURN_STEP) / 2
         for i, ph in enumerate((0.0, TURN_PERIOD / 2)):
@@ -290,15 +294,21 @@ def clip_turn(sign):
             a0 = rig.legs[i]["A"]
             turned = Quaternion((0.0, 0.0, 1.0), math.radians(sign * psi)) @ a0
             p.feet[i] = (turned - a0) + Vector((0.0, 0.0, h))
-        p.root.z = -0.02
-        p.torso(0.0, 0.0, 2.0 * sign)
-        p.head(0.0, 0.0, -2.0 * sign)
-        for s_ in ("L", "R"):
-            p.arm(s_, (0, -2, 0), (-6, -9, 4), -22.0, -8.0)
-            fist(p, s_, 30)
+        # таз: просадка на каждом шаге, качание и крен в сторону поворота
+        p.root.z = -0.02 - 0.012 * (1 - math.cos(kb)) / 2
+        p.root.x = 0.012 * math.cos(kb / 2)
+        p.rot("Hips", 0, -sign * 3.5 * math.sin(kb / 2), sign * 4.5 * math.cos(kb / 2))
+        # корпус: закручивается в поворот и покачивается вперёд-назад в такт шагам
+        p.torso(2.5 * math.sin(kb) + 1.5, sign * (7.0 + 3.0 * math.sin(kb / 2)), sign * (3.0 + 1.5 * math.cos(kb / 2)))
+        # голова отстаёт от корпуса и кивает
+        p.head(-1.2 * math.sin(kb), -sign * 2.5 * math.sin(kb / 2 + 0.6), -sign * 2.0)
+        # руки встречно ногам: левая — с фазой правой ноги
+        for s_, sg in (("L", 1.0), ("R", -1.0)):
+            fa = sg * math.cos(w * s)
+            p.arm(s_, (0, -2, 0), (-6 - 14 * fa, -9, 4 - 4 * fa), -22.0 - 16 * max(0.0, fa), -8.0)
+            fist(p, s_, 34 + 12 * fa)
         return p.done()
     return f
-
 
 
 CLIPS = {
