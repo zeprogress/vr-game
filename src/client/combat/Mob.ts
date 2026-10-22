@@ -29,7 +29,7 @@ import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
-import { DRAGON, ELITE_MOBS, FLYER_HIT_BONUS, ICE_GIANT, MAGE_NOVA, MOB, MOB_SWING, SHARD_CFG, type EliteMobDef } from "#shared/mobs";
+import { DRAGON, ELITE_MOBS, FLYER_HIT_BONUS, ICE_GIANT, LAVA, MAGE_NOVA, MOB, MOB_SWING, SHARD_CFG, type EliteMobDef } from "#shared/mobs";
 import { DECAL, IceFx, SHARD, type IceAura } from "../ui/IceFx";
 import { FireFx, FLAME, type FireAura } from "../ui/FireFx";
 import { DUST, LordFeet, lordMouth, lordScale, lordStep } from "../ui/DragonAct";
@@ -73,6 +73,12 @@ const SWING_ANIM: Record<number, { clip: string; sec: number }> = {
   [MOB_SWING.throw]: { clip: "throw", sec: ICE_GIANT.clipSec.throw },
   [MOB_SWING.fissure]: { clip: "fissure", sec: ICE_GIANT.clipSec.fissure },
   [MOB_SWING.roar]: { clip: "roar", sec: ICE_GIANT.clipSec.roar },
+  // Лавовый монстр (LAVA): удар о землю, разлив магмы, рёв ярости (Страж); метка и кольцо (Маг).
+  [MOB_SWING.lavaSlam]: { clip: "slam", sec: LAVA.clipSec.slam },
+  [MOB_SWING.lavaSpill]: { clip: "spill", sec: LAVA.clipSec.spill },
+  [MOB_SWING.lavaRoar]: { clip: "roar", sec: LAVA.clipSec.roar },
+  [MOB_SWING.lavaMark]: { clip: "mark", sec: LAVA.clipSec.mark },
+  [MOB_SWING.lavaRing]: { clip: "ring", sec: LAVA.clipSec.ring },
 };
 /** EliteMobDef.gait: медленнее — стойка (Idle), быстрее — бег (Run), между — шаг (Walk), м/с. */
 const GAIT_IDLE_SPEED = 0.5;

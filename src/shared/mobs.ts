@@ -785,7 +785,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
  */
 export const LAVA = {
   /** Клипы модели, с (lavamonster_anim.py). Ярость стража пока без своего клипа рёва — см. guard.fury. */
-  clipSec: { attack: 1.3, slam: 2.4, hit: 0.5, death: 2.0, idle: 3.0, walk: 1.5, run: 1.0 },
+  clipSec: { attack: 1.3, slam: 2.4, hit: 0.5, death: 2.0, idle: 3.0, walk: 1.5, run: 1.0, spill: 1.6, roar: 2.2, mark: 2.0, ring: 1.6 },
   /** Кадр удара от начала клипа, с. */
   hitSec: { attack: 0.6, slam: 1.3 },
   /** Страж: удар о землю (круг вокруг себя, оглушение), разлив магмы (линия, горение), ярость на доле HP. */

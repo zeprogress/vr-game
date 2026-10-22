@@ -16,6 +16,10 @@ test("Лавовый монстр: таймеры клипов совпадаю�
   assert.equal(LAVA.clipSec.hit, num("HIT_SEC"));
   assert.equal(LAVA.clipSec.death, num("DEATH_SEC"));
   assert.equal(LAVA.clipSec.idle, num("IDLE_SEC"));
+  assert.equal(LAVA.clipSec.spill, num("SPILL_SEC"));
+  assert.equal(LAVA.clipSec.roar, num("ROAR_SEC"));
+  assert.equal(LAVA.clipSec.mark, num("MARK_SEC"));
+  assert.equal(LAVA.clipSec.ring, num("RING_SEC"));
   assert.equal(LAVA.hitSec.slam, num("SLAM_HIT"));
   assert.equal(LAVA.hitSec.attack, num("ATTACK_HIT"));
 });

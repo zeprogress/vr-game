@@ -61,6 +61,8 @@ export const MODEL_LIGHT: Record<string, ModelLight> = {
   monBogBrute: { emissive: 0.3, diffuse: 1.2, tex: 1.8 },
   // Владыка Бездны (супербосс катакомб): единственный моб на этой модели — крупное пятно и плотное.
   monDragonBest: { emissive: 0, diffuse: 1, tex: 1.2, shadow: 1.4, dense: true },
+  // Лавовый монстр (Страж и Маг, одна модель): подогнано в ?moblight=1.
+  monLavaMonster: { emissive: 0, diffuse: 1, tex: 3 },
   // Костяной жнец: светлая кость — без сильного подъёма текстуры (подогнать в ?moblight=1).
   monSkeletonReaver: { emissive: 0.15, diffuse: 1.1, tex: 1.3 },
   // Паук: подогнано в ?moblight=1 (текстура 1024, без свечения).
