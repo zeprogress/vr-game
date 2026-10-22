@@ -754,7 +754,22 @@ export class PcInventory {
         minus.disabled = !on || cur <= 1;
         plus.disabled = !on || cur >= it.max;
         all.disabled = !on || cur >= it.max;
-        qty.append(minus, div("pcinv-qv", on ? String(cur) : "—"), plus, all);
+        // Число можно вписать вручную: применяется по Enter или при уходе из поля (перерисовку откладывает tradeTyping).
+        const qv = document.createElement("input");
+        qv.type = "number";
+        qv.inputMode = "numeric";
+        qv.min = "1";
+        qv.max = String(it.max);
+        qv.className = "pcinv-qv pcinv-qv-in";
+        qv.value = on ? String(cur) : "";
+        qv.placeholder = "—";
+        qv.disabled = !on;
+        qv.title = `Сколько отдать (1–${it.max})`;
+        qv.onchange = () => {
+          const n = Math.floor(Number(qv.value));
+          set(Number.isFinite(n) ? n : cur);
+        };
+        qty.append(minus, qv, plus, all);
         row.append(qty);
       } else {
         row.append(div("pcinv-tcnt", "×1"));
@@ -3507,6 +3522,10 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-qbtn:disabled { opacity:.35; cursor:default; }
 .pcinv-qall { font-size:12px; min-width:0; }
 .pcinv-qv { min-width:34px; text-align:center; font:800 15px system-ui; color:#e8c26a; }
+.pcinv-qv-in { width:64px; height:30px; box-sizing:border-box; padding:0 4px; background:#06101c; border:1px solid #2d405a; border-radius:4px; color:#e8c26a; -moz-appearance:textfield; }
+.pcinv-qv-in::-webkit-outer-spin-button, .pcinv-qv-in::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.pcinv-qv-in:focus { outline:none; border-color:#3d7fc0; }
+.pcinv-qv-in:disabled { opacity:.35; }
 
 /* ---------- телефон в игре: окно на весь экран, сумка рядом со слотами ---------- */
 .pcinv-root.touch:not(.page) .pcinv-win { inset:0; transform:none; width:auto; max-height:none; border:none; box-shadow:none;
