@@ -35,12 +35,11 @@ test("Лавовый монстр: два моба 75 ур., одна модел
   assert.ok(existsSync("public/models/gen/LavaMonster.glb"));
 });
 
-test("лавовый монстр сильнее ледяного гиганта: здоровье, урон (с множителем камеры ×3) и опыт за убийство", () => {
+test("лавовый монстр: урон (с множителем камеры ×3) и опыт за убийство выше, чем у ледяного гиганта (здоровье — ниже, по заявке)", () => {
   const g = ELITE_MOBS.iceGiant;
   const gKill = g.xp * (g.killXpMul ?? 1);
   for (const k of ["lavaGuard", "lavaMage"] as const) {
     const d = ELITE_MOBS[k];
-    assert.ok(d.hp > g.hp, `${k}: hp ${d.hp} ≤ гигант ${g.hp}`);
     assert.ok(d.dmgMul * 3 > g.dmgMul * 3, `${k}: урон ниже гиганта`);
     assert.ok(d.xp * (d.killXpMul ?? 1) > gKill, `${k}: опыт ниже гиганта`);
   }
