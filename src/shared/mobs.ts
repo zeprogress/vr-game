@@ -746,14 +746,14 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Числа — первая прикидка: баланс смотреть в лаборатории (npm run lab:balance).
   lavaGuard: {
     model: "monLavaMonster", name: "Страж лавы", blurb: "удар о землю оглушает, магма под ногами, ярость ниже 40%",
-    level: 75, kind: "slime", hp: 225000, dmgMul: 60, xp: 3000000000, scaleMul: 4.2, tint: null, killXpMul: 750, physArmor: 0.4, // физическая броня: 40% физического урона съедает
+    level: 75, kind: "slime", hp: 225000, dmgMul: 60, xp: 3000000000, scaleMul: 4.2, tint: null, physArmor: 0.4, // физическая броня: 40% физического урона съедает
     lavaGuard: true, gait: true, noSquash: true, walksOnly: true, blendAnims: true, turnRate: 60, // разворот шагами (TurnL/TurnR)
     strikeDelay: 0.6, attackSec: 1.3 /* = LAVA.clipSec.attack */, walkClipSpeed: 1.5, runClipSpeed: 3.5,
     attackCooldown: 2, meleeReach: 4.5, scrap: 100,
   },
   lavaMage: {
     model: "monLavaMonster", name: "Маг лавы", blurb: "метка лавы с задержкой, кольцо углей замедляет",
-    level: 75, kind: "spitter", hp: 200000, dmgMul: 50, xp: 2406250000, scaleMul: 2.6, killXpMul: 750, magicArmor: 0.4, // магическая броня: 40% урона магии съедает
+    level: 75, kind: "spitter", hp: 200000, dmgMul: 50, xp: 2406250000, scaleMul: 2.6, magicArmor: 0.4, // магическая броня: 40% урона магии съедает
     tint: [0.95, 0.42, 0.12], // раскалённый перекрас — отличается от стража
     lavaMage: true, gait: true, noSquash: true, walksOnly: true, blendAnims: true, turnRate: 60, // разворот шагами (TurnL/TurnR)
     strikeDelay: 0.6, attackSec: 1.3 /* = LAVA.clipSec.attack */, walkClipSpeed: 1.5, runClipSpeed: 3.5,
