@@ -205,7 +205,7 @@ import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
 import { leashCut } from "../sim/leash";
 import { ATTR2 } from "#shared/attrs2";
 import { DRAW_IN, drawInPlan, drawModeOf } from "#shared/drawIn";
-import { STEEL_AURA, steelAuraTick, steelModeOf, type SteelMode, ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, MARK_FOCUS, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { STEEL_AURA, steelAuraTick, steelModeOf, type SteelMode, ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, warriorWhirlHits, WARCRY, MARK, MARK_FOCUS, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC, ULT_PULL_PULSES, ULT_PULL_POWER } from "#shared/ultimates";
 import {
   MAGIC,
@@ -10154,7 +10154,10 @@ export class ZoneRoom extends Room<ZoneState> {
         }
         const spear = false;
         const radius = spear ? WHIRL.spearRadius : sk.radius;
-        const hits = spear ? WHIRL.spearHits : sk.hits;
+        // Воин: ударов больше со скоростью атаки (ЛОВ, ролл, клич) — за те же WHIRL.duration с.
+        const swordHand: "left" | "right" = p.rightCls === "sword" ? "right" : "left";
+        const hits = spear ? WHIRL.spearHits : cls === "warrior" ? warriorWhirlHits(p, rolledAtkSpeedMul(p, swordHand, rt) * this.cryTempo(rt)) : sk.hits;
+        const swordCrit = cls === "warrior" ? rolledCrit(p, swordHand, rt) : null;
         const mult = spear ? WHIRL.spearDmg : sk.dmgMult;
         rt.whirlUntil = this.elapsed + WHIRL.duration;
         rt.whirlKind = cls === "assassin" ? 2 : cls === "warrior" ? 1 : 0;
@@ -10176,7 +10179,11 @@ export class ZoneRoom extends Room<ZoneState> {
             const near = around(pp.head.x, pp.head.z, radius);
             for (const m of near) {
               const [dx, dz] = dirTo(m, pp.head.x, pp.head.z);
-              const critM = cls === "assassin" ? rollCritMult("dagger", Math.random, false, WEAPONS2.dagger.critBase - BASE_CRIT, 0, WEAPONS2.dagger.critMult, attrOf(pp, "luc")) : 1;
+              const critM = cls === "assassin"
+                ? rollCritMult("dagger", Math.random, false, WEAPONS2.dagger.critBase - BASE_CRIT, 0, WEAPONS2.dagger.critMult, attrOf(pp, "luc"))
+                : swordCrit // воин: крит меча — роллы «Крит» и УДЧ, как у обычного удара
+                  ? rollCritMult("sword", Math.random, false, swordCrit.chance, swordCrit.mult, SWORD_CRIT_MULT, attrOf(pp, "luc"))
+                  : 1;
               this.sim.hitMob(m.id, mult * hitDmg * critM, dx, dz, ownerId, false, false, hitMagic, critM > 1);
               if (spear) this.sim.shoveMob(m.id, dx, dz, 4);
               if (cls === "assassin") this.sim.slowMob(m.id, ASSASSIN_WHIRL_SLOW.sec, ASSASSIN_WHIRL_SLOW.mul);

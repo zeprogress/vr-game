@@ -6,7 +6,7 @@
 import { ATTR2, attrOf } from "./attrs2";
 import {
   ARROW_STORM, ASSASSIN_LEAP, BARRIER_ARROW, BLAST_ARROW, CHAIN, CHAIN_HAMMER, FAN, HAMMER_FIELD, PLAGUE, SEAL, SKILLS2, SOUL_STEAL, SPEAR_FLURRY,
-  STORM_CRUSH, SWARM_ARROW, THUNDER_SPIN, WEAPONS2, skillAttrMul, type ClassId, type SkillAttrs, type SkillId,
+  STORM_CRUSH, SWARM_ARROW, THUNDER_SPIN, WEAPONS2, skillAttrMul, warriorWhirlHits, type ClassId, type SkillAttrs, type SkillId,
 } from "./classes2";
 import { SKILL } from "./constants";
 
@@ -57,6 +57,7 @@ export function skillDamageText(id: SkillId, cls: ClassId, strike: number, a: Sk
         const mul = THUNDER_SPIN.minMul + (THUNDER_SPIN.maxMul - THUNDER_SPIN.minMul) * Math.min(1, int / THUNDER_SPIN.intFull);
         return `Урон ${n(sk.dmgMult * (phys !== undefined ? phys * THUNDER_SPIN.hitMul : strike))} за удар × ${sk.hits}; молния ${n(mul * strike)} (×${Math.round(mul * 100) / 100})`;
       }
+      if (cls === "warrior") return `Урон ${n(base)} за удар × ${warriorWhirlHits(a)}+ (больше с роллом скорости и кличем), каждый — с шансом крита`;
       return `Урон ${n(base)} за удар × ${sk.hits}`;
     case "chain":
       if (cls === "support") return `Лечение по цепи: ${hops(strike * 2.2, 4, CHAIN.falloff)}`;
