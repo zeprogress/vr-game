@@ -85,18 +85,30 @@ export function gemHtml(k: GemKey): string {
  * Гнёзда на картинке кольца по тиру и числу гнёзд: центр и размер камня (доли картинки) — замерены по картинкам
  * таблицы колец (2026-10-23). У фиолетового и рубинового гнёзда — цветные камни картинки; вставленный камень ложится сверху.
  */
-const RING_SOCKETS: Record<string, readonly { cx: number; cy: number; s: number }[]> = {
-  // Размер камня — как на прежних картинках колец (0.44 одиночный, 0.4 двойные; просьба пользователя 2026-10-23).
-  "gold:1": [{ cx: 0.71, cy: 0.6, s: 0.44 }],
-  "legendary:1": [{ cx: 0.625, cy: 0.6, s: 0.42 }],
-  "legendary:2": [{ cx: 0.55, cy: 0.64, s: 0.4 }, { cx: 0.79, cy: 0.54, s: 0.4 }],
-  "ruby:2": [{ cx: 0.48, cy: 0.69, s: 0.4 }, { cx: 0.715, cy: 0.64, s: 0.4 }],
+const RING_SOCKETS: Record<string, readonly { cx: number; cy: number; s: number; h: number }[]> = {
+  // Центры — по ободкам гнёзд картинок (уточнено 2026-10-23). s — камень (как на прежних картинках: 0.44 / 0.4),
+  // h — пустое гнездо: у одного — крупно, у двух — наибольшее без наползания соседних кругов.
+  "gold:1": [{ cx: 0.713, cy: 0.605, s: 0.44, h: 0.32 }],
+  "legendary:1": [{ cx: 0.632, cy: 0.598, s: 0.42, h: 0.32 }],
+  "legendary:2": [{ cx: 0.55, cy: 0.643, s: 0.4, h: 0.255 }, { cx: 0.79, cy: 0.535, s: 0.4, h: 0.255 }],
+  "ruby:2": [{ cx: 0.48, cy: 0.692, s: 0.4, h: 0.24 }, { cx: 0.717, cy: 0.635, s: 0.4, h: 0.24 }],
 };
 
 /** Место i-го гнезда кольца тира tier с n гнёздами (левый верх и размер — доли картинки). */
 export function socketSpot(tier: RingTier, n: number, i: number): { x: number; y: number; s: number } {
   const c = RING_SOCKETS[`${tier}:${n}`]?.[i];
   return c ? { x: c.cx - c.s / 2, y: c.cy - c.s / 2, s: c.s } : { x: 0.4, y: 0.45, s: 0.2 };
+}
+
+/** Пустое гнездо кольца — круг ровно по центру гнезда (центр и диаметр, доли картинки). */
+export function ringHoleSpot(tier: RingTier, n: number, i: number): { cx: number; cy: number; s: number } {
+  const c = RING_SOCKETS[`${tier}:${n}`]?.[i];
+  return c ? { cx: c.cx, cy: c.cy, s: c.h } : { cx: 0.5, cy: 0.55, s: 0.2 };
+}
+
+/** Пустое гнездо (кольцо и ожерелье) — тёмный круг с ободком, одинаково на ПК и в VR (WristMenu рисует так же). */
+function holeHtml(o: { cx: number; cy: number; s: number }): string {
+  return `<span style="position:absolute;left:${(o.cx - o.s / 2) * 100}%;top:${(o.cy - o.s / 2) * 100}%;width:${o.s * 100}%;aspect-ratio:1;border-radius:50%;background:#0d0b12;border:2px solid #9a90ae;box-sizing:border-box;box-shadow:inset 0 0 4px #000;pointer-events:none"></span>`;
 }
 
 /** HTML-значок кольца с камнями гнёзд сверху. */
@@ -108,9 +120,7 @@ export function ringHtml(tier: RingTier, gems: readonly (GemKey | null)[] = []):
     // Квадрат по соотношению сторон (aspect-ratio), а не по процентам высоты: иначе гнездо — овал, если контейнер не квадратный.
     const box = `position:absolute;left:${p.x * 100}%;top:${p.y * 100}%;width:${p.s * 100}%;aspect-ratio:1;pointer-events:none`;
     const g = gemArt(k ?? "");
-    h += g
-      ? `<span style="${box}"><img src="${g.src}" alt="" draggable="false" style="${LAYER}"></span>`
-      : `<span style="${box}"><span style="position:absolute;inset:16%;border-radius:50%;background:#0d0b12;border:2px solid #7a7488;box-sizing:border-box;box-shadow:inset 0 0 4px #000"></span></span>`;
+    h += g ? `<span style="${box}"><img src="${g.src}" alt="" draggable="false" style="${LAYER}"></span>` : holeHtml(ringHoleSpot(tier, a.sockets.length, i));
   });
   return h + "</span>";
 }
@@ -121,13 +131,14 @@ export function ringHtml(tier: RingTier, gems: readonly (GemKey | null)[] = []):
  */
 const NECK_SOCKETS: readonly (readonly { cx: number; cy: number }[])[] = [
   [],
-  [{ cx: 0.5, cy: 0.59 }],
-  [{ cx: 0.416, cy: 0.572 }, { cx: 0.587, cy: 0.572 }],
+  [{ cx: 0.5, cy: 0.6 }],
+  [{ cx: 0.415, cy: 0.578 }, { cx: 0.585, cy: 0.578 }],
   [{ cx: 0.389, cy: 0.545 }, { cx: 0.502, cy: 0.545 }, { cx: 0.613, cy: 0.545 }],
 ];
 /** Камень в гнезде ожерелья и пустое гнездо (тёмный круг с ободком поверх отверстия) — доли картинки. 2026-10-23: крупнее. */
 const NECK_GEM = 0.19;
-const NECK_HOLE = 0.17;
+/** Пустое гнездо: одно — крупнее, два и три — наибольшее без наползания соседних кругов. */
+const NECK_HOLE = [0, 0.21, 0.165, 0.11] as const;
 
 /** Место i-го гнезда ожерелья с n гнёздами (доли картинки: левый верх и размер — как socketSpot у кольца). */
 export function neckSocketSpot(n: number, i: number): { x: number; y: number; s: number } {
@@ -138,7 +149,7 @@ export function neckSocketSpot(n: number, i: number): { x: number; y: number; s:
 /** Пустое гнездо ожерелья i из n — круг поверх отверстия (центр и размер, доли картинки). */
 export function neckHoleSpot(n: number, i: number): { cx: number; cy: number; s: number } {
   const p = neckSocketSpot(n, i);
-  return { cx: p.x + p.s / 2, cy: p.y + p.s / 2, s: NECK_HOLE };
+  return { cx: p.x + p.s / 2, cy: p.y + p.s / 2, s: NECK_HOLE[Math.max(0, Math.min(3, n))] };
 }
 
 /** HTML-значок ожерелья с камнями в гнёздах; пустое гнездо — тёмный круг с ободком (крупнее отверстия картинки). */
@@ -151,8 +162,7 @@ export function neckHtml(tier: NecklaceTier, gems: readonly (GemKey | null)[] = 
       h += `<span style="position:absolute;left:${p.x * 100}%;top:${p.y * 100}%;width:${p.s * 100}%;aspect-ratio:1;pointer-events:none"><img src="${g.src}" alt="" draggable="false" style="${LAYER}"></span>`;
       return;
     }
-    const o = neckHoleSpot(gems.length, i);
-    h += `<span style="position:absolute;left:${(o.cx - o.s / 2) * 100}%;top:${(o.cy - o.s / 2) * 100}%;width:${o.s * 100}%;aspect-ratio:1;border-radius:50%;background:#0d0b12;border:2px solid #9a90ae;box-sizing:border-box;box-shadow:inset 0 0 4px #000;pointer-events:none"></span>`;
+    h += holeHtml(neckHoleSpot(gems.length, i));
   });
   return h + "</span>";
 }

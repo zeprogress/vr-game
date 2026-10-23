@@ -22,7 +22,7 @@ import type { PcInvActMsg, PcInvArmor, QuestData, WarehouseWeapon } from "#share
 import { ATTR_SHORT, GEM_LOOK, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type PcInvJewels, type PcInvNeck } from "#shared/jewels";
 import { NECK_TIER_NAME, type NeckTier } from "#shared/necklaces";
 import { BAG_SORTS, bagPickItem, nextBagSort, sortBag, type BagSort } from "#shared/bagSort";
-import { gemArt, NECK_SLOT_SVG, neckHoleSpot, neckSocketSpot, necklaceSrc, RING_SLOT_SVG, ringArt, socketSpot } from "#shared/jewelIcons";
+import { gemArt, NECK_SLOT_SVG, neckHoleSpot, neckSocketSpot, necklaceSrc, RING_SLOT_SVG, ringArt, ringHoleSpot, socketSpot } from "#shared/jewelIcons";
 import {
   CRAFT,
   CRAFT_CATS,
@@ -2370,11 +2370,13 @@ export class WristMenu {
       const g = k ? gemArt(k) : null;
       if (g) this.drawImgAt(ctx, g.src, x + p.x * s, y + p.y * s, p.s * s);
       else {
+        // Пустое гнездо — как на ПК (ringHoleSpot): по центру гнезда, тёмный круг с ободком.
+        const o = ringHoleSpot(tier, a.sockets.length, i);
         ctx.fillStyle = "#0d0b12";
-        ctx.strokeStyle = "#5a5468";
+        ctx.strokeStyle = "#9a90ae";
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(x + (p.x + p.s / 2) * s, y + (p.y + p.s / 2) * s, p.s * s * 0.34, 0, Math.PI * 2);
+        ctx.arc(x + o.cx * s, y + o.cy * s, (o.s * s) / 2, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
       }
