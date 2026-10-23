@@ -19,7 +19,7 @@ import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
 import { drawIcon } from "./icons";
 import type { PcInvActMsg, PcInvArmor, QuestData, WarehouseWeapon } from "#shared/net/messages";
-import { ATTR_SHORT, GEM_LOOK, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type PcInvJewels, type PcInvNeck } from "#shared/jewels";
+import { ATTR_SHORT, GEM_LOOK, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, type PcInvJewels, type PcInvNeck } from "#shared/jewels";
 import { NECK_TIER_NAME, type NeckTier } from "#shared/necklaces";
 import { BAG_SORTS, bagPickItem, nextBagSort, sortBag, type BagSort } from "#shared/bagSort";
 import { gemArt, NECK_SLOT_SVG, neckHoleSpot, neckSocketSpot, necklaceSrc, RING_SLOT_SVG, ringArt, ringHoleSpot, socketSpot } from "#shared/jewelIcons";
@@ -2052,10 +2052,10 @@ export class WristMenu {
     ctx.fillText("Кольца и ожерелье", TX, VIEW_Y + 20);
     ctx.font = "22px system-ui, sans-serif";
     ctx.fillStyle = "#9fe39a";
-    const parts = [`Маг. защита +${Math.round(ringResist(b.rings) * 100)}%`];
+    const parts: string[] = [];
     for (const k of STATS) if (b[k] > 0) parts.push(`+${b[k]} ${ATTR_SHORT[k]}`);
     if (nk) parts.push(...nk.affs);
-    this.wrapText(ctx, b.rings || nk ? parts.join(" · ") : `Ничего не надето: кольцо даёт маг. защиту ${Math.round(RING.mres * 100)}%, ожерелье — радиус, длительность и дальность умений`, TX, VIEW_Y + 62, TEX_W - TX - 24, 28, 3);
+    this.wrapText(ctx, parts.length ? parts.join(" · ") : "Ничего не надето: ожерелье — радиус, длительность и дальность умений; камни в кольцах и ожерелье — атрибуты", TX, VIEW_Y + 62, TEX_W - TX - 24, 28, 3);
     ctx.fillStyle = "#a9a498";
     ctx.fillText(`Лом: ${this.jewelScrap}`, TX, VIEW_Y + 120);
 

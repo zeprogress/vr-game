@@ -82,13 +82,11 @@ test("ТЕЛ даёт физ. броню: больше вложений — бо
   assert.ok(armorFrac(high) < 1);
 });
 
-test("МДР даёт магзащиту, кольца добавляют сверху", () => {
+test("МДР даёт магзащиту; кольца магзащиту не дают", () => {
   assert.equal(magicResistFrac(blankAttrs()), 0);
   const base = { ...blankAttrs(), wis: 30 };
-  const withRings = { ...base, gb: { rings: 2 } };
   assert.ok(magicResistFrac(base) > 0);
-  assert.ok(magicResistFrac(withRings) > magicResistFrac(base));
-  assert.ok(magicResistFrac(withRings) < 1);
+  assert.ok(magicResistFrac(base) < 1);
 });
 
 test("ЛОВ ускоряет удары и бег: больше ЛОВ — меньше пауза, быстрее бег", () => {

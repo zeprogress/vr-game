@@ -9,7 +9,7 @@ import type { IconKey } from "#shared/icons";
 import { AEGIS_NAME, AFFIX_NAME, craftPow, isCraftRare, weaponName, ATTACK_CLASSES, WEAPON_NOUN, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, qualityStarsShort, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcEnchRow, PcInvActMsg, PcInvArmor, PcInvData, PcInvResult, PcInvWeapon, TradeItemView } from "#shared/net/messages";
 import { SKIN_LABELS, skinPicture } from "#shared/skins";
-import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, ringSkillBonusOf, type PcInvJewels, type PcInvNeck, type RingTier } from "#shared/jewels";
+import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringSkillBonusOf, type PcInvJewels, type PcInvNeck, type PcInvRing, type RingTier } from "#shared/jewels";
 import { RING_STATS, ringValueText } from "#shared/ringAffixes";
 import { NECK_TIER_NAME, type NeckTier } from "#shared/necklaces";
 import { skillDamageText } from "#shared/skillDamage";
@@ -1074,14 +1074,14 @@ export class PcInventory {
     box.append(stats);
     // Кольца: что дают надетые.
     const b = pcJewelBonus(d.jewels);
-    const parts = [`Маг. защита +${Math.round(ringResist(b.rings) * 100)}%`];
+    const parts: string[] = [];
     for (const k of A2) if (b[k] > 0) parts.push(`+${b[k]} ${ATTR_INFO[k].short}`);
     // Аффиксы колец (урон умений): сумма двух надетых.
     const rsb = ringSkillBonusOf(this.jewelsOf(d));
     for (const st of RING_STATS) if (rsb[st] > 0) parts.push(ringValueText(st, rsb[st]));
     box.append(
       div("pcinv-hh", "Кольца"),
-      div("pcinv-small", b.rings ? parts.join(" · ") : `Ничего не надето. Кольцо даёт маг. защиту ${Math.round(RING.mres * 100)}%, камни в нём — атрибуты.`),
+      div("pcinv-small", parts.length ? parts.join(" · ") : "Ничего не надето. Камни в кольцах дают атрибуты, аффиксы колец — урон умений."),
     );
     // Ожерелье: прибавки к умениям (камни в нём уже учтены в атрибутах выше).
     const nk = [["Радиус", b.skRad], ["Длительность", b.skDur], ["Дальность", b.skRng]].filter(([, v]) => (v as number) > 0).map(([t, v]) => `${t} умений +${fmtPct((v as number) * 100)}%`);
@@ -1566,14 +1566,9 @@ export class PcInventory {
     return this.slot(c, "Ожерелье");
   }
 
-  /** Подсказка ожерелья: аффиксы, гнёзда и лом. */
+  /** Подсказка ожерелья: как у оружия — оценка, аффиксы по строкам, гнёзда и лом. */
   private neckTip(c: HTMLElement, n: PcInvNeck): void {
-    const lines = [...n.affs];
-    if (n.gems.length) lines.push(`Гнёзд: ${n.gems.length} (${n.gems.filter(Boolean).map((g) => gemName(g as string)).join(", ") || "пусто"})`);
-    if (n.fav) lines.push(`${glyph("ui.fav")} В избранном — не разбирается`);
-    else lines.push(`В лом: +${n.scrap}`);
-    c.addEventListener("mouseenter", () => this.textTip(c, NECK_TIER_NAME[n.tier], lines.join(" · "), n.tier));
-    c.addEventListener("mouseleave", () => this.hideTip());
+    this.jewelTip(c, { name: NECK_TIER_NAME[n.tier], tier: n.tier, pts: n.pts, rolls: n.rolls, affs: n.affs, info: socketInfo(n.gems), fav: n.fav, scrap: n.scrap });
   }
 
   /** Ожерелье в сумке: клик/тап — карточка, тащить — на слот, ПКМ — надеть. */
@@ -2041,14 +2036,24 @@ export class PcInventory {
   /** Сортировка сумки (оружие, кольца, броня): none — как пришло. */
   private bagSort: BagSort = "none";
 
-  /** Подсказка при наведении на кольцо: тир, гнёзда, что даёт, лом за разбор. */
-  private ringTip(c: HTMLElement, r: { tier: RingTier; gems: (string | null)[]; scrap?: number; fav?: boolean }): void {
-    const inst = { id: "", tier: r.tier, gems: r.gems };
-    const lines = [...ringBonusText(inst)];
-    lines.push(r.gems.length ? `Гнёзд: ${r.gems.length} (занято ${r.gems.filter(Boolean).length})` : "Без гнёзд");
-    if (r.fav) lines.push(`${glyph("ui.fav")} В избранном — не разбирается`);
-    else if (r.scrap) lines.push(`В лом: +${r.scrap}`);
-    c.addEventListener("mouseenter", () => this.textTip(c, ringLabelOf(r), lines.join(" · ")));
+  /** Подсказка при наведении на кольцо: как у оружия — оценка, аффиксы умений по строкам, гнёзда и лом. */
+  private ringTip(c: HTMLElement, r: PcInvRing): void {
+    this.jewelTip(c, { name: ringName(r), tier: r.tier, pts: r.pts, rolls: r.nRolls, affs: r.affs, info: socketInfo(r.gems), fav: r.fav, scrap: r.scrap });
+  }
+
+  /** Подсказка кольца и ожерелья в одном виде с подсказкой оружия (showTip): название, оценка, аффиксы строками. */
+  private jewelTip(c: HTMLElement, o: { name: string; tier: string; pts: number; rolls: number; affs: string[]; info: string[]; fav?: boolean; scrap: number }): void {
+    c.addEventListener("mouseenter", () => {
+      this.tip.innerHTML = "";
+      this.tip.append(div(`pcinv-name t-${o.tier}`, o.name));
+      const sc = div("pcinv-score");
+      sc.innerHTML = `<small>оценка </small>${qualityStarsShort(o.pts, o.rolls)}`;
+      this.tip.append(sc);
+      for (const a of o.affs) this.tip.append(div("pcinv-tipaff", a));
+      for (const t of o.info) this.tip.append(div("pcinv-small", t));
+      this.tip.append(div("pcinv-small", o.fav ? `${glyph("ui.fav")} В избранном — не разбирается` : `В лом: ${o.scrap}`));
+      this.placeTip(c);
+    });
     c.addEventListener("mouseleave", () => this.hideTip());
   }
 
@@ -2866,6 +2871,11 @@ export class PcInventory {
     for (const a of w?.affixes ?? []) this.tip.append(div("pcinv-tipaff", a));
     if (w) this.tip.append(div("pcinv-small", w.fav ? `${glyph("ui.fav")} В избранном — не разбирается` : `В лом: ${w.scrap}`));
     this.tip.append(div("pcinv-small dim", held ? "ПКМ — снять в сумку" : "ПКМ — надеть · перетащи — действия"));
+    this.placeTip(anchor);
+  }
+
+  /** Показать подсказку справа от ячейки (слева — если не влезает). */
+  private placeTip(anchor: HTMLElement): void {
     const r = anchor.getBoundingClientRect();
     this.tip.style.display = "block";
     const tw = this.tip.offsetWidth;
@@ -2997,6 +3007,13 @@ function button(label: string, fn: () => void): HTMLButtonElement {
 /** Кольцо одной строкой (тир и камни) — для заголовков меню. */
 function ringLabelOf(r: { tier: RingTier; gems: (string | null)[] }): string {
   return ringLabel(r);
+}
+
+/** Строки о гнёздах для подсказки: сколько есть и какие камни стоят. */
+function socketInfo(gems: readonly (string | null)[]): string[] {
+  if (!gems.length) return ["Без гнёзд"];
+  const names = gems.filter(Boolean).map((g) => gemName(g as string));
+  return [`Гнёзд: ${gems.length} (занято ${names.length})`, ...(names.length ? [`Камни: ${names.join(", ")}`] : [])];
 }
 
 function span(text: string): HTMLSpanElement {

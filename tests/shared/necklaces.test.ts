@@ -58,7 +58,6 @@ test("ожерелья в записи героя: сохранение, над�
   const b = jewelBonus(js);
   assert.equal(b.str, 2, "камень ожерелья — атрибут");
   assert.ok(b.skRad > 0 && b.skDur > 0 && b.skRng === 0);
-  assert.equal(b.rings, 0, "маг. защиту даёт только кольцо");
   // Клиент считает то же по данным окна.
   const pb = pcJewelBonus(pcInvJewels(js));
   assert.ok(Math.abs(pb.skRad - b.skRad) < 1e-9 && pb.str === 2);

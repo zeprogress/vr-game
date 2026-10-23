@@ -19,7 +19,7 @@ export class SlotState extends Schema {
   @type("uint16") count = 0;
 }
 
-/** Прибавка от надетых колец (shared/jewels.ts): атрибуты от камней и сколько колец надето (маг. защита). */
+/** Прибавка от надетых колец и ожерелья (shared/jewels.ts): атрибуты от камней и умения от ожерелья. */
 export class GemBonusSync extends Schema {
   @type("uint16") str = 0;
   @type("uint16") agi = 0;
@@ -27,7 +27,6 @@ export class GemBonusSync extends Schema {
   @type("uint16") con = 0;
   @type("uint16") luc = 0;
   @type("uint16") wis = 0;
-  @type("uint8") rings = 0;
   /** Надетое ожерелье (shared/necklaces.ts): доли к радиусу, длительности и дальности умений. */
   @type("float32") skRad = 0;
   @type("float32") skDur = 0;

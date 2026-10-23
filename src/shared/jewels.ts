@@ -2,7 +2,7 @@
  * Кольца и камни (2026-10-07). Единый источник: виды, числа, хранение и все операции.
  *
  *  - У героя 2 слота колец. Кольцо: обычное (без гнёзд), золотое (1 гнездо), уникальное (2).
- *    Любое надетое кольцо — маг. защита RING.mres (два кольца — 1 − 0.9·0.9).
+ *    Кольца маг. защиту не дают (2026-10-23): их прибавка — аффиксы умений и камни в гнёздах.
  *  - Камни шести видов, по атрибуту; уровень без потолка, прибавка = уровню.
  *    С мобов падают только 1 ур.; три камня одного вида и уровня → один уровнем выше.
  *  - Вынуть камень из кольца — за лом (RING.unsocketPerLv × уровень), камень цел.
@@ -48,8 +48,6 @@ export const RING_LOOK: Record<RingTier, { name: string }> = {
 
 /** Числа колец и камней. */
 export const RING = {
-  /** Маг. защита одного надетого кольца (доля). */
-  mres: 0.1,
   /** Сколько камней сливаются в один уровнем выше. */
   combine: 3,
   /** Вынуть камень: лом за каждый уровень камня. */
@@ -178,8 +176,6 @@ export interface JewelBonus {
   con: number;
   luc: number;
   wis: number;
-  /** Сколько колец надето (маг. защита — по RING.mres за каждое). */
-  rings: number;
   /** Надетое ожерелье: доли к радиусу, длительности и дальности умений (PlayerState.gb.skRad/skDur/skRng). */
   skRad: number;
   skDur: number;
@@ -189,7 +185,7 @@ export interface JewelBonus {
 /** Прибавка от надетых колец, ожерелья и камней в них. */
 export function jewelBonus(js: Pick<JewelSave, "rings" | "ringOn" | "necks" | "neckOn">): JewelBonus {
   const nb = neckBonusOf(wornNeck(js));
-  const b: JewelBonus = { str: 0, agi: 0, int: 0, con: 0, luc: 0, wis: 0, rings: 0, skRad: nb.radius, skDur: nb.duration, skRng: nb.range };
+  const b: JewelBonus = { str: 0, agi: 0, int: 0, con: 0, luc: 0, wis: 0, skRad: nb.radius, skDur: nb.duration, skRng: nb.range };
   // Камни надетого ожерелья — атрибуты, как в кольце.
   for (const k of wornNeck(js)?.gems ?? []) {
     const g = parseGem(k);
@@ -198,18 +194,12 @@ export function jewelBonus(js: Pick<JewelSave, "rings" | "ringOn" | "necks" | "n
   for (const id of js.ringOn) {
     const r = id ? js.rings.find((x) => x.id === id) : undefined;
     if (!r) continue;
-    b.rings++;
     for (const k of r.gems) {
       const g = parseGem(k);
       if (g) b[g.attr] += g.lv;
     }
   }
   return b;
-}
-
-/** Маг. защита от колец: 1 − (1 − mres)^n. */
-export function ringResist(rings: number): number {
-  return 1 - Math.pow(1 - RING.mres, Math.max(0, rings));
 }
 
 export function ringName(r: { tier: RingTier }): string {
@@ -222,9 +212,9 @@ export function ringLabel(r: { tier: RingTier; gems: readonly (GemKey | null)[] 
   return g.length ? `${ringName(r)}: ${g.map(gemName).join(", ")}` : ringName(r);
 }
 
-/** Прибавки кольца строками для подсказки: аффиксы умений, «Маг. защита 10%», «+2 Сила». */
+/** Прибавки кольца строками для подсказки: аффиксы умений, «+2 Сила». */
 export function ringBonusText(r: { tier: RingTier; gems: readonly (GemKey | null)[]; rolls?: readonly RingRoll[] }): string[] {
-  const out = [...(r.rolls ?? []).map((x) => ringRollText(r.tier, x)), `Маг. защита ${Math.round(RING.mres * 100)}%`];
+  const out = (r.rolls ?? []).map((x) => ringRollText(r.tier, x));
   for (const k of r.gems) {
     const g = parseGem(k);
     if (g) out.push(`+${g.lv} ${ATTR_SHORT[g.attr]}`);

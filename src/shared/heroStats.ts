@@ -106,7 +106,7 @@ export interface HeroStatInput {
   leftCls: string;
   leftTier: string;
   /** Прибавка от колец и камней (PlayerState.gb / jewelBonus) — формулы читают атрибуты через attrOf. */
-  gb?: { str: number; agi: number; int: number; con: number; luc: number; wis: number; rings: number };
+  gb?: { str: number; agi: number; int: number; con: number; luc: number; wis: number };
   /** Текст ролла на оружии в руке — синкается как affixLabel(...), см. items.ts. */
   rightAffix?: string;
   leftAffix?: string;

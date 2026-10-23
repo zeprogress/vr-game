@@ -1,7 +1,6 @@
 import { AFFIX, PROGRESSION } from "./constants";
 import { levelGain } from "./levelGain";
 import { ATTR2, attrOf, invested, magicResistBase } from "./attrs2";
-import { ringResist } from "./jewels";
 import { armorBonus } from "./armor";
 
 /**
@@ -128,11 +127,8 @@ export function manaRegenFor(a: MagicAttrs): number {
 /** Доля магического урона (и снарядов магов), которую гасит МДР: max·n/(n+K). */
 export function magicResistFrac(a: MagicAttrs): number {
   const base = magicResistBase(a);
-  // Надетые кольца (PlayerState.gb.rings, shared/jewels.ts): по RING.mres каждое, множатся.
-  const rings = (a as { gb?: { rings?: number } }).gb?.rings ?? 0;
-  const withRings = rings > 0 ? 1 - (1 - base) * (1 - ringResist(rings)) : base;
-  // Маг. защита брони (shared/armor.ts) — множится с остальным.
-  return 1 - (1 - withRings) * (1 - armorBonus(a, "magDef"));
+  // Маг. защита брони (shared/armor.ts) — множится с МДР; кольца магзащиту не дают.
+  return 1 - (1 - base) * (1 - armorBonus(a, "magDef"));
 }
 
 /** Множитель лечения зельями: +2% за каждый подъём ИНТ (сила лечения — от интеллекта). */

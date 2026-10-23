@@ -5542,14 +5542,13 @@ export class ZoneRoom extends Room<ZoneState> {
     g.skRad = b.skRad;
     g.skDur = b.skDur;
     g.skRng = b.skRng;
-    if (g.str === b.str && g.agi === b.agi && g.int === b.int && g.con === b.con && g.luc === b.luc && g.wis === b.wis && g.rings === b.rings) return;
+    if (g.str === b.str && g.agi === b.agi && g.int === b.int && g.con === b.con && g.luc === b.luc && g.wis === b.wis) return;
     g.str = b.str;
     g.agi = b.agi;
     g.int = b.int;
     g.con = b.con;
     g.luc = b.luc;
     g.wis = b.wis;
-    g.rings = b.rings;
     if (p.towerFloor > 0) return; // в башне свой потолок HP — вернётся с арены по maxHpFor
     const frac = p.maxHp > 0 ? p.hp / p.maxHp : 1;
     p.maxHp = maxHpFor(p.level, p);
