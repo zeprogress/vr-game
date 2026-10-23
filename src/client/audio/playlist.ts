@@ -20,10 +20,7 @@ export const TOWN_MUSIC = [
 export const BOSS_MUSIC = "/music/boss.mp3";
 
 /** Подземелье «Глубинный храм» (shared/dungeon.ts inDunRegion): ротация «Subterranean Silence». */
-export const DUNGEON_MUSIC = [
-  "/music/dungeon-subterranean-silence.mp3",
-  "/music/dungeon-subterranean-silence-2.mp3",
-];
+export const DUNGEON_MUSIC = ["/music/dungeon-subterranean-silence.mp3"];
 
 /** Катакомбы: прохождение и финальный супер-босс. */
 export const CATACOMBS_MUSIC = "/music/catacombs.mp3";
