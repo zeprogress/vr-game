@@ -260,9 +260,9 @@ export function armorEnchant(a: ArmorInstance, idx: number, gain: number): void 
 
 /**
  * Цена заточки по тиру — множитель к общей кривой (items.ts). Обычная броня — в 5 раз дешевле, золотая — в 2 раза
- * дешевле обычной кривой, рубиновая — вдвое дороже уникальной. Шанс заточки не меняется.
+ * дешевле обычной кривой, рубиновая — вчетверо дороже уникальной (2026-10-23: было ×2, подняли вдвое). Шанс заточки не меняется.
  */
-export const ARMOR_ENCHANT_COST_MUL: Record<ArmorTier, number> = { base: 1 / 5, gold: 1 / 2, legendary: 1, ruby: 2 };
+export const ARMOR_ENCHANT_COST_MUL: Record<ArmorTier, number> = { base: 1 / 5, gold: 1 / 2, legendary: 1, ruby: 4 };
 
 /**
  * Строка заточки аффикса idx — как строка ролла у оружия (enchantInfo): шанс по очкам ЭТОГО аффикса,
