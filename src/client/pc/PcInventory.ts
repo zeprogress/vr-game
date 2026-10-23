@@ -1084,8 +1084,8 @@ export class PcInventory {
       div("pcinv-small", parts.length ? parts.join(" · ") : "Ничего не надето. Камни в кольцах дают атрибуты, аффиксы колец — урон умений."),
     );
     // Ожерелье: прибавки к умениям (камни в нём уже учтены в атрибутах выше).
-    const nk = [["Радиус", b.skRad], ["Длительность", b.skDur], ["Дальность", b.skRng]].filter(([, v]) => (v as number) > 0).map(([t, v]) => `${t} умений +${fmtPct((v as number) * 100)}%`);
-    box.append(div("pcinv-hh", "Ожерелье"), div("pcinv-small", nk.length ? nk.join(" · ") : "Не надето. Ожерелье усиливает умения: радиус зон, длительность эффектов и дальность."));
+    const nk = [["Радиус и дальность умений +", b.skRad], ["Длительность умений +", b.skDur], ["Откат умений −", b.skCd]].filter(([, v]) => (v as number) > 0).map(([t, v]) => `${t}${fmtPct((v as number) * 100)}%`);
+    box.append(div("pcinv-hh", "Ожерелье"), div("pcinv-small", nk.length ? nk.join(" · ") : "Не надето. Ожерелье усиливает умения: радиус и дальность, длительность эффектов, откат."));
     return box;
   }
 
@@ -1646,7 +1646,7 @@ export class PcInventory {
     this.cardHead(head, ico, NECK_TIER_NAME[n.tier], `t-${n.tier}`, `Ожерелье · оценка <b>${qualityStarsShort(n.pts, n.rolls)}</b>`, worn ? "надето" : "", n.affs.map((t) => div("pcinv-tipaff", t)));
     this.enchRows(body, n.id, n.ench, n.ench.map((r) => r.label), d.scrap);
     this.resultLine(body);
-    body.append(div("pcinv-hint", "Ожерелье усиливает умения: радиус зон, длительность эффектов и дальность. Чем ближе свойство к максимуму — тем дороже и меньше шанс заточки, при неудаче лом сгорает."));
+    body.append(div("pcinv-hint", "Ожерелье усиливает умения: радиус и дальность, длительность эффектов, откат. Чем ближе свойство к максимуму — тем дороже и меньше шанс заточки, при неудаче лом сгорает."));
     if (n.gems.length) this.socketRows(body, d, n.id, n.gems);
     else body.append(div("pcinv-small", "Без гнёзд — камни в него не вставляются."));
     if (worn) this.cardBtn(acts, "Снять", () => this.hooks.act({ act: "neckOff", id: "-", idx: 0 }), "gold", true);

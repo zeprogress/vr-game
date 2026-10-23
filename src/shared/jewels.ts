@@ -176,16 +176,16 @@ export interface JewelBonus {
   con: number;
   luc: number;
   wis: number;
-  /** Надетое ожерелье: доли к радиусу, длительности и дальности умений (PlayerState.gb.skRad/skDur/skRng). */
+  /** Надетое ожерелье: доли к радиусу и дальности умений (gb.skRad), длительности (gb.skDur) и сокращению отката (gb.skCd). */
   skRad: number;
   skDur: number;
-  skRng: number;
+  skCd: number;
 }
 
 /** Прибавка от надетых колец, ожерелья и камней в них. */
 export function jewelBonus(js: Pick<JewelSave, "rings" | "ringOn" | "necks" | "neckOn">): JewelBonus {
   const nb = neckBonusOf(wornNeck(js));
-  const b: JewelBonus = { str: 0, agi: 0, int: 0, con: 0, luc: 0, wis: 0, skRad: nb.radius, skDur: nb.duration, skRng: nb.range };
+  const b: JewelBonus = { str: 0, agi: 0, int: 0, con: 0, luc: 0, wis: 0, skRad: nb.reach, skDur: nb.duration, skCd: nb.cooldown };
   // Камни надетого ожерелья — атрибуты, как в кольце.
   for (const k of wornNeck(js)?.gems ?? []) {
     const g = parseGem(k);

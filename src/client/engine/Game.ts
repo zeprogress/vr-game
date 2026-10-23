@@ -3411,8 +3411,8 @@ export class Game {
     const fx = Math.sin(fy);
     const fz = Math.cos(fy);
     const msg: { kind: SkillId; x?: number; z?: number } = { kind: id };
-    // 📿 Ожерелье: дальность умений (gb.skRng) — те же прыжки, рывки и поиск цели, что у сервера (castSkill).
-    const RNG = 1 + (this.net.self?.gb.skRng ?? 0);
+    // 📿 Ожерелье: дальность умений (gb.skRad — радиус и дальность слиты) — те же прыжки, рывки и поиск цели, что у сервера (castSkill).
+    const RNG = 1 + (this.net.self?.gb.skRad ?? 0);
     const frontTarget = (maxD: number): { x: number; z: number; r: number } | null => this.frontTargetPos(maxD * RNG);
     if (id === "arrowRain" && cls === "assassin") {
       // Отскок с веером: отскок назад, веер ножей — конусом по взгляду.

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NECK, NECK_STATS, NECK_TIERS, neckBonusOf, neckEnchantRow, neckRollValue, neckScrap, rollNecklace, type NeckInst, type NeckTier } from "../../src/shared/necklaces";
+import { NECK, NECK_STATS, NECK_TIERS, neckBonusOf, neckEnchantRow, sanitizeNeck, neckRollValue, neckScrap, rollNecklace, type NeckInst, type NeckTier } from "../../src/shared/necklaces";
 import { applyJewelOp, jewelBonus, jewelPatch, jewelsOf, pcInvJewels, pcJewelBonus, rollJewelDrop, type JewelSave } from "../../src/shared/jewels";
 import { parseTradeItem, takeItems, giveItems, type InvSnap } from "../../src/server/trade";
 import { seeded } from "./rng";
@@ -30,17 +30,23 @@ test("ожерелья: число аффиксов и гнёзд по тиру 
   }
 });
 
-test("ожерелья: значения — обычный тир 3–9% радиус и дальность, 5–15% длительность; тир множит как у брони", () => {
-  assert.ok(Math.abs(neckRollValue("base", { stat: "radius", pts: 1 }) - 0.03) < 1e-9);
+test("ожерелья: значения — обычный тир 3–9% радиус и дальность и откат, 5–15% длительность; тир множит как у брони", () => {
+  assert.ok(Math.abs(neckRollValue("base", { stat: "reach", pts: 1 }) - 0.03) < 1e-9);
   assert.ok(Math.abs(neckRollValue("base", { stat: "duration", pts: 33 }) - 0.15) < 1e-9);
-  assert.ok(Math.abs(neckRollValue("ruby", { stat: "range", pts: 33 }) - 0.09 * 1.4) < 1e-9);
-  const n: NeckInst = { id: "x", tier: "gold", rolls: [{ stat: "radius", pts: 33 }, { stat: "range", pts: 1 }], gems: [] };
+  assert.ok(Math.abs(neckRollValue("ruby", { stat: "cooldown", pts: 33 }) - 0.09 * 1.4) < 1e-9);
+  const n: NeckInst = { id: "x", tier: "gold", rolls: [{ stat: "reach", pts: 33 }, { stat: "cooldown", pts: 1 }], gems: [] };
   const b = neckBonusOf(n);
-  assert.ok(Math.abs(b.radius - 0.09 * 1.2) < 1e-9 && Math.abs(b.range - 0.03 * 1.2) < 1e-9 && b.duration === 0);
+  assert.ok(Math.abs(b.reach - 0.09 * 1.2) < 1e-9 && Math.abs(b.cooldown - 0.03 * 1.2) < 1e-9 && b.duration === 0);
+});
+
+test("ожерелья: старые радиус и дальность сливаются в один аффикс с бо́льшими очками", () => {
+  const old = { id: "o", tier: "legendary", rolls: [{ stat: "radius", pts: 4 }, { stat: "range", pts: 9 }, { stat: "duration", pts: 5 }], gems: [] };
+  const n = sanitizeNeck(old, () => false)!;
+  assert.deepEqual(n.rolls.map((r) => [r.stat, r.pts]), [["reach", 9], ["duration", 5]]);
 });
 
 test("ожерелья: лом и цена заточки растут по тиру (рубиновое — дороже всех)", () => {
-  const roll = [{ stat: "radius" as const, pts: 20 }];
+  const roll = [{ stat: "reach" as const, pts: 20 }];
   const sc = NECK_TIERS.map((tier) => neckScrap({ tier, rolls: roll }));
   for (let i = 1; i < sc.length; i++) assert.ok(sc[i] > sc[i - 1], `лом ${sc.join(" < ")}`);
   const cost = NECK_TIERS.map((tier) => neckEnchantRow({ id: "x", tier, rolls: [{ ...roll[0] }], gems: [] }, 0)!.cost);
@@ -49,7 +55,7 @@ test("ожерелья: лом и цена заточки растут по ти
 });
 
 test("ожерелья в записи героя: сохранение, надеть/снять, камень в гнездо даёт атрибут, прибавки умений — в бонусе", () => {
-  const n: NeckInst = { id: "nk", tier: "legendary", rolls: [{ stat: "radius", pts: 10 }, { stat: "duration", pts: 20 }], gems: [null] };
+  const n: NeckInst = { id: "nk", tier: "legendary", rolls: [{ stat: "reach", pts: 10 }, { stat: "duration", pts: 20 }], gems: [null] };
   const js = jewelsOf({ necks: [n, { bad: 1 }], neckOn: "nope", gems: { "str:2": 1 } });
   assert.equal(js.necks.length, 1, "битая запись отброшена");
   assert.equal(js.neckOn, null, "надето только существующее");
@@ -57,7 +63,7 @@ test("ожерелья в записи героя: сохранение, над�
   assert.ok(applyJewelOp(js, { op: "gemIn", id: "nk", idx: 0, gem: "str:2" }, 0).ok);
   const b = jewelBonus(js);
   assert.equal(b.str, 2, "камень ожерелья — атрибут");
-  assert.ok(b.skRad > 0 && b.skDur > 0 && b.skRng === 0);
+  assert.ok(b.skRad > 0 && b.skDur > 0 && b.skCd === 0);
   // Клиент считает то же по данным окна.
   const pb = pcJewelBonus(pcInvJewels(js));
   assert.ok(Math.abs(pb.skRad - b.skRad) < 1e-9 && pb.str === 2);
@@ -71,7 +77,7 @@ test("ожерелья в записи героя: сохранение, над�
 });
 
 test("«Разобрать все украшения»: ожерелья тоже, кроме надетого, ★ и рубинового", () => {
-  const mk = (id: string, tier: NeckTier, fav = false): NeckInst => ({ id, tier, rolls: [{ stat: "range", pts: 5 }], gems: [], ...(fav ? { fav: true } : {}) });
+  const mk = (id: string, tier: NeckTier, fav = false): NeckInst => ({ id, tier, rolls: [{ stat: "cooldown", pts: 5 }], gems: [], ...(fav ? { fav: true } : {}) });
   const js: JewelSave = { rings: [], ringOn: [null, null], gems: {}, necks: [mk("a", "base"), mk("b", "gold", true), mk("c", "ruby"), mk("d", "legendary")], neckOn: "d" };
   const r = applyJewelOp(js, { op: "ringScrapAll" }, 0);
   assert.ok(r.ok);
@@ -95,7 +101,7 @@ test("выпадение: ожерелье — свой бросок с шанс
 
 test("обмен и подарок: код «n:<id>», надетое не отдаётся, ★ снимается при передаче", () => {
   assert.deepEqual(parseTradeItem("n:abc", 1), { k: "neck", id: "abc" });
-  const n: NeckInst = { id: "nk", tier: "gold", rolls: [{ stat: "radius", pts: 5 }], gems: [null], fav: true };
+  const n: NeckInst = { id: "nk", tier: "gold", rolls: [{ stat: "reach", pts: 5 }], gems: [null], fav: true };
   const snap = (necks: NeckInst[], neckOn: string | null): InvSnap => ({
     weapons: [], heldIds: new Set(), bag: [], armor: [], armorWorn: {}, mats: {},
     jewels: { rings: [], ringOn: [null, null], gems: {}, necks, neckOn },

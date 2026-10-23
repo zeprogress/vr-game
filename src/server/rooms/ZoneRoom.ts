@@ -5541,7 +5541,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Ожерелье: радиус, длительность и дальность умений — в gb (клиент двигает героя на свою дальность).
     g.skRad = b.skRad;
     g.skDur = b.skDur;
-    g.skRng = b.skRng;
+    g.skCd = b.skCd;
     if (g.str === b.str && g.agi === b.agi && g.int === b.int && g.con === b.con && g.luc === b.luc && g.wis === b.wis) return;
     g.str = b.str;
     g.agi = b.agi;
@@ -10032,7 +10032,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // (PlayerState.gb — у бота тоже). Урона не прибавляют: яды, кровотечение и длина вихря не растут.
     const RAD = 1 + (p.gb.skRad || 0);
     const DUR = 1 + (p.gb.skDur || 0);
-    const RNG = 1 + (p.gb.skRng || 0);
+    const RNG = 1 + (p.gb.skRad || 0);
     // У метки, цепи, стрелы жизни и роя SKILLS2.radius — это дальность (её множит target/RNG), у остальных — зона.
     const sk = { ...sk0, radius: sk0.radius * (kind === "mark" || kind === "chain" || kind === "lifeArrow" || kind === "swarmArrow" ? 1 : RAD) };
     const stun = (id: string, sec: number): void => this.sim.stunMob(id, sec * DUR);

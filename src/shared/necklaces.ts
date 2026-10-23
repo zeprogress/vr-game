@@ -11,23 +11,34 @@ import { enchantCurve, POINTS_MAX, type EnchantDeck, type EnchantInfo } from "./
 export type NeckTier = "base" | "gold" | "legendary" | "ruby";
 export const NECK_TIERS: readonly NeckTier[] = ["base", "gold", "legendary", "ruby"];
 
-/** Аффиксы ожерелья: доли прибавки к радиусу зон, длительности эффектов и дальности умений. */
-export type NeckStat = "radius" | "duration" | "range";
+/**
+ * Аффиксы ожерелья: доли прибавки к радиусу и дальности умений (одна величина — reach, 2026-10-24: радиус и дальность
+ * слиты), к длительности эффектов и откату умений (cooldown — сокращение, отнимается от времени отката).
+ */
+export type NeckStat = "reach" | "duration" | "cooldown";
 /** Все аффиксы — и постоянный порядок в предмете (как у брони). */
-export const NECK_STATS: readonly NeckStat[] = ["radius", "duration", "range"];
+export const NECK_STATS: readonly NeckStat[] = ["reach", "duration", "cooldown"];
 
 export const NECK_STAT_NAME: Record<NeckStat, string> = {
-  radius: "Радиус умений",
+  reach: "Радиус и дальность умений",
   duration: "Длительность умений",
-  range: "Дальность умений",
+  cooldown: "Откат умений",
 };
 
 /** Значение аффикса у обычного тира: от 1 до 33 очков (как у брони). */
 export const NECK_RANGE: Record<NeckStat, readonly [number, number]> = {
-  radius: [0.03, 0.09],
+  reach: [0.03, 0.09],
   duration: [0.05, 0.15],
-  range: [0.03, 0.09],
+  cooldown: [0.03, 0.09],
 };
+
+/** Прежние имена аффиксов (до 2026-10-24): радиус и дальность стали одним reach. */
+const LEGACY_STAT: Record<string, NeckStat> = { radius: "reach", range: "reach", duration: "duration", reach: "reach", cooldown: "cooldown" };
+
+/** Строка аффикса: откат — «−N%» (меньше времени отката), остальные — «+N%». */
+function statText(stat: NeckStat, v: number): string {
+  return stat === "cooldown" ? `${NECK_STAT_NAME[stat]} −${(v * 100).toFixed(1)}%` : `${NECK_STAT_NAME[stat]} +${(v * 100).toFixed(1)}%`;
+}
 
 export const NECK_TIER_NAME: Record<NeckTier, string> = {
   base: "Обычное ожерелье",
@@ -82,11 +93,9 @@ export function neckRollValue(tier: NeckTier, r: { stat: NeckStat; pts: number }
   return (lo + ((hi - lo) * (p - 1)) / (POINTS_MAX - 1)) * NECK_TIER_MUL[tier];
 }
 
-const pct = (v: number): string => `+${(v * 100).toFixed(1)}%`;
-
-/** Аффиксы строкой: «Радиус умений +6.0% · Дальность умений +4.2%». */
+/** Аффиксы строкой: «Радиус и дальность умений +6.0% · Откат умений −4.2%». */
 export function neckRollsText(n: { tier: NeckTier; rolls: readonly NeckRoll[] }): string {
-  return n.rolls.map((r) => `${NECK_STAT_NAME[r.stat]} ${pct(neckRollValue(n.tier, r))}`).join(" · ");
+  return n.rolls.map((r) => statText(r.stat, neckRollValue(n.tier, r))).join(" · ");
 }
 
 /** Подпись: «Золотое ожерелье · Радиус умений +6.0%». */
@@ -134,7 +143,7 @@ export function neckEnchantRow(n: NeckInst, idx: number): (EnchantInfo & { label
   const q = neckQuality(n) / (POINTS_MAX * n.rolls.length);
   const { chance, cost } = enchantCurve(r.pts, q, NECK.enchantCostMul[n.tier]);
   return {
-    label: `${NECK_STAT_NAME[r.stat]} ${pct(neckRollValue(n.tier, r))}`,
+    label: statText(r.stat, neckRollValue(n.tier, r)),
     points: r.pts,
     of: POINTS_MAX,
     max: r.pts >= POINTS_MAX,
@@ -149,10 +158,10 @@ export function neckEnchant(n: NeckInst, idx: number, gain: number): void {
   if (r) r.pts = Math.min(POINTS_MAX, r.pts + gain);
 }
 
-/** Прибавка надетого ожерелья: доли к радиусу, длительности и дальности умений (нет ожерелья — нули). */
+/** Прибавка надетого ожерелья: доли к радиусу и дальности, длительности и сокращению отката (нет ожерелья — нули). */
 export type NeckBonus = Record<NeckStat, number>;
 export function neckBonusOf(n: { tier: NeckTier; rolls: readonly NeckRoll[] } | null | undefined): NeckBonus {
-  const b: NeckBonus = { radius: 0, duration: 0, range: 0 };
+  const b: NeckBonus = { reach: 0, duration: 0, cooldown: 0 };
   if (n) for (const r of n.rolls) b[r.stat] += neckRollValue(n.tier, r);
   return b;
 }
@@ -164,13 +173,17 @@ export function sanitizeNeck(x: unknown, gemOk: (k: unknown) => boolean): NeckIn
   if (typeof o.id !== "string" || !(NECK_TIERS as readonly unknown[]).includes(o.tier)) return null;
   const rolls: NeckRoll[] = [];
   for (const r of Array.isArray(o.rolls) ? (o.rolls as { stat?: unknown; pts?: unknown; ench?: EnchantDeck }[]) : []) {
-    if (!(NECK_STATS as readonly unknown[]).includes(r?.stat) || rolls.some((y) => y.stat === r.stat)) continue;
+    const stat = typeof r?.stat === "string" ? LEGACY_STAT[r.stat] : undefined;
+    if (!stat) continue;
     const pts = Number(r.pts);
     if (!Number.isFinite(pts)) continue;
-    const roll: NeckRoll = { stat: r.stat as NeckStat, pts: Math.max(1, Math.min(POINTS_MAX, Math.round(pts))) };
+    const roll: NeckRoll = { stat, pts: Math.max(1, Math.min(POINTS_MAX, Math.round(pts))) };
     const e = r.ench;
     if (e && typeof e.p === "number" && Number.isInteger(e.s) && Number.isInteger(e.f) && e.s >= 0 && e.f >= 0) roll.ench = { p: e.p, s: e.s, f: e.f };
-    rolls.push(roll);
+    // Радиус и дальность слиты: при совпадении остаётся аффикс с большими очками.
+    const at = rolls.findIndex((y) => y.stat === stat);
+    if (at < 0) rolls.push(roll);
+    else if (roll.pts > rolls[at].pts) rolls[at] = roll;
   }
   if (!rolls.length) return null;
   sortNeckRolls(rolls);

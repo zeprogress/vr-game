@@ -2055,7 +2055,7 @@ export class WristMenu {
     const parts: string[] = [];
     for (const k of STATS) if (b[k] > 0) parts.push(`+${b[k]} ${ATTR_SHORT[k]}`);
     if (nk) parts.push(...nk.affs);
-    this.wrapText(ctx, parts.length ? parts.join(" · ") : "Ничего не надето: ожерелье — радиус, длительность и дальность умений; камни в кольцах и ожерелье — атрибуты", TX, VIEW_Y + 62, TEX_W - TX - 24, 28, 3);
+    this.wrapText(ctx, parts.length ? parts.join(" · ") : "Ничего не надето: ожерелье — радиус и дальность, длительность умений, откат; камни в кольцах и ожерелье — атрибуты", TX, VIEW_Y + 62, TEX_W - TX - 24, 28, 3);
     ctx.fillStyle = "#a9a498";
     ctx.fillText(`Лом: ${this.jewelScrap}`, TX, VIEW_Y + 120);
 

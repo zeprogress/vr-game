@@ -30,7 +30,8 @@ export class GemBonusSync extends Schema {
   /** Надетое ожерелье (shared/necklaces.ts): доли к радиусу, длительности и дальности умений. */
   @type("float32") skRad = 0;
   @type("float32") skDur = 0;
-  @type("float32") skRng = 0;
+  /** Сокращение отката умений (доля), от ожерелья. */
+  @type("float32") skCd = 0;
 }
 
 /** Суммы бонусов надетой брони по статам (доли; регенерация — доля макс. HP в секунду). */

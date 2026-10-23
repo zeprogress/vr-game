@@ -788,7 +788,9 @@ export const CLASS_CD_MUL: Partial<Record<ClassId, number>> = { spearman: 0.7, b
 /** Множитель отката умений: класс × МДР (у всех классов). ОДИН для сервера, клиента и ботов. */
 /** Множитель отката умений: класс × МДР (с камнями) — ATTR2.wis.cd за очко, у всех классов (2026-10-07: было 1.5%). */
 export function skillCdMul2(cls: ClassId | null, a: object): number {
-  return ((cls && CLASS_CD_MUL[cls]) || 1) / (1 + inv(attrOf(a, "wis")) * ATTR2.wis.cd);
+  // Откат от ожерелья (gb.skCd, доля): сокращает время отката, но не ниже половины.
+  const cut = (a as { gb?: { skCd?: number } }).gb?.skCd ?? 0;
+  return (((cls && CLASS_CD_MUL[cls]) || 1) / (1 + inv(attrOf(a, "wis")) * ATTR2.wis.cd)) * Math.max(0.5, 1 - cut);
 }
 
 /** Атрибуты героя для умений: база (как в PlayerState) и прибавка от колец и камней (PlayerState.gb). */
