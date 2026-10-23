@@ -23,7 +23,7 @@ const SESSION_TTL_MS = 60 * 24 * 3600_000;
 import type { PcInvData } from "#shared/net/messages";
 import type { JewelAct } from "#shared/jewels";
 
-export type InvActKind = "equip" | "unequip" | "scrap" | "enchant" | "armorEnchant" | "neckEnchant" | "armorWear" | "armorUnwear" | "armorScrap" | "armorFav" | "armorDrop" | "stat" | "respec" | "scroll" | "title" | "skin" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | "tradeOpen" | "tradeAdd" | "tradeRemove" | "tradeConfirm" | "tradeCancel" | "sharpen" | "craft" | "smelt" | "shop" | JewelAct;
+export type InvActKind = "equip" | "unequip" | "scrap" | "enchant" | "armorEnchant" | "neckEnchant" | "ringEnchant" | "armorWear" | "armorUnwear" | "armorScrap" | "armorFav" | "armorDrop" | "stat" | "respec" | "scroll" | "title" | "skin" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | "tradeOpen" | "tradeAdd" | "tradeRemove" | "tradeConfirm" | "tradeCancel" | "sharpen" | "craft" | "smelt" | "shop" | JewelAct;
 
 export interface InvActResult {
   ok: boolean;

@@ -2333,9 +2333,10 @@ export class Game {
           const id = this.vrEnchId ?? "";
           const wh = this.pcInvData;
           // В руке (оружие) или надета (броня) — метка на панели.
-          const inHand = !!wh && (wh.equipped.left === id || wh.equipped.right === id || Object.values(wh.armorWorn ?? {}).includes(id) || wh.jewels?.neckOn === id);
+          const inHand = !!wh && (wh.equipped.left === id || wh.equipped.right === id || Object.values(wh.armorWorn ?? {}).includes(id) || wh.jewels?.neckOn === id || !!wh.jewels?.ringOn.includes(id));
           const isArmor = !!wh?.armor?.some((x) => x.id === id);
           const isNeck = !!wh?.jewels?.necks.some((x) => x.id === id);
+          const isRing = !!wh?.jewels?.rings.some((x) => x.id === id);
           drawEnchant(
             ui,
             wh,
@@ -2346,7 +2347,7 @@ export class Game {
               if (this.vrForgeBusy()) return;
               this.vrEnchResult = null;
               this.vrForgeAt = Date.now();
-              this.net?.sendPcInvAct({ act: isArmor ? "armorEnchant" : isNeck ? "neckEnchant" : "enchant", id, idx });
+              this.net?.sendPcInvAct({ act: isArmor ? "armorEnchant" : isNeck ? "neckEnchant" : isRing ? "ringEnchant" : "enchant", id, idx });
             },
             () => {
               if (this.vrForgeBusy()) return;

@@ -283,7 +283,8 @@ import { attrOf } from "#shared/attrs2";
 import { giveItems, parseTradeItem, parseTradeList, takeItems, takenName, tradeLog, tradeViewOf, TRADE_ACTS, type InvSnap, type Taken, type TradeAct, type TradeItem, type TradeSession, type TradeSide } from "../trade";
 import { KillRates } from "../sim/killRate";
 import { addStock, CRAFT, CRAFT_ITEMS, CRAFT_PROC, CRAFT_SMELT, craftStockOf, craftWeapon, parseCraftCode, pcInvCraft, recipeBookOf, rollCraftDrop, smithLevel } from "#shared/craft";
-import { applyJewelOp, gemName, JEWEL_ACTS, jewelBonus, jewelOpFrom, jewelPatch, jewelsOf, newNecklace, pcInvJewels, RING_LOOK, ringName, rollJewelDrop, type JewelAct, type JewelSave } from "#shared/jewels";
+import { applyJewelOp, gemName, JEWEL_ACTS, jewelBonus, jewelOpFrom, jewelPatch, jewelsOf, newNecklace, newRing, pcInvJewels, ringName, ringSkillBonusOf, rollJewelDrop, type JewelAct, type JewelSave, type RingInst } from "#shared/jewels";
+import { emptyRingSkillBonus, ringEnchant, ringEnchantRow, ringSkillMul, type RingSkillBonus } from "#shared/ringAffixes";
 import { NECK_TIER_NAME, neckEnchant, neckEnchantRow, neckLabel, type NeckInst } from "#shared/necklaces";
 import { scrapDropChance } from "#shared/scrapDrop";
 
@@ -1212,6 +1213,25 @@ function neckEnchantTry(n: NeckInst, idx: number, bag: Slot[]): InvActResult {
     ok: true,
     text: up ? `Заточка удалась: ${label}` : `Не вышло — лом сгорел (−${info.cost})`,
     enchant: { id: n.id, idx, up, gain: n.rolls[idx].pts - before, cost: info.cost, label },
+  };
+}
+
+/** Заточка аффикса кольца — как у ожерелья. */
+function ringEnchantTry(r: RingInst, idx: number, bag: Slot[]): InvActResult {
+  const info = ringEnchantRow(r, idx);
+  if (!info) return { ok: false, text: "Такого свойства у кольца нет." };
+  if (info.max) return { ok: false, text: "Это свойство уже на максимуме." };
+  if (!takeFromBag(bag, "scrap", info.cost)) {
+    return { ok: false, text: `Не хватает лома: нужно ${info.cost}, есть ${bagCount(bag, "scrap")}.` };
+  }
+  const up = enchantRoll(r.rolls[idx], info.chance);
+  const before = r.rolls[idx].pts;
+  if (up) ringEnchant(r, idx, ENCHANT.gainMin + Math.floor(Math.random() * (ENCHANT.gainMax - ENCHANT.gainMin + 1)));
+  const label = ringEnchantRow(r, idx)!.label;
+  return {
+    ok: true,
+    text: up ? `Заточка удалась: ${label}` : `Не вышло — лом сгорел (−${info.cost})`,
+    enchant: { id: r.id, idx, up, gain: r.rolls[idx].pts - before, cost: info.cost, label },
   };
 }
 
@@ -2281,7 +2301,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sendQuests(client);
         return;
       }
-      if (msg.act !== "enchant" && msg.act !== "sharpen" && msg.act !== "armorEnchant" && msg.act !== "neckEnchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && msg.act !== "craft" && msg.act !== "smelt" && !(JEWEL_ACTS as readonly string[]).includes(msg.act) && !(TRADE_ACTS as readonly string[]).includes(msg.act)) return;
+      if (msg.act !== "enchant" && msg.act !== "sharpen" && msg.act !== "armorEnchant" && msg.act !== "neckEnchant" && msg.act !== "ringEnchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && msg.act !== "craft" && msg.act !== "smelt" && !(JEWEL_ACTS as readonly string[]).includes(msg.act) && !(TRADE_ACTS as readonly string[]).includes(msg.act)) return;
       const norm = normNick(p.nick);
       if (!norm) return;
       const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(msg.act === "gift" ? 99999 : 99, Math.floor(Number(msg.idx) || 0))), typeof msg.fuel === "string" ? msg.fuel : undefined);
@@ -2667,6 +2687,44 @@ export class ZoneRoom extends Room<ZoneState> {
     const focus = this.focusTempo(rt);
     if (rt.cryUntil <= this.elapsed) return haste * focus;
     return haste * focus * (rt.cryKind === 2 ? 1 + WARCRY.rallyTempo : rt.cryKind === 1 || rt.cryKind === 3 ? 1 + WARCRY.tempo : 1);
+  }
+
+  /** Аффиксы колец героя (урон умений) — кэш на секунду: store.get и разбор колец не на каждый удар. */
+  private readonly ringSk = new Map<string, { at: number; b: RingSkillBonus }>();
+  private ringSkOf(ownerId: string): RingSkillBonus {
+    const c = this.ringSk.get(ownerId);
+    if (c && this.elapsed - c.at < 1) return c.b;
+    const p = this.state.players.get(ownerId);
+    const rt = this.rt.get(ownerId) ?? (ownerId.startsWith("bot:") ? this.bots.get(ownerId.slice(4))?.rt : undefined);
+    const token = rt?.token ?? (p ? `nick:${normNick(p.nick)}` : "");
+    const rec = token ? store.get(token) : undefined;
+    const b = rec ? ringSkillBonusOf(jewelsOf(rec)) : emptyRingSkillBonus();
+    this.ringSk.set(ownerId, { at: this.elapsed, b });
+    return b;
+  }
+
+  /**
+   * Урон умения (и ульты, их полей, аур и дождей) по мобу — с аффиксами колец героя: условия цели и героя
+   * (ringSkillMul) и пробивание брони. `hit` — набор задетых этим умением (для «По толпе»); нет — без толпы.
+   */
+  private skillHitMob(
+    ownerId: string, m: Mob, dmg: number, dx: number, dz: number,
+    ranged = false, dot = false, magic = false, crit = false, hit?: Set<string>,
+  ): void {
+    const b = this.ringSkOf(ownerId);
+    const p = this.state.players.get(ownerId);
+    hit?.add(m.id);
+    const mul = p
+      ? ringSkillMul(b, {
+          stunned: m.stunned || m.slowed || m.rooted,
+          targetHpFrac: m.maxHp > 0 ? m.hp / m.maxHp : 1,
+          elite: m.kind === "boss" || m.eliteName !== "",
+          heroHpFrac: p.maxHp > 0 ? p.hp / p.maxHp : 1,
+          dist: Math.hypot(m.x - p.head.x, m.z - p.head.z),
+          others: hit ? hit.size - 1 : 0,
+        })
+      : 1;
+    this.sim.hitMob(m.id, dmg * mul, dx, dz, ownerId, ranged, dot, magic, crit, b.pen);
   }
 
   /** 🧪 «Метка охотника»: темп от накопленных попаданий по своей метке (1 — стаков нет или сгорели). */
@@ -5540,7 +5598,7 @@ export class ZoneRoom extends Room<ZoneState> {
       got.push(gemName(d.gem));
     }
     if (d.ring) {
-      js.rings.push({ id: randomUUID().slice(0, 8), tier: d.ring, gems: Array.from({ length: RING_LOOK[d.ring].sockets }, () => null) });
+      js.rings.push(newRing(d.ring, randomUUID().slice(0, 8)));
       got.push(ringName({ tier: d.ring }));
       // Золотое/уникальное кольцо — строкой в кил-фид всем (как подобранное редкое оружие).
       if (d.ring !== "base") {
@@ -5575,6 +5633,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const bag = t ? readBag(t.p) : restoreBag(rec.bag);
     const r = applyJewelOp(js, op, bagCount(bag, "scrap"));
     if (!r.ok) return { ok: false, text: r.text };
+    if (t) this.ringSk.delete(t.id); // надели/сняли кольцо — аффиксы урона умений сразу
     const patch: Partial<PlayerRecord> = jewelPatch(js);
     if (r.scrap) {
       if (r.scrap > 0) addToBag(bag, "scrap", r.scrap);
@@ -6226,16 +6285,23 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       return this.armorActStored(norm, kind, id);
     }
-    if (act === "neckEnchant") {
-      // Ожерелья — в записи героя (как кольца) и у живого героя: одна ветка, лом — из живой сумки или из сейва.
+    if (act === "neckEnchant" || act === "ringEnchant") {
+      // Ожерелья и кольца — в записи героя и у живого героя: одна ветка, лом — из живой сумки или из сейва.
       const token = t?.rt.token ?? `nick:${norm}`;
       const rec = store.get(token);
       if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
       const js = jewelsOf(rec);
-      const n = js.necks.find((x) => x.id === id);
-      if (!n) return { ok: false, text: "Этого ожерелья уже нет." };
       const bag = t ? readBag(t.p) : restoreBag(rec.bag);
-      const r = neckEnchantTry(n, idx, bag);
+      let r: InvActResult;
+      if (act === "neckEnchant") {
+        const n = js.necks.find((x) => x.id === id);
+        if (!n) return { ok: false, text: "Этого ожерелья уже нет." };
+        r = neckEnchantTry(n, idx, bag);
+      } else {
+        const ring = js.rings.find((x) => x.id === id);
+        if (!ring) return { ok: false, text: "Этого кольца уже нет." };
+        r = ringEnchantTry(ring, idx, bag);
+      }
       if (r.enchant) {
         const patch: Partial<PlayerRecord> = jewelPatch(js);
         if (t) writeBag(t.p, bag);
@@ -6243,6 +6309,7 @@ export class ZoneRoom extends Room<ZoneState> {
         store.put(token, patch);
         if (t) {
           this.applyJewels(t.id); // надетое — новая прибавка сразу
+          this.ringSk.delete(t.id);
           this.persistNick(norm);
         }
       }
@@ -7643,6 +7710,17 @@ export class ZoneRoom extends Room<ZoneState> {
         loot.push({ id: "scrap", count: 1, jw: "neck:ruby" });
         this.broadcast(MSG.pickupFeed, { nick: p.nick, item: NECK_TIER_NAME.ruby, tier: "ruby", aff: neckLabel(n).split(" · ").slice(1).join(", ") } satisfies PickupFeedMsg);
         this.reply(`💎 ${p.nick} получает рубиновое ожерелье — ${neckLabel(n)}!`);
+      }
+      // Рубиновое кольцо — тоже свой бросок с шансом рубиновой брони.
+      if (Math.random() < ARMOR_RUBY.dropChance && store.get(token)) {
+        const js = this.jewelsFor(token);
+        const r = newRing("ruby", `r${shortId(Math.random)}`);
+        js.rings.push(r);
+        store.put(token, jewelPatch(js));
+        loot.push({ id: "scrap", count: 1, jw: "ring:ruby" });
+        const affs = r.rolls.map((x) => ringEnchantRow(r, r.rolls.indexOf(x))!.label).join(", ");
+        this.broadcast(MSG.pickupFeed, { nick: p.nick, item: ringName(r), tier: "ruby", aff: affs } satisfies PickupFeedMsg);
+        this.reply(`💎 ${p.nick} получает рубиновое кольцо — ${affs}!`);
       }
       rt.eventBuffUntil = Date.now() + CATACOMBS.buffMinutes * 60_000;
       store.put(token, { eventBuffUntil: rt.eventBuffUntil });
@@ -9826,6 +9904,8 @@ export class ZoneRoom extends Room<ZoneState> {
     const U = ULTS[cls];
     const v = CLASS_IDS.indexOf(cls);
     const pow = this.skillPower(p, cls, rt, ownerId);
+    /** Задетые ультой — для «По толпе» колец. */
+    const hit = new Set<string>();
     const cx = p.head.x;
     const cz = p.head.z;
     const feetY = p.head.y - PLAYER.eyeHeight;
@@ -9845,7 +9925,7 @@ export class ZoneRoom extends Room<ZoneState> {
       case "warrior":
         for (const m of inRing()) {
           const [dx, dz] = dirFrom(m);
-          this.sim.hitMob(m.id, U.dmgMult * pow.dmg, dx, dz, ownerId, false, false, pow.magic);
+          this.skillHitMob(ownerId, m, U.dmgMult * pow.dmg, dx, dz, false, false, pow.magic, false, hit);
           this.sim.stunMob(m.id, 5);
         }
         return;
@@ -9855,7 +9935,7 @@ export class ZoneRoom extends Room<ZoneState> {
             if (!alive()) return;
             for (const m of inRing()) {
               const [dx, dz] = dirFrom(m);
-              this.sim.hitMob(m.id, U.dmgMult * pow.dmg, dx, dz, ownerId, true, false, pow.magic);
+              this.skillHitMob(ownerId, m, U.dmgMult * pow.dmg, dx, dz, true, false, pow.magic, false, hit);
               this.sim.rootMob(m.id, 5);
             }
           }, w * 1000);
@@ -9872,7 +9952,7 @@ export class ZoneRoom extends Room<ZoneState> {
         });
         for (const m of inRing()) {
           const [dx, dz] = dirFrom(m);
-          this.sim.hitMob(m.id, U.dmgMult * pow.dmg, dx, dz, ownerId, false, false, true);
+          this.skillHitMob(ownerId, m, U.dmgMult * pow.dmg, dx, dz, false, false, true, false, hit);
           this.sim.slowMob(m.id, 6, 0.5);
           act({ k: "ultSlow", x: m.x, y: m.y, z: m.z });
         }
@@ -9883,7 +9963,7 @@ export class ZoneRoom extends Room<ZoneState> {
             if (!alive()) return;
             for (const m of inRing()) {
               const [dx, dz] = dirFrom(m);
-              this.sim.hitMob(m.id, U.dmgMult * pow.dmg, dx, dz, ownerId, false, false, pow.magic, true);
+              this.skillHitMob(ownerId, m, U.dmgMult * pow.dmg, dx, dz, false, false, pow.magic, true, hit);
             }
           }, i * ULT_ASSASSIN_STEP * 1000);
         }
@@ -9891,7 +9971,7 @@ export class ZoneRoom extends Room<ZoneState> {
       case "spearman":
         for (const m of inRing()) {
           const [dx, dz] = dirFrom(m);
-          this.sim.hitMob(m.id, U.dmgMult * pow.dmg, dx, dz, ownerId, false, false, pow.magic);
+          this.skillHitMob(ownerId, m, U.dmgMult * pow.dmg, dx, dz, false, false, pow.magic, false, hit);
         }
         // Втягивание: шесть мощных толчков к герою за 0.6 с, потом оглушение.
         for (let k = 0; k < ULT_PULL_PULSES; k++) {
@@ -9910,7 +9990,7 @@ export class ZoneRoom extends Room<ZoneState> {
       case "battlemage":
         for (const m of inRing()) {
           const [dx, dz] = dirFrom(m);
-          this.sim.hitMob(m.id, U.dmgMult * pow.dmg, dx, dz, ownerId, false, false, true);
+          this.skillHitMob(ownerId, m, U.dmgMult * pow.dmg, dx, dz, false, false, true, false, hit);
           this.sim.mobs.get(m.id)?.ignite((U.dmgMult * pow.dmg) / 6, ULT_BURN_SEC, ownerId);
         }
         return;
@@ -9974,6 +10054,8 @@ export class ZoneRoom extends Room<ZoneState> {
       return l > maxR ? [p.head.x + (dx / l) * maxR, p.head.z + (dz / l) * maxR] : [tx, tz];
     };
     const pow = this.skillPower(p, cls, rt, ownerId);
+    /** Задетые этим умением — для «По толпе» колец (skillHitMob). */
+    const hit = new Set<string>();
     const isBot = this.bots.has(ownerId.replace(/^bot:/, ""));
     /** Мобы вокруг точки в радиусе (по краю тела). */
     const around = (x: number, z: number, r: number): Mob[] =>
@@ -9995,7 +10077,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const c = rollCritMult("arrow", Math.random, false, rc.chance, rc.mult, BOW.critMult, attrOf(p, "luc"));
       if (c > 1) this.critFx(m.x, m.y, m.z, ownerId);
       const [dx, dz] = dirTo(m, fromX, fromZ);
-      this.sim.hitMob(m.id, mul * pow.dmg * c, dx, dz, ownerId, true, false, false, c > 1);
+      this.skillHitMob(ownerId, m, mul * pow.dmg * c, dx, dz, true, false, false, c > 1, hit);
     };
 
     switch (kind) {
@@ -10018,7 +10100,7 @@ export class ZoneRoom extends Room<ZoneState> {
             if (!pp || pp.dead) return;
             if (isBot) this.placeBotAt(pp, lx, lz, m0);
             if (m0.dead) return;
-            this.sim.hitMob(m0.id, L.dmg * pow.dmg * WEAPONS2.dagger.critMult, ax, az, ownerId, false, false, false, true);
+            this.skillHitMob(ownerId, m0, L.dmg * pow.dmg * WEAPONS2.dagger.critMult, ax, az, false, false, false, true, hit);
             stun(m0.id, L.stun);
             this.critFx(m0.x, m0.y, m0.z, ownerId);
           }, L.time * 1000);
@@ -10036,7 +10118,7 @@ export class ZoneRoom extends Room<ZoneState> {
           for (const m of around(px, pz, sk.radius)) {
             const [dx, dz] = dirTo(m, px, pz);
             const critM = bashCrit ? rollCritMult("sword", Math.random, false, bashCrit.chance, bashCrit.mult, SWORD_CRIT_MULT, attrOf(pp, "luc")) : 1;
-            this.sim.hitMob(m.id, sk.dmgMult * pow.dmg * critM, dx, dz, ownerId, false, false, pow.magic, critM > 1);
+            this.skillHitMob(ownerId, m, sk.dmgMult * pow.dmg * critM, dx, dz, false, false, pow.magic, critM > 1, hit);
             if (cls === "archer") {
               // Ледяной заряд: пригвождает и отбрасывает, но не оглушает.
               root(m.id, 4);
@@ -10053,7 +10135,7 @@ export class ZoneRoom extends Room<ZoneState> {
             const far = around(px, pz, 8 * RNG).filter((m) => Math.hypot(m.x - px, m.z - pz) > sk.radius * 0.6).slice(0, 3);
             for (const m of far) {
               act({ k: "chainHit", x: px, y: pp.head.y, z: pz, x2: m.x, z2: m.z, d: m.y + MOB.bodyRadius * m.scale, r: 0 });
-              this.sim.hitMob(m.id, sk.dmgMult * pow.dmg, 0, 0, ownerId, false, false, true);
+              this.skillHitMob(ownerId, m, sk.dmgMult * pow.dmg, 0, 0, false, false, true, false, hit);
             }
           }
         }, sk.castTime * 1000);
@@ -10078,7 +10160,7 @@ export class ZoneRoom extends Room<ZoneState> {
                 const dz = m.z - pp.head.z;
                 const d = Math.hypot(dx, dz) || 1;
                 if (Math.acos(Math.max(-1, Math.min(1, (dx * fx + dz * fz) / d))) > FAN.halfAngle) continue;
-                this.sim.hitMob(m.id, FAN.dmgMult * pow.dmg, dx / d, dz / d, ownerId, true);
+                this.skillHitMob(ownerId, m, FAN.dmgMult * pow.dmg, dx / d, dz / d, true, false, false, false, hit);
                 // Кровотечение — доля здоровья цели (как поджог мага), у босса и осколков слабее.
                 const big = m.kind === "boss" || m.kind === "shard";
                 this.sim.bleedMob(m.id, (m.pctHpBase * FAN.bleedHpFrac) / (big ? FAN.bossDiv : 1), FAN.bleedSec, ownerId);
@@ -10103,7 +10185,7 @@ export class ZoneRoom extends Room<ZoneState> {
                 this.broadcast(MSG.act, { k: "rainTick", id: ownerId, x: cx, y: terrainHeight(cx, cz), z: cz } satisfies ActRelay);
                 for (const m of around(cx, cz, radius)) {
                   const [dx, dz] = dirTo(m, cx, cz);
-                  this.sim.hitMob(m.id, 1.6 * pow.dmg, dx, dz, ownerId, true);
+                  this.skillHitMob(ownerId, m, 1.6 * pow.dmg, dx, dz, true, false, false, false, hit);
                   stun(m.id, 1);
                 }
               }, (0.4 + i * 0.8) * 1000);
@@ -10189,7 +10271,7 @@ export class ZoneRoom extends Room<ZoneState> {
           act({ k: "crushHit", x: cx, y: cy, z: cz, r: sk.radius });
           for (const m of around(cx, cz, sk.radius)) {
             const [dx, dz] = dirTo(m, cx, cz);
-            this.sim.hitMob(m.id, sk.dmgMult * pow.dmg, dx, dz, ownerId, false, false, pow.magic);
+            this.skillHitMob(ownerId, m, sk.dmgMult * pow.dmg, dx, dz, false, false, pow.magic, false, hit);
             if (cls === "battlemage") slow(m.id, STORM_CRUSH.slowSec, STORM_CRUSH.slowMul);
             else stun(m.id, 1);
           }
@@ -10227,7 +10309,7 @@ export class ZoneRoom extends Room<ZoneState> {
                 // Каждый выпад — со своим критом (база копья, роллы «крит» на копье, удача с камнями).
                 const rc = rolledCrit(pp, "right", rt);
                 const critM = rollCritMult("spear", Math.random, false, rc.chance + WEAPONS2.spear.critBase - BASE_CRIT, rc.mult, WEAPONS2.spear.critMult, attrOf(pp, "luc"));
-                this.sim.hitMob(m.id, F.dmg * pow.dmg * critM, vx / d, vz / d, ownerId, i === F.thrusts - 1, false, false, critM > 1);
+                this.skillHitMob(ownerId, m, F.dmg * pow.dmg * critM, vx / d, vz / d, i === F.thrusts - 1, false, false, critM > 1, hit);
               }
               this.broadcast(MSG.act, { k: "spearPierce", id: ownerId, x: ox, y: pp.head.y, z: oz, x2: ox + fx * F.range, z2: oz + fz * F.range, r: F.cone } satisfies ActRelay);
             }, ((F.duration / F.thrusts) * (i + 0.5)) * 1000);
@@ -10266,7 +10348,7 @@ export class ZoneRoom extends Room<ZoneState> {
                 : swordCrit // воин: крит меча — роллы «Крит» и УДЧ, как у обычного удара
                   ? rollCritMult("sword", Math.random, false, swordCrit.chance, swordCrit.mult, SWORD_CRIT_MULT, attrOf(pp, "luc"))
                   : 1;
-              this.sim.hitMob(m.id, mult * hitDmg * critM, dx, dz, ownerId, false, false, hitMagic, critM > 1);
+              this.skillHitMob(ownerId, m, mult * hitDmg * critM, dx, dz, false, false, hitMagic, critM > 1, hit);
               if (spear) this.sim.shoveMob(m.id, dx, dz, 4);
               if (cls === "assassin") slow(m.id, ASSASSIN_WHIRL_SLOW.sec, ASSASSIN_WHIRL_SLOW.mul);
             }
@@ -10276,7 +10358,7 @@ export class ZoneRoom extends Room<ZoneState> {
               if (out) {
                 const boltMul = THUNDER_SPIN.minMul + (THUNDER_SPIN.maxMul - THUNDER_SPIN.minMul) * Math.min(1, Math.max(0, attrOf(pp, "int") - ATTR2.start) / THUNDER_SPIN.intFull);
                 act({ k: "chainHit", x: pp.head.x, y: pp.head.y, z: pp.head.z, x2: out.x, z2: out.z, d: out.y + MOB.bodyRadius * out.scale, r: 1 });
-                this.sim.hitMob(out.id, boltMul * pow.dmg, 0, 0, ownerId, false, false, true);
+                this.skillHitMob(ownerId, out, boltMul * pow.dmg, 0, 0, false, false, true, false, hit);
               }
             }
           }, step * (i + 0.5) * 1000);
@@ -10388,7 +10470,7 @@ export class ZoneRoom extends Room<ZoneState> {
           const dx = m.x - fromX;
           const dz = m.z - fromZ;
           this.clock.setTimeout(() => {
-            this.sim.hitMob(m.id, dd, dx, dz, ownerId, false, false, true);
+            this.skillHitMob(ownerId, m, dd, dx, dz, false, false, true, false, hit);
             if (hammer) this.sim.vulnMob(m.id, CHAIN_HAMMER.vulnSec * DUR, CHAIN_HAMMER.vulnMul);
             else stun(m.id, 0.5);
           }, i * 90);
@@ -10455,7 +10537,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.clock.setTimeout(() => {
           if (p.dead || m.dead) return;
           const hp0 = m.hp;
-          this.sim.hitMob(m.id, sk.dmgMult * pow.dmg, dx, dz, ownerId, true);
+          this.skillHitMob(ownerId, m, sk.dmgMult * pow.dmg, dx, dz, true, false, false, false, hit);
           const dealt = Math.max(0, hp0 - Math.max(0, m.hp));
           const before = p.hp;
           p.hp = Math.min(p.maxHp, p.hp + dealt * LIFE_ARROW.healDmg + p.maxHp * LIFE_ARROW.healMax);
@@ -10474,7 +10556,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const [dx, dz] = dirTo(m, p.head.x, p.head.z);
         const dmg = sk.dmgMult * pow.dmg;
         // Без рывка: удар на дистанции, герой остаётся на месте.
-        this.sim.hitMob(m.id, dmg, dx, dz, ownerId);
+        this.skillHitMob(ownerId, m, dmg, dx, dz, false, false, false, false, hit);
         // Самый раненый союзник рядом (доля HP ниже SOUL_STEAL.healthy), иначе — сам.
         let ally: PlayerState = p;
         let worst: number = SOUL_STEAL.healthy;
@@ -10512,7 +10594,7 @@ export class ZoneRoom extends Room<ZoneState> {
             const d = Math.hypot(vx, vz) || 1;
             const slack = Math.asin(Math.min(1, this.sim.targetRadius("mob", m.id) / Math.max(d, 0.1)));
             if (Math.acos(Math.max(-1, Math.min(1, (vx * fx + vz * fz) / d))) > CLEAVE.halfAngle + slack) continue;
-            this.sim.hitMob(m.id, sk.dmgMult * pow.dmg, vx / d, vz / d, ownerId, false, false, pow.magic);
+            this.skillHitMob(ownerId, m, sk.dmgMult * pow.dmg, vx / d, vz / d, false, false, pow.magic, false, hit);
             this.sim.shoveMob(m.id, vx / d, vz / d, CLEAVE.shove);
             slow(m.id, CLEAVE.slowSec, 1 - CLEAVE.slow);
           }
@@ -10803,7 +10885,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const z = m.z;
         if (a.dmg > 0) {
           // Огонь — магия; тик без кулдауна удара и без вздрагивания (как яд), число урона — своё.
-          this.sim.hitMob(m.id, a.dmg, 0, 0, a.owner, false, true, true);
+          this.skillHitMob(a.owner, m, a.dmg, 0, 0, false, true, true, false);
           const dealt = Math.round(Math.max(0, hp0 - (m.dead ? 0 : m.hp)));
           if (dealt > 0) this.sim.dmgHits.push({ x, y: m.y + MOB.bodyRadius * m.scale * 1.6, z, dmg: dealt, by: a.owner, mob: m.id, c: "fire" });
         }
@@ -10882,7 +10964,7 @@ export class ZoneRoom extends Room<ZoneState> {
           if (d > radius + MOB.hitRadius * m.scale) continue;
           if (ignite) m.ignite(dmg / 6, 6, ownerId);
           else this.sim.rootMob(m.id, step + 0.3);
-          this.sim.hitMob(m.id, dmg, dx / (d || 1), dz / (d || 1), ownerId, true, false, magic);
+          this.skillHitMob(ownerId, m, dmg, dx / (d || 1), dz / (d || 1), true, false, magic, false);
         }
       }, step * (i + 0.5) * 1000);
     }
@@ -10923,7 +11005,7 @@ export class ZoneRoom extends Room<ZoneState> {
         if (s.stun > 0) this.sim.stunMob(m.id, s.stun);
         else this.sim.slowMob(m.id, 0.8, 1 - SEAL.slow);
         if (s.taunt) this.sim.tauntMob(m.id, s.owner, 1);
-        if (s.burn > 0) this.sim.hitMob(m.id, s.burn, dx / (d || 1), dz / (d || 1), s.owner, false, true, true);
+        if (s.burn > 0) this.skillHitMob(s.owner, m, s.burn, dx / (d || 1), dz / (d || 1), false, true, true, false);
       }
     }
   }
@@ -10975,7 +11057,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sim.shoveMob(m.id, ux, uz, B.shove);
         if (this.elapsed - (b.hitAt.get(m.id) ?? -99) >= B.hitEvery) {
           b.hitAt.set(m.id, this.elapsed);
-          this.sim.hitMob(m.id, b.dmg, ux, uz, b.owner, true);
+          this.skillHitMob(b.owner, m, b.dmg, ux, uz, true, false, false, false);
         }
         this.broadcast(MSG.act, { k: "barrierHit", id: b.owner, x: m.x, y: m.y + MOB.bodyRadius * m.scale, z: m.z, x2: b.x, z2: b.z } satisfies ActRelay);
       }
@@ -11008,7 +11090,7 @@ export class ZoneRoom extends Room<ZoneState> {
         if (d - this.sim.targetRadius("mob", m.id) > w.r) continue;
         caught++;
         this.sim.rootMob(m.id, WEB_ARROW.tick + 0.15);
-        this.sim.hitMob(m.id, w.dps * WEB_ARROW.tick, dx / (d || 1), dz / (d || 1), w.owner, true, true);
+        this.skillHitMob(w.owner, m, w.dps * WEB_ARROW.tick, dx / (d || 1), dz / (d || 1), true, true, false, false);
       }
       const p = this.state.players.get(w.owner);
       if (caught > 0 && p && !p.dead) {
@@ -11085,7 +11167,7 @@ export class ZoneRoom extends Room<ZoneState> {
           // Крит — на каждую стрелу и цель отдельно.
           const critM = rollCritMult("arrow", Math.random, false, rc.chance, rc.mult, BOW.critMult, attrOf(p, "luc"));
           if (critM > 1) this.critFx(m.x, m.y, m.z, ownerId);
-          this.sim.hitMob(m.id, base * critM, dx / (d || 1), dz / (d || 1), ownerId, true);
+          this.skillHitMob(ownerId, m, base * critM, dx / (d || 1), dz / (d || 1), true, false, false, false);
         }
       }, step * (i + 0.5) * 1000);
     }

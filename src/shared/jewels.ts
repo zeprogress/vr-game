@@ -17,6 +17,10 @@
 import type { Attr } from "./classes2";
 import { ATTR_LOOK } from "./look";
 import { armorLevelMul } from "./armor";
+import {
+  emptyRingSkillBonus, RING_ROLL, RING_TIERS, ringEnchantRow, ringQuality, ringRollText, ringRollValue, rollRingAffixes, rollRingSockets, sanitizeRingRolls, seededByString,
+  type RingRoll, type RingSkillBonus, type RingTier,
+} from "./ringAffixes";
 import type { EnchantInfo } from "./items";
 import { NECK_TIER_NAME, neckBonusOf, neckEnchantRow, neckLabel, neckQuality, neckScrap, rollNecklace, sanitizeNeck, type NeckInst, type NeckStat, type NeckTier } from "./necklaces";
 
@@ -33,12 +37,13 @@ export const GEM_LOOK: Record<GemAttr, { name: string; c: string; d: string; l: 
   con: { name: "Камень телосложения", ...ATTR_LOOK.con },
 };
 
-export type RingTier = "base" | "gold" | "legendary";
-export const RING_TIERS: readonly RingTier[] = ["base", "gold", "legendary"];
-export const RING_LOOK: Record<RingTier, { name: string; sockets: number; band: readonly [string, string, string] }> = {
-  base: { name: "Обычное кольцо", sockets: 0, band: ["#f4f3ef", "#b9b6ad", "#6b6b6b"] },
-  gold: { name: "Золотое кольцо", sockets: 1, band: ["#fff1b8", "#ffd166", "#a8740c"] },
-  legendary: { name: "Уникальное кольцо", sockets: 2, band: ["#f1e6ff", "#b989ff", "#4d2496"] },
+export { RING_TIERS, type RingTier } from "./ringAffixes";
+/** Имя тира кольца. Гнёзда и аффиксы по тиру — RING_ROLL (shared/ringAffixes.ts). */
+export const RING_LOOK: Record<RingTier, { name: string }> = {
+  base: { name: "Обычное кольцо" },
+  gold: { name: "Золотое кольцо" },
+  legendary: { name: "Уникальное кольцо" },
+  ruby: { name: "Рубиновое кольцо" },
 };
 
 /** Числа колец и камней. */
@@ -50,7 +55,7 @@ export const RING = {
   /** Вынуть камень: лом за каждый уровень камня. */
   unsocketPerLv: 3,
   /** Лом за разбор кольца. */
-  scrap: { base: 30, gold: 100, legendary: 300 } as Record<RingTier, number>, // 2026-10-07: ×10
+  scrap: { base: 30, gold: 100, legendary: 300, ruby: 3000 } as Record<RingTier, number>, // 2026-10-07: ×10; рубиновое — 2026-10-23
   /** Шанс с обычного моба за убийство; элита/боссы — множитель drop.elite/boss. */
   gemChance: 0.05, // 2026-10-13: ×2 (было 0.025)
   ringChance: 0.0005, // 2026-10-13: ×2 (было 0.00025, до того ×0.1 от 0.0025); мобы, элита и боссы — через chanceMul
@@ -58,7 +63,7 @@ export const RING = {
   eliteMul: 5, // 2026-10-21: ×5 (было ×3) — элитные кольца 0.25% за убийство
   bossMul: 40,
   /** Доли тиров выпавшего кольца (золотое и уникальное умножаются на уровень моба — RING_LEVEL_GATE). */
-  ringTierW: { base: 0.7, gold: 0.25, legendary: 0.05 } as Record<RingTier, number>,
+  ringTierW: { base: 0.7, gold: 0.25, legendary: 0.05, ruby: 0 } as Record<RingTier, number>, // рубиновое — только из сундука катакомб
   /** Слотов колец у героя. */
   slots: 2,
 } as const;
@@ -89,8 +94,10 @@ export function gemName(k: GemKey): string {
 export interface RingInst {
   id: string;
   tier: RingTier;
-  /** Камни в гнёздах (длина = гнёзд у тира), null — пусто. */
+  /** Камни в гнёздах (длина = гнёзд этого кольца, RING_ROLL.sockets тира), null — пусто. */
   gems: (GemKey | null)[];
+  /** Аффиксы урона умений (shared/ringAffixes.ts). У старых колец раскатываются при загрузке (jewelsOf). */
+  rolls: RingRoll[];
   /** ★ избранное — не разбирается; личная пометка, при передаче снимается. */
   fav?: boolean;
 }
@@ -113,10 +120,14 @@ export function jewelsOf(r: { rings?: unknown; ringOn?: unknown; gems?: unknown;
     ? (r.rings as RingInst[])
         .filter((x) => x && typeof x.id === "string" && RING_TIERS.includes(x.tier))
         .map((x) => {
-          const n = RING_LOOK[x.tier].sockets;
+          // Гнёзд — сколько сохранено, в пределах тира (уникальное — 1 или 2); у старых колец так и остаётся.
+          const [lo, hi] = RING_ROLL.sockets[x.tier];
           const g = Array.isArray(x.gems) ? x.gems : [];
+          const n = Math.max(lo, Math.min(hi, g.length || lo));
           const fav = x.fav === true ? { fav: true } : {};
-          return { id: x.id, tier: x.tier, gems: Array.from({ length: n }, (_, i) => (parseGem(g[i]) ? (g[i] as string) : null)), ...fav };
+          // Старое кольцо без аффиксов — раскатываем по его id: одинаково при каждой загрузке, пока не сохранили.
+          const rolls = sanitizeRingRolls(x.rolls) ?? rollRingAffixes(x.tier, seededByString(x.id));
+          return { id: x.id, tier: x.tier, gems: Array.from({ length: n }, (_, i) => (parseGem(g[i]) ? (g[i] as string) : null)), rolls, ...fav };
         })
     : [];
   const on = Array.isArray(r.ringOn) ? (r.ringOn as unknown[]) : [];
@@ -138,6 +149,21 @@ export function jewelsOf(r: { rings?: unknown; ringOn?: unknown; gems?: unknown;
 /** Поля записи героя для сохранения колец, камней и ожерелий — одно место для всех store.put. */
 export function jewelPatch(js: JewelSave): Pick<JewelSave, "rings" | "ringOn" | "gems" | "necks" | "neckOn"> {
   return { rings: js.rings, ringOn: js.ringOn, gems: js.gems, necks: js.necks, neckOn: js.neckOn };
+}
+
+/** Новое кольцо тира: гнёзда и аффиксы — по RING_ROLL. */
+export function newRing(tier: RingTier, id: string, rnd = Math.random): RingInst {
+  return { id, tier, gems: Array.from({ length: rollRingSockets(tier, rnd) }, () => null), rolls: rollRingAffixes(tier, rnd) };
+}
+
+/** Сумма аффиксов надетых колец (урон умений и ульты) — сервер множит удар по условиям (ringSkillMul). */
+export function ringSkillBonusOf(js: Pick<JewelSave, "rings" | "ringOn">): RingSkillBonus {
+  const b = emptyRingSkillBonus();
+  for (const id of js.ringOn) {
+    const r = id ? js.rings.find((x) => x.id === id) : undefined;
+    if (r) for (const a of r.rolls) b[a.stat] += ringRollValue(r.tier, a);
+  }
+  return b;
 }
 
 /** Надетое ожерелье (или null). */
@@ -191,14 +217,14 @@ export function ringName(r: { tier: RingTier }): string {
 }
 
 /** Кольцо одной строкой: «Золотое кольцо: Камень силы 2 ур.». */
-export function ringLabel(r: RingInst): string {
+export function ringLabel(r: { tier: RingTier; gems: readonly (GemKey | null)[] }): string {
   const g = r.gems.filter(Boolean) as string[];
   return g.length ? `${ringName(r)}: ${g.map(gemName).join(", ")}` : ringName(r);
 }
 
-/** Прибавки кольца строками для подсказки: «+2 Сила», «Маг. защита 10%». */
-export function ringBonusText(r: RingInst): string[] {
-  const out = [`Маг. защита ${Math.round(RING.mres * 100)}%`];
+/** Прибавки кольца строками для подсказки: аффиксы умений, «Маг. защита 10%», «+2 Сила». */
+export function ringBonusText(r: { tier: RingTier; gems: readonly (GemKey | null)[]; rolls?: readonly RingRoll[] }): string[] {
+  const out = [...(r.rolls ?? []).map((x) => ringRollText(r.tier, x)), `Маг. защита ${Math.round(RING.mres * 100)}%`];
   for (const k of r.gems) {
     const g = parseGem(k);
     if (g) out.push(`+${g.lv} ${ATTR_SHORT[g.attr]}`);
@@ -369,7 +395,7 @@ export function applyJewelOp(js: JewelSave, o: JewelOp, scrapHave: number): Jewe
     }
     case "ringScrapAll": {
       // Все кольца и ожерелья из сумки в лом; надетые, ★ избранные и рубиновые ожерелья остаются. Камни — в сумку.
-      const bag = js.rings.filter((r) => !js.ringOn.includes(r.id) && !r.fav);
+      const bag = js.rings.filter((r) => !js.ringOn.includes(r.id) && !r.fav && r.tier !== "ruby");
       const bagN = js.necks.filter((n) => js.neckOn !== n.id && !n.fav && n.tier !== "ruby");
       if (!bag.length && !bagN.length) return { ok: false, text: "Украшений для разбора нет — надетые и избранные ★ не разбираются." };
       let got = 0;
@@ -502,9 +528,32 @@ export function pcInvNeck(n: NeckInst): PcInvNeck {
   };
 }
 
+/** Кольцо для окна инвентаря: гнёзда, лом, аффиксы с заточкой (как у ожерелья). */
+export interface PcInvRing {
+  id: string;
+  tier: RingTier;
+  gems: (GemKey | null)[];
+  scrap: number;
+  fav?: boolean;
+  /** Аффиксы: оценка (сумма очков), их число, строки и заточка. */
+  pts: number;
+  nRolls: number;
+  rolls: RingRoll[];
+  affs: string[];
+  ench: (EnchantInfo & { label: string })[];
+}
+
+export function pcInvRing(r: RingInst): PcInvRing {
+  const ench = r.rolls.map((_, i) => ringEnchantRow(r, i)!);
+  return {
+    id: r.id, tier: r.tier, gems: [...r.gems], scrap: RING.scrap[r.tier], ...(r.fav ? { fav: true } : {}),
+    pts: ringQuality(r), nRolls: r.rolls.length, rolls: r.rolls.map((x) => ({ stat: x.stat, pts: x.pts })), affs: ench.map((e) => e.label), ench,
+  };
+}
+
 /** Данные колец, ожерелий и камней для окна инвентаря (ПК/телефон, страница !inv, VR). */
 export interface PcInvJewels {
-  rings: { id: string; tier: RingTier; gems: (GemKey | null)[]; scrap: number; fav?: boolean }[];
+  rings: PcInvRing[];
   ringOn: [string | null, string | null];
   necks: PcInvNeck[];
   neckOn: string | null;
@@ -518,7 +567,7 @@ export function pcInvJewels(js: JewelSave): PcInvJewels {
     return GEM_ATTRS.indexOf(ga.attr) - GEM_ATTRS.indexOf(gb.attr) || gb.lv - ga.lv;
   });
   return {
-    rings: js.rings.map((r) => ({ id: r.id, tier: r.tier, gems: [...r.gems], scrap: RING.scrap[r.tier], ...(r.fav ? { fav: true } : {}) })),
+    rings: js.rings.map(pcInvRing),
     ringOn: [...js.ringOn],
     necks: js.necks.map(pcInvNeck),
     neckOn: js.neckOn,
@@ -530,5 +579,5 @@ export function pcInvJewels(js: JewelSave): PcInvJewels {
 export function pcJewelBonus(j: PcInvJewels | undefined): JewelBonus {
   // Ожерелье из вида окна: аффиксы — по stats и очкам строк заточки.
   const necks: NeckInst[] = (j?.necks ?? []).map((n) => ({ id: n.id, tier: n.tier, gems: n.gems, rolls: n.stats.map((stat, i) => ({ stat, pts: n.ench[i]?.points ?? 1 })) }));
-  return jewelBonus({ rings: (j?.rings ?? []) as RingInst[], ringOn: j?.ringOn ?? [null, null], necks, neckOn: j?.neckOn ?? null });
+  return jewelBonus({ rings: j?.rings ?? [], ringOn: j?.ringOn ?? [null, null], necks, neckOn: j?.neckOn ?? null });
 }

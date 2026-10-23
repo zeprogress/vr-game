@@ -1,3 +1,4 @@
+import { RING_LOOK } from "#shared/jewels";
 import { glyph } from "#shared/icons";
 import { ATTACK_COLOR, QUALITY_COLOR, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
@@ -241,17 +242,19 @@ export function drawEnchant(
   const arm = w ? undefined : d?.armor?.find((x) => x.id === id);
   // Ожерелье — строки свойств, как у брони (shared/necklaces.ts).
   const neck = w || arm ? undefined : d?.jewels?.necks.find((x) => x.id === id);
+  // Кольцо — аффиксы урона умений (shared/ringAffixes.ts), строки как у ожерелья.
+  const ring = w || arm || neck ? undefined : d?.jewels?.rings.find((x) => x.id === id);
   header(ui, "Заточка");
   ui.button("close", "✕", ui.W - PAD - 70, 30, 70, 56, close);
   // Лом (или уникальные 99 у рубинового) — левее крестика (раньше рисовался под ним и не читался).
   if (d) ui.text(`лом ${d.scrap}`, ui.W - PAD - 90, 42, 36, VR_UI.gold, 800, "right");
-  if (!d || (!w && !arm && !neck)) {
+  if (!d || (!w && !arm && !neck && !ring)) {
     ui.text(d ? "Предмет не найден на складе" : "Загрузка…", PAD, 120, 30, VR_UI.dim);
     return;
   }
-  const rows = w ? w.ench : (arm?.ench ?? neck?.ench ?? []);
-  const tierColor = TIER_LOOK[(w?.tier ?? arm?.tier ?? neck?.tier ?? "base") as WeaponTier]?.color ?? VR_UI.text;
-  let x = ui.text(w ? w.name : (arm?.label ?? neck?.label.split(" · ")[0] ?? ""), PAD, 110, 36, tierColor, 800);
+  const rows = w ? w.ench : (arm?.ench ?? neck?.ench ?? ring?.ench ?? []);
+  const tierColor = TIER_LOOK[(w?.tier ?? arm?.tier ?? neck?.tier ?? ring?.tier ?? "base") as WeaponTier]?.color ?? VR_UI.text;
+  let x = ui.text(w ? w.name : (arm?.label ?? neck?.label.split(" · ")[0] ?? (ring ? RING_LOOK[ring.tier].name : "")), PAD, 110, 36, tierColor, 800);
   if (busy) {
     // Молот: три удара по строке предмета (как значок в ПК-окне).
     const hit = Math.abs(Math.sin((forgeT / VR_FORGE_MS) * Math.PI * 3));
@@ -259,7 +262,7 @@ export function drawEnchant(
   }
   if (inHand) {
     ui.rect(PAD + x + 16, 114, 110, 34, "#8fd18f", 6);
-    ui.text(w ? "в руке" : neck ? "надето" : "надета", PAD + x + 71, 117, 24, "#0e1a10", 800, "center");
+    ui.text(w ? "в руке" : neck || ring ? "надето" : "надета", PAD + x + 71, 117, 24, "#0e1a10", 800, "center");
   }
   if (w) {
     const qx = ui.text(qualityStars(w.quality, w.ench.length), PAD, 154, 40, QUALITY_COLOR, 800);

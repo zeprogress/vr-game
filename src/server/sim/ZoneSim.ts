@@ -1302,6 +1302,10 @@ export class Mob {
     this.slowT = Math.max(this.slowT, sec);
     this.slowMul = Math.min(this.slowT > 0 && this.slowMul < 1 ? this.slowMul : 1, mul);
   }
+  /** Замедлен сейчас (для «По оглушённым» колец). */
+  get slowed(): boolean {
+    return this.slowT > 0 && this.slowMul < 1;
+  }
   /** Текущий множитель скорости от замедления (1 — нет). */
   private get slowK(): number {
     return this.slowT > 0 ? this.slowMul : 1;
@@ -3692,6 +3696,8 @@ export class ZoneSim {
     magic = false,
     /** true — крит (сейчас только лук): учитываем critVulnMul. */
     crit = false,
+    /** Пробивание (кольца, урон умений): доля брони моба (физ., маг., от дальних), которую удар не замечает. */
+    pen = 0,
   ): MobKind | null {
     const m = this.mobs.get(id);
     if (!m) return null;
@@ -3726,10 +3732,11 @@ export class ZoneSim {
       this.mobMisses.push({ mobId: m.id, attacker, x: m.x, y: m.y + MOB.bodyRadius * m.scale * 2 + 1.2, z: m.z });
       return null;
     }
-    if (rangedHit && m.rangedArmor > 0) dmg *= 1 - m.rangedArmor;
-    if (!magic && m.physArmor > 0) dmg *= 1 - m.physArmor;
+    const armorK = 1 - Math.max(0, Math.min(1, pen));
+    if (rangedHit && m.rangedArmor > 0) dmg *= 1 - m.rangedArmor * armorK;
+    if (!magic && m.physArmor > 0) dmg *= 1 - m.physArmor * armorK;
     if (magic && m.magicVulnMul !== 1) dmg *= m.magicVulnMul;
-    if (magic && m.magicArmor > 0) dmg *= 1 - m.magicArmor;
+    if (magic && m.magicArmor > 0) dmg *= 1 - m.magicArmor * armorK;
     if (crit && m.critVulnMul !== 1) dmg *= m.critVulnMul;
     if (m.markT > 0) dmg *= m.markMul; // «Метка»: +25% урона от всех атакующих
     if (m.vulnT > 0 && attacker && this.hammerHit?.(attacker)) dmg *= m.vulnMul; // «Цепная молния»: по молоту — больше

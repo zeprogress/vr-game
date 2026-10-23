@@ -9,7 +9,8 @@ import type { IconKey } from "#shared/icons";
 import { AEGIS_NAME, AFFIX_NAME, craftPow, isCraftRare, weaponName, ATTACK_CLASSES, WEAPON_NOUN, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, qualityStarsShort, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcEnchRow, PcInvActMsg, PcInvArmor, PcInvData, PcInvResult, PcInvWeapon, TradeItemView } from "#shared/net/messages";
 import { SKIN_LABELS, skinPicture } from "#shared/skins";
-import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type PcInvJewels, type PcInvNeck, type RingTier } from "#shared/jewels";
+import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, ringSkillBonusOf, type PcInvJewels, type PcInvNeck, type RingTier } from "#shared/jewels";
+import { RING_STATS, ringValueText } from "#shared/ringAffixes";
 import { NECK_TIER_NAME, type NeckTier } from "#shared/necklaces";
 import { skillDamageText } from "#shared/skillDamage";
 import { BAG_SORTS, bagPickItem, nextBagSort, sortBag, type BagSort } from "#shared/bagSort";
@@ -1073,6 +1074,9 @@ export class PcInventory {
     const b = pcJewelBonus(d.jewels);
     const parts = [`Маг. защита +${Math.round(ringResist(b.rings) * 100)}%`];
     for (const k of A2) if (b[k] > 0) parts.push(`+${b[k]} ${ATTR_INFO[k].short}`);
+    // Аффиксы колец (урон умений): сумма двух надетых.
+    const rsb = ringSkillBonusOf(this.jewelsOf(d));
+    for (const st of RING_STATS) if (rsb[st] > 0) parts.push(ringValueText(st, rsb[st]));
     box.append(
       div("pcinv-hh", "Кольца"),
       div("pcinv-small", b.rings ? parts.join(" · ") : `Ничего не надето. Кольцо даёт маг. защиту ${Math.round(RING.mres * 100)}%, камни в нём — атрибуты.`),
@@ -1879,8 +1883,11 @@ export class PcInventory {
     const slot = j.ringOn.indexOf(r.id);
     const ico = div(`pcinv-cell huge pcinv-jw t-${r.tier}`);
     ico.innerHTML = ringHtml(r.tier, r.gems);
-    const bonus = [...ringBonusText({ id: "", tier: r.tier, gems: r.gems })].map((t) => div("pcinv-tipaff", t));
-    this.cardHead(head, ico, ringName(r), `t-${r.tier}`, r.gems.length ? `Кольцо · гнёзд ${r.gems.length}` : "Кольцо без гнёзд", slot >= 0 ? `надето · слот ${slot + 1}` : "", bonus);
+    const bonus = [...ringBonusText(r)].map((t) => div("pcinv-tipaff", t));
+    this.cardHead(head, ico, ringName(r), `t-${r.tier}`, `Кольцо · оценка <b>${qualityStarsShort(r.pts, r.nRolls)}</b>${r.gems.length ? ` · гнёзд ${r.gems.length}` : ""}`, slot >= 0 ? `надето · слот ${slot + 1}` : "", bonus);
+    // Аффиксы урона умений — заточка, как у брони и ожерелья.
+    this.enchRows(body, r.id, r.ench, r.affs, d.scrap);
+    body.append(div("pcinv-hint", "Аффиксы кольца усиливают урон умений и ульты; два кольца складываются. Чем ближе свойство к максимуму — тем дороже и меньше шанс заточки, при неудаче лом сгорает."));
 
     if (r.gems.length) {
       this.socketRows(body, d, r.id, r.gems);
@@ -1935,7 +1942,8 @@ export class PcInventory {
     this.hooks.act(
       sharpen ? { act: "sharpen", id, idx: 0 }
         : this.data?.armor?.some((x) => x.id === id) ? { act: "armorEnchant", id, idx }
-          : this.data?.jewels?.necks.some((x) => x.id === id) ? { act: "neckEnchant", id, idx } : { act: "enchant", id, idx },
+          : this.data?.jewels?.necks.some((x) => x.id === id) ? { act: "neckEnchant", id, idx }
+            : this.data?.jewels?.rings.some((x) => x.id === id) ? { act: "ringEnchant", id, idx } : { act: "enchant", id, idx },
     );
     const seq = ++this.forgeSeq;
     // Три удара молотом — пусть напряжение настоится, потом итог.
@@ -2046,6 +2054,7 @@ export class PcInventory {
   private bagRingCell(r: PcInvJewels["rings"][number]): HTMLDivElement {
     const c = div(`pcinv-cell pcinv-jw t-${r.tier}${this.card?.kind === "ring" && this.card.id === r.id ? " sel" : ""}`);
     c.innerHTML = ringHtml(r.tier, r.gems);
+    if (r.nRolls) c.append(div("pcinv-q", qualityStarsShort(r.pts, r.nRolls)));
     this.ringTip(c, r);
     // Как у оружия: телефон — пустую ☆ не показываем (ловила бы тапы), ★ у избранного видна.
     if (!this.hooks.touch || r.fav) c.append(this.favStar(!!r.fav, () => this.toggleRingFav(r.id)));
@@ -2985,7 +2994,7 @@ function button(label: string, fn: () => void): HTMLButtonElement {
 
 /** Кольцо одной строкой (тир и камни) — для заголовков меню. */
 function ringLabelOf(r: { tier: RingTier; gems: (string | null)[] }): string {
-  return ringLabel({ id: "", tier: r.tier, gems: r.gems });
+  return ringLabel(r);
 }
 
 function span(text: string): HTMLSpanElement {

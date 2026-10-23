@@ -83,7 +83,7 @@ export class InventoryRoom extends colyseus.Room {
         return;
       }
       const act =
-        m?.act === "equip" || m?.act === "unequip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "sharpen" || m?.act === "stat" || m?.act === "respec" || m?.act === "scroll" || m?.act === "title" || m?.act === "skin" || m?.act === "skills" || m?.act === "fav" || m?.act === "scrapAll" || m?.act === "gift" || m?.act === "giftSeen" || m?.act === "armorWear" || m?.act === "armorUnwear" || m?.act === "armorScrap" || m?.act === "armorFav" || m?.act === "armorEnchant" || m?.act === "neckEnchant" || m?.act === "craft" || m?.act === "smelt" || m?.act === "shop" || (JEWEL_ACTS as readonly unknown[]).includes(m?.act) || (TRADE_ACTS as readonly unknown[]).includes(m?.act)
+        m?.act === "equip" || m?.act === "unequip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "sharpen" || m?.act === "stat" || m?.act === "respec" || m?.act === "scroll" || m?.act === "title" || m?.act === "skin" || m?.act === "skills" || m?.act === "fav" || m?.act === "scrapAll" || m?.act === "gift" || m?.act === "giftSeen" || m?.act === "armorWear" || m?.act === "armorUnwear" || m?.act === "armorScrap" || m?.act === "armorFav" || m?.act === "armorEnchant" || m?.act === "neckEnchant" || m?.act === "ringEnchant" || m?.act === "craft" || m?.act === "smelt" || m?.act === "shop" || (JEWEL_ACTS as readonly unknown[]).includes(m?.act) || (TRADE_ACTS as readonly unknown[]).includes(m?.act)
           ? m.act
           : null;
       const id = typeof m?.id === "string" ? m.id : act === "respec" ? "-" : "";
@@ -100,7 +100,7 @@ export class InventoryRoom extends colyseus.Room {
       const r = invHub.act(w.norm, act as InvActKind, id, idx, typeof m?.fuel === "string" ? m.fuel : undefined);
       console.log(`[inv] ${w.norm} ← web ${act} «${id}» · ip ${this.ipBySession.get(client.sessionId) ?? "?"} → ${r.ok ? "ок" : "отказ"}: ${r.text}`);
       // Заточка и точка атаки отвечают каналом «enchant»: страница окна заточки ждёт именно его (иначе кнопки залипали).
-      client.send(r.enchant || act === "sharpen" || act === "enchant" || act === "armorEnchant" || act === "neckEnchant" ? "enchant" : "toast", r);
+      client.send(r.enchant || act === "sharpen" || act === "enchant" || act === "armorEnchant" || act === "neckEnchant" || act === "ringEnchant" ? "enchant" : "toast", r);
     });
     this.onMessage("refresh", (client) => this.sendInv(client));
     // «Помощь в разработке»: список видят все, писать — только с подтверждённым входом, пометки — только админ.

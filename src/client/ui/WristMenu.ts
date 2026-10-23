@@ -1441,7 +1441,7 @@ export class WristMenu {
       kind: "cell",
       info: [
         `${r.fav ? `${glyph("ui.fav")} ` : ""}${ringName(r)} — нажми: действия`,
-        ringBonusText({ id: r.id, tier: r.tier, gems: r.gems }).join(", "),
+        ringBonusText(r).join(", "),
       ],
       act: () => this.openRingPopup(r, slot),
     });
@@ -1455,6 +1455,12 @@ export class WristMenu {
     ctx.font = "bold 17px system-ui, sans-serif";
     ctx.fillStyle = TIER_COLOR[r.tier];
     ctx.fillText(this.shortName(ringName(r)), x + 62, y + 8);
+    if (r.nRolls) {
+      // Оценка аффиксов — в левом верхнем углу, как у оружия, брони и ожерелья.
+      ctx.font = "bold 18px system-ui, sans-serif";
+      ctx.fillStyle = "#f2c74b";
+      ctx.fillText(qualityStarsShort(r.pts, r.nRolls), x + 8, y + 18);
+    }
     ctx.font = "16px system-ui, sans-serif";
     ctx.fillStyle = "#a9a498";
     ctx.fillText(r.gems.length ? `камней ${r.gems.filter(Boolean).length}/${r.gems.length}` : "без гнёзд", x + 62, y + 36);
@@ -2032,7 +2038,7 @@ export class WristMenu {
       const r = ringOf(j.ringOn[slot]);
       const x = 24 + slot * 150;
       cell(`rs:${slot}`, x, VIEW_Y + 14, 136, r ? (x2: number, y2: number, s2: number) => this.drawRing(ctx, r.tier, r.gems, x2, y2, s2) : RING_SLOT_SVG, r ? TIER_COLOR[r.tier] : "#3a3e48",
-        [`Слот кольца ${slot + 1}`, r ? ringLabel({ id: "", tier: r.tier, gems: r.gems }) : "пусто — выбери кольцо ниже"],
+        [`Слот кольца ${slot + 1}`, r ? ringLabel(r) : "пусто — выбери кольцо ниже"],
         () => r && this.openRingPopup(r, slot), String(slot + 1));
     }
     // Слот ожерелья — третьим, рядом с кольцами.
@@ -2280,7 +2286,16 @@ export class WristMenu {
         label: "🎁 Подарить…",
         hint: "герою рядом, предмет уйдёт сразу",
         color: "#ffd166",
-        act: () => this.openGiftPopup(ringLabel({ id: "", tier: r.tier, gems: r.gems }), TIER_COLOR[r.tier], `r:${r.id}`, `ring:${r.id}`),
+        act: () => this.openGiftPopup(ringLabel(r), TIER_COLOR[r.tier], `r:${r.id}`, `ring:${r.id}`),
+      });
+    }
+    if (r.nRolls) {
+      buttons.push({
+        id: "pop:ench", label: "Заточить", hint: "аффиксы урона умений — панель заточки перед тобой", color: "#e8c26a",
+        act: () => {
+          this.popup = null;
+          this.onEnchant?.(r.id);
+        },
       });
     }
     r.gems.forEach((gk, i) => {
@@ -2300,7 +2315,7 @@ export class WristMenu {
     });
     if (slot < 0 && !r.fav) buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${r.scrap} лома${r.gems.some(Boolean) ? ", камни — в сумку" : ""}`, color: "#ff9a9a", act: () => this.jewelSend({ act: "ringScrap", id: r.id, idx: 0 }) });
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
-    this.popup = { title: ringLabel({ id: "", tier: r.tier, gems: r.gems }), sub: ringBonusText({ id: "", tier: r.tier, gems: r.gems }).join(", "), color: TIER_COLOR[r.tier], buttons };
+    this.popup = { title: ringLabel(r), sub: ringBonusText(r).join(", "), color: TIER_COLOR[r.tier], buttons };
     this.focusId = buttons[0].id;
   }
 
@@ -2351,7 +2366,7 @@ export class WristMenu {
     const a = ringArt(tier, gems);
     this.drawImgAt(ctx, a.src, x, y, s);
     a.sockets.forEach((k, i) => {
-      const p = socketSpot(tier, i);
+      const p = socketSpot(tier, a.sockets.length, i);
       const g = k ? gemArt(k) : null;
       if (g) this.drawImgAt(ctx, g.src, x + p.x * s, y + p.y * s, p.s * s);
       else {
