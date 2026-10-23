@@ -574,7 +574,7 @@ export const BLAST_ARROW = { splash: 1.2, radius: 5, range: 22 } as const; // р
 // Каждая волна лечит healFrac макс. HP за КАЖДОГО задетого, но не больше healTargets целей (2026-10-20: лечение перенесено с «Роя»).
 export const ARROW_STORM = { radius: 12, waves: 3, first: 0.7, gap: 0.5, fall: 0.3, slow: 0.3, slowSec: 2, healFrac: 0.03, healTargets: 3 } as const;
 /** 🧪 «Метка охотника» (2026-10-20): стрелы лука по СВОЕЙ метке копят темп стрельбы — perHit за попадание, до max стаков; resetSec с без попаданий — стаки сгорают. */
-export const MARK_FOCUS = { perHit: 0.03, max: 10, resetSec: 5 } as const;
+export const MARK_FOCUS = { perHit: 0.05, max: 10, resetSec: 5 } as const; // 2026-10-23: до +50% (было +3% за попадание, до +30%)
 /**
  * 🧪 «Стрела-призрак»: duration с (× МДР — SkillDef.attr) обычные мобы не видят стрелка и не бьют его
  * (боссы видят); его урон ×dmgMul; каждое попадание стрелой (у бота — выстрел) лечит healFrac макс. HP.
