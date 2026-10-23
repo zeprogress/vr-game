@@ -53,6 +53,16 @@ export function ringArt(tier: RingTier, gems: readonly (GemKey | null)[] = []): 
   return { src: `${BASE}ring_${tier}.webp`, sockets: Array.from({ length: n }, (_, i) => gems[i] ?? null) };
 }
 
+/**
+ * Ожерелья (заготовка, 2026-10-23; в игру ещё не добавлены): картинки public/icons/jewels/necklace_<тир>_<гнёзд>.webp,
+ * нарезаны из «Сетка фантазийных ожерелий разных редкостей.png» (tools/icons/cut_necklaces.py + glow_necklaces.py).
+ * Тир heroic — мифический синий; свечение растёт от обычного (нет) к мифическому (сильнее всех). Гнёзд 0–3.
+ */
+export type NecklaceTier = "base" | "gold" | "legendary" | "ruby" | "heroic";
+export function necklaceSrc(tier: NecklaceTier, sockets: number): string {
+  return `${BASE}necklace_${tier}_${Math.max(0, Math.min(3, Math.round(sockets)))}.webp`;
+}
+
 const LAYER = "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none";
 
 /** HTML-значок камня — заполняет родителя (ячейку). */
