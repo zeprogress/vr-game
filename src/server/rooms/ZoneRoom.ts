@@ -204,9 +204,9 @@ import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand }
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
 import { leashCut } from "../sim/leash";
 import { ATTR2 } from "#shared/attrs2";
-import { DRAW_IN, drawInPlan, drawModeOf } from "#shared/drawIn";
+import { DRAW_IN, drawInPlan, drawModeOf, type DrawMode } from "#shared/drawIn";
 import { STEEL_AURA, steelAuraTick, steelModeOf, type SteelMode, ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, warriorWhirlHits, WARCRY, MARK, MARK_FOCUS, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
-import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC, ULT_PULL_PULSES, ULT_PULL_POWER } from "#shared/ultimates";
+import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC } from "#shared/ultimates";
 import {
   MAGIC,
   maxManaFor,
@@ -9898,6 +9898,32 @@ export class ZoneRoom extends Room<ZoneState> {
     }, U.cast * 1000);
   }
 
+  /**
+   * «Стягивание» (воин, копейщик, ульта копейщика): мобы плавно идут в точки кучки за DRAW_IN.sec и стоят stunSec с.
+   * Точки — drawInPlan (mode: 0 — кучка перед fx/fz, 1 — по бокам, 2 — кольцом вокруг feet). Визуал — одни и те же act.
+   * Боссов сюда не передавать (их тянуть нельзя).
+   */
+  private yankMobs(ownerId: string, mobs: Mob[], feet: { x: number; y: number; z: number }, fx: number, fz: number, mode: DrawMode, radius: number, stunSec: number): void {
+    const plan = drawInPlan(mode, fx, fz, feet.x, feet.z, mobs);
+    this.broadcast(MSG.act, { k: "drawIn", id: ownerId, ...feet, d: DRAW_IN.sec, r: radius, v: mode } satisfies ActRelay);
+    mobs.forEach((m, i) => {
+      const q = plan[i];
+      this.sim.pullMob(m.id, q.x, q.z, DRAW_IN.sec);
+      this.sim.stunMob(m.id, stunSec);
+      if (i < 12) {
+        this.broadcast(MSG.act, {
+          k: "drawPull", id: ownerId, mobId: m.id, x: m.x, y: m.y + MOB.bodyRadius * m.scale, z: m.z, x2: q.x, z2: q.z, d: DRAW_IN.sec, v: mode,
+        } satisfies ActRelay);
+      }
+    });
+    // Удар о землю — в момент прихода; точки уникальны по кучкам, сообщаем до 6.
+    this.clock.setTimeout(() => {
+      for (const q of plan.slice(0, 6)) {
+        this.broadcast(MSG.act, { k: "drawImpact", id: ownerId, x: q.x, y: terrainHeight(q.x, q.z), z: q.z, v: mode } satisfies ActRelay);
+      }
+    }, DRAW_IN.sec * 1000);
+  }
+
   /** Удар ультимейта по кругу вокруг героя (центр — где он стоит в конце замаха). */
   private applyUlt(ownerId: string, p: PlayerState, rt: Runtime, cls: ClassId): void {
     const U = ULTS[cls];
@@ -9972,19 +9998,10 @@ export class ZoneRoom extends Room<ZoneState> {
           const [dx, dz] = dirFrom(m);
           this.skillHitMob(ownerId, m, U.dmgMult * pow.dmg, dx, dz, false, false, pow.magic, false, hit);
         }
-        // Втягивание: шесть мощных толчков к герою за 0.6 с, потом оглушение.
-        for (let k = 0; k < ULT_PULL_PULSES; k++) {
-          this.clock.setTimeout(() => {
-            if (!alive()) return;
-            for (const m of inRing()) {
-              const [dx, dz] = dirFrom(m);
-              this.sim.shoveMob(m.id, -dx, -dz, ULT_PULL_POWER);
-            }
-          }, (k + 1) * 100);
-        }
-        this.clock.setTimeout(() => {
-          for (const m of inRing()) this.sim.stunMob(m.id, 3);
-        }, (ULT_PULL_PULSES + 1) * 100);
+        // Втягивание — как «Стягивание» воина: мобы плавно идут к герою за DRAW_IN.sec и стоят 3 с (боссы — стоят на месте).
+        const ringMobs = inRing();
+        this.yankMobs(ownerId, ringMobs.filter((m) => m.kind !== "boss" && !m.immune), { x: cx, y: feetY, z: cz }, 0, 0, 2, U.radius, 3 + DRAW_IN.sec);
+        for (const m of ringMobs) if (m.kind === "boss") this.sim.stunMob(m.id, 3);
         return;
       case "battlemage":
         for (const m of inRing()) {
@@ -10220,19 +10237,12 @@ export class ZoneRoom extends Room<ZoneState> {
           ez = stepTarget.z + az * behind;
         }
         if (cls === "spearman") {
-          // Ловушка копейщика: мобы вокруг стягиваются к старому месту в кучку и замедлены.
-          const T = { ...SPEAR_HOP_TRAP, seconds: SPEAR_HOP_TRAP.seconds * DUR, radius: SPEAR_HOP_TRAP.radius * RAD };
-          act({ k: "seal", x: sx, y: feetY, z: sz, d: T.seconds, r: T.radius });
-          for (let t = 0; t * T.pullStep < T.seconds; t++) {
-            this.clock.setTimeout(() => {
-              for (const m of around(sx, sz, T.radius)) {
-                const d = Math.hypot(sx - m.x, sz - m.z);
-                slow(m.id, 1, T.slow);
-                if (d < 1.2) continue;
-                this.sim.shoveMob(m.id, (sx - m.x) / d, (sz - m.z) / d, Math.min(5, Math.max(2, d * 1.1)));
-              }
-            }, t * T.pullStep * 1000);
-          }
+          // Ловушка копейщика: мобы вокруг стягиваются к старому месту в кучку — как «Стягивание» воина — и замедлены.
+          const T = { ...SPEAR_HOP_TRAP, radius: SPEAR_HOP_TRAP.radius * RAD };
+          act({ k: "seal", x: sx, y: feetY, z: sz, d: SPEAR_HOP_TRAP.seconds * DUR, r: T.radius });
+          const caught = around(sx, sz, T.radius);
+          for (const m of caught) slow(m.id, SPEAR_HOP_TRAP.seconds, T.slow);
+          this.yankMobs(ownerId, caught.filter((m) => m.kind !== "boss"), { x: sx, y: feetY, z: sz }, 0, 0, 0, T.radius, (DRAW_IN.sec + DRAW_IN.holdSec) * DUR);
         } else if (archer) {
           // Дымовая ловушка на старом месте: кто войдёт за 4 с — пригвождён на 3 с.
           act({ k: "seal", x: sx, y: feetY, z: sz, d: 4 * DUR, r: 2.5 * RAD });
@@ -10413,25 +10423,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const near = [...this.sim.mobs.values()].filter(
           (m) => !m.dead && m.kind !== "boss" && !m.immune && Math.hypot(m.x - p.head.x, m.z - p.head.z) - this.sim.targetRadius("mob", m.id) <= DRAW_IN.radius * RAD,
         );
-        const plan = drawInPlan(mode, fx, fz, p.head.x, p.head.z, near);
-        const feet = { x: p.head.x, y: feetY, z: p.head.z };
-        this.broadcast(MSG.act, { k: "drawIn", id: ownerId, ...feet, d: DRAW_IN.sec, r: DRAW_IN.radius * RAD, v: mode } satisfies ActRelay);
-        near.forEach((m, i) => {
-          const q = plan[i];
-          this.sim.pullMob(m.id, q.x, q.z, DRAW_IN.sec);
-          stun(m.id, DRAW_IN.sec + DRAW_IN.holdSec);
-          if (i < 12) {
-            this.broadcast(MSG.act, {
-              k: "drawPull", id: ownerId, mobId: m.id, x: m.x, y: m.y + MOB.bodyRadius * m.scale, z: m.z, x2: q.x, z2: q.z, d: DRAW_IN.sec, v: mode,
-            } satisfies ActRelay);
-          }
-        });
-        // Удар о землю — в момент прихода; точки уникальны по кучкам, сообщаем до 6.
-        this.clock.setTimeout(() => {
-          for (const q of plan.slice(0, 6)) {
-            this.broadcast(MSG.act, { k: "drawImpact", id: ownerId, x: q.x, y: terrainHeight(q.x, q.z), z: q.z, v: mode } satisfies ActRelay);
-          }
-        }, DRAW_IN.sec * 1000);
+        this.yankMobs(ownerId, near, { x: p.head.x, y: feetY, z: p.head.z }, fx, fz, mode, DRAW_IN.radius * RAD, (DRAW_IN.sec + DRAW_IN.holdSec) * DUR);
         return true;
       }
       case "steelAura": {

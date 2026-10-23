@@ -779,7 +779,7 @@ export const ASSASSIN_LEAP = { range: 9, time: 0.35, dmg: 1.2, stun: 1.5 } as co
 export const ASSASSIN_FAN_HOP = 5;
 
 /** «Отскок» копейщика: ловушка стягивает мобов вокруг в кучку и замедляет. */
-export const SPEAR_HOP_TRAP = { radius: 6.5, seconds: 3, slow: 0.5, pullStep: 0.25 } as const;
+export const SPEAR_HOP_TRAP = { radius: 6.5, seconds: 3, slow: 0.5 } as const;
 
 /** Копейщик, боевой маг и ассасин — умения откатываются быстрее остальных классов. */
 export const CLASS_CD_MUL: Partial<Record<ClassId, number>> = { spearman: 0.7, battlemage: 0.65, assassin: 0.4 };
