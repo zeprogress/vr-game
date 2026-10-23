@@ -10148,7 +10148,7 @@ export class ZoneRoom extends Room<ZoneState> {
         act({ k: "whirl", x: p.head.x, y: feetY, z: p.head.z, d: WHIRL.duration, r: radius });
         const step = WHIRL.duration / hits;
         // Боевой маг: удары молотом — физика от силы (как у воина); молния в конце — магия от интеллекта (pow).
-        const hitDmg = cls === "battlemage" ? hammerPhysStrike(p.level, p, this.strikeHandFor(p, cls, rt)) * this.buffMult(ownerId, "dmg") : pow.dmg;
+        const hitDmg = cls === "battlemage" ? hammerPhysStrike(p.level, p, this.strikeHandFor(p, cls, rt)) * THUNDER_SPIN.hitMul * this.buffMult(ownerId, "dmg") : pow.dmg;
         const hitMagic = cls === "battlemage" ? false : pow.magic;
         // Ассасин — вихрь-рывок: проносится вперёд (бота переносим по шагам; игрок летит сам — Game.castSkill).
         const [wfx, wfz] = fwd();

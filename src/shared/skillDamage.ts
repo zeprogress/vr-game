@@ -55,7 +55,7 @@ export function skillDamageText(id: SkillId, cls: ClassId, strike: number, a: Sk
       if (cls === "spearman") return `Урон ${n(SPEAR_FLURRY.dmg * strike)} за выпад × ${SPEAR_FLURRY.thrusts}`;
       if (cls === "battlemage") {
         const mul = THUNDER_SPIN.minMul + (THUNDER_SPIN.maxMul - THUNDER_SPIN.minMul) * Math.min(1, int / THUNDER_SPIN.intFull);
-        return `Урон ${n(sk.dmgMult * (phys ?? strike))} за удар × ${sk.hits}; молния ${n(mul * strike)} (×${Math.round(mul * 100) / 100})`;
+        return `Урон ${n(sk.dmgMult * (phys !== undefined ? phys * THUNDER_SPIN.hitMul : strike))} за удар × ${sk.hits}; молния ${n(mul * strike)} (×${Math.round(mul * 100) / 100})`;
       }
       return `Урон ${n(base)} за удар × ${sk.hits}`;
     case "chain":
