@@ -29,8 +29,13 @@ export const ARMOR_PART_NAME: Record<ArmorPart, string> = {
  */
 export type ArmorStat = "hp" | "physDef" | "magDef" | "regen" | "dodge";
 
-/** Все статы брони — полный набор (пул рубинового тира). */
+/** Все статы брони — полный набор (пул рубинового тира) и постоянный порядок аффиксов в части (sortArmorRolls). */
 export const ARMOR_STATS: readonly ArmorStat[] = ["hp", "physDef", "magDef", "regen", "dodge"];
+
+/** Аффиксы части по ARMOR_STATS (на месте) — как sortAffixes у оружия: один порядок у всей брони, проще сравнивать. */
+export function sortArmorRolls(list: ArmorRoll[]): void {
+  list.sort((a, b) => ARMOR_STATS.indexOf(a.stat) - ARMOR_STATS.indexOf(b.stat));
+}
 
 export const ARMOR_STAT_NAME: Record<ArmorStat, string> = {
   hp: "Здоровье",
@@ -222,6 +227,7 @@ export function rollArmor(part: ArmorPart, id: string, rnd: () => number = Math.
     const pts = 1 + Math.floor(rnd() * ARMOR_POINTS_MAX);
     rolls.push({ stat, pts });
   }
+  sortArmorRolls(rolls);
   return { id, part, tier, rolls };
 }
 
@@ -331,6 +337,8 @@ export function sanitizeArmorList(v: unknown): ArmorInstance[] {
       rolls.push(roll);
     }
     if (rolls.length === 0) continue;
+    // Старые части лежали в порядке выпадения — приводим к общему (колода заточки едет вместе со своим аффиксом).
+    sortArmorRolls(rolls);
     const inst: ArmorInstance = { id: a.id, part, tier, rolls };
     if (a.fav === true) inst.fav = true;
     out.push(inst);

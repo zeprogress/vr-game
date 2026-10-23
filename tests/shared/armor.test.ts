@@ -13,6 +13,7 @@ import {
   armorEnchantRow,
   armorScrap,
   sanitizeArmorList,
+  sortArmorRolls,
   armorLevelMul,
   armorPool,
   armorRollValue,
@@ -133,4 +134,18 @@ test("сохранение: рубиновая часть с 4 аффиксам�
   assert.deepEqual(back[0], a);
   assert.equal(back[1].tier, "ruby");
   assert.equal(back[1].rolls.length, 2);
+});
+
+test("аффиксы брони всегда в одном порядке (здоровье, физ., маг., регенерация, уворот) — и у новых, и у сохранённых", () => {
+  const order = ["hp", "physDef", "magDef", "regen", "dodge"];
+  const sorted = (a: ArmorInstance): boolean => a.rolls.every((r, i) => i === 0 || order.indexOf(a.rolls[i - 1].stat) < order.indexOf(r.stat));
+  for (const tier of ["gold", "legendary", "ruby"] as const) {
+    for (const part of ARMOR_PARTS) for (const a of many(part, tier, 60, 21)) assert.ok(sorted(a), `${part}/${tier}`);
+  }
+  const old = sanitizeArmorList([{ id: "o", part: "chest", tier: "ruby", rolls: [{ stat: "dodge", pts: 5, ench: { p: 1, s: 2, f: 3 } }, { stat: "hp", pts: 9 }] }]);
+  assert.deepEqual(old[0].rolls.map((r) => r.stat), ["hp", "dodge"]);
+  assert.deepEqual(old[0].rolls[1].ench, { p: 1, s: 2, f: 3 }, "колода заточки — у своего аффикса");
+  const list = [{ stat: "regen" as const, pts: 1 }, { stat: "physDef" as const, pts: 2 }];
+  sortArmorRolls(list);
+  assert.deepEqual(list.map((r) => r.stat), ["physDef", "regen"]);
 });
