@@ -5,8 +5,14 @@ import {
   ARMOR_PARTS,
   ARMOR_POINTS_MAX,
   ARMOR_RANGE,
+  ARMOR_RUBY,
+  ARMOR_SCRAP_RANGE,
+  ARMOR_ENCHANT_COST_MUL,
   ARMOR_TIER_MUL,
   armorBonusOf,
+  armorEnchantRow,
+  armorScrap,
+  sanitizeArmorList,
   armorLevelMul,
   armorPool,
   armorRollValue,
@@ -53,7 +59,7 @@ test("золотый нагрудник — 1 или 2 аффикса, уник�
 });
 
 test("аффиксы одной части не повторяют стат и берутся из пула её тира", () => {
-  for (const tier of ["base", "gold", "legendary"] as const) {
+  for (const tier of ["base", "gold", "legendary", "ruby"] as const) {
     for (const part of ARMOR_PARTS) {
       for (const a of many(part, tier, 60, 5)) {
         const stats = a.rolls.map((r) => r.stat);
@@ -89,4 +95,40 @@ test("множитель шанса по уровню моба: 0 на 1-м, 1 �
   assert.equal(armorLevelMul(27, gate), 0.5);
   assert.equal(armorLevelMul(53, gate), 1);
   assert.equal(armorLevelMul(100, gate), 1);
+});
+
+test("рубиновая броня: нагрудник 4 аффикса, поножи 3, шлем, перчатки и сапоги по 2 — из всех статов брони", () => {
+  const want: Record<ArmorPart, number> = { helm: 2, chest: 4, gloves: 2, legs: 3, boots: 2 };
+  for (const part of ARMOR_PARTS) {
+    assert.deepEqual([...armorPool(part, "ruby")].sort(), [...STATS].sort(), `${part}: пул — все статы`);
+    const seen = new Set<ArmorStat>();
+    for (const a of many(part, "ruby", 200, 11)) {
+      assert.equal(a.rolls.length, want[part], part);
+      for (const r of a.rolls) seen.add(r.stat);
+    }
+    assert.equal(seen.size, STATS.length, `${part}: выпадают все статы`);
+  }
+});
+
+test("рубиновая броня сильнее уникальной, лом ×2 и заточка ×2 к уникальной; шанс — вдвое выше рубинового оружия", () => {
+  assert.ok(ARMOR_TIER_MUL.ruby > ARMOR_TIER_MUL.legendary);
+  assert.deepEqual(ARMOR_SCRAP_RANGE.ruby, ARMOR_SCRAP_RANGE.legendary.map((x) => x * 2));
+  assert.equal(ARMOR_ENCHANT_COST_MUL.ruby, ARMOR_ENCHANT_COST_MUL.legendary * 2);
+  assert.equal(ARMOR_RUBY.dropChance, 0.1);
+  const lg: ArmorInstance = { id: "l", part: "chest", tier: "legendary", rolls: [{ stat: "hp", pts: 10 }, { stat: "physDef", pts: 20 }] };
+  const rb: ArmorInstance = { ...lg, id: "r", tier: "ruby" };
+  // Округление по каждому аффиксу — до ±1 на аффикс.
+  assert.ok(Math.abs(armorScrap(rb) - armorScrap(lg) * 2) <= rb.rolls.length, `лом ${armorScrap(rb)} против ${armorScrap(lg)}`);
+  const cl = armorEnchantRow(lg, 0)!.cost;
+  const cr = armorEnchantRow(rb, 0)!.cost;
+  assert.ok(Math.abs(cr - cl * 2) <= 1, `заточка ${cr} против ${cl}`);
+});
+
+test("сохранение: рубиновая часть с 4 аффиксами (и уворотом в нагруднике) читается без потерь", () => {
+  const a = rollArmor("chest", "x", seeded(12), "ruby");
+  const back = sanitizeArmorList(JSON.parse(JSON.stringify([a, { id: "y", part: "boots", tier: "ruby", rolls: [{ stat: "magDef", pts: 7 }, { stat: "dodge", pts: 3 }] }])));
+  assert.equal(back.length, 2);
+  assert.deepEqual(back[0], a);
+  assert.equal(back[1].tier, "ruby");
+  assert.equal(back[1].rolls.length, 2);
 });

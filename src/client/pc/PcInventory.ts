@@ -1228,7 +1228,7 @@ export class PcInventory {
       // Разобрать всё, кроме избранного ★, рубиновых, редких мастерских и надетого — с подтверждением (они — только поштучно, как на сервере).
       // Вкладка «Оружие» — только оружие, «Броня» — только броня, «Все» — и то и другое.
       const ws = f === "armor" ? [] : bagW.filter((w) => w.tier !== "ruby" && !isCraftRare(w));
-      const as = f === "weapon" || !this.hooks.armorAct ? [] : bag.flatMap((e) => ("a" in e && !e.a.fav ? [e.a] : []));
+      const as = f === "weapon" || !this.hooks.armorAct ? [] : bag.flatMap((e) => ("a" in e && !e.a.fav && e.a.tier !== "ruby" ? [e.a] : []));
       // Вкладка «Все» — и кольца тоже (как «Разобрать все кольца»: надетые и ★ остаются).
       const rs = f === "all" ? bagR : [];
       const n = ws.length + as.length + rs.length;

@@ -1,11 +1,11 @@
-import { glyph, itemIcon } from "#shared/icons";
+import { glyph, lootLook } from "#shared/icons";
 import { CAT_HELP } from "#shared/catacombs";
 import { ensureIconCss, iconHtml } from "../ui/icons";
 import type { OverlayPatch, LeaderboardRow, CatBoardRow, LootItem } from "#shared/net/messages";
 import type { OverlayCtx } from "#shared/net/overlayFrame";
 export type { OverlayCtx };
 import { TOWER } from "#shared/tower";
-import { AEGIS_NAME, ITEMS } from "#shared/items";
+import { AEGIS_NAME } from "#shared/items";
 
 /**
  * Оверлеи стрима (этап 17 Ф6).
@@ -453,14 +453,13 @@ export class Overlay {
     }
     el.style.display = "flex";
     for (const l of loot) {
-      const def = ITEMS[l.id];
-      // Иконки как в окне снаряжения игры: оружие — значок класса в рамке цвета тира.
-      const w = def.weapon;
-      const it = div(`it${w ? ` t-${w.tier}` : ""}`);
-      it.title = l.aegis ? AEGIS_NAME : def.name;
+      // Иконки как в окне снаряжения игры: оружие и броня — значок в рамке цвета тира.
+      const look = lootLook(l, AEGIS_NAME);
+      const it = div(`it${look.tier ? ` t-${look.tier}` : ""}`);
+      it.title = look.name;
       const ico = document.createElement("span");
       ico.className = "ico";
-      ico.innerHTML = iconHtml(itemIcon(l.id, l.aegis));
+      ico.innerHTML = iconHtml(look.icon);
       it.appendChild(ico);
       if (l.count > 1) {
         const cnt = document.createElement("span");

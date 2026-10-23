@@ -97,6 +97,12 @@ export const ICONS = {
   "a.gloves.legendary": { emoji: "🧤", img: "armor/gloves_legendary.png" },
   "a.legs.legendary": { emoji: "👖", img: "armor/legs_legendary.png" },
   "a.boots.legendary": { emoji: "🥾", img: "armor/boots_legendary.png" },
+  // Рубиновый тир: красный ряд того же атласа (public/icons/armor/*_ruby.png).
+  "a.helm.ruby": { emoji: "⛑️", img: "armor/helm_ruby.png" },
+  "a.chest.ruby": { emoji: "🦺", img: "armor/chest_ruby.png" },
+  "a.gloves.ruby": { emoji: "🧤", img: "armor/gloves_ruby.png" },
+  "a.legs.ruby": { emoji: "👖", img: "armor/legs_ruby.png" },
+  "a.boots.ruby": { emoji: "🥾", img: "armor/boots_ruby.png" },
   /** Лом оружия — из листа игровых иконок (public/icons/items). */
   "i.scrap": { emoji: "🔩", img: "items/scrap.png" },
   "i.fish": { emoji: "🐟", img: "items/fish.png" },
@@ -288,6 +294,23 @@ export function armorIconKey(part: ArmorPart, tier?: string | null): IconKey {
   }
   return `a.${part}` as IconKey;
 }
+
+/**
+ * Вид предмета добычи (баннер, отчёт катакомб, оверлей стрима): значок, тир для рамки и подпись. Броня — по части
+ * и тиру из `ar` («chest:ruby»), остальное — по ItemId (оружие — тир из ITEMS).
+ */
+export function lootLook(l: { id: ItemId; aegis?: boolean; ar?: string }, aegisName = "Эгида"): { icon: IconKey; tier: string | null; name: string } {
+  if (l.ar) {
+    const [part, tier] = l.ar.split(":");
+    if (`a.${part}` in ICONS) {
+      const t = tier || "base";
+      return { icon: armorIconKey(part as ArmorPart, t), tier: t === "base" ? null : t, name: ARMOR_LOOT_NAME[t] ?? "Броня" };
+    }
+  }
+  const def = ITEMS[l.id];
+  return { icon: itemIcon(l.id, l.aegis), tier: def?.weapon?.tier ?? null, name: l.aegis ? aegisName : def?.name ?? "" };
+}
+const ARMOR_LOOT_NAME: Record<string, string> = { base: "Броня", gold: "Броня (золото)", legendary: "Броня (уникальная)", ruby: "Броня (рубиновая)" };
 
 /** Значок умения по id (нет такого — «✦»). */
 export function skillIcon(id: string | null | undefined): IconKey {

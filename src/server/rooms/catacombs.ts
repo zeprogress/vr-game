@@ -142,9 +142,10 @@ export const catQueueKey = (nick: string): string => nick.trim().toLowerCase();
 /**
  * Добыча забега: одинаковое складывается. Камень и кольцо — с заглушкой id ("scrap"), различает их только jw,
  * поэтому сравниваем и его; иначе все камни склеивались в одну строку, а лом из сундуков писался на неё.
+ * Броня (id «armor») различается частью и тиром — полем ar.
  */
 export function addLoot(list: LootItem[], it: LootItem): void {
-  const same = list.find((l) => l.id === it.id && l.jw === it.jw && !!l.aegis === !!it.aegis);
+  const same = list.find((l) => l.id === it.id && l.jw === it.jw && l.ar === it.ar && !!l.aegis === !!it.aegis);
   if (same) same.count += it.count;
   else list.push({ ...it });
 }

@@ -1,6 +1,6 @@
 import type { CatReportMsg } from "#shared/net/messages";
 import { AEGIS_NAME, ITEMS } from "#shared/items";
-import { itemIcon, type IconKey } from "#shared/icons";
+import { lootLook, type IconKey } from "#shared/icons";
 import { CATACOMBS } from "#shared/catacombs";
 import { gemName, ringName, type RingTier } from "#shared/jewels";
 import { gemHtml, ringHtml } from "#shared/jewelIcons";
@@ -185,12 +185,12 @@ export function showCatReport(m: CatReportMsg, o: { delayMs?: number; holdSec?: 
         box.appendChild(it);
         continue;
       }
-      const def = ITEMS[l.id];
-      if (!def) continue;
-      const it = el("div", `cr-it${def.weapon ? ` cr-t-${def.weapon.tier}` : ""}`);
-      it.title = l.aegis ? AEGIS_NAME : def.name;
+      if (!ITEMS[l.id]) continue;
+      const look = lootLook(l, AEGIS_NAME);
+      const it = el("div", `cr-it${look.tier ? ` cr-t-${look.tier}` : ""}`);
+      it.title = look.name;
       const ico = el("span", "cr-ico");
-      ico.innerHTML = iconHtml(itemIcon(l.id, l.aegis));
+      ico.innerHTML = iconHtml(look.icon);
       it.appendChild(ico);
       if (l.count > 1) it.appendChild(el("span", "cr-cnt", `×${l.count}`));
       box.appendChild(it);

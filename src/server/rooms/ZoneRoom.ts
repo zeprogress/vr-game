@@ -1,7 +1,7 @@
 import { SKIN_LABELS } from "#shared/skins";
 import colyseus from "colyseus";
 import { invHub, type InvActKind, type InvActResult } from "../invHub";
-import { armorBonusOf, armorEnchant, armorEnchantRow, armorPcView, armorQuality, armorScrap, sanitizeArmorList, wornArmorOf, ARMOR_PARTS, type ArmorInstance, type ArmorPart } from "#shared/armor";
+import { armorBonusOf, armorEnchant, armorEnchantRow, armorLabel, armorPcView, armorQuality, armorScrap, rollArmor, sanitizeArmorList, wornArmorOf, ARMOR_PARTS, ARMOR_RUBY, type ArmorInstance, type ArmorPart } from "#shared/armor";
 import { devChat } from "../devChat";
 import type { Client } from "colyseus";
 import type { IncomingMessage } from "node:http";
@@ -141,6 +141,7 @@ import {
   affixCapNote,
   instanceLabels,
   instanceName,
+  shortId,
   instanceStars,
   heldAffixText,
   instanceEffects,
@@ -6112,10 +6113,10 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       if (t) {
         const held = this.liveHeldIds(t.p, t.rt);
-        // Рубиновые и редкие мастерские (исход крафта выше рубинового) массовой разборкой не трогаем — только поштучно.
+        // Рубиновые (оружие и броня) и редкие мастерские (исход крафта выше рубинового) массовой разборкой не трогаем — только поштучно.
         const ws = kinds.w ? t.rt.weapons.filter((w) => !w.fav && w.tier !== "ruby" && !isCraftRare(w) && !held.has(w.id)) : [];
         const worn = new Set(Object.values(t.rt.armorWorn));
-        const as = kinds.a ? t.rt.armor.filter((x) => !x.fav && !worn.has(x.id)) : [];
+        const as = kinds.a ? t.rt.armor.filter((x) => !x.fav && x.tier !== "ruby" && !worn.has(x.id)) : [];
         if (!ws.length && !as.length && !ringCount) return none;
         let got = ringGot;
         for (const w of ws) got += this.scrapOne(t, w);
@@ -6134,7 +6135,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const ws = kinds.w ? weapons.filter((w) => !w.fav && w.tier !== "ruby" && !isCraftRare(w) && !held.has(w.id)) : [];
       const { armor, armorWorn } = armorFromRec(rec);
       const worn = new Set(Object.values(armorWorn));
-      const as = kinds.a ? armor.filter((x) => !x.fav && !worn.has(x.id)) : [];
+      const as = kinds.a ? armor.filter((x) => !x.fav && x.tier !== "ruby" && !worn.has(x.id)) : [];
       if (!ws.length && !as.length && !ringCount) return none;
       const bag = restoreBag(rec.bag);
       let got = ringGot;
@@ -7549,6 +7550,20 @@ export class ZoneRoom extends Room<ZoneState> {
         const rid = WEAPON_DROP[weaponKey(r.cls, r.tier)];
         if (rid) loot.push({ id: rid, count: 1 });
         this.reply(`💎 ${p.nick} получает рубиновое оружие — ${instanceName(r)}: ${instanceLabels(r).join(", ")}!`);
+      }
+      // Рубиновая броня — свой бросок (вдвое чаще рубинового оружия), случайная часть — сразу на склад.
+      if (Math.random() < ARMOR_RUBY.dropChance) {
+        const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
+        const a = rollArmor(part, `r${shortId(Math.random)}`, Math.random, "ruby");
+        rt.armor.push(a);
+        if (id.startsWith("bot:")) {
+          this.botDressArmor(rt);
+          this.applyArmor(id);
+        }
+        store.put(token, { armor: rt.armor, armorWorn: rt.armorWorn });
+        loot.push({ id: "armor", count: 1, ar: `${part}:ruby` });
+        this.broadcast(MSG.pickupFeed, { nick: p.nick, item: armorLabel(a).split(" · ")[0], tier: "ruby", aff: armorLabel(a).split(" · ").slice(1).join(", ") } satisfies PickupFeedMsg);
+        this.reply(`💎 ${p.nick} получает рубиновую броню — ${armorLabel(a)}!`);
       }
       rt.eventBuffUntil = Date.now() + CATACOMBS.buffMinutes * 60_000;
       store.put(token, { eventBuffUntil: rt.eventBuffUntil });

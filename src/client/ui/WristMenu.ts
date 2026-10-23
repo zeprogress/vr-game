@@ -1689,7 +1689,7 @@ export class WristMenu {
       if (!a.fav) buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${a.scrap} лома, предмет исчезнет`, color: "#ff9a9a", act: () => send("scrap") });
     }
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
-    this.popup = { title: a.label, sub: `Часть: ${ARMOR_PART_NAME[a.part]}`, color: TIER_COLOR.base, buttons };
+    this.popup = { title: a.label, sub: `Часть: ${ARMOR_PART_NAME[a.part]}`, color: TIER_COLOR[a.tier], buttons };
     this.focusId = worn ? "pop:unwear" : "pop:wear";
   }
 

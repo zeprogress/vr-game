@@ -227,7 +227,7 @@ export interface PcEnchRow {
 export interface PcInvArmor {
   id: string;
   part: "helm" | "chest" | "gloves" | "legs" | "boots";
-  tier: "base" | "gold" | "legendary";
+  tier: "base" | "gold" | "legendary" | "ruby";
   /** Оценка — сумма очков аффиксов (как у оружия: 1 аффикс — до 33, 2 — до 66). */
   pts: number;
   /** Сколько аффиксов (для подписи оценки, как affixes.length у оружия). */
@@ -455,6 +455,8 @@ export interface LootItem {
   aegis?: boolean;
   /** Кольцо или камень (shared/jewels.ts): «ring:<тир>» или ключ камня «str:1» — тогда id не смотрим. */
   jw?: string;
+  /** Броня (id «armor»): «<часть>:<тир>», например «chest:ruby» — значок и рамка по тиру (shared/icons.ts lootLook). */
+  ar?: string;
 }
 
 /** Динамическое событие мира — для баннера. */
