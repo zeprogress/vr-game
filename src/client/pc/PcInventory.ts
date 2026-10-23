@@ -403,6 +403,8 @@ export class PcInventory {
     if (s.kind === "hand") return true;
     if (s.kind === "bag") return d.weapons.some((w) => w.id === s.id);
     if (s.kind === "armor") return (d.armor ?? []).some((a) => a.id === s.id);
+    // Ожерелье: без этой проверки карточка закрывалась при каждом обновлении данных (после заточки и т. п.).
+    if (s.kind === "neck") return (d.jewels?.necks ?? []).some((n) => n.id === s.id);
     return (d.jewels?.rings ?? []).some((r) => r.id === s.id);
   }
 

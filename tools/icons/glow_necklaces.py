@@ -1,10 +1,11 @@
 """Свечение ожерелий по тиру: ореол цвета тира под картинкой; от обычного (нет) к мифическому синему (сильнее всех)."""
 import sys
-from PIL import Image, ImageFilter, ImageChops
+from PIL import Image, ImageChops, ImageEnhance, ImageFilter
 
 src, out = sys.argv[1], sys.argv[2]
 S = 256
 FIT = 0.84  # доля клетки под само ожерелье — остальное место ореолу
+BRIGHT = 1.3  # 2026-10-23: картинки ожерелий ярче (были тёмные рядом с кольцами)
 # тир: (цвет, сила, радиус широкого, радиус плотного)
 GLOW = {
     # 2026-10-23: свечение слабее в целом, разница между тирами — сильнее (шаг силы и радиуса растёт).
@@ -19,6 +20,9 @@ for tier, (col, k, r1, r2) in GLOW.items():
         im = Image.open(f"{src}/necklace_{tier}_{n}.webp").convert("RGBA")
         w = round(S * FIT)
         im = im.resize((w, w), Image.LANCZOS)
+        a0 = im.split()[3]
+        im = ImageEnhance.Brightness(im).enhance(BRIGHT)
+        im.putalpha(a0)
         base = Image.new("RGBA", (S, S), (0, 0, 0, 0))
         base.paste(im, ((S - w) // 2, (S - w) // 2), im)
         canvas = Image.new("RGBA", (S, S), (0, 0, 0, 0))

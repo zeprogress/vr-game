@@ -124,7 +124,9 @@ const NECK_SOCKETS: readonly (readonly { cx: number; cy: number }[])[] = [
   [{ cx: 0.416, cy: 0.572 }, { cx: 0.587, cy: 0.572 }],
   [{ cx: 0.389, cy: 0.545 }, { cx: 0.502, cy: 0.545 }, { cx: 0.613, cy: 0.545 }],
 ];
-const NECK_GEM = 0.13;
+/** Камень в гнезде ожерелья и пустое гнездо (тёмный круг с ободком поверх отверстия) — доли картинки. 2026-10-23: крупнее. */
+const NECK_GEM = 0.19;
+const NECK_HOLE = 0.17;
 
 /** Место i-го гнезда ожерелья с n гнёздами (доли картинки: левый верх и размер — как socketSpot у кольца). */
 export function neckSocketSpot(n: number, i: number): { x: number; y: number; s: number } {
@@ -132,14 +134,24 @@ export function neckSocketSpot(n: number, i: number): { x: number; y: number; s:
   return { x: c.cx - NECK_GEM / 2, y: c.cy - NECK_GEM / 2, s: NECK_GEM };
 }
 
-/** HTML-значок ожерелья с камнями в гнёздах (пустое гнездо видно на самой картинке). */
+/** Пустое гнездо ожерелья i из n — круг поверх отверстия (центр и размер, доли картинки). */
+export function neckHoleSpot(n: number, i: number): { cx: number; cy: number; s: number } {
+  const p = neckSocketSpot(n, i);
+  return { cx: p.x + p.s / 2, cy: p.y + p.s / 2, s: NECK_HOLE };
+}
+
+/** HTML-значок ожерелья с камнями в гнёздах; пустое гнездо — тёмный круг с ободком (крупнее отверстия картинки). */
 export function neckHtml(tier: NecklaceTier, gems: readonly (GemKey | null)[] = []): string {
   let h = `<span style="position:relative;display:block;width:100%;height:100%"><img src="${necklaceSrc(tier, gems.length)}" alt="" draggable="false" style="${LAYER}">`;
   gems.forEach((k, i) => {
     const g = gemArt(k ?? "");
-    if (!g) return;
-    const p = neckSocketSpot(gems.length, i);
-    h += `<span style="position:absolute;left:${p.x * 100}%;top:${p.y * 100}%;width:${p.s * 100}%;aspect-ratio:1;pointer-events:none"><img src="${g.src}" alt="" draggable="false" style="${LAYER}"></span>`;
+    if (g) {
+      const p = neckSocketSpot(gems.length, i);
+      h += `<span style="position:absolute;left:${p.x * 100}%;top:${p.y * 100}%;width:${p.s * 100}%;aspect-ratio:1;pointer-events:none"><img src="${g.src}" alt="" draggable="false" style="${LAYER}"></span>`;
+      return;
+    }
+    const o = neckHoleSpot(gems.length, i);
+    h += `<span style="position:absolute;left:${(o.cx - o.s / 2) * 100}%;top:${(o.cy - o.s / 2) * 100}%;width:${o.s * 100}%;aspect-ratio:1;border-radius:50%;background:#0d0b12;border:2px solid #9a90ae;box-sizing:border-box;box-shadow:inset 0 0 4px #000;pointer-events:none"></span>`;
   });
   return h + "</span>";
 }
