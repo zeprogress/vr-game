@@ -701,7 +701,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   steelAura: {
     name: "Аура раскалённой стали", icon: glyph("s.steelAura"), test: true,
-    desc: "Аура 6 м на 6 с, ходит за тобой: каждую секунду жжёт врагов в ней на 500% твоей регенерации HP. С одним мечом — враги замедлены на 20%, а ты неуязвим к контролю и замедлению; с двумя — тебе +10% защиты, аура не жжёт; со щитом — только жжёт",
+    desc: "Аура 6 м на 6 с, ходит за тобой: каждую секунду жжёт врагов в ней на 250% твоей регенерации HP. С одним мечом — враги замедлены на 20%, а ты неуязвим к контролю и замедлению; с двумя — тебе +10% защиты, аура не жжёт; со щитом — только жжёт",
     cooldown: 15, castTime: 0, radius: 6, dmgMult: 0, hits: 1,
   },
   abyss: {
@@ -871,7 +871,7 @@ export const SOUL_STEAL = { transfer: 0.5, healthy: 0.85, reach: 6 } as const;
  * защиту dualDef (входящий урон меньше на эту долю).
  */
 export const STEEL_AURA = {
-  duration: 6, dmgPerRegen: 5, slowMul: 0.8, slowSec: 1.2, dualDef: 0.1,
+  duration: 6, dmgPerRegen: 2.5, slowMul: 0.8, slowSec: 1.2, dualDef: 0.1,
 } as const;
 export type SteelMode = "shield" | "sword" | "dual";
 /** Режим ауры по оружию воина: щит в руке → лечение; два меча → дуалы; иначе — один меч (замедление). */
