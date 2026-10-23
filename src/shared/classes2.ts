@@ -610,7 +610,7 @@ const pctR = (v: number): string => `${Math.round(v * 100)}%`;
 
 export const SKILLS2: Record<SkillId, SkillDef> = {
   stunBash: {
-    name: "Оглушающий удар", icon: glyph("s.stunBash"), desc: "Удар по кругу: оглушает всех рядом на 3 с",
+    name: "Оглушающий удар", icon: glyph("s.stunBash"), desc: "Удар по кругу: оглушает всех рядом на 3 с; с мечом каждый удар может критовать",
     cooldown: 12, castTime: 0.5, radius: 5, dmgMult: 1, hits: 1, // 0.6 → 1 (2026-10-05)
     variants: {
       assassin: { name: "Смертельный прыжок", desc: "Прыжок на цель до 9 м: удар с гарантированным критом ×2 и оглушение 1.5 с" },
@@ -750,8 +750,8 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   cleave: {
     name: "Рассекающий удар", icon: glyph("s.cleave"),
-    desc: "Широкий удар мечом перед собой (конус 120°, 6 м): ×2.2 урона всем в секторе, отбрасывает и замедляет на 40% на 3 с",
-    cooldown: 9, castTime: 0.25, radius: 6, dmgMult: 2.2, hits: 1,
+    desc: "Широкий удар мечом перед собой (конус 120°, 6 м): ×2.8 урона всем в секторе, отбрасывает и замедляет на 40% на 3 с",
+    cooldown: 9, castTime: 0.25, radius: 6, dmgMult: 2.8, hits: 1, // 2.2 → 2.8 (2026-10-23)
   },
   chain: {
     name: "Цепная молния", icon: glyph("s.chain"), desc: "Разряд скачет по 4 врагам (каждый скачок слабее на 20%) и оглушает каждого на 0.5 с",
@@ -805,7 +805,8 @@ export const SPEAR_PIERCE_DMG = 0.7;
 export const SPEAR_FLURRY = { thrusts: 8, duration: 1.6, range: 6.5, cone: 0.5, dmg: 1 } as const;
 
 /** Числа новых умений. */
-export const WHIRL = { duration: 2, spearRadius: 4, spearHits: 4, spearDmg: 0.9, warriorDef: 0.3, warriorMaxHits: 12 } as const;
+/** warriorDmg — удар вихря воина (вместо SKILLS2.whirlwind.dmgMult 0.9): ослаблен 2026-10-23, когда вихрь стал критовать и бить чаще. */
+export const WHIRL = { duration: 2, spearRadius: 4, spearHits: 4, spearDmg: 0.9, warriorDef: 0.3, warriorMaxHits: 12, warriorDmg: 0.65 } as const;
 
 /**
  * Вихрь воина (2026-10-23): за те же WHIRL.duration с ударов тем больше, чем выше скорость атаки — база SKILLS2.whirlwind.hits

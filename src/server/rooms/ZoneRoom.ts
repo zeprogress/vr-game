@@ -9947,6 +9947,8 @@ export class ZoneRoom extends Room<ZoneState> {
           return true;
         }
         act({ k: "stunBash", x: p.head.x, y: feetY, z: p.head.z, d: sk.castTime, r: sk.radius });
+        // Воин: крит меча у каждого задетого — роллы «Крит» и УДЧ, как у обычного удара.
+        const bashCrit = cls === "warrior" ? rolledCrit(p, p.rightCls === "sword" ? "right" : "left", rt) : null;
         this.clock.setTimeout(() => {
           const pp = this.state.players.get(ownerId);
           if (!pp || pp.dead) return;
@@ -9955,7 +9957,8 @@ export class ZoneRoom extends Room<ZoneState> {
           act({ k: "stunHit", x: px, y: pp.head.y - PLAYER.eyeHeight, z: pz, r: sk.radius });
           for (const m of around(px, pz, sk.radius)) {
             const [dx, dz] = dirTo(m, px, pz);
-            this.sim.hitMob(m.id, sk.dmgMult * pow.dmg, dx, dz, ownerId, false, false, pow.magic);
+            const critM = bashCrit ? rollCritMult("sword", Math.random, false, bashCrit.chance, bashCrit.mult, SWORD_CRIT_MULT, attrOf(pp, "luc")) : 1;
+            this.sim.hitMob(m.id, sk.dmgMult * pow.dmg * critM, dx, dz, ownerId, false, false, pow.magic, critM > 1);
             if (cls === "archer") {
               // Ледяной заряд: пригвождает и отбрасывает, но не оглушает.
               this.sim.rootMob(m.id, 4);
@@ -10158,7 +10161,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const swordHand: "left" | "right" = p.rightCls === "sword" ? "right" : "left";
         const hits = spear ? WHIRL.spearHits : cls === "warrior" ? warriorWhirlHits(p, rolledAtkSpeedMul(p, swordHand, rt) * this.cryTempo(rt)) : sk.hits;
         const swordCrit = cls === "warrior" ? rolledCrit(p, swordHand, rt) : null;
-        const mult = spear ? WHIRL.spearDmg : sk.dmgMult;
+        const mult = spear ? WHIRL.spearDmg : cls === "warrior" ? WHIRL.warriorDmg : sk.dmgMult;
         rt.whirlUntil = this.elapsed + WHIRL.duration;
         rt.whirlKind = cls === "assassin" ? 2 : cls === "warrior" ? 1 : 0;
         act({ k: "whirl", x: p.head.x, y: feetY, z: p.head.z, d: WHIRL.duration, r: radius });
