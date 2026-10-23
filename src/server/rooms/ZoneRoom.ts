@@ -85,7 +85,7 @@ import { ADMIN_NICK, NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BO
 import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, ICE_GIANT, mobArmorBits, type CatDefense } from "#shared/mobs";
 import { DragonFight, type DragonHost } from "./dragonFight";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
-import { skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
+import { hammerPhysStrike, skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
 import { RaidFight, type RaidHost } from "./raidFight";
 import { heroStatLine, heroStatRows } from "#shared/heroStats";
 import { TwitchChat } from "../TwitchChat";
@@ -5210,6 +5210,7 @@ export class ZoneRoom extends Room<ZoneState> {
       attrs: { unspent: p.unspent, str: p.str, agi: p.agi, int: p.int, con: p.con, luc: p.luc, wis: p.wis },
       gb: { str: p.gb.str, agi: p.gb.agi, int: p.gb.int, con: p.gb.con, luc: p.gb.luc, wis: p.gb.wis },
       strike: this.strikeOfLive(p, rt),
+      strikePhys: this.strikePhysOfLive(p, rt),
       respecCost: RESPEC_ENABLED ? respecCostFor(rec?.respecCount ?? 0) : -1,
       skills: {
         cls: classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "") ?? "",
@@ -9351,6 +9352,12 @@ export class ZoneRoom extends Room<ZoneState> {
     return Math.round(skillStrike(cls, p.level, p, this.strikeHandFor(p, cls, rt)).dmg * 10) / 10;
   }
 
+  /** Боевой маг: сила физического удара молотом (от СИЛ) — для окна умений; у остальных классов не задана. */
+  private strikePhysOfLive(p: PlayerState, rt: Runtime): number | undefined {
+    if (classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "") !== "battlemage") return undefined;
+    return Math.round(hammerPhysStrike(p.level, p, this.strikeHandFor(p, "battlemage", rt)) * 10) / 10;
+  }
+
   private skillPower(p: PlayerState, cls: ClassId, rt: Runtime, ownerId: string): { dmg: number; magic: boolean } {
     const s = skillStrike(cls, p.level, p, this.strikeHandFor(p, cls, rt));
     return { dmg: s.dmg * this.buffMult(ownerId, "dmg"), magic: s.magic };
@@ -10085,11 +10092,9 @@ export class ZoneRoom extends Room<ZoneState> {
           // Бот приземляется в центр удара, но не внутрь моба — его выталкивает наружу.
           if (isBot) this.placeBotAt(pp, cx, cz);
           act({ k: "crushHit", x: cx, y: cy, z: cz, r: sk.radius });
-          // Сокрушение бури — волна сильнее растёт от интеллекта (STORM_CRUSH.intDmgPer).
-          const crushMul = cls === "battlemage" ? 1 + Math.max(0, attrOf(pp, "int") - ATTR2.start) * STORM_CRUSH.intDmgPer : 1;
           for (const m of around(cx, cz, sk.radius)) {
             const [dx, dz] = dirTo(m, cx, cz);
-            this.sim.hitMob(m.id, sk.dmgMult * pow.dmg * crushMul, dx, dz, ownerId, false, false, pow.magic);
+            this.sim.hitMob(m.id, sk.dmgMult * pow.dmg, dx, dz, ownerId, false, false, pow.magic);
             if (cls === "battlemage") this.sim.slowMob(m.id, STORM_CRUSH.slowSec, STORM_CRUSH.slowMul);
             else this.sim.stunMob(m.id, 1);
           }
@@ -10142,6 +10147,9 @@ export class ZoneRoom extends Room<ZoneState> {
         rt.whirlKind = cls === "assassin" ? 2 : cls === "warrior" ? 1 : 0;
         act({ k: "whirl", x: p.head.x, y: feetY, z: p.head.z, d: WHIRL.duration, r: radius });
         const step = WHIRL.duration / hits;
+        // Боевой маг: удары молотом — физика от силы (как у воина); молния в конце — магия от интеллекта (pow).
+        const hitDmg = cls === "battlemage" ? hammerPhysStrike(p.level, p, this.strikeHandFor(p, cls, rt)) * this.buffMult(ownerId, "dmg") : pow.dmg;
+        const hitMagic = cls === "battlemage" ? false : pow.magic;
         // Ассасин — вихрь-рывок: проносится вперёд (бота переносим по шагам; игрок летит сам — Game.castSkill).
         const [wfx, wfz] = fwd();
         for (let i = 0; i < hits; i++) {
@@ -10156,7 +10164,7 @@ export class ZoneRoom extends Room<ZoneState> {
             for (const m of near) {
               const [dx, dz] = dirTo(m, pp.head.x, pp.head.z);
               const critM = cls === "assassin" ? rollCritMult("dagger", Math.random, false, WEAPONS2.dagger.critBase - BASE_CRIT, 0, WEAPONS2.dagger.critMult, attrOf(pp, "luc")) : 1;
-              this.sim.hitMob(m.id, mult * pow.dmg * critM, dx, dz, ownerId, false, false, pow.magic, critM > 1);
+              this.sim.hitMob(m.id, mult * hitDmg * critM, dx, dz, ownerId, false, false, hitMagic, critM > 1);
               if (spear) this.sim.shoveMob(m.id, dx, dz, 4);
               if (cls === "assassin") this.sim.slowMob(m.id, ASSASSIN_WHIRL_SLOW.sec, ASSASSIN_WHIRL_SLOW.mul);
             }

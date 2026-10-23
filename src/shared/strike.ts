@@ -31,6 +31,14 @@ export function strikeKindOf(cls: ClassId): WeaponClass {
  * Та же формула, что у сервера в skillPower: маг — магия, лук/меч/кинжал/копьё — физика.
  * `a` — атрибуты героя с кольцами и камнями (gb), как PlayerState.
  */
+/**
+ * Физический удар молотом боевого мага («Громовой вихрь»): как у воина — от уровня и СИЛ (weaponDamage), а не от
+ * интеллекта. Магия молота (волна бури, молнии, метеорит) — skillStrike, от ИНТ.
+ */
+export function hammerPhysStrike(level: number, a: StrikeAttrs, hand: StrikeHand): number {
+  return weaponDamage("hammer", level, a, hand.mult * hand.roll);
+}
+
 export function skillStrike(cls: ClassId, level: number, a: StrikeAttrs, hand: StrikeHand): { dmg: number; magic: boolean } {
   switch (cls) {
     case "support":

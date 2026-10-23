@@ -1804,7 +1804,7 @@ export class Game {
       this.progression,
       this.inventory,
       () => this.net?.room?.state.players.get(this.net.sessionId)?.gb,
-      () => this.pcInvData?.strike,
+      () => (this.pcInvData ? { strike: this.pcInvData.strike, phys: this.pcInvData.strikePhys } : undefined),
     );
     // Выход из игры: спрашиваем «оставить бота?» — ответ уходит на сервер перед
     // выходом. Небольшая пауза перед самим leaveWorld() — без неё сообщение

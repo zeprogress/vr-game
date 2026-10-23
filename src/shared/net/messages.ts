@@ -398,6 +398,8 @@ export interface PcInvData {
   gb?: Partial<Record<"str" | "agi" | "int" | "con" | "luc" | "wis", number>>;
   /** Сила удара героя (до множителя умения) — от оружия в руке, статов и роллов; без класса не задана. */
   strike?: number;
+  /** Боевой маг: сила физического удара молотом (от СИЛ) — для «Громового вихря»; у остальных не задана. */
+  strikePhys?: number;
   respecCost: number;
   stats: { label: string; value: string }[];
   /** Умения: класс по оружию в руках ("" — без оружия) и выбранные два. */

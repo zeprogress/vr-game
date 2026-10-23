@@ -1890,7 +1890,7 @@ export class PcInventory {
         div("pcinv-small", skillDesc(id, cls, live)),
         // Урон умения — уже посчитанный от силы удара героя (те же формулы, что у сервера).
         ...(() => {
-          const t = d.strike !== undefined ? skillDamageText(id, cls, d.strike, live) : null;
+          const t = d.strike !== undefined ? skillDamageText(id, cls, d.strike, live, d.strikePhys) : null;
           return t ? [div("pcinv-small dim", t)] : [];
         })(),
       );

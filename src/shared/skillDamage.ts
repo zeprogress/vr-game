@@ -1,6 +1,6 @@
 /**
  * Готовый урон умения для окон умений (ПК, телефон, VR, !inv) — те же формулы, что у сервера
- * (ZoneRoom.castSkill), от «силы удара» героя `strike` (skillStrike: для молота — от интеллекта).
+ * (ZoneRoom.castSkill), от «силы удара» героя `strike` (skillStrike: для молота — магия от интеллекта; удары вихря — `phys`, от силы).
  * Числа — до брони и уязвимостей мобов, без случайных критов. null — у умения нет урона.
  */
 import { ATTR2, attrOf } from "./attrs2";
@@ -23,7 +23,8 @@ function hops(first: number, count: number, falloff: number): string {
   return out.join(" → ");
 }
 
-export function skillDamageText(id: SkillId, cls: ClassId, strike: number, a: SkillAttrs): string | null {
+/** `phys` — сила физического удара молотом боевого мага (от СИЛ, PcInvData.strikePhys): удары «Громового вихря». */
+export function skillDamageText(id: SkillId, cls: ClassId, strike: number, a: SkillAttrs, phys?: number): string | null {
   const sk = SKILLS2[id];
   const base = sk.dmgMult * strike;
   const int = Math.max(0, attrOf(a, "int") - ATTR2.start);
@@ -40,7 +41,7 @@ export function skillDamageText(id: SkillId, cls: ClassId, strike: number, a: Sk
     case "crush":
       if (cls === "battlemage") {
         const heal = STORM_CRUSH.healBase + Math.max(0, attrOf(a, "wis") - ATTR2.start) * STORM_CRUSH.healPerWis;
-        return `Урон ${n(base * (1 + int * STORM_CRUSH.intDmgPer))} в круге; лечение ${Math.round(heal * 1000) / 10}% здоровья`;
+        return `Урон ${n(base)} в круге; лечение ${Math.round(heal * 1000) / 10}% здоровья`;
       }
       return `Урон ${n(base)} в круге`;
     case "seal":
@@ -54,7 +55,7 @@ export function skillDamageText(id: SkillId, cls: ClassId, strike: number, a: Sk
       if (cls === "spearman") return `Урон ${n(SPEAR_FLURRY.dmg * strike)} за выпад × ${SPEAR_FLURRY.thrusts}`;
       if (cls === "battlemage") {
         const mul = THUNDER_SPIN.minMul + (THUNDER_SPIN.maxMul - THUNDER_SPIN.minMul) * Math.min(1, int / THUNDER_SPIN.intFull);
-        return `Урон ${n(base)} за удар × ${sk.hits}; молния ${n(mul * strike)} (×${Math.round(mul * 100) / 100})`;
+        return `Урон ${n(sk.dmgMult * (phys ?? strike))} за удар × ${sk.hits}; молния ${n(mul * strike)} (×${Math.round(mul * 100) / 100})`;
       }
       return `Урон ${n(base)} за удар × ${sk.hits}`;
     case "chain":

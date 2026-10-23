@@ -240,7 +240,7 @@ export class WristMenu {
     /** Прибавка к атрибутам от колец и камней (PlayerState.gb) — откат умений считается с ней, как на сервере. */
     private readonly bonus: () => Partial<Record<Attr, number>> | undefined,
     /** Сила удара героя с сервера (как в окне инвентаря): от неё урон умений; пока не пришла — строки урона нет. */
-    private readonly strikeOf: () => number | undefined,
+    private readonly strikeOf: () => { strike?: number; phys?: number } | undefined,
   ) {
     this.tex = new DynamicTexture("wristMenuTex", { width: TEX_W, height: TEX_H }, scene, false);
     const mat = new StandardMaterial("wristMenuMat", scene);
@@ -429,11 +429,11 @@ export class WristMenu {
     const rowH = Math.min(compact ? 66 : 92, Math.floor((TEX_H - y - 8) / def.skills.length) - 8);
     // Откат и бонусы — как у сервера: атрибуты героя + прибавка от колец и камней.
     const live = { ...this.prog.stats, gb: this.bonus() };
-    const strike = this.strikeOf();
+    const { strike, phys } = this.strikeOf() ?? {};
     for (const id of def.skills) {
       const sk = SKILLS2[id];
       const name = skillName(id, cls);
-      const dmgText = strike !== undefined ? skillDamageText(id, cls, strike, live) : null;
+      const dmgText = strike !== undefined ? skillDamageText(id, cls, strike, live, phys) : null;
       const dmg = dmgText ? `. ${dmgText}` : "";
       const desc = `${skillDesc(id, cls, live)}${dmg}`;
       const on = this.skillChosen.includes(id);

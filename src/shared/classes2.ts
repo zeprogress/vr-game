@@ -534,8 +534,6 @@ export interface SkillDef {
 export const STORM_CRUSH = {
   /** Лечение — доля макс. HP: база + за каждое очко мудрости сверх старта. Союзники — то же, в allyRadius. */
   healBase: 0.09, healPerWis: 0.003, allyRadius: 12, // лечение база 6% → 9% (2026-10-15)
-  /** Урон волны — ещё +intDmgPer за очко интеллекта сверх старта (поверх общих +6% умений молота). */
-  intDmgPer: 0.025,
   /** Замедление мобов в волне: секунд и множитель скорости (0.5 — вдвое медленнее). */
   slowSec: 5, slowMul: 0.5,
 } as const;
@@ -642,7 +640,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     name: "Сокрушение", icon: glyph("s.crush"), desc: "Прыжок и удар о землю: волна по кругу, мобы оглушены на 1 с",
     cooldown: 14, castTime: 0.6, radius: 5, dmgMult: 2.2, hits: 1,
     variants: {
-      battlemage: { name: "Сокрушение бури", desc: `Прыжок и магический удар: волна по кругу, мобы замедлены на ${STORM_CRUSH.slowSec} с на ${Math.round((1 - STORM_CRUSH.slowMul) * 100)}%; урон волны +${Math.round(STORM_CRUSH.intDmgPer * 100)}% за очко интеллекта; лечит тебя на ${Math.round(STORM_CRUSH.healBase * 100)}% здоровья + ${(STORM_CRUSH.healPerWis * 100).toFixed(1)}% за очко мудрости, союзников в ${STORM_CRUSH.allyRadius} м — так же` },
+      battlemage: { name: "Сокрушение бури", desc: `Прыжок и магический удар: волна по кругу, мобы замедлены на ${STORM_CRUSH.slowSec} с на ${Math.round((1 - STORM_CRUSH.slowMul) * 100)}%; урон волны — магия, растёт от интеллекта; лечит тебя на ${Math.round(STORM_CRUSH.healBase * 100)}% здоровья + ${(STORM_CRUSH.healPerWis * 100).toFixed(1)}% за очко мудрости, союзников в ${STORM_CRUSH.allyRadius} м — так же` },
     },
   },
   seal: {
@@ -658,7 +656,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     cooldown: 14, castTime: 0, radius: 3.2, dmgMult: 0.9, hits: 5, // 0.7 → 0.9 (2026-10-05)
     variants: {
       spearman: { name: "Град выпадов", desc: "Серия из 8 быстрых выпадов копьём вперёд (длинный конус 6 м): каждый колет всех в секторе" },
-      battlemage: { name: "Громовой вихрь", desc: `Молот по кругу: 5 магических ударов; последний бьёт молнией соседа в ${THUNDER_SPIN.range} м — ×${THUNDER_SPIN.minMul}, до ×${THUNDER_SPIN.maxMul} от интеллекта` },
+      battlemage: { name: "Громовой вихрь", desc: `Молот по кругу: 5 физических ударов (растут от силы); последний бьёт молнией соседа в ${THUNDER_SPIN.range} м — ×${THUNDER_SPIN.minMul}, до ×${THUNDER_SPIN.maxMul} от интеллекта` },
       assassin: { name: "Танец клинков", desc: "Вихрь-рывок: 2 с неуязвимости, проносишься вперёд на 6 м, 5 ударов по всем вокруг (с шансом крита), задетые замедлены на 30%" },
     },
   },

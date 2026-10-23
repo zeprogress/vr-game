@@ -1,5 +1,5 @@
 import { JEWEL_ACTS, jewelBonus, jewelsOf, pcInvJewels } from "#shared/jewels";
-import { pcInvCraft, pcInvCraftFor } from "#shared/craft";
+import { CRAFT, pcInvCraft, pcInvCraftFor } from "#shared/craft";
 import { TRADE_ACTS, tradeViewOf } from "../trade";
 // colyseus 0.15 — CJS-пакет без ESM-exports, поэтому default-импорт (как в index.ts/ZoneRoom.ts).
 import { CLASSES2, classOf2, type SkillId, type Weapon2 } from "#shared/classes2";
@@ -30,7 +30,7 @@ import {
   type WeaponInstance,
   type WeaponTier,
 } from "#shared/items";
-import { skillStrike, strikeKindOf } from "#shared/strike";
+import { hammerPhysStrike, skillStrike, strikeKindOf } from "#shared/strike";
 import { heroStatRows } from "#shared/heroStats";
 import { armorBonusOf, armorPcView, sanitizeArmorList, wornArmorOf, type ArmorPart } from "#shared/armor";
 import type { PcInvData, PcInvWeapon } from "#shared/net/messages";
@@ -228,6 +228,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
   const jewels = jewelsOf(rec);
   // Сила удара умений — как у сервера (ZoneRoom.strikeOfLive): рука класса, её тир и роллы урона (лучший из двух рук).
   let strike: number | undefined;
+  let strikePhys: number | undefined;
   const strikeCls = classOf2((rec.held?.left?.cls ?? "") as Weapon2 | "", (rec.held?.right?.cls ?? "") as Weapon2 | "");
   if (strikeCls) {
     const side: "left" | "right" = rec.held?.right?.cls === strikeKindOf(strikeCls) ? "right" : "left";
@@ -237,9 +238,12 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     const off = rec.held?.[other] ? instIn(other) : undefined;
     const shield = off && off.id !== main?.id ? off : undefined;
     const mult = isWeaponClass(held?.cls) && isWeaponTier(held?.tier) ? weaponDef(held.cls, held.tier).mult : 1;
-    const roll = (1 + handsRoll(main?.affixes, shield?.affixes, "dmgFlat", "dmgPct")) * attackPointBest(main, shield);
+    // Скрытый рецепт — ×CRAFT.recipeDmg, как rolledDmgMul на сервере.
+    const roll = (1 + handsRoll(main?.affixes, shield?.affixes, "dmgFlat", "dmgPct")) * attackPointBest(main, shield) * (main?.rc ? CRAFT.recipeDmg : 1);
     const attrs = { str: rec.str, agi: rec.agi, int: rec.int, con: rec.con ?? 1, luc: rec.luc ?? 1, wis: rec.wis ?? 1, gb: jewelBonus(jewels) };
-    strike = Math.round(skillStrike(strikeCls, rec.level, attrs, { mult, tier: held?.tier ?? "", roll }).dmg * 10) / 10;
+    const hand = { mult, tier: held?.tier ?? "", roll };
+    strike = Math.round(skillStrike(strikeCls, rec.level, attrs, hand).dmg * 10) / 10;
+    if (strikeCls === "battlemage") strikePhys = Math.round(hammerPhysStrike(rec.level, attrs, hand) * 10) / 10;
   }
   const armorList = sanitizeArmorList(rec.armor);
   const stats = heroStatRows({
@@ -294,6 +298,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     attrs: { unspent: rec.unspent ?? 0, str: rec.str, agi: rec.agi, int: rec.int, con: rec.con ?? 1, luc: rec.luc ?? 1, wis: rec.wis ?? 1 },
     gb: jewelBonus(jewels),
     strike,
+    strikePhys,
     respecCost: RESPEC_ENABLED ? respecCostFor(rec.respecCount ?? 0) : -1,
     stats,
     skills: skillsOf(rec),
