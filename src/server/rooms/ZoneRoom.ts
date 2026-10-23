@@ -2505,7 +2505,8 @@ export class ZoneRoom extends Room<ZoneState> {
       weaponDamage(weapon, p.level, p, multIn(p, hand) * rolledDmgMul(p, hand, rt)) *
       critM *
       this.buffMult(heroId, "dmg") *
-      (isMeleeClass(weapon) ? this.abyssStrikeMul(p, rt) : 1);
+      (isMeleeClass(weapon) ? this.abyssStrikeMul(p, rt) : 1) *
+      (weapon === "arrow" ? this.focusDmg(rt) : 1); // стаки «Метки охотника» — урон всех стрел лука
     return { dmg, critM };
   }
 
@@ -2644,6 +2645,11 @@ export class ZoneRoom extends Room<ZoneState> {
   /** 🧪 «Метка охотника»: темп от накопленных попаданий по своей метке (1 — стаков нет или сгорели). */
   private focusTempo(rt: Runtime): number {
     return rt.focusUntil > this.elapsed ? 1 + rt.focusStacks * MARK_FOCUS.perHit : 1;
+  }
+
+  /** 🧪 «Метка охотника»: урон стрел лука от тех же стаков (1 — стаков нет или сгорели). */
+  private focusDmg(rt: Runtime): number {
+    return rt.focusUntil > this.elapsed ? 1 + rt.focusStacks * MARK_FOCUS.dmgPerHit : 1;
   }
 
   /** 🧪 «Метка охотника»: попадание стрелой по своей метке — +стак (до max); без попаданий resetSec с стаки сгорают. */
@@ -8956,7 +8962,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sim.castBolt(
           ox, oy, oz, adx, ady, adz,
           BOT.arrowSpeed, 0.05, 0.2,
-          weaponDamage("arrow", p.level, p, mult) * critM * this.buffMult(bot.id, "dmg"),
+          weaponDamage("arrow", p.level, p, mult) * critM * this.buffMult(bot.id, "dmg") * this.focusDmg(bot.rt),
           bot.id, 2.5, 1, 0, 0, critM > 1,
         );
         // 🧪 «Стрела-призрак»: у бота лечит сам выстрел (стрелу ведёт симуляция, попадание сюда не возвращается).
