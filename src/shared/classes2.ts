@@ -545,9 +545,9 @@ export const HAMMER_SKILL = { intPer: 0.06 } as const;
 export const HAMMER_FIELD = { duration: 5, radius: 8, boltMul: 0.1625, stunSec: 0.2 } as const; // 2026-10-15: молния 0.1625 (вдвое слабее, было 0.325), радиус 8 (было 10), длительность 5 с
 /**
  * «Громовой вихрь» молота: последний удар вихря бьёт молнией соседа в range м; множитель ×minMul → ×maxMul от интеллекта
- * (полная шкала — intFull очков сверх старта). hitMul — удары молотом (физика от СИЛ) сильнее вихря воина (2026-10-23: 1.5, затем 2.25).
+ * (полная шкала — intFull очков сверх старта). hitMul — удары молотом (физика от СИЛ) сильнее вихря воина (2026-10-23: 1.5 → 2.25 → снова 1.5).
  */
-export const THUNDER_SPIN = { range: 7, minMul: 2, maxMul: 3, intFull: 30, hitMul: 2.25 } as const; // молния ×2 → ×3 (было ×3 → ×4, 2026-10-15)
+export const THUNDER_SPIN = { range: 7, minMul: 1, maxMul: 1.5, intFull: 30, hitMul: 1.5 } as const; // молния ×1 → ×1.5 (2026-10-23; было ×2 → ×3, до 2026-10-15 ×3 → ×4)
 /** «Цепная молния» молота: hops скачков; задетые получают +vulnMul% урона от молота на vulnSec. */
 export const CHAIN_HAMMER = { hops: 5, vulnMul: 1.2, vulnSec: 5 } as const;
 
