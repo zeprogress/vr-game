@@ -22,8 +22,8 @@ export const RING_STAT_NAME: Record<RingStat, string> = {
   elite: "По элите и боссам",
   crowd: "По толпе",
   pen: "Пробивание",
-  rage: "Ярость",
-  confident: "Уверенность",
+  rage: "Урон в ярости",
+  confident: "Урон в уверенности",
   close: "Вплотную",
   far: "Издалека",
 };
@@ -104,7 +104,7 @@ export function ringValueText(stat: RingStat, value: number): string {
 }
 
 /** Краткое пояснение в скобках — у аффиксов, которые работают не всегда (по здоровью героя). */
-const RING_STAT_BRIEF: Partial<Record<RingStat, string>> = { rage: "(пока здоровья меньше 50%)", confident: "(пока здоровья больше 80%)" };
+const RING_STAT_BRIEF: Partial<Record<RingStat, string>> = { rage: "(здоровье < 50%)", confident: "(здоровье > 80%)" };
 
 export function ringQuality(r: { rolls: readonly RingRoll[] }): number {
   return r.rolls.reduce((s, x) => s + x.pts, 0);
