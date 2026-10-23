@@ -67,9 +67,12 @@ uniform vec3 uCol;
 uniform vec3 uCol2;
 uniform float uShim;
 void main() {
-  // Перелив (крафт): цвет волной уходит к золотому и обратно; без uShim — ровный цвет тира.
-  vec3 col = mix(uCol, uCol2, vS * uShim);
-  float a = texture2D(tex, vUV).a * vA;
+  // Перелив (крафт, uShim 1): цвет волной уходит к золотому и обратно; без uShim — ровный цвет тира.
+  // Скрытый рецепт (uShim 2): волна резче и доходит до золота полностью, на гребне свечение ярче.
+  float strong = clamp(uShim - 1.0, 0.0, 1.0);
+  float s = mix(vS, smoothstep(0.15, 0.85, vS), strong);
+  vec3 col = mix(uCol, uCol2, s * min(uShim, 1.0));
+  float a = texture2D(tex, vUV).a * vA * (1.0 + 0.8 * strong * s);
   gl_FragColor = vec4(col, a);
 }
 `;
@@ -87,10 +90,14 @@ export function isGlowTier(t: string): t is GlowTier {
 /** Цвет перелива мастерского свечения (к нему уходит волна). */
 const GLOW_SHIMMER = new Color3(1, 0.82, 0.36);
 
-function glowMaterial(scene: Scene, amp: number, col: Color3 = GLOW_COL.legendary, shim = false): ShaderMaterial {
+/** Свечение оружия по скрытому рецепту (2026-10-23): шире в size раз, перелив заметнее (uShim 2). */
+export const RECIPE_GLOW = { size: 1.5 } as const;
+
+/** shim: 0 — ровный цвет тира, 1 — перелив мастерского, 2 — сильный перелив скрытого рецепта. */
+function glowMaterial(scene: Scene, amp: number, col: Color3 = GLOW_COL.legendary, shim = 0): ShaderMaterial {
   let byAmp = glowMats.get(scene);
   if (!byAmp) glowMats.set(scene, (byAmp = new Map()));
-  const key = `${amp}|${col.toHexString()}|${shim ? 1 : 0}`;
+  const key = `${amp}|${col.toHexString()}|${shim}`;
   let mat = byAmp.get(key);
   if (!mat) {
     mat = new ShaderMaterial(`${GLOW}Mat${key}`, scene, GLOW, {
@@ -103,7 +110,7 @@ function glowMaterial(scene: Scene, amp: number, col: Color3 = GLOW_COL.legendar
     mat.setFloat("uAmp", amp);
     mat.setColor3("uCol", col);
     mat.setColor3("uCol2", GLOW_SHIMMER);
-    mat.setFloat("uShim", shim ? 1 : 0);
+    mat.setFloat("uShim", shim);
     mat.alphaMode = Constants.ALPHA_ADD;
     mat.backFaceCulling = false;
     mat.disableDepthWrite = true;
@@ -117,7 +124,7 @@ function glowMaterial(scene: Scene, amp: number, col: Color3 = GLOW_COL.legendar
 /** Базовое свечение шелла, как его создали: сила и цвет — чтобы менять по точкам без пересборки. */
 const glowBase = new WeakMap<Mesh, { amp: number; col: Color3; shim: boolean }>();
 /** Последняя применённая прибавка по корню оружия (и номер настройки): пересчёт только при смене. */
-const sharpApplied = new WeakMap<TransformNode, { pct: number; ver: number }>();
+const sharpApplied = new WeakMap<TransformNode, { pct: number; ver: number; rc: boolean }>();
 
 export function attachLegendaryGlow(
   scene: Scene,
@@ -132,7 +139,7 @@ export function attachLegendaryGlow(
 ): void {
   const shell = MeshBuilder.CreatePlane("legGlow", { size: radius * 2 }, scene);
   const amp = Math.round(intensity * (tier === "ruby" ? 1.4 : tier === "craft" ? 1.2 : 1) * 1000) / 1000;
-  shell.material = glowMaterial(scene, amp, GLOW_COL[tier], tier === "craft");
+  shell.material = glowMaterial(scene, amp, GLOW_COL[tier], tier === "craft" ? 1 : 0);
   glowBase.set(shell, { amp, col: GLOW_COL[tier], shim: tier === "craft" });
   shell.isPickable = false;
   shell.parent = host;
@@ -150,13 +157,13 @@ export function forgetSharpGlow(root: TransformNode): void {
  * Свечение оружия в руке по точкам атаки: без прибавки не горит, с каждой точкой светит
  * сильнее (сила) и шире (радиус); на +10 точках — как было (sharpGlowMul). Зовётся каждый
  * кадр, но пересчитывает только при смене прибавки или настройки (sharpGlowTune). Щит сюда
- * не передаём; лут на земле свечение не меняет — ему эту функцию не зовут.
+ * не передаём; лут на земле свечение не меняет — ему эту функцию не зовут. rc — оружие по скрытому рецепту.
  */
-export function applySharpGlow(root: TransformNode, pct: number): void {
+export function applySharpGlow(root: TransformNode, pct: number, rc = false): void {
   const ver = sharpGlowVersion();
   const done = sharpApplied.get(root);
-  if (done && done.pct === pct && done.ver === ver) return;
-  sharpApplied.set(root, { pct, ver });
+  if (done && done.pct === pct && done.ver === ver && done.rc === rc) return;
+  sharpApplied.set(root, { pct, ver, rc });
   const strength = sharpGlowMul(pct, sharpGlowTune.strength);
   const radius = sharpGlowMul(pct, sharpGlowTune.radius);
   for (const c of root.getChildMeshes(false, (n) => glowBase.has(n as Mesh))) {
@@ -164,8 +171,10 @@ export function applySharpGlow(root: TransformNode, pct: number): void {
     const base = glowBase.get(g)!;
     g.isVisible = pct > 0;
     if (pct <= 0) continue;
-    g.scaling.setAll(radius);
-    g.material = glowMaterial(g.getScene(), Math.round(base.amp * strength * 1000) / 1000, base.col, base.shim);
+    // Скрытый рецепт: аура шире и перелив сильнее (только у мастерского — у него и есть перелив).
+    const recipe = rc && base.shim;
+    g.scaling.setAll(radius * (recipe ? RECIPE_GLOW.size : 1));
+    g.material = glowMaterial(g.getScene(), Math.round(base.amp * strength * 1000) / 1000, base.col, recipe ? 2 : base.shim ? 1 : 0);
   }
 }
 

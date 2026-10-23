@@ -283,6 +283,9 @@ export class RemoteAvatar implements Hittable {
   /** Прибавка точки атаки (в %) у оружия в руках — из строк роллов с сервера, для свечения. */
   private sharpL = 0;
   private sharpR = 0;
+  /** Оружие в руке — по скрытому рецепту (свечение шире, перелив заметнее). */
+  private rcL = false;
+  private rcR = false;
 
   private readonly buf: Snap[] = [];
   /** Отработавшие снапшоты возвращаем сюда — не мусорим каждый тик. */
@@ -688,6 +691,8 @@ export class RemoteAvatar implements Hittable {
     this.wantR = [p.rightCls, aegisTier(p.rightCls, p.rightTier, p.rightAffix)];
     this.sharpL = sharpPctOfText(p.leftAffix);
     this.sharpR = sharpPctOfText(p.rightAffix);
+    this.rcL = !!p.leftRc;
+    this.rcR = !!p.rightRc;
     this.animSet = classAnimSet(p.leftCls, p.rightCls);
     this.syncFishing(p.fishing === 1);
     this.wantKeyL = keyOf(this.wantL);
@@ -1310,8 +1315,9 @@ export class RemoteAvatar implements Hittable {
     if (this.wantKeyR !== this.gearKeyR) this.gearR = this.fitGear("right", this.wantR, this.gearR, () => (this.gearKeyR = this.wantKeyR), this.gearKeyR, this.wantKeyR);
     // Свечение в руках — по точкам атаки; щит своё не меняет. Двуручное (лук, посох) может держать строку роллов в любой руке.
     const both = Math.max(this.sharpL, this.sharpR);
-    if (this.gearL && this.wantL[0] !== "shield") applySharpGlow(this.gearL, isTwoHanded(this.wantL[0]) ? both : this.sharpL);
-    if (this.gearR && this.wantR[0] !== "shield") applySharpGlow(this.gearR, isTwoHanded(this.wantR[0]) ? both : this.sharpR);
+    const rcBoth = this.rcL || this.rcR;
+    if (this.gearL && this.wantL[0] !== "shield") applySharpGlow(this.gearL, isTwoHanded(this.wantL[0]) ? both : this.sharpL, isTwoHanded(this.wantL[0]) ? rcBoth : this.rcL);
+    if (this.gearR && this.wantR[0] !== "shield") applySharpGlow(this.gearR, isTwoHanded(this.wantR[0]) ? both : this.sharpR, isTwoHanded(this.wantR[0]) ? rcBoth : this.rcR);
   }
 
   private fitGear(

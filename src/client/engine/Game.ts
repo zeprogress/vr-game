@@ -449,6 +449,7 @@ export class Game {
       zone.classHomes,
     );
     this.combat.sharpOf = (hand) => this.heldSharpPct(hand);
+    this.combat.rcOf = (hand) => !!(hand === "left" ? this.net?.self?.leftRc : this.net?.self?.rightRc);
     const report: HitReporter = (id, target, weapon, dx, dz) =>
       this.net?.sendHitMob({ id, target, weapon, hand: this.combat.lastHitHand, dx, dz });
     this.report = report;

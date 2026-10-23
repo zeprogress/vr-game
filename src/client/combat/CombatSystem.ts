@@ -901,7 +901,7 @@ export class CombatSystem {
     if (this.sharpOf) {
       for (const it of this.items) {
         if (it.kind === "shield" || !it.hand) continue;
-        applySharpGlow(it.mesh, Math.max(this.sharpOf(it.hand), it.hand2 ? this.sharpOf(it.hand2) : 0));
+        applySharpGlow(it.mesh, Math.max(this.sharpOf(it.hand), it.hand2 ? this.sharpOf(it.hand2) : 0), !!this.rcOf?.(it.hand) || (!!it.hand2 && !!this.rcOf?.(it.hand2)));
       }
     }
     const inp = this.player.lastInput;
@@ -1476,6 +1476,8 @@ export class CombatSystem {
   makeWeaponMesh: ((cls: ItemKind, tier: WeaponTier) => Mesh) | null = null;
   /** Прибавка точки атаки (в %) у оружия в руке — Game берёт её из строки роллов с сервера (свечение). */
   sharpOf: ((hand: Side) => number) | null = null;
+  /** Оружие в руке — по скрытому рецепту (свечение шире, перелив заметнее). */
+  rcOf: ((hand: Side) => boolean) | null = null;
 
   /** Рука, нанёсшая последний удар. Game берёт её для сообщения серверу. */
   lastHitHand: Side = "right";
