@@ -42,7 +42,10 @@ test("ожерелья: значения — обычный тир 3–9% рад
 test("ожерелья: старые радиус и дальность сливаются в один аффикс с бо́льшими очками", () => {
   const old = { id: "o", tier: "legendary", rolls: [{ stat: "radius", pts: 4 }, { stat: "range", pts: 9 }, { stat: "duration", pts: 5 }], gems: [] };
   const n = sanitizeNeck(old, () => false)!;
-  assert.deepEqual(n.rolls.map((r) => [r.stat, r.pts]), [["reach", 9], ["duration", 5]]);
+  assert.deepEqual(n.rolls.map((r) => [r.stat, r.pts]), [["reach", 9], ["duration", 5], ["cooldown", n.rolls[2].pts]]);
+  assert.equal(sanitizeNeck(old, () => false)!.rolls[2].pts, n.rolls[2].pts, "очки нового аффикса стабильны");
+  const once = { id: "p", tier: "base", rolls: [{ stat: "radius", pts: 4 }], gems: [] };
+  assert.equal(sanitizeNeck(once, () => false)!.rolls.length, 1, "без слияния нового аффикса нет");
 });
 
 test("ожерелья: лом и цена заточки растут по тиру (рубиновое — дороже всех)", () => {

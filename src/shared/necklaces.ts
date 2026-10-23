@@ -7,6 +7,7 @@
  * Модуль без серверных и клиентских зависимостей: ролл, подписи, лом, заточка, бонусы — одинаково везде.
  */
 import { enchantCurve, POINTS_MAX, type EnchantDeck, type EnchantInfo } from "./items";
+import { seededByString } from "./ringAffixes";
 
 export type NeckTier = "base" | "gold" | "legendary" | "ruby";
 export const NECK_TIERS: readonly NeckTier[] = ["base", "gold", "legendary", "ruby"];
@@ -172,6 +173,7 @@ export function sanitizeNeck(x: unknown, gemOk: (k: unknown) => boolean): NeckIn
   const o = x as { id?: unknown; tier?: unknown; rolls?: unknown; gems?: unknown; fav?: unknown };
   if (typeof o.id !== "string" || !(NECK_TIERS as readonly unknown[]).includes(o.tier)) return null;
   const rolls: NeckRoll[] = [];
+  let merged = false;
   for (const r of Array.isArray(o.rolls) ? (o.rolls as { stat?: unknown; pts?: unknown; ench?: EnchantDeck }[]) : []) {
     const stat = typeof r?.stat === "string" ? LEGACY_STAT[r.stat] : undefined;
     if (!stat) continue;
@@ -183,8 +185,13 @@ export function sanitizeNeck(x: unknown, gemOk: (k: unknown) => boolean): NeckIn
     // Радиус и дальность слиты: при совпадении остаётся аффикс с большими очками.
     const at = rolls.findIndex((y) => y.stat === stat);
     if (at < 0) rolls.push(roll);
-    else if (roll.pts > rolls[at].pts) rolls[at] = roll;
+    else {
+      merged = true;
+      if (roll.pts > rolls[at].pts) rolls[at] = roll;
+    }
   }
+  // Освободившийся после слияния радиуса и дальности аффикс — новый «Откат умений» (очки — по id, одинаково при каждой загрузке).
+  if (merged && !rolls.some((r) => r.stat === "cooldown")) rolls.push({ stat: "cooldown", pts: 1 + Math.floor(seededByString(o.id)() * POINTS_MAX) });
   if (!rolls.length) return null;
   sortNeckRolls(rolls);
   const gems = (Array.isArray(o.gems) ? o.gems : []).slice(0, 3).map((g) => (gemOk(g) ? (g as string) : null));
