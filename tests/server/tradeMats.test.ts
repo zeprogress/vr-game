@@ -4,7 +4,7 @@ import { giveItems, itemView, parseTradeItem, parseTradeList, takeItems, takenNa
 
 /** Пустой снимок инвентаря с материалами крафта. */
 function snap(mats: InvSnap["mats"]): InvSnap {
-  return { weapons: [], heldIds: new Set(), bag: [], jewels: { rings: [], ringOn: [null, null], gems: {} }, armor: [], armorWorn: {}, mats };
+  return { weapons: [], heldIds: new Set(), bag: [], jewels: { rings: [], ringOn: [null, null], gems: {}, necks: [], neckOn: null }, armor: [], armorWorn: {}, mats };
 }
 
 test("материалы крафта: разбор кода «m:<материал>», мусор — null", () => {

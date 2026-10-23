@@ -33,6 +33,8 @@ export interface BagSortItem {
   weapon?: WeaponClass;
   /** Броня: сортируется по лому, после колец; в «По типу» — по части (шлем, нагрудник, …). */
   armor?: true;
+  /** Ожерелье: рядом с кольцами (после них), по оценке. */
+  neck?: true;
   armorPart?: ArmorPart;
   tier: WeaponTier | RingTier;
   quality: number;
@@ -45,12 +47,14 @@ export interface BagSortItem {
 export type BagPick =
   | { w: { cls: WeaponClass; tier: WeaponTier; quality: number; scrap?: number; fav?: boolean } }
   | { r: { tier: RingTier; scrap: number; fav?: boolean } }
-  | { a: { part: ArmorPart; tier?: "base" | "gold" | "legendary" | "ruby"; pts: number; scrap: number; fav?: boolean } };
+  | { a: { part: ArmorPart; tier?: "base" | "gold" | "legendary" | "ruby"; pts: number; scrap: number; fav?: boolean } }
+  | { n: { tier: "base" | "gold" | "legendary" | "ruby"; pts: number; scrap: number; fav?: boolean } };
 
 /** Что сортировке знать о предмете: из полей оружия, кольца или брони. */
 export function bagPickItem(e: BagPick): BagSortItem {
   if ("w" in e) return { weapon: e.w.cls, tier: e.w.tier, quality: e.w.quality, scrap: e.w.scrap ?? 0, fav: !!e.w.fav };
   if ("a" in e) return { armor: true, armorPart: e.a.part, tier: e.a.tier ?? "base", quality: e.a.pts, scrap: e.a.scrap, fav: !!e.a.fav };
+  if ("n" in e) return { neck: true, tier: e.n.tier, quality: e.n.pts, scrap: e.n.scrap, fav: !!e.n.fav };
   return { tier: e.r.tier, quality: 0, scrap: e.r.scrap, fav: !!e.r.fav };
 }
 
@@ -71,7 +75,7 @@ function classGroup(x: BagSortItem): number {
 
 /** Порядок видов внутри «как пришло»: оружие, кольца, броня. */
 function kindRank(x: BagSortItem): number {
-  return x.weapon ? 0 : x.armor ? 2 : 1;
+  return x.weapon ? 0 : x.armor ? 3 : x.neck ? 2 : 1;
 }
 
 /** Внутри группы: оружие — перед кольцами и бронёй, оружие и броня — по оценке, кольца — по тиру; потом по лому. */
@@ -80,7 +84,7 @@ function byQuality(a: BagSortItem, b: BagSortItem): number {
   if (r) return r;
   if (a.weapon) return b.quality - a.quality;
   // Броня — по оценке (сумма очков аффиксов, как показано в окне); при равной оценке — по лому.
-  if (a.armor) return b.quality - a.quality || b.scrap - a.scrap;
+  if (a.armor || a.neck) return b.quality - a.quality || b.scrap - a.scrap;
   return RING_TIERS.indexOf(b.tier as RingTier) - RING_TIERS.indexOf(a.tier as RingTier) || b.scrap - a.scrap;
 }
 

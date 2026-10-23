@@ -111,5 +111,38 @@ export function ringHtml(tier: RingTier, gems: readonly (GemKey | null)[] = []):
   return h + "</span>";
 }
 
+/**
+ * Гнёзда на картинке ожерелья по их числу (центры отверстий замерены по картинкам, 2026-10-23); s — размер камня.
+ * Одинаковы у всех тиров (картинки одной сетки).
+ */
+const NECK_SOCKETS: readonly (readonly { cx: number; cy: number }[])[] = [
+  [],
+  [{ cx: 0.5, cy: 0.59 }],
+  [{ cx: 0.416, cy: 0.572 }, { cx: 0.587, cy: 0.572 }],
+  [{ cx: 0.389, cy: 0.545 }, { cx: 0.502, cy: 0.545 }, { cx: 0.613, cy: 0.545 }],
+];
+const NECK_GEM = 0.13;
+
+/** Место i-го гнезда ожерелья с n гнёздами (доли картинки: левый верх и размер — как socketSpot у кольца). */
+export function neckSocketSpot(n: number, i: number): { x: number; y: number; s: number } {
+  const c = NECK_SOCKETS[Math.max(0, Math.min(3, n))][i] ?? { cx: 0.5, cy: 0.56 };
+  return { x: c.cx - NECK_GEM / 2, y: c.cy - NECK_GEM / 2, s: NECK_GEM };
+}
+
+/** HTML-значок ожерелья с камнями в гнёздах (пустое гнездо видно на самой картинке). */
+export function neckHtml(tier: NecklaceTier, gems: readonly (GemKey | null)[] = []): string {
+  let h = `<span style="position:relative;display:block;width:100%;height:100%"><img src="${necklaceSrc(tier, gems.length)}" alt="" draggable="false" style="${LAYER}">`;
+  gems.forEach((k, i) => {
+    const g = gemArt(k ?? "");
+    if (!g) return;
+    const p = neckSocketSpot(gems.length, i);
+    h += `<span style="position:absolute;left:${p.x * 100}%;top:${p.y * 100}%;width:${p.s * 100}%;aspect-ratio:1;pointer-events:none"><img src="${g.src}" alt="" draggable="false" style="${LAYER}"></span>`;
+  });
+  return h + "</span>";
+}
+
+/** Пустой слот ожерелья (контур цепочки). */
+export const NECK_SLOT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M18 26 Q50 78 82 26" fill="none" stroke="#4a4a5c" stroke-width="6" stroke-dasharray="6 6"/><path d="M50 58 L42 66 L50 80 L58 66 Z" fill="none" stroke="#4a4a5c" stroke-width="5"/></svg>`;
+
 /** Пустой слот кольца (контур). */
 export const RING_SLOT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><ellipse cx="50" cy="56" rx="30" ry="22" fill="none" stroke="#4a4a5c" stroke-width="7" stroke-dasharray="6 6"/></svg>`;

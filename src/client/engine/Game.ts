@@ -2332,8 +2332,9 @@ export class Game {
           const id = this.vrEnchId ?? "";
           const wh = this.pcInvData;
           // В руке (оружие) или надета (броня) — метка на панели.
-          const inHand = !!wh && (wh.equipped.left === id || wh.equipped.right === id || Object.values(wh.armorWorn ?? {}).includes(id));
+          const inHand = !!wh && (wh.equipped.left === id || wh.equipped.right === id || Object.values(wh.armorWorn ?? {}).includes(id) || wh.jewels?.neckOn === id);
           const isArmor = !!wh?.armor?.some((x) => x.id === id);
+          const isNeck = !!wh?.jewels?.necks.some((x) => x.id === id);
           drawEnchant(
             ui,
             wh,
@@ -2344,7 +2345,7 @@ export class Game {
               if (this.vrForgeBusy()) return;
               this.vrEnchResult = null;
               this.vrForgeAt = Date.now();
-              this.net?.sendPcInvAct({ act: isArmor ? "armorEnchant" : "enchant", id, idx });
+              this.net?.sendPcInvAct({ act: isArmor ? "armorEnchant" : isNeck ? "neckEnchant" : "enchant", id, idx });
             },
             () => {
               if (this.vrForgeBusy()) return;
@@ -3408,12 +3409,14 @@ export class Game {
     const fx = Math.sin(fy);
     const fz = Math.cos(fy);
     const msg: { kind: SkillId; x?: number; z?: number } = { kind: id };
-    const frontTarget = (maxD: number): { x: number; z: number; r: number } | null => this.frontTargetPos(maxD);
+    // 📿 Ожерелье: дальность умений (gb.skRng) — те же прыжки, рывки и поиск цели, что у сервера (castSkill).
+    const RNG = 1 + (this.net.self?.gb.skRng ?? 0);
+    const frontTarget = (maxD: number): { x: number; z: number; r: number } | null => this.frontTargetPos(maxD * RNG);
     if (id === "arrowRain" && cls === "assassin") {
       // Отскок с веером: отскок назад, веер ножей — конусом по взгляду.
       msg.x = p.x + fx * 9;
       msg.z = p.z + fz * 9;
-      this.startDash(p.x - fx * ASSASSIN_FAN_HOP, p.z - fz * ASSASSIN_FAN_HOP, 0.25);
+      this.startDash(p.x - fx * ASSASSIN_FAN_HOP * RNG, p.z - fz * ASSASSIN_FAN_HOP * RNG, 0.25);
       this.combat.onMeleeSwing?.();
     } else if (id === "stunBash" && cls === "assassin") {
       // Смертельный прыжок: на выбранную цель или ближайшую впереди.
@@ -3432,14 +3435,14 @@ export class Game {
         msg.x = x;
         msg.z = z;
       } else {
-        const r = cls === "assassin" ? 5 : SKILL.arrowRain.range;
+        const r = cls === "assassin" ? 5 : SKILL.arrowRain.range * RNG;
         msg.x = p.x + fx * r;
         msg.z = p.z + fz * r;
       }
     } else if (id === "soulSteal") {
       // Кража душ — удар по цели рядом (выбранной или ближайшей впереди).
       const sel = this.selectedTargetPos() ?? frontTarget(SOUL_STEAL.reach + 1);
-      if (!sel || Math.hypot(sel.x - p.x, sel.z - p.z) > SOUL_STEAL.reach + 1.5) {
+      if (!sel || Math.hypot(sel.x - p.x, sel.z - p.z) > SOUL_STEAL.reach * RNG + 1.5) {
         this.notifyToast("Нет цели рядом");
         return;
       }
@@ -3455,7 +3458,7 @@ export class Game {
       }
     } else if (id === "whirlwind" && cls === "assassin") {
       // Танец клинков — вихрь-рывок вперёд за время вращения.
-      this.startDash(p.x + fx * ASSASSIN_WHIRL_DASH, p.z + fz * ASSASSIN_WHIRL_DASH, WHIRL.duration);
+      this.startDash(p.x + fx * ASSASSIN_WHIRL_DASH * RNG, p.z + fz * ASSASSIN_WHIRL_DASH * RNG, WHIRL.duration);
       this.combat.onMeleeSwing?.();
     } else if (id === "cleave") {
       // Рассекающий удар — замах мечом вперёд, конус считает сервер по взгляду.
@@ -3488,8 +3491,8 @@ export class Game {
       let ez: number;
       let stepFace: { x: number; z: number } | null = null;
       if (hopsBack(cls)) {
-        ex = p.x - fx * hopDistance(cls);
-        ez = p.z - fz * hopDistance(cls);
+        ex = p.x - fx * hopDistance(cls) * RNG;
+        ez = p.z - fz * hopDistance(cls) * RNG;
       } else {
         const t = frontTarget(11);
         stepFace = t;
@@ -3502,8 +3505,8 @@ export class Game {
           ex = p.x + (dx / d) * over;
           ez = p.z + (dz / d) * over;
         } else {
-          ex = p.x + fx * 5;
-          ez = p.z + fz * 5;
+          ex = p.x + fx * 5 * RNG;
+          ez = p.z + fz * 5 * RNG;
         }
       }
       msg.x = ex;

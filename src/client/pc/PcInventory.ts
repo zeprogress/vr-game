@@ -9,10 +9,11 @@ import type { IconKey } from "#shared/icons";
 import { AEGIS_NAME, AFFIX_NAME, craftPow, isCraftRare, weaponName, ATTACK_CLASSES, WEAPON_NOUN, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, qualityStarsShort, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcEnchRow, PcInvActMsg, PcInvArmor, PcInvData, PcInvResult, PcInvWeapon, TradeItemView } from "#shared/net/messages";
 import { SKIN_LABELS, skinPicture } from "#shared/skins";
-import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type PcInvJewels, type RingTier } from "#shared/jewels";
+import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type PcInvJewels, type PcInvNeck, type RingTier } from "#shared/jewels";
+import { NECK_TIER_NAME, type NeckTier } from "#shared/necklaces";
 import { skillDamageText } from "#shared/skillDamage";
 import { BAG_SORTS, bagPickItem, nextBagSort, sortBag, type BagSort } from "#shared/bagSort";
-import { gemHtml, RING_SLOT_SVG, ringHtml } from "#shared/jewelIcons";
+import { gemHtml, NECK_SLOT_SVG, neckHtml, RING_SLOT_SVG, ringHtml } from "#shared/jewelIcons";
 import {
   CRAFT,
   CRAFT_CATS,
@@ -89,10 +90,10 @@ export function setIcon(el: HTMLElement, cls: string, name?: string, tier?: stri
 }
 const ATTRS = A2.map((id) => ({ id, name: ATTR_INFO[id].name, hint: attrEffect(id) }));
 
-type DragSrc = { kind: "bag"; id: string } | { kind: "hand"; side: Side } | { kind: "ring"; id: string } | { kind: "armor"; id: string };
+type DragSrc = { kind: "bag"; id: string } | { kind: "hand"; side: Side } | { kind: "ring"; id: string } | { kind: "armor"; id: string } | { kind: "neck"; id: string };
 
 /** Предмет сумки: оружие, кольцо или броня — в одной сетке. */
-type BagEntry = { w: PcInvWeapon } | { r: PcInvJewels["rings"][number] } | { a: PcInvArmor };
+type BagEntry = { w: PcInvWeapon } | { r: PcInvJewels["rings"][number] } | { a: PcInvArmor } | { n: PcInvNeck };
 
 /** Фильтры сумки (вкладки над сеткой). */
 type BagFilter = "all" | "fav" | "weapon" | "armor" | "ring" | "gem" | "misc";
@@ -101,7 +102,7 @@ const BAG_FILTERS: readonly [BagFilter, string][] = [
   ["fav", "★ Избранное"],
   ["weapon", "Оружие"],
   ["armor", "Броня"],
-  ["ring", "Кольца"],
+  ["ring", "Украшения"],
   ["gem", "Камни"],
   ["misc", "Прочее"],
 ];
@@ -678,6 +679,10 @@ export class PcInventory {
         if (j.ringOn.includes(r.id) || r.fav) continue; // как у оружия: надетое и ★ в обмен не идут
         out.push({ code: `r:${r.id}`, label: ringName({ tier: r.tier }), max: 1, stack: false, view: { k: "ring", name: ringName({ tier: r.tier }), n: 1, tier: r.tier, gems: r.gems } });
       }
+      for (const n of j.necks) {
+        if (j.neckOn === n.id || n.fav) continue; // надетое и ★ в обмен не идут
+        out.push({ code: `n:${n.id}`, label: n.label, max: 1, stack: false, view: { k: "neck", name: n.label, n: 1, tier: n.tier, gems: n.gems } });
+      }
       for (const [gk, n] of j.gems) out.push({ code: `g:${gk}`, label: gemName(gk), max: n, stack: true, view: { k: "gem", name: gemName(gk), n, key: gk } });
     }
     // Материалы и особые катализаторы крафта — стопками, как камни.
@@ -704,6 +709,7 @@ export class PcInventory {
       if (it.sharp) box.append(div("pcinv-sb", `+${it.sharp}`));
     }
     else if (it.k === "ring") box.innerHTML = ringHtml((it.tier ?? "base") as RingTier, it.gems ?? []);
+    else if (it.k === "neck") box.innerHTML = neckHtml((it.tier ?? "base") as NeckTier, it.gems ?? []);
     else if (it.k === "gem") box.innerHTML = gemHtml(it.key ?? "");
     else if (it.k === "mat") box.innerHTML = iconHtml(`m.${it.mat ?? "alloy"}` as IconKey);
     else if (it.k === "armor" && it.part) setIconEl(box, armorIconKey(it.part, it.tier));
@@ -927,7 +933,7 @@ export class PcInventory {
     const colL = div("pcinv-scol");
     for (const part of ARMOR_PARTS) colL.append(this.armorSlot(part, d, byId));
     const colR = div("pcinv-scol");
-    colR.append(this.handSlot("right", d), this.handSlot("left", d), div("pcinv-slot gap"), this.ringSlot(0, d), this.ringSlot(1, d));
+    colR.append(this.handSlot("right", d), this.handSlot("left", d), this.neckSlot(d), this.ringSlot(0, d), this.ringSlot(1, d));
     const center = div("pcinv-center");
     center.append(page ? this.stage() : this.charInfo(d));
     heroP.append(colL, center, colR);
@@ -941,6 +947,7 @@ export class PcInventory {
     const bagEntries: BagEntry[] = [
       ...d.weapons.filter((w) => !eq.has(w.id)).map((w) => ({ w })),
       ...j.rings.filter((r) => !j.ringOn.includes(r.id)).map((r) => ({ r })),
+      ...j.necks.filter((n) => j.neckOn !== n.id).map((n) => ({ n })),
       ...(!this.hooks.armorAct ? [] : (d.armor ?? []).filter((a) => d.armorWorn?.[a.part] !== a.id)).map((a) => ({ a })),
     ];
     wrap.append(this.bagPanel(d, sortBag(bagEntries, this.bagSort, bagPickItem)));
@@ -1070,6 +1077,9 @@ export class PcInventory {
       div("pcinv-hh", "Кольца"),
       div("pcinv-small", b.rings ? parts.join(" · ") : `Ничего не надето. Кольцо даёт маг. защиту ${Math.round(RING.mres * 100)}%, камни в нём — атрибуты.`),
     );
+    // Ожерелье: прибавки к умениям (камни в нём уже учтены в атрибутах выше).
+    const nk = [["Радиус", b.skRad], ["Длительность", b.skDur], ["Дальность", b.skRng]].filter(([, v]) => (v as number) > 0).map(([t, v]) => `${t} умений +${fmtPct((v as number) * 100)}%`);
+    box.append(div("pcinv-hh", "Ожерелье"), div("pcinv-small", nk.length ? nk.join(" · ") : "Не надето. Ожерелье усиливает умения: радиус зон, длительность эффектов и дальность."));
     return box;
   }
 
@@ -1079,7 +1089,8 @@ export class PcInventory {
     const j = this.jewelsOf(d);
     // Для «разобрать всё»: избранное ★ не разбирается — не считаем.
     const bagW = bag.flatMap((e) => ("w" in e && !e.w.fav ? [e.w] : []));
-    const bagR = bag.flatMap((e) => ("r" in e && !e.r.fav ? [e.r] : []));
+    // Кольца и ожерелья для «разобрать все украшения» (рубиновые ожерелья — только поштучно, как на сервере).
+    const bagR: { scrap: number }[] = bag.flatMap((e): { scrap: number }[] => ("r" in e && !e.r.fav ? [e.r] : "n" in e && !e.n.fav && e.n.tier !== "ruby" ? [e.n] : []));
     const filters = BAG_FILTERS.filter(([f]) => f !== "armor" || !!this.hooks.armorAct);
     if (!filters.some(([f]) => f === this.bagFilter)) this.bagFilter = "all";
     const f = this.bagFilter;
@@ -1113,8 +1124,8 @@ export class PcInventory {
       p.append(sortRow);
     }
     const cells: HTMLElement[] = [];
-    const favOf = (e: BagEntry): boolean => !!("w" in e ? e.w.fav : "r" in e ? e.r.fav : e.a.fav);
-    const shown = bag.filter((e) => f === "all" || (f === "fav" && favOf(e)) || (f === "weapon" && "w" in e) || (f === "ring" && "r" in e) || (f === "armor" && "a" in e));
+    const favOf = (e: BagEntry): boolean => !!("w" in e ? e.w.fav : "r" in e ? e.r.fav : "n" in e ? e.n.fav : e.a.fav);
+    const shown = bag.filter((e) => f === "all" || (f === "fav" && favOf(e)) || (f === "weapon" && "w" in e) || (f === "ring" && ("r" in e || "n" in e)) || (f === "armor" && "a" in e));
     if (f !== "gem" && f !== "misc") for (const e of shown) cells.push(this.entryCell(e));
     if (f === "all" || f === "gem") for (const [gk, n] of j.gems) cells.push(this.gemCell(gk, n, d));
     // Материалы и особые катализаторы крафта — стопками, в «Прочем» (и во «Всех»).
@@ -1207,16 +1218,16 @@ export class PcInventory {
     foot.append(anvil);
     if (f === "ring") {
       const ringSum = bagR.reduce((n, r) => n + r.scrap, 0);
-      const rall = button(`Разобрать все кольца (${bagR.length})`, () =>
+      const rall = button(`Разобрать все украшения (${bagR.length})`, () =>
         this.askConfirm(
-          `Разобрать ${bagR.length} колец на ${ringSum} лома? Надетые и ★ избранные останутся. Камни из них вернутся в сумку.`,
+          `Разобрать ${bagR.length} шт. (кольца и ожерелья) на ${ringSum} лома? Надетые, ★ избранные и рубиновые останутся. Камни из них вернутся в сумку.`,
           "Разобрать все",
           () => this.hooks.act({ act: "ringScrapAll", id: "all", idx: 0 }),
         ),
       );
       rall.className = "pcinv-btn danger";
       rall.disabled = !bagR.length;
-      rall.title = `Все кольца из сумки в лом: +${ringSum}. Надетые и ★ избранные останутся, камни вернутся в сумку`;
+      rall.title = `Все кольца и ожерелья из сумки в лом: +${ringSum}. Надетые, ★ избранные и рубиновые останутся, камни вернутся в сумку`;
       foot.append(rall);
     } else if (f === "gem") {
       const all = button("⬆ Соединить все камни", () => this.hooks.act({ act: "gemMergeAll", id: "all", idx: 0 }));
@@ -1233,7 +1244,7 @@ export class PcInventory {
       const rs = f === "all" ? bagR : [];
       const n = ws.length + as.length + rs.length;
       const scrapSum = ws.reduce((k, w) => k + w.scrap, 0) + as.reduce((k, x) => k + x.scrap, 0) + rs.reduce((k, r) => k + r.scrap, 0);
-      const what = f === "weapon" ? "оружие" : f === "armor" ? "броню" : "оружие, броню и кольца";
+      const what = f === "weapon" ? "оружие" : f === "armor" ? "броню" : "оружие, броню и украшения";
       const all = button(f === "all" ? `Разобрать всё, кроме ${glyph("ui.fav")}` : `Разобрать ${what}, кроме ${glyph("ui.fav")}`, () =>
         this.askConfirm(
           `Разобрать ${what} — ${n} шт. на ${scrapSum} лома? Избранное ${glyph("ui.fav")}, рубиновое, редкое мастерское и надетое останутся.${rs.length ? " Камни из колец вернутся в сумку." : ""}`,
@@ -1357,10 +1368,14 @@ export class PcInventory {
     k.textContent = `×${n}`;
     c.append(k);
     c.onclick = () => {
-      const ring = this.card?.kind === "ring" ? this.jewelsOf(d).rings.find((r) => r.id === (this.card as { id: string }).id) : undefined;
-      const free = ring ? ring.gems.indexOf(null) : -1;
+      // Открытое кольцо или ожерелье с гнёздами — камень можно вставить прямо отсюда.
+      const cid = (this.card as { id?: string } | null)?.id;
+      const ring = this.card?.kind === "ring" ? this.jewelsOf(d).rings.find((r) => r.id === cid) : undefined;
+      const neck = this.card?.kind === "neck" ? this.jewelsOf(d).necks.find((x) => x.id === cid) : undefined;
+      const holder = ring ? { id: ring.id, gems: ring.gems, name: ringName(ring) } : neck ? { id: neck.id, gems: neck.gems, name: NECK_TIER_NAME[neck.tier] } : undefined;
+      const free = holder ? holder.gems.indexOf(null) : -1;
       const acts: [string, () => void, boolean?][] = [];
-      if (ring && free >= 0) acts.push([`Вставить в ${ringName(ring).toLowerCase()}`, () => this.hooks.act({ act: "gemIn", id: ring.id, idx: free, fuel: gk })]);
+      if (holder && free >= 0) acts.push([`Вставить в ${holder.name.toLowerCase()}`, () => this.hooks.act({ act: "gemIn", id: holder.id, idx: free, fuel: gk })]);
       if (n >= RING.combine) acts.push([`Соединить ${RING.combine} → ${g.lv + 1} ур.`, () => this.hooks.act({ act: "gemMerge", id: gk, idx: 0 })]);
       if (g.lv > 1) acts.push([`Разделить → ${RING.combine} × ур. ${g.lv - 1}`, () => this.hooks.act({ act: "gemSplit", id: gk, idx: 0 })]);
       acts.push(["🎁 Подарить…", () => this.askGift(gemName(gk), `g:${gk}`, n)]);
@@ -1509,6 +1524,140 @@ export class PcInventory {
     return this.slot(c, "Кольцо");
   }
 
+  /** Слот ожерелья: надетое (клик — карточка с гнёздами и заточкой, ПКМ — снять) или пусто; сюда же бросают ожерелье. */
+  private neckSlot(d: PcInvData): HTMLDivElement {
+    const j = this.jewelsOf(d);
+    const n = j.neckOn ? j.necks.find((x) => x.id === j.neckOn) ?? null : null;
+    const c = div(`pcinv-cell big pcinv-jw${n ? ` t-${n.tier}` : " empty"}${n && this.card?.kind === "neck" && this.card.id === n.id ? " sel" : ""}`);
+    c.innerHTML = n ? neckHtml(n.tier, n.gems) : NECK_SLOT_SVG;
+    if (n) {
+      this.neckTip(c, n);
+      if (n.fav) c.append(div("pcinv-fav on", glyph("ui.fav")));
+      this.touchSrc.set(c, { kind: "neck", id: n.id });
+      if (!this.hooks.touch) c.addEventListener("click", () => this.openCard({ kind: "neck", id: n.id }));
+      c.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        this.hideTip();
+        this.hooks.act({ act: "neckOff", id: "-", idx: 0 });
+      });
+    } else {
+      c.addEventListener("click", () => this.textTipAt(c, "Слот ожерелья", "Пусто — надень ожерелье из сумки (перетащи сюда или нажми на ожерелье)."));
+    }
+    c.addEventListener("dragover", (e) => {
+      if (this.drag?.kind === "neck") {
+        e.preventDefault();
+        c.classList.add("hot");
+      }
+    });
+    c.addEventListener("dragleave", () => c.classList.remove("hot"));
+    c.addEventListener("drop", (e) => {
+      e.preventDefault();
+      c.classList.remove("hot");
+      const src = this.drag;
+      this.endDrag();
+      if (src?.kind === "neck" && j.neckOn !== src.id) this.hooks.act({ act: "neckOn", id: src.id, idx: 0 });
+    });
+    return this.slot(c, "Ожерелье");
+  }
+
+  /** Подсказка ожерелья: аффиксы, гнёзда и лом. */
+  private neckTip(c: HTMLElement, n: PcInvNeck): void {
+    const lines = [...n.affs];
+    if (n.gems.length) lines.push(`Гнёзд: ${n.gems.length} (${n.gems.filter(Boolean).map((g) => gemName(g as string)).join(", ") || "пусто"})`);
+    if (n.fav) lines.push(`${glyph("ui.fav")} В избранном — не разбирается`);
+    else lines.push(`В лом: +${n.scrap}`);
+    c.addEventListener("mouseenter", () => this.textTip(c, NECK_TIER_NAME[n.tier], lines.join(" · "), n.tier));
+    c.addEventListener("mouseleave", () => this.hideTip());
+  }
+
+  /** Ожерелье в сумке: клик/тап — карточка, тащить — на слот, ПКМ — надеть. */
+  private bagNeckCell(n: PcInvNeck): HTMLDivElement {
+    const c = div(`pcinv-cell pcinv-jw t-${n.tier}${this.card?.kind === "neck" && this.card.id === n.id ? " sel" : ""}`);
+    c.innerHTML = neckHtml(n.tier, n.gems);
+    c.append(div("pcinv-q", qualityStarsShort(n.pts, n.rolls)));
+    this.neckTip(c, n);
+    if (!this.hooks.touch || n.fav) c.append(this.favStar(!!n.fav, () => this.hooks.act({ act: "neckFav", id: n.id, idx: 0 })));
+    c.draggable = true;
+    c.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "neck", id: n.id }));
+    c.addEventListener("dragend", () => this.endDrag());
+    this.touchSrc.set(c, { kind: "neck", id: n.id });
+    c.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      this.hideTip();
+      this.hooks.act({ act: "neckOn", id: n.id, idx: 0 });
+    });
+    if (!this.hooks.touch) c.addEventListener("click", () => this.openCard({ kind: "neck", id: n.id }));
+    return c;
+  }
+
+  /** Гнёзда кольца или ожерелья в карточке: вынуть за лом, вставить — нажатием на камень из мешочка. */
+  private socketRows(body: HTMLElement, d: PcInvData, ownerId: string, gems: readonly (string | null)[]): void {
+    const j = this.jewelsOf(d);
+    body.append(div("pcinv-hh", `Гнёзда · ${gems.filter(Boolean).length} / ${gems.length}`));
+    gems.forEach((gk, i) => {
+      const row = div("pcinv-sock");
+      const gi = div(`pcinv-cell pcinv-jw${gk ? "" : " empty"}`);
+      if (gk) {
+        gi.innerHTML = gemHtml(gk);
+        this.gemTip(gi, gk);
+      }
+      row.append(gi);
+      if (gk) {
+        const g = parseGem(gk)!;
+        const cost = RING.unsocketPerLv * g.lv;
+        row.append(div("pcinv-sock-t", `${gemName(gk)} · +${g.lv} ${ATTR_INFO[g.attr].short}`));
+        const bt = button(`Вынуть −${cost}`, () => this.hooks.act({ act: "gemOut", id: ownerId, idx: i }));
+        bt.className = "pcinv-btn sm";
+        bt.title = `Вынуть камень в сумку: ${cost} лома`;
+        bt.disabled = d.scrap < cost;
+        row.append(bt);
+      } else row.append(div("pcinv-sock-t dim", `Гнездо ${i + 1} пусто`));
+      body.append(row);
+    });
+    const free = gems.indexOf(null);
+    if (free >= 0 && j.gems.length) {
+      body.append(div("pcinv-small", "Вставить камень — нажми на него:"));
+      const pick = div("pcinv-gempick");
+      for (const [gk, n] of j.gems) {
+        const c = div("pcinv-cell pcinv-jw click");
+        c.innerHTML = gemHtml(gk);
+        c.append(div("pcinv-glv", String(parseGem(gk)?.lv ?? "")));
+        const k = document.createElement("span");
+        k.className = "pcinv-cnt";
+        k.textContent = `×${n}`;
+        c.append(k);
+        this.gemTip(c, gk, n);
+        c.onclick = () => this.hooks.act({ act: "gemIn", id: ownerId, idx: free, fuel: gk });
+        pick.append(c);
+      }
+      body.append(pick);
+    } else if (free >= 0) body.append(div("pcinv-small", "Камней нет — падают с мобов (1 уровня)."));
+  }
+
+  /** Ожерелье: аффиксы с заточкой (как броня), гнёзда (как кольцо), надеть/снять, ★, подарить, в лом. */
+  private neckCard(d: PcInvData, id: string, head: HTMLElement, body: HTMLElement, acts: HTMLElement): boolean {
+    const j = this.jewelsOf(d);
+    const n = j.necks.find((x) => x.id === id);
+    if (!n) return false;
+    const worn = j.neckOn === n.id;
+    const ico = div(`pcinv-cell huge pcinv-jw t-${n.tier}`);
+    ico.innerHTML = neckHtml(n.tier, n.gems);
+    this.cardHead(head, ico, NECK_TIER_NAME[n.tier], `t-${n.tier}`, `Ожерелье · оценка <b>${qualityStarsShort(n.pts, n.rolls)}</b>`, worn ? "надето" : "", n.affs.map((t) => div("pcinv-tipaff", t)));
+    this.enchRows(body, n.id, n.ench, n.ench.map((r) => r.label), d.scrap);
+    this.resultLine(body);
+    body.append(div("pcinv-hint", "Ожерелье усиливает умения: радиус зон, длительность эффектов и дальность. Чем ближе свойство к максимуму — тем дороже и меньше шанс заточки, при неудаче лом сгорает."));
+    if (n.gems.length) this.socketRows(body, d, n.id, n.gems);
+    else body.append(div("pcinv-small", "Без гнёзд — камни в него не вставляются."));
+    if (worn) this.cardBtn(acts, "Снять", () => this.hooks.act({ act: "neckOff", id: "-", idx: 0 }), "gold", true);
+    else this.cardBtn(acts, j.neckOn ? "Надеть вместо текущего" : "Надеть", () => this.hooks.act({ act: "neckOn", id: n.id, idx: 0 }), "gold", true);
+    this.cardBtn(acts, n.fav ? `${glyph("ui.favOff")} Из избранного` : `${glyph("ui.fav")} В избранное`, () => this.hooks.act({ act: "neckFav", id: n.id, idx: 0 }));
+    if (!worn) {
+      this.cardBtn(acts, "Подарить", () => this.askGift(n.label, `n:${n.id}`, 1));
+      if (!n.fav) this.cardBtn(acts, `В лом +${n.scrap}`, () => this.askConfirm(`Разобрать «${NECK_TIER_NAME[n.tier]}» на ${n.scrap} лома?${n.gems.some(Boolean) ? " Камни вернутся в сумку." : ""}`, "Разобрать", () => this.hooks.act({ act: "neckScrap", id: n.id, idx: 0 })), "danger");
+    }
+    return true;
+  }
+
   /** Звёздочка «избранное» в углу ячейки: ★ — в избранном; пустая ☆ — при наведении (ПК), клик — переключить. */
   private favStar(fav: boolean, toggle: () => void): HTMLDivElement {
     const s = div(`pcinv-fav${fav ? " on" : ""}`, glyph(fav ? "ui.fav" : "ui.favOff"));
@@ -1580,7 +1729,9 @@ export class PcInventory {
     const ok =
       src.kind === "ring"
         ? this.ringCard(d, src.id, head, body, acts)
-        : src.kind === "armor"
+        : src.kind === "neck"
+          ? this.neckCard(d, src.id, head, body, acts)
+          : src.kind === "armor"
           ? this.armorCard(d, src.id, head, body, acts)
           : this.weaponCard(d, src, head, body, acts);
     if (!ok) return null;
@@ -1732,45 +1883,7 @@ export class PcInventory {
     this.cardHead(head, ico, ringName(r), `t-${r.tier}`, r.gems.length ? `Кольцо · гнёзд ${r.gems.length}` : "Кольцо без гнёзд", slot >= 0 ? `надето · слот ${slot + 1}` : "", bonus);
 
     if (r.gems.length) {
-      body.append(div("pcinv-hh", `Гнёзда · ${r.gems.filter(Boolean).length} / ${r.gems.length}`));
-      r.gems.forEach((gk, i) => {
-        const row = div("pcinv-sock");
-        const gi = div(`pcinv-cell pcinv-jw${gk ? "" : " empty"}`);
-        if (gk) {
-          gi.innerHTML = gemHtml(gk);
-          this.gemTip(gi, gk);
-        }
-        row.append(gi);
-        if (gk) {
-          const g = parseGem(gk)!;
-          const cost = RING.unsocketPerLv * g.lv;
-          row.append(div("pcinv-sock-t", `${gemName(gk)} · +${g.lv} ${ATTR_INFO[g.attr].short}`));
-          const bt = button(`Вынуть −${cost}`, () => this.hooks.act({ act: "gemOut", id: r.id, idx: i }));
-          bt.className = "pcinv-btn sm";
-          bt.title = `Вынуть камень в сумку: ${cost} лома`;
-          bt.disabled = d.scrap < cost;
-          row.append(bt);
-        } else row.append(div("pcinv-sock-t dim", `Гнездо ${i + 1} пусто`));
-        body.append(row);
-      });
-      const free = r.gems.indexOf(null);
-      if (free >= 0 && j.gems.length) {
-        body.append(div("pcinv-small", "Вставить камень — нажми на него:"));
-        const pick = div("pcinv-gempick");
-        for (const [gk, n] of j.gems) {
-          const c = div("pcinv-cell pcinv-jw click");
-          c.innerHTML = gemHtml(gk);
-          c.append(div("pcinv-glv", String(parseGem(gk)?.lv ?? "")));
-          const k = document.createElement("span");
-          k.className = "pcinv-cnt";
-          k.textContent = `×${n}`;
-          c.append(k);
-          this.gemTip(c, gk, n);
-          c.onclick = () => this.hooks.act({ act: "gemIn", id: r.id, idx: free, fuel: gk });
-          pick.append(c);
-        }
-        body.append(pick);
-      } else if (free >= 0) body.append(div("pcinv-small", "Камней нет — падают с мобов (1 уровня)."));
+      this.socketRows(body, d, r.id, r.gems);
     } else body.append(div("pcinv-small", "Без гнёзд — камни в него не вставляются."));
     this.resultLine(body);
 
@@ -1821,7 +1934,8 @@ export class PcInventory {
     this.render();
     this.hooks.act(
       sharpen ? { act: "sharpen", id, idx: 0 }
-        : this.data?.armor?.some((x) => x.id === id) ? { act: "armorEnchant", id, idx } : { act: "enchant", id, idx },
+        : this.data?.armor?.some((x) => x.id === id) ? { act: "armorEnchant", id, idx }
+          : this.data?.jewels?.necks.some((x) => x.id === id) ? { act: "neckEnchant", id, idx } : { act: "enchant", id, idx },
     );
     const seq = ++this.forgeSeq;
     // Три удара молотом — пусть напряжение настоится, потом итог.
@@ -2613,12 +2727,13 @@ export class PcInventory {
 
   /** Кольца и камни из данных окна (без них — пусто). */
   private jewelsOf(d: PcInvData): PcInvJewels {
-    return d.jewels ?? { rings: [], ringOn: [null, null], gems: [] };
+    return d.jewels ?? { rings: [], ringOn: [null, null], necks: [], neckOn: null, gems: [] };
   }
 
   /** Ячейка предмета сумки: оружие или кольцо. */
   private entryCell(e: BagEntry): HTMLDivElement {
     if ("a" in e) return this.armorCell(e.a);
+    if ("n" in e) return this.bagNeckCell(e.n);
     return "w" in e ? this.itemCell(e.w) : this.bagRingCell(e.r);
   }
 
@@ -2700,7 +2815,7 @@ export class PcInventory {
   /** Перетаскиваемое оружие со склада (обычное с руки на склад не попадает — null). */
   private dragWeapon(): PcInvWeapon | null {
     const s = this.drag;
-    if (!s || !this.data || s.kind === "ring" || s.kind === "armor") return null;
+    if (!s || !this.data || s.kind === "ring" || s.kind === "armor" || s.kind === "neck") return null;
     if (s.kind === "bag") return this.weaponById(s.id);
     const eq = this.data.equipped;
     const other = this.weaponById(eq[s.side === "left" ? "right" : "left"]);

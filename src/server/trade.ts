@@ -6,6 +6,7 @@ import type { TradeItemView } from "#shared/net/messages";
 import { addToBag, attackPoints, bagCount, instanceName, ITEMS, takeFromBag, type ItemId, type Slot, type WeaponInstance } from "#shared/items";
 import { gemName, parseGem, ringName, type JewelSave } from "#shared/jewels";
 import { armorLabel, type ArmorInstance, type ArmorPart } from "#shared/armor";
+import { neckLabel, type NeckInst } from "#shared/necklaces";
 import { addStock, CRAFT_ITEMS, isCraftItem, type CraftItemId, type CraftStock } from "#shared/craft";
 
 /**
@@ -21,6 +22,7 @@ export type TradeItem =
   | { k: "weapon"; id: string }
   | { k: "ring"; id: string }
   | { k: "armor"; id: string }
+  | { k: "neck"; id: string }
   | { k: "gem"; key: string; n: number }
   | { k: "mat"; id: CraftItemId; n: number }
   | { k: "bag"; item: ItemId; n: number };
@@ -47,7 +49,7 @@ function matName(id: CraftItemId, n: number): string {
   return `${CRAFT_ITEMS[id].name}${n > 1 ? ` ×${n}` : ""}`;
 }
 
-/** Разбор предмета из сети: «w:<id>», «r:<id>», «a:<id>» (броня), «g:<камень>», «m:<материал крафта>», «b:<предмет>» + количество. */
+/** Разбор предмета из сети: «w:<id>», «r:<id>», «n:<id>» (ожерелье), «a:<id>» (броня), «g:<камень>», «m:<материал крафта>», «b:<предмет>» + количество. */
 export function parseTradeItem(code: string, n: number): TradeItem | null {
   const i = code.indexOf(":");
   if (i < 1) return null;
@@ -57,6 +59,7 @@ export function parseTradeItem(code: string, n: number): TradeItem | null {
   if (k === "w" && v) return { k: "weapon", id: v };
   if (k === "r" && v) return { k: "ring", id: v };
   if (k === "a" && v) return { k: "armor", id: v };
+  if (k === "n" && v) return { k: "neck", id: v };
   if (k === "g" && parseGem(v)) return { k: "gem", key: v, n: cnt };
   if (k === "m" && isCraftItem(v)) return { k: "mat", id: v, n: cnt };
   if (k === "b" && (TRADE_BAG_ITEMS as readonly string[]).includes(v)) return { k: "bag", item: v as ItemId, n: cnt };
@@ -78,6 +81,10 @@ export function tradeItemName(it: TradeItem, snap?: InvSnap): string {
       const a = snap?.armor.find((x) => x.id === it.id);
       return a ? armorLabel(a) : "броня";
     }
+    case "neck": {
+      const n = snap?.jewels.necks.find((x) => x.id === it.id);
+      return n ? neckLabel(n) : "ожерелье";
+    }
     case "gem":
       return `${gemName(it.key)}${it.n > 1 ? ` ×${it.n}` : ""}`;
     case "mat":
@@ -95,7 +102,7 @@ export function takeItems(snap: InvSnap, items: readonly TradeItem[]): { taken: 
   const bagNeed = new Map<ItemId, number>();
   const seen = new Set<string>();
   for (const it of items) {
-    if (it.k === "weapon" || it.k === "ring" || it.k === "armor") {
+    if (it.k === "weapon" || it.k === "ring" || it.k === "armor" || it.k === "neck") {
       // Один и тот же экземпляр дважды — отказ: иначе второе изъятие тронет чужой предмет (splice(-1)).
       if (seen.has(`${it.k}:${it.id}`)) return { error: "Один и тот же предмет указан дважды." };
       seen.add(`${it.k}:${it.id}`);
@@ -112,6 +119,10 @@ export function takeItems(snap: InvSnap, items: readonly TradeItem[]): { taken: 
       const a = snap.armor.find((x) => x.id === it.id);
       if (!a) return { error: "Этой брони уже нет в инвентаре." };
       if (snap.armorWorn[a.part] === a.id) return { error: `«${armorLabel(a)}» надета — сначала сними.` };
+    } else if (it.k === "neck") {
+      const n = snap.jewels.necks.find((x) => x.id === it.id);
+      if (!n) return { error: "Этого ожерелья уже нет." };
+      if (snap.jewels.neckOn === n.id) return { error: "Ожерелье надето — сначала сними." };
     } else if (it.k === "gem") {
       gemNeed.set(it.key, (gemNeed.get(it.key) ?? 0) + it.n);
     } else if (it.k === "mat") {
@@ -149,6 +160,11 @@ export function takeItems(snap: InvSnap, items: readonly TradeItem[]): { taken: 
       const [a] = snap.armor.splice(i, 1);
       delete a.fav; // ★ — личная пометка, как у оружия: не передаётся
       taken.push({ k: "armor", a });
+    } else if (it.k === "neck") {
+      const i = snap.jewels.necks.findIndex((x) => x.id === it.id);
+      const [n] = snap.jewels.necks.splice(i, 1);
+      delete n.fav; // ★ — личная пометка, не передаётся
+      taken.push({ k: "neck", n });
     } else {
       takeFromBag(snap.bag, it.item, it.n);
       taken.push({ k: "bag", item: it.item, n: it.n });
@@ -162,6 +178,7 @@ export type Taken =
   | { k: "weapon"; w: WeaponInstance }
   | { k: "ring"; r: JewelSave["rings"][number] }
   | { k: "armor"; a: ArmorInstance }
+  | { k: "neck"; n: NeckInst }
   | { k: "gem"; key: string; n: number }
   | { k: "mat"; id: CraftItemId; n: number }
   | { k: "bag"; item: ItemId; n: number };
@@ -172,6 +189,7 @@ export function giveItems(snap: InvSnap, taken: readonly Taken[]): void {
     if (t.k === "weapon") snap.weapons.push(t.w);
     else if (t.k === "ring") snap.jewels.rings.push(t.r);
     else if (t.k === "armor") snap.armor.push(t.a);
+    else if (t.k === "neck") snap.jewels.necks.push(t.n);
     else if (t.k === "gem") snap.jewels.gems[t.key] = (snap.jewels.gems[t.key] ?? 0) + t.n;
     else if (t.k === "mat") addStock(snap.mats, t.id, t.n);
     else addToBag(snap.bag, t.item, t.n);
@@ -182,6 +200,7 @@ export function takenName(t: Taken): string {
   if (t.k === "weapon") return instanceName(t.w);
   if (t.k === "ring") return ringName(t.r);
   if (t.k === "armor") return armorLabel(t.a);
+  if (t.k === "neck") return neckLabel(t.n);
   if (t.k === "gem") return `${gemName(t.key)}${t.n > 1 ? ` ×${t.n}` : ""}`;
   if (t.k === "mat") return matName(t.id, t.n);
   return `${ITEMS[t.item].name}${t.n > 1 ? ` ×${t.n}` : ""}`;
@@ -212,7 +231,7 @@ export interface TradeSession {
   at: number;
 }
 
-/** Список предметов из сети: JSON [{"c": «w:<id>» | «r:<id>» | «a:<id>» | «g:<камень>» | «m:<материал>» | «b:<предмет>», "n": число}]. Кривое — null. */
+/** Список предметов из сети: JSON [{"c": «w:<id>» | «r:<id>» | «n:<id>» | «a:<id>» | «g:<камень>» | «m:<материал>» | «b:<предмет>», "n": число}]. Кривое — null. */
 export function parseTradeList(raw: string): TradeItem[] | null {
   let arr: unknown;
   try {
@@ -241,6 +260,7 @@ export function itemView(t: Taken): TradeItemView {
   }
   if (t.k === "ring") return { k: "ring", name: ringName(t.r), n: 1, tier: t.r.tier, gems: [...t.r.gems] };
   if (t.k === "armor") return { k: "armor", name: armorLabel(t.a), n: 1, part: t.a.part, tier: t.a.tier };
+  if (t.k === "neck") return { k: "neck", name: neckLabel(t.n), n: 1, tier: t.n.tier, gems: [...t.n.gems] };
   if (t.k === "gem") return { k: "gem", name: gemName(t.key), n: t.n, key: t.key };
   if (t.k === "mat") return { k: "mat", name: CRAFT_ITEMS[t.id].name, n: t.n, mat: t.id };
   return { k: "bag", name: ITEMS[t.item].name, n: t.n, item: t.item };
@@ -279,6 +299,8 @@ export function tradeLog(e: { kind: "gift" | "trade"; from: { nick: string; toke
           ? { k: t.k, id: t.r.id, tier: t.r.tier, gems: t.r.gems }
           : t.k === "armor"
             ? { k: t.k, id: t.a.id, part: t.a.part, tier: t.a.tier, rolls: t.a.rolls }
+            : t.k === "neck"
+              ? { k: t.k, id: t.n.id, tier: t.n.tier, rolls: t.n.rolls, gems: t.n.gems }
             : t.k === "gem"
               ? { k: t.k, key: t.key, n: t.n }
               : t.k === "mat"

@@ -8,6 +8,8 @@
  *  - Вынуть камень из кольца — за лом (RING.unsocketPerLv × уровень), камень цел.
  *  - Кольца разбираются в лом, камни — нет.
  *  - Кольца на модели героя не видны — только в инвентаре.
+ *  - Ожерелье (shared/necklaces.ts, 2026-10-23): один слот, аффиксы умений с заточкой, гнёзда под те же камни;
+ *    выпадает как кольцо (свой бросок), рубиновое — из сундука супербосса катакомб. Хранится здесь же (necks/neckOn).
  *
  * Сервер хранит всё в записи героя (PlayerStore: rings/ringOn/gems) — и для живого героя тоже;
  * прибавку к атрибутам живому герою кладёт в PlayerState.gb (её читают формулы через attrOf).
@@ -15,6 +17,8 @@
 import type { Attr } from "./classes2";
 import { ATTR_LOOK } from "./look";
 import { armorLevelMul } from "./armor";
+import type { EnchantInfo } from "./items";
+import { NECK_TIER_NAME, neckBonusOf, neckEnchantRow, neckLabel, neckQuality, neckScrap, rollNecklace, sanitizeNeck, type NeckInst, type NeckStat, type NeckTier } from "./necklaces";
 
 export type GemAttr = Attr;
 export const GEM_ATTRS: readonly GemAttr[] = ["str", "agi", "int", "wis", "luc", "con"];
@@ -98,10 +102,13 @@ export interface JewelSave {
   ringOn: [string | null, string | null];
   /** Камни в сумке: ключ → сколько. */
   gems: Record<GemKey, number>;
+  /** Ожерелья (shared/necklaces.ts) и id надетого. */
+  necks: NeckInst[];
+  neckOn: string | null;
 }
 
 /** Нормализовать сохранённое (старые записи — без полей). */
-export function jewelsOf(r: { rings?: unknown; ringOn?: unknown; gems?: unknown }): JewelSave {
+export function jewelsOf(r: { rings?: unknown; ringOn?: unknown; gems?: unknown; necks?: unknown; neckOn?: unknown }): JewelSave {
   const rings: RingInst[] = Array.isArray(r.rings)
     ? (r.rings as RingInst[])
         .filter((x) => x && typeof x.id === "string" && RING_TIERS.includes(x.tier))
@@ -123,7 +130,19 @@ export function jewelsOf(r: { rings?: unknown; ringOn?: unknown; gems?: unknown 
       if (parseGem(k) && n > 0) gems[k] = n;
     }
   }
-  return { rings, ringOn, gems };
+  const necks = (Array.isArray(r.necks) ? r.necks : []).map((x) => sanitizeNeck(x, (k) => !!parseGem(k))).filter((x): x is NeckInst => !!x);
+  const neckOn = typeof r.neckOn === "string" && necks.some((x) => x.id === r.neckOn) ? r.neckOn : null;
+  return { rings, ringOn, gems, necks, neckOn };
+}
+
+/** Поля записи героя для сохранения колец, камней и ожерелий — одно место для всех store.put. */
+export function jewelPatch(js: JewelSave): Pick<JewelSave, "rings" | "ringOn" | "gems" | "necks" | "neckOn"> {
+  return { rings: js.rings, ringOn: js.ringOn, gems: js.gems, necks: js.necks, neckOn: js.neckOn };
+}
+
+/** Надетое ожерелье (или null). */
+export function wornNeck(js: Pick<JewelSave, "necks" | "neckOn">): NeckInst | null {
+  return js.neckOn ? js.necks.find((x) => x.id === js.neckOn) ?? null : null;
 }
 
 export interface JewelBonus {
@@ -135,11 +154,21 @@ export interface JewelBonus {
   wis: number;
   /** Сколько колец надето (маг. защита — по RING.mres за каждое). */
   rings: number;
+  /** Надетое ожерелье: доли к радиусу, длительности и дальности умений (PlayerState.gb.skRad/skDur/skRng). */
+  skRad: number;
+  skDur: number;
+  skRng: number;
 }
 
-/** Прибавка от надетых колец и камней в них. */
-export function jewelBonus(js: JewelSave): JewelBonus {
-  const b: JewelBonus = { str: 0, agi: 0, int: 0, con: 0, luc: 0, wis: 0, rings: 0 };
+/** Прибавка от надетых колец, ожерелья и камней в них. */
+export function jewelBonus(js: Pick<JewelSave, "rings" | "ringOn" | "necks" | "neckOn">): JewelBonus {
+  const nb = neckBonusOf(wornNeck(js));
+  const b: JewelBonus = { str: 0, agi: 0, int: 0, con: 0, luc: 0, wis: 0, rings: 0, skRad: nb.radius, skDur: nb.duration, skRng: nb.range };
+  // Камни надетого ожерелья — атрибуты, как в кольце.
+  for (const k of wornNeck(js)?.gems ?? []) {
+    const g = parseGem(k);
+    if (g) b[g.attr] += g.lv;
+  }
   for (const id of js.ringOn) {
     const r = id ? js.rings.find((x) => x.id === id) : undefined;
     if (!r) continue;
@@ -196,7 +225,11 @@ export type JewelOp =
   | { op: "gemMerge"; gem: GemKey }
   | { op: "gemMergeAll" }
   | { op: "gemSplit"; gem: GemKey }
-  | { op: "ringScrapAll" };
+  | { op: "ringScrapAll" }
+  | { op: "neckOn"; id: string }
+  | { op: "neckOff" }
+  | { op: "neckScrap"; id: string }
+  | { op: "neckFav"; id: string };
 
 export interface JewelOpResult {
   ok: boolean;
@@ -211,7 +244,46 @@ export interface JewelOpResult {
  */
 export function applyJewelOp(js: JewelSave, o: JewelOp, scrapHave: number): JewelOpResult {
   const ring = (id: string): RingInst | undefined => js.rings.find((x) => x.id === id);
+  const neck = (id: string): NeckInst | undefined => js.necks.find((x) => x.id === id);
+  /** Кольцо или ожерелье с гнёздами (камни в них вставляются одинаково). */
+  const holder = (id: string): { gems: (GemKey | null)[]; name: string } | undefined => {
+    const r = ring(id);
+    if (r) return { gems: r.gems, name: ringName(r) };
+    const n = neck(id);
+    return n ? { gems: n.gems, name: NECK_TIER_NAME[n.tier] } : undefined;
+  };
   switch (o.op) {
+    case "neckOn": {
+      const n = neck(o.id);
+      if (!n) return { ok: false, text: "Этого ожерелья уже нет." };
+      js.neckOn = n.id;
+      return { ok: true, text: `Надето: ${neckLabel(n)}` };
+    }
+    case "neckOff": {
+      if (!js.neckOn) return { ok: false, text: "Ожерелье и так не надето." };
+      js.neckOn = null;
+      return { ok: true, text: "Ожерелье снято" };
+    }
+    case "neckFav": {
+      const n = neck(o.id);
+      if (!n) return { ok: false, text: "Этого ожерелья уже нет." };
+      if (n.fav) {
+        delete n.fav;
+        return { ok: true, text: `Убрано из избранного: ${NECK_TIER_NAME[n.tier]}` };
+      }
+      n.fav = true;
+      return { ok: true, text: `★ В избранном: ${NECK_TIER_NAME[n.tier]} — не разбирается` };
+    }
+    case "neckScrap": {
+      const n = neck(o.id);
+      if (!n) return { ok: false, text: "Этого ожерелья уже нет." };
+      if (js.neckOn === n.id) return { ok: false, text: "Ожерелье надето — сначала сними." };
+      if (n.fav) return { ok: false, text: "Ожерелье в избранном ★ — сними звёздочку, чтобы разобрать." };
+      for (const k of n.gems) if (k) addGem(js, k, 1);
+      js.necks = js.necks.filter((x) => x !== n);
+      const got = neckScrap(n);
+      return { ok: true, text: `${NECK_TIER_NAME[n.tier]} → лом +${got}${n.gems.some(Boolean) ? " (камни — в сумку)" : ""}`, scrap: got };
+    }
     case "ringOn": {
       const r = ring(o.id);
       if (!r) return { ok: false, text: "Этого кольца уже нет." };
@@ -249,11 +321,11 @@ export function applyJewelOp(js: JewelSave, o: JewelOp, scrapHave: number): Jewe
       return { ok: true, text: `${ringName(r)} → лом +${got}${r.gems.some(Boolean) ? " (камни — в сумку)" : ""}`, scrap: got };
     }
     case "gemIn": {
-      const r = ring(o.id);
+      const r = holder(o.id);
       const g = parseGem(o.gem);
-      if (!r) return { ok: false, text: "Этого кольца уже нет." };
+      if (!r) return { ok: false, text: "Этого украшения уже нет." };
       if (!g || !(js.gems[o.gem] > 0)) return { ok: false, text: "Такого камня в сумке нет." };
-      if (!r.gems.length) return { ok: false, text: "У обычного кольца нет гнёзд." };
+      if (!r.gems.length) return { ok: false, text: `У «${r.name}» нет гнёзд.` };
       let idx = o.idx >= 0 && o.idx < r.gems.length ? o.idx : r.gems.indexOf(null);
       if (idx < 0) return { ok: false, text: "Свободных гнёзд нет — сначала выньте камень." };
       if (r.gems[idx]) {
@@ -262,10 +334,10 @@ export function applyJewelOp(js: JewelSave, o: JewelOp, scrapHave: number): Jewe
       }
       r.gems[idx] = o.gem;
       addGem(js, o.gem, -1);
-      return { ok: true, text: `${gemName(o.gem)} → ${ringName(r)}` };
+      return { ok: true, text: `${gemName(o.gem)} → ${r.name}` };
     }
     case "gemOut": {
-      const r = ring(o.id);
+      const r = holder(o.id);
       const k = r?.gems[o.idx];
       const g = parseGem(k);
       if (!r || !k || !g) return { ok: false, text: "В этом гнезде нет камня." };
@@ -296,16 +368,23 @@ export function applyJewelOp(js: JewelSave, o: JewelOp, scrapHave: number): Jewe
       return { ok: true, text: `${gemName(o.gem)} → ${RING.combine} × ${gemName(down)}` };
     }
     case "ringScrapAll": {
-      // Все кольца из сумки в лом; надетые и ★ избранные остаются. Камни из разобранных — в сумку.
+      // Все кольца и ожерелья из сумки в лом; надетые, ★ избранные и рубиновые ожерелья остаются. Камни — в сумку.
       const bag = js.rings.filter((r) => !js.ringOn.includes(r.id) && !r.fav);
-      if (!bag.length) return { ok: false, text: "Колец для разбора нет — надетые и избранные ★ не разбираются." };
+      const bagN = js.necks.filter((n) => js.neckOn !== n.id && !n.fav && n.tier !== "ruby");
+      if (!bag.length && !bagN.length) return { ok: false, text: "Украшений для разбора нет — надетые и избранные ★ не разбираются." };
       let got = 0;
       for (const r of bag) {
         for (const k of r.gems) if (k) addGem(js, k, 1);
         got += RING.scrap[r.tier];
       }
+      for (const n of bagN) {
+        for (const k of n.gems) if (k) addGem(js, k, 1);
+        got += neckScrap(n);
+      }
       js.rings = js.rings.filter((r) => !bag.includes(r));
-      return { ok: true, text: `Колец разобрано: ${bag.length} → лом +${got}`, scrap: got };
+      js.necks = js.necks.filter((n) => !bagN.includes(n));
+      const what = [bag.length ? `колец ${bag.length}` : "", bagN.length ? `ожерелий ${bagN.length}` : ""].filter(Boolean).join(", ");
+      return { ok: true, text: `Разобрано: ${what} → лом +${got}`, scrap: got };
     }
     case "gemMergeAll": {
       // От младших уровней к старшим — новые камни сразу идут в следующее соединение.
@@ -355,39 +434,80 @@ export function jewelOpFrom(act: string, id: string, idx: number, fuel?: string)
       return id ? { op: "gemSplit", gem: id } : null;
     case "ringScrapAll":
       return { op: "ringScrapAll" };
+    case "neckOn":
+      return { op: "neckOn", id };
+    case "neckOff":
+      return { op: "neckOff" };
+    case "neckScrap":
+      return { op: "neckScrap", id };
+    case "neckFav":
+      return { op: "neckFav", id };
   }
   return null;
 }
-export const JEWEL_ACTS = ["ringOn", "ringOff", "ringScrap", "ringFav", "ringScrapAll", "gemIn", "gemOut", "gemMerge", "gemMergeAll", "gemSplit"] as const;
+export const JEWEL_ACTS = ["ringOn", "ringOff", "ringScrap", "ringFav", "ringScrapAll", "gemIn", "gemOut", "gemMerge", "gemMergeAll", "gemSplit", "neckOn", "neckOff", "neckScrap", "neckFav"] as const;
 export type JewelAct = (typeof JEWEL_ACTS)[number];
 
 /**
  * Что выпало с моба (или ничего): chanceMul — множитель шансов (элита/босс); level — уровень моба.
  * Золотое и уникальное кольцо × уровень (RING_LEVEL_GATE), обычное — как было.
  */
-export function rollJewelDrop(chanceMul: number, ringMul = 1, level: number = RING_LEVEL_GATE.full, rnd = Math.random): { gem?: GemKey; ring?: RingTier } {
-  const out: { gem?: GemKey; ring?: RingTier } = {};
+export function rollJewelDrop(chanceMul: number, ringMul = 1, level: number = RING_LEVEL_GATE.full, rnd = Math.random): { gem?: GemKey; ring?: RingTier; neck?: NeckTier } {
+  const out: { gem?: GemKey; ring?: RingTier; neck?: NeckTier } = {};
   if (rnd() < RING.gemChance * chanceMul) out.gem = gemKey(GEM_ATTRS[Math.floor(rnd() * GEM_ATTRS.length)], 1);
-  if (rnd() < RING.ringChance * chanceMul * ringMul) {
-    // Что не досталось золотому/уникальному на низком уровне, остаётся пустым (кольца нет).
+  // Тир — доли RING.ringTierW; золотое и уникальное × уровень моба; что не досталось — пусто (предмета нет).
+  const tierRoll = (): RingTier | undefined => {
     const lv = armorLevelMul(level, RING_LEVEL_GATE);
     const x = rnd();
     let edge = 0;
     for (const t of RING_TIERS) {
       edge += RING.ringTierW[t] * (t === "base" ? 1 : lv);
-      if (x < edge) {
-        out.ring = t;
-        break;
-      }
+      if (x < edge) return t;
     }
-  }
+    return undefined;
+  };
+  if (rnd() < RING.ringChance * chanceMul * ringMul) out.ring = tierRoll();
+  // Ожерелье — свой бросок с теми же шансами и тирами, что у кольца (рубиновое — только из сундука катакомб).
+  if (rnd() < RING.ringChance * chanceMul * ringMul) out.neck = tierRoll();
   return out;
 }
 
-/** Данные колец и камней для окна инвентаря (ПК/телефон, страница !inv, VR). */
+/** Новое ожерелье тира (id — короткий случайный). */
+export function newNecklace(tier: NeckTier, id: string, rnd = Math.random): NeckInst {
+  return rollNecklace(tier, id, rnd);
+}
+
+/** Ожерелье для окна инвентаря: подпись, оценка, лом, строки заточки (как у брони) и камни. */
+export interface PcInvNeck {
+  id: string;
+  tier: NeckTier;
+  gems: (GemKey | null)[];
+  /** Оценка — сумма очков аффиксов; rolls — сколько аффиксов (для подписи оценки). */
+  pts: number;
+  rolls: number;
+  scrap: number;
+  label: string;
+  /** Аффиксы строками («Радиус умений +6.0%»). */
+  affs: string[];
+  stats: NeckStat[];
+  ench: (EnchantInfo & { label: string })[];
+  fav?: boolean;
+}
+
+export function pcInvNeck(n: NeckInst): PcInvNeck {
+  const ench = n.rolls.map((_, i) => neckEnchantRow(n, i)!);
+  return {
+    id: n.id, tier: n.tier, gems: [...n.gems], pts: neckQuality(n), rolls: n.rolls.length, scrap: neckScrap(n),
+    label: neckLabel(n), affs: ench.map((e) => e.label), stats: n.rolls.map((r) => r.stat), ench, ...(n.fav ? { fav: true } : {}),
+  };
+}
+
+/** Данные колец, ожерелий и камней для окна инвентаря (ПК/телефон, страница !inv, VR). */
 export interface PcInvJewels {
   rings: { id: string; tier: RingTier; gems: (GemKey | null)[]; scrap: number; fav?: boolean }[];
   ringOn: [string | null, string | null];
+  necks: PcInvNeck[];
+  neckOn: string | null;
   /** Камни в сумке: [ключ, сколько], по атрибуту и уровню. */
   gems: [GemKey, number][];
 }
@@ -397,10 +517,18 @@ export function pcInvJewels(js: JewelSave): PcInvJewels {
     const gb = parseGem(b[0])!;
     return GEM_ATTRS.indexOf(ga.attr) - GEM_ATTRS.indexOf(gb.attr) || gb.lv - ga.lv;
   });
-  return { rings: js.rings.map((r) => ({ id: r.id, tier: r.tier, gems: [...r.gems], scrap: RING.scrap[r.tier], ...(r.fav ? { fav: true } : {}) })), ringOn: [...js.ringOn], gems };
+  return {
+    rings: js.rings.map((r) => ({ id: r.id, tier: r.tier, gems: [...r.gems], scrap: RING.scrap[r.tier], ...(r.fav ? { fav: true } : {}) })),
+    ringOn: [...js.ringOn],
+    necks: js.necks.map(pcInvNeck),
+    neckOn: js.neckOn,
+    gems,
+  };
 }
 
 /** Прибавка по данным окна инвентаря (клиент): то же, что jewelBonus по записи. */
 export function pcJewelBonus(j: PcInvJewels | undefined): JewelBonus {
-  return jewelBonus({ rings: (j?.rings ?? []) as RingInst[], ringOn: j?.ringOn ?? [null, null], gems: {} });
+  // Ожерелье из вида окна: аффиксы — по stats и очкам строк заточки.
+  const necks: NeckInst[] = (j?.necks ?? []).map((n) => ({ id: n.id, tier: n.tier, gems: n.gems, rolls: n.stats.map((stat, i) => ({ stat, pts: n.ench[i]?.points ?? 1 })) }));
+  return jewelBonus({ rings: (j?.rings ?? []) as RingInst[], ringOn: j?.ringOn ?? [null, null], necks, neckOn: j?.neckOn ?? null });
 }

@@ -327,7 +327,7 @@ export interface QuestData {
 
 /** Предмет в окне обмена: что за предмет (для иконки), сколько (стопка — число, у остального 1). */
 export interface TradeItemView {
-  k: "weapon" | "ring" | "gem" | "bag" | "armor" | "mat";
+  k: "weapon" | "ring" | "gem" | "bag" | "armor" | "mat" | "neck";
   name: string;
   n: number;
   cls?: string;
@@ -418,7 +418,7 @@ export interface PcInvData {
 
 export interface PcInvActMsg {
   /** title — надеть титул (id = название, "" — снять); fav — звёздочка «избранное» у оружия id; scrapAll — разобрать всё, кроме избранного и надетого. */
-  act: "enchant" | "armorEnchant" | "stat" | "respec" | "title" | "skin" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | "tradeOpen" | "tradeAdd" | "tradeRemove" | "tradeConfirm" | "tradeCancel" | "sharpen" | "craft" | "smelt" | "shop" | JewelAct;
+  act: "enchant" | "armorEnchant" | "neckEnchant" | "stat" | "respec" | "title" | "skin" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | "tradeOpen" | "tradeAdd" | "tradeRemove" | "tradeConfirm" | "tradeCancel" | "sharpen" | "craft" | "smelt" | "shop" | JewelAct;
   id: string;
   idx: number;
   /** Подарок — ник получателя; обмен — список предметов; крафт — состав (craftCode). */

@@ -3,7 +3,8 @@ import { AEGIS_NAME, ITEMS } from "#shared/items";
 import { lootLook, type IconKey } from "#shared/icons";
 import { CATACOMBS } from "#shared/catacombs";
 import { gemName, ringName, type RingTier } from "#shared/jewels";
-import { gemHtml, ringHtml } from "#shared/jewelIcons";
+import { gemHtml, neckHtml, ringHtml } from "#shared/jewelIcons";
+import { NECK_TIER_NAME, type NeckTier } from "#shared/necklaces";
 import { ensureIconCss, iconHtml } from "./icons";
 
 /**
@@ -173,6 +174,18 @@ export function showCatReport(m: CatReportMsg, o: { delayMs?: number; holdSec?: 
     const box = el("div", "cr-lt");
     for (const l of r.loot) {
       // Кольцо/камень с мобов забега — свой значок (shared/jewelIcons.ts).
+      if (l.jw?.startsWith("neck:")) {
+        // Ожерелье (рубиновое — из сундука супербосса, остальные — с мобов, как кольца).
+        const nt = l.jw.slice(5) as NeckTier;
+        const it = el("div", `cr-it cr-t-${nt}`);
+        it.title = NECK_TIER_NAME[nt] ?? "Ожерелье";
+        const ico = el("span", "cr-ico cr-jw");
+        ico.innerHTML = neckHtml(nt);
+        it.appendChild(ico);
+        if (l.count > 1) it.appendChild(el("span", "cr-cnt", `×${l.count}`));
+        box.appendChild(it);
+        continue;
+      }
       if (l.jw) {
         const tier = l.jw.startsWith("ring:") ? (l.jw.slice(5) as RingTier) : null;
         const it = el("div", `cr-it${tier ? ` cr-t-${tier}` : ""}`);

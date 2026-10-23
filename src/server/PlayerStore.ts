@@ -9,6 +9,7 @@ import { blankProgress, maxHpFor, resetAttrs, xpToNext, type Progress } from "#s
 import { emptyBag, type Slot, type WeaponInstance } from "#shared/items";
 import type { QuestSave, StorySave, WeeklySave } from "#shared/quests";
 import type { RingInst } from "#shared/jewels";
+import type { NeckInst } from "#shared/necklaces";
 
 /** Позиция + прогресс + здоровье. С этапа 7 всё это считает сервер. */
 import type { TradeSession } from "./trade";
@@ -106,6 +107,9 @@ export interface PlayerRecord extends SaveMsg, Progress {
   rings?: RingInst[];
   ringOn?: [string | null, string | null];
   gems?: Record<string, number>;
+  /** Ожерелья (shared/necklaces.ts) и id надетого — та же запись, что у колец. */
+  necks?: NeckInst[];
+  neckOn?: string | null;
   /** Крафт (shared/craft.ts): материалы и особые катализаторы (id → сколько), найденные скрытые рецепты. */
   mats?: Record<string, number>;
   recipes?: string[];

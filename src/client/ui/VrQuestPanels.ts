@@ -239,17 +239,19 @@ export function drawEnchant(
   const w = d?.weapons.find((x) => x.id === id) ?? null;
   // Броня — одна строка: свой стат, шкала и цена как у оружия.
   const arm = w ? undefined : d?.armor?.find((x) => x.id === id);
+  // Ожерелье — строки свойств, как у брони (shared/necklaces.ts).
+  const neck = w || arm ? undefined : d?.jewels?.necks.find((x) => x.id === id);
   header(ui, "Заточка");
   ui.button("close", "✕", ui.W - PAD - 70, 30, 70, 56, close);
   // Лом (или уникальные 99 у рубинового) — левее крестика (раньше рисовался под ним и не читался).
   if (d) ui.text(`лом ${d.scrap}`, ui.W - PAD - 90, 42, 36, VR_UI.gold, 800, "right");
-  if (!d || (!w && !arm)) {
+  if (!d || (!w && !arm && !neck)) {
     ui.text(d ? "Предмет не найден на складе" : "Загрузка…", PAD, 120, 30, VR_UI.dim);
     return;
   }
-  const rows = w ? w.ench : (arm?.ench ?? []);
-  const tierColor = TIER_LOOK[(w?.tier ?? arm?.tier ?? "base") as WeaponTier]?.color ?? VR_UI.text;
-  let x = ui.text(w ? w.name : (arm?.label ?? ""), PAD, 110, 36, tierColor, 800);
+  const rows = w ? w.ench : (arm?.ench ?? neck?.ench ?? []);
+  const tierColor = TIER_LOOK[(w?.tier ?? arm?.tier ?? neck?.tier ?? "base") as WeaponTier]?.color ?? VR_UI.text;
+  let x = ui.text(w ? w.name : (arm?.label ?? neck?.label.split(" · ")[0] ?? ""), PAD, 110, 36, tierColor, 800);
   if (busy) {
     // Молот: три удара по строке предмета (как значок в ПК-окне).
     const hit = Math.abs(Math.sin((forgeT / VR_FORGE_MS) * Math.PI * 3));
@@ -257,7 +259,7 @@ export function drawEnchant(
   }
   if (inHand) {
     ui.rect(PAD + x + 16, 114, 110, 34, "#8fd18f", 6);
-    ui.text(w ? "в руке" : "надета", PAD + x + 71, 117, 24, "#0e1a10", 800, "center");
+    ui.text(w ? "в руке" : neck ? "надето" : "надета", PAD + x + 71, 117, 24, "#0e1a10", 800, "center");
   }
   if (w) {
     const qx = ui.text(qualityStars(w.quality, w.ench.length), PAD, 154, 40, QUALITY_COLOR, 800);

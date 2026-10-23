@@ -19,9 +19,10 @@ import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
 import { drawIcon } from "./icons";
 import type { PcInvActMsg, PcInvArmor, QuestData, WarehouseWeapon } from "#shared/net/messages";
-import { ATTR_SHORT, GEM_LOOK, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type PcInvJewels } from "#shared/jewels";
+import { ATTR_SHORT, GEM_LOOK, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type PcInvJewels, type PcInvNeck } from "#shared/jewels";
+import { NECK_TIER_NAME, type NeckTier } from "#shared/necklaces";
 import { BAG_SORTS, bagPickItem, nextBagSort, sortBag, type BagSort } from "#shared/bagSort";
-import { gemArt, RING_SLOT_SVG, ringArt, socketSpot } from "#shared/jewelIcons";
+import { gemArt, NECK_SLOT_SVG, neckSocketSpot, necklaceSrc, RING_SLOT_SVG, ringArt, socketSpot } from "#shared/jewelIcons";
 import {
   CRAFT,
   CRAFT_CATS,
@@ -103,7 +104,7 @@ const INFO_Y = 786;
 const EXIT_Y = 846;
 const EXIT_H = 46;
 /** Запись склада: оружие или кольцо — в одной сетке. */
-type WhEntry = { w: WarehouseWeapon } | { r: PcInvJewels["rings"][number] } | { a: PcInvArmor };
+type WhEntry = { w: WarehouseWeapon } | { r: PcInvJewels["rings"][number] } | { a: PcInvArmor } | { n: PcInvNeck };
 
 /** Склад: ячейки сеткой по страницам. */
 const WH_COLS = 4;
@@ -1387,7 +1388,9 @@ export class WristMenu {
 
   /** Склад: оружие и кольца вместе, в выбранном порядке (как сумка на ПК). */
   private whItems(): WhEntry[] {
-    const entries: WhEntry[] = [...this.warehouse.map((w) => ({ w })), ...(this.jewels?.rings ?? []).map((r) => ({ r })), ...this.armorBag()];
+    const j = this.jewels;
+    const necks = (j?.necks ?? []).filter((n) => j?.neckOn !== n.id).map((n) => ({ n }));
+    const entries: WhEntry[] = [...this.warehouse.map((w) => ({ w })), ...(j?.rings ?? []).map((r) => ({ r })), ...necks, ...this.armorBag()];
     return sortBag(entries, this.whSort, bagPickItem);
   }
 
@@ -1467,6 +1470,69 @@ export class WristMenu {
     }
   }
 
+  /** Ожерелье на складе: значок с камнями, тир и оценка; нажатие — меню действий. */
+  private neckWhCell(ctx: CanvasRenderingContext2D, n: PcInvNeck, x: number, y: number, w: number, h: number): void {
+    const wd = this.add({
+      id: `whn:${n.id}`, x, y, w, h, kind: "cell",
+      info: [`${n.fav ? `${glyph("ui.fav")} ` : ""}${NECK_TIER_NAME[n.tier]} — нажми: действия`, n.affs.join(", ")],
+      act: () => this.openNeckPopup(n),
+    });
+    const st = this.styleFor(wd);
+    ctx.fillStyle = st.fill || TIER_BG[n.tier];
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = st.stroke || TIER_COLOR[n.tier];
+    ctx.lineWidth = st.stroke ? st.lw : 1.5;
+    ctx.strokeRect(x, y, w, h);
+    this.drawNeck(ctx, n.tier, n.gems, x + 6, y + 22, 52);
+    ctx.font = "bold 17px system-ui, sans-serif";
+    ctx.fillStyle = TIER_COLOR[n.tier];
+    ctx.fillText(this.shortName("Ожерелье"), x + 62, y + 8);
+    ctx.font = "bold 18px system-ui, sans-serif";
+    ctx.fillStyle = "#f2c74b";
+    ctx.fillText(qualityStarsShort(n.pts, n.rolls), x + 8, y + 18);
+    ctx.font = "16px system-ui, sans-serif";
+    ctx.fillStyle = "#a9a498";
+    if (n.gems.length) ctx.fillText(`камней ${n.gems.filter(Boolean).length}/${n.gems.length}`, x + 62, y + 36);
+    if (n.fav) {
+      ctx.font = "bold 20px system-ui, sans-serif";
+      ctx.fillStyle = "#ffd166";
+      ctx.fillText(glyph("ui.fav"), x + w - 18, y + h - 6);
+    }
+  }
+
+  /** Меню ожерелья (VR): надеть/снять, заточить, камни в гнёзда, ★, подарить, разобрать. */
+  private openNeckPopup(n: PcInvNeck): void {
+    const worn = this.jewels?.neckOn === n.id;
+    const buttons: Popup["buttons"] = [];
+    if (worn) buttons.push({ id: "pop:off", label: "Снять", color: "#9fd0ff", act: () => this.jewelSend({ act: "neckOff", id: "-", idx: 0 }) });
+    else buttons.push({ id: "pop:on", label: this.jewels?.neckOn ? "Надеть вместо текущего" : "Надеть", color: "#7ee081", act: () => this.jewelSend({ act: "neckOn", id: n.id, idx: 0 }) });
+    buttons.push({
+      id: "pop:ench", label: "Заточить", hint: "откроется панель заточки перед тобой", color: "#e8c26a",
+      act: () => {
+        this.popup = null;
+        this.onEnchant?.(n.id);
+      },
+    });
+    n.gems.forEach((gk, i) => {
+      if (gk) {
+        const cost = RING.unsocketPerLv * parseGem(gk)!.lv;
+        buttons.push({ id: `pop:out${i}`, label: `Вынуть: ${gemName(gk)}`, hint: `−${cost} лома (есть ${this.jewelScrap})`, color: "#e8c26a", act: () => this.jewelSend({ act: "gemOut", id: n.id, idx: i }) });
+      } else buttons.push({ id: `pop:in${i}`, label: `Вставить камень в гнездо ${i + 1}`, color: "#e8c26a", act: () => this.openGemPick(n.id, i) });
+    });
+    buttons.push({
+      id: "pop:fav", label: n.fav ? `${glyph("ui.favOff")} Убрать из избранного` : `${glyph("ui.fav")} В избранное`,
+      hint: n.fav ? "снова можно будет разобрать" : "не разбирается", color: "#ffd166",
+      act: () => this.jewelSend({ act: "neckFav", id: n.id, idx: 0 }),
+    });
+    if (!worn) {
+      buttons.push({ id: "pop:gift", label: "🎁 Подарить…", hint: "герою рядом, предмет уйдёт сразу", color: "#ffd166", act: () => this.openGiftPopup(n.label, TIER_COLOR[n.tier], `n:${n.id}`, `whn:${n.id}`) });
+      if (!n.fav) buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${n.scrap} лома${n.gems.some(Boolean) ? ", камни — в сумку" : ""}`, color: "#ff9a9a", act: () => this.jewelSend({ act: "neckScrap", id: n.id, idx: 0 }) });
+    }
+    buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
+    this.popup = { title: NECK_TIER_NAME[n.tier], sub: n.affs.join(", "), color: TIER_COLOR[n.tier], buttons };
+    this.focusId = buttons[0].id;
+  }
+
   private drawWarehouse(ctx: CanvasRenderingContext2D, x: number, y: number, w: number): void {
     const items = this.whItems();
     const pages = Math.max(1, Math.ceil(items.length / WH_PER_PAGE));
@@ -1532,6 +1598,7 @@ export class WristMenu {
       const cy = top + Math.floor(i / WH_COLS) * (ch + 8);
       if ("w" in e) this.warehouseCell(ctx, e.w, cx, cy, cw, ch);
       else if ("a" in e) this.armorWhCell(ctx, e.a, cx, cy, cw, ch);
+      else if ("n" in e) this.neckWhCell(ctx, e.n, cx, cy, cw, ch);
       else this.ringWhCell(ctx, e.r, cx, cy, cw, ch);
     });
   }
@@ -1968,16 +2035,23 @@ export class WristMenu {
         [`Слот кольца ${slot + 1}`, r ? ringLabel({ id: "", tier: r.tier, gems: r.gems }) : "пусто — выбери кольцо ниже"],
         () => r && this.openRingPopup(r, slot), String(slot + 1));
     }
+    // Слот ожерелья — третьим, рядом с кольцами.
+    const nk = j.neckOn ? j.necks.find((x) => x.id === j.neckOn) ?? null : null;
+    cell("ns", 324, VIEW_Y + 14, 136, nk ? (x2: number, y2: number, s2: number) => this.drawNeck(ctx, nk.tier, nk.gems, x2, y2, s2) : NECK_SLOT_SVG, nk ? TIER_COLOR[nk.tier] : "#3a3e48",
+      ["Слот ожерелья", nk ? nk.affs.join(", ") : "пусто — выбери ожерелье на складе (вкладка «Персонаж»)"],
+      () => nk && this.openNeckPopup(nk));
+    const TX = 480;
     ctx.font = "bold 28px system-ui, sans-serif";
     ctx.fillStyle = "#e6e0d0";
-    ctx.fillText("Кольца", 340, VIEW_Y + 20);
+    ctx.fillText("Кольца и ожерелье", TX, VIEW_Y + 20);
     ctx.font = "22px system-ui, sans-serif";
     ctx.fillStyle = "#9fe39a";
     const parts = [`Маг. защита +${Math.round(ringResist(b.rings) * 100)}%`];
     for (const k of STATS) if (b[k] > 0) parts.push(`+${b[k]} ${ATTR_SHORT[k]}`);
-    this.wrapText(ctx, b.rings ? parts.join(" · ") : `Ничего не надето: кольцо даёт маг. защиту ${Math.round(RING.mres * 100)}%, камни — атрибуты`, 340, VIEW_Y + 62, 820, 28, 3);
+    if (nk) parts.push(...nk.affs);
+    this.wrapText(ctx, b.rings || nk ? parts.join(" · ") : `Ничего не надето: кольцо даёт маг. защиту ${Math.round(RING.mres * 100)}%, ожерелье — радиус, длительность и дальность умений`, TX, VIEW_Y + 62, TEX_W - TX - 24, 28, 3);
     ctx.fillStyle = "#a9a498";
-    ctx.fillText(`Лом: ${this.jewelScrap}`, 340, VIEW_Y + 120);
+    ctx.fillText(`Лом: ${this.jewelScrap}`, TX, VIEW_Y + 120);
 
     // Кольца в сумке и ★ — на складе (вкладка «Персонаж», справа): там же сортировка. Здесь — слоты, сводка и камни.
     const S = 104;
@@ -1986,7 +2060,7 @@ export class WristMenu {
     let y = VIEW_Y + 170;
     ctx.font = "22px system-ui, sans-serif";
     ctx.fillStyle = "#a9a498";
-    ctx.fillText("Кольца в сумке и ★ — на складе, справа на вкладке «Персонаж» (там же сортировка)", 24, y);
+    ctx.fillText("Кольца и ожерелья в сумке — на складе, справа на вкладке «Персонаж» (там же сортировка)", 24, y);
     y += 44;
     // Камни.
     ctx.font = "bold 24px system-ui, sans-serif";
@@ -2289,6 +2363,17 @@ export class WristMenu {
         ctx.fill();
         ctx.stroke();
       }
+    });
+  }
+
+  /** Ожерелье: картинка тира по числу гнёзд и камни в отверстиях (neckSocketSpot). */
+  private drawNeck(ctx: CanvasRenderingContext2D, tier: NeckTier, gems: (string | null)[], x: number, y: number, s: number): void {
+    this.drawImgAt(ctx, necklaceSrc(tier, gems.length), x, y, s);
+    gems.forEach((k, i) => {
+      const g = k ? gemArt(k) : null;
+      if (!g) return;
+      const p = neckSocketSpot(gems.length, i);
+      this.drawImgAt(ctx, g.src, x + p.x * s, y + p.y * s, p.s * s);
     });
   }
 
