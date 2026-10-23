@@ -113,15 +113,15 @@ test("рубиновая броня: нагрудник 3–4 аффикса, п
   }
 });
 
-test("рубиновая броня сильнее уникальной, лом ×2 и заточка ×8 к уникальной; шанс — вдвое выше рубинового оружия", () => {
+test("рубиновая броня сильнее уникальной, лом ×100 и заточка ×8 к уникальной; шанс — вдвое выше рубинового оружия", () => {
   assert.ok(ARMOR_TIER_MUL.ruby > ARMOR_TIER_MUL.legendary);
-  assert.deepEqual(ARMOR_SCRAP_RANGE.ruby, ARMOR_SCRAP_RANGE.legendary.map((x) => x * 2));
+  assert.deepEqual(ARMOR_SCRAP_RANGE.ruby, ARMOR_SCRAP_RANGE.legendary.map((x) => x * 100));
   assert.equal(ARMOR_ENCHANT_COST_MUL.ruby, ARMOR_ENCHANT_COST_MUL.legendary * 8);
   assert.equal(ARMOR_RUBY.dropChance, 0.1);
   const lg: ArmorInstance = { id: "l", part: "chest", tier: "legendary", rolls: [{ stat: "hp", pts: 10 }, { stat: "physDef", pts: 20 }] };
   const rb: ArmorInstance = { ...lg, id: "r", tier: "ruby" };
   // Округление по каждому аффиксу — до ±1 на аффикс.
-  assert.ok(Math.abs(armorScrap(rb) - armorScrap(lg) * 2) <= rb.rolls.length, `лом ${armorScrap(rb)} против ${armorScrap(lg)}`);
+  assert.ok(Math.abs(armorScrap(rb) - armorScrap(lg) * 100) <= 50 * rb.rolls.length, `лом ${armorScrap(rb)} против ${armorScrap(lg)}`);
   const cl = armorEnchantRow(lg, 0)!.cost;
   const cr = armorEnchantRow(rb, 0)!.cost;
   assert.ok(Math.abs(cr - cl * 8) <= 4, `заточка ${cr} против ${cl}`);

@@ -244,7 +244,8 @@ export const ARMOR_SCRAP_RANGE: Record<ArmorTier, readonly [number, number]> = {
   base: [1, 4],
   gold: [2, 8],
   legendary: [4, 16],
-  ruby: [8, 32],
+  /** Рубиновая: ×50 к прежним [8, 32] (2026-10-23) — ×100 к уникальной. */
+  ruby: [400, 1600],
 };
 
 /** Лом за разбор: сумма по аффиксам — каждый даёт ARMOR_SCRAP_RANGE своего тира, по очкам этого аффикса. */
