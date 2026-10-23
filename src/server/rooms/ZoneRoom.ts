@@ -1339,6 +1339,12 @@ const STAGING = process.env.STAGING === "1";
 const HIT_LAG_PAD = 1;
 /** На сколько секунд удар может опередить свой срок (тик сервера + разброс сети), см. tryHit. */
 const HIT_BUNCH = 0.15;
+/**
+ * Стрелы: сервер видит не выстрел, а прилёт, а летят они разное время (близкая цель ~0.1 с, дальняя и неполный натяг —
+ * до секунды). С допуском HIT_BUNCH до 17% попаданий отбрасывались как «слишком частые» (2026-10-23). Средний темп
+ * по-прежнему не выше одного попадания за паузу лука.
+ */
+const HIT_BUNCH_ARROW = 1;
 /** Цифры урона игроку — только в этом квадрате вокруг него, м. */
 const DMG_NUM_R = 60;
 const SPEC_KEY = process.env.SPECTATOR_KEY || SPECTATOR_KEY;
@@ -2409,8 +2415,9 @@ export class ZoneRoom extends Room<ZoneState> {
     // удары могут прийти раньше срока на HIT_BUNCH с, но средний темп не выше одного за `rate`.
     const hitNext = (rt.hitNext ??= {});
     const due = hitNext[msg.weapon] ?? -Infinity;
-    if (this.elapsed < due - HIT_BUNCH) return;
-    const nextDue = Math.max(due, this.elapsed - HIT_BUNCH) + rate;
+    const bunch = msg.weapon === "arrow" ? HIT_BUNCH_ARROW : HIT_BUNCH;
+    if (this.elapsed < due - bunch) return;
+    const nextDue = Math.max(due, this.elapsed - bunch) + rate;
 
     // PvP: урон между игроками — только если у ОБОИХ включён флаг.
     if (msg.target === "player") {
