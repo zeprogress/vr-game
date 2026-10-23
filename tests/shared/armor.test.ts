@@ -97,15 +97,17 @@ test("множитель шанса по уровню моба: 0 на 1-м, 1 �
   assert.equal(armorLevelMul(100, gate), 1);
 });
 
-test("рубиновая броня: нагрудник 4 аффикса, поножи 3, шлем, перчатки и сапоги по 2 — из всех статов брони", () => {
-  const want: Record<ArmorPart, number> = { helm: 2, chest: 4, gloves: 2, legs: 3, boots: 2 };
+test("рубиновая броня: нагрудник 3–4 аффикса, поножи 2–3, шлем, перчатки и сапоги 1–2 — из всех статов брони", () => {
+  const want: Record<ArmorPart, readonly [number, number]> = { helm: [1, 2], chest: [3, 4], gloves: [1, 2], legs: [2, 3], boots: [1, 2] };
   for (const part of ARMOR_PARTS) {
     assert.deepEqual([...armorPool(part, "ruby")].sort(), [...STATS].sort(), `${part}: пул — все статы`);
     const seen = new Set<ArmorStat>();
+    const counts = new Set<number>();
     for (const a of many(part, "ruby", 200, 11)) {
-      assert.equal(a.rolls.length, want[part], part);
+      counts.add(a.rolls.length);
       for (const r of a.rolls) seen.add(r.stat);
     }
+    assert.deepEqual([...counts].sort(), [...want[part]], `${part}: число аффиксов`);
     assert.equal(seen.size, STATS.length, `${part}: выпадают все статы`);
   }
 });

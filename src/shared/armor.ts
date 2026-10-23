@@ -107,12 +107,13 @@ export const ARMOR_LEGENDARY = { threeChance: 0.5, dropDiv: 2 } as const;
 const TWO_AFFIX_PARTS: readonly ArmorPart[] = ["chest", "legs"];
 
 /**
- * Рубиновое (2026-10-23). Аффиксы — из ВСЕХ статов брони (ARMOR_STATS), число по части фиксировано: нагрудник 4,
- * поножи 3, остальные 2. Падает только с супербосса катакомб (финальный сундук) — каждому герою отдельно,
+ * Рубиновое (2026-10-23). Аффиксы — из ВСЕХ статов брони (ARMOR_STATS), число по части — [меньше, больше], большее
+ * с шансом moreChance: нагрудник 3–4, поножи 2–3, остальные 1–2. Падает только с супербосса катакомб (финальный сундук) — каждому герою отдельно,
  * с шансом вдвое выше рубинового оружия (RUBY.dropChance).
  */
 export const ARMOR_RUBY = {
-  affixes: { helm: 2, chest: 4, gloves: 2, legs: 3, boots: 2 } as Record<ArmorPart, number>,
+  affixes: { helm: [1, 2], chest: [3, 4], gloves: [1, 2], legs: [2, 3], boots: [1, 2] } as Record<ArmorPart, readonly [number, number]>,
+  moreChance: 0.5,
   dropChance: RUBY.dropChance * 2,
 } as const;
 
@@ -209,7 +210,8 @@ export function armorLabel(a: ArmorInstance): string {
  */
 export function rollArmor(part: ArmorPart, id: string, rnd: () => number = Math.random, tier: ArmorTier = "base"): ArmorInstance {
   const pool = [...armorPool(part, tier)];
-  let count = tier === "ruby" ? ARMOR_RUBY.affixes[part] : 1;
+  const [less, more] = ARMOR_RUBY.affixes[part];
+  let count = tier === "ruby" ? (rnd() < ARMOR_RUBY.moreChance ? more : less) : 1;
   if (TWO_AFFIX_PARTS.includes(part)) {
     if (tier === "gold" && rnd() < ARMOR_GOLD.twoChance) count = 2;
     if (tier === "legendary") count = rnd() < ARMOR_LEGENDARY.threeChance ? 3 : 2;
