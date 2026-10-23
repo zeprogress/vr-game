@@ -99,8 +99,12 @@ export function ringValueText(stat: RingStat, value: number): string {
   const v = (value * 100).toFixed(1);
   if (stat === "crowd") return `${RING_STAT_NAME.crowd} +${v}% за цель`;
   if (stat === "pen") return `${RING_STAT_NAME.pen} ${v}%`;
-  return `${RING_STAT_NAME[stat]} +${v}%`;
+  const brief = RING_STAT_BRIEF[stat] ? ` ${RING_STAT_BRIEF[stat]}` : "";
+  return `${RING_STAT_NAME[stat]} +${v}%${brief}`;
 }
+
+/** Краткое пояснение в скобках — у аффиксов, которые работают не всегда (по здоровью героя). */
+const RING_STAT_BRIEF: Partial<Record<RingStat, string>> = { rage: "(пока здоровья меньше 50%)", confident: "(пока здоровья больше 80%)" };
 
 export function ringQuality(r: { rolls: readonly RingRoll[] }): number {
   return r.rolls.reduce((s, x) => s + x.pts, 0);
