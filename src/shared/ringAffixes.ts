@@ -17,15 +17,15 @@ export const RING_STATS: readonly RingStat[] = ["skill", "stunned", "wounded", "
 
 export const RING_STAT_NAME: Record<RingStat, string> = {
   skill: "Урон умений",
-  stunned: "По оглушённым",
-  wounded: "По раненым",
-  elite: "По элите и боссам",
-  crowd: "По толпе",
-  pen: "Пробивание",
+  stunned: "Урон умений по оглушённым",
+  wounded: "Урон умений по раненым",
+  elite: "Урон умений по элите и боссам",
+  crowd: "Урон умений по толпе",
+  pen: "Пробивание умений",
   rage: "Урон в ярости",
   confident: "Урон в уверенности",
-  close: "Вплотную",
-  far: "Издалека",
+  close: "Урон умений ближе 4 м",
+  far: "Урон умений дальше 8 м",
 };
 
 /** Пояснение для подсказки: когда аффикс работает. */
@@ -104,7 +104,7 @@ export function ringValueText(stat: RingStat, value: number): string {
 }
 
 /** Краткое пояснение в скобках — у аффиксов, которые работают не всегда (по здоровью героя). */
-const RING_STAT_BRIEF: Partial<Record<RingStat, string>> = { rage: "(здоровье < 50%)", confident: "(здоровье > 80%)" };
+const RING_STAT_BRIEF: Partial<Record<RingStat, string>> = { rage: "(здоровье < 50%)", confident: "(здоровье > 80%)", wounded: "(здоровье цели < 35%)" };
 
 export function ringQuality(r: { rolls: readonly RingRoll[] }): number {
   return r.rolls.reduce((s, x) => s + x.pts, 0);
