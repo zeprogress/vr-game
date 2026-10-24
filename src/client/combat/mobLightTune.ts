@@ -50,7 +50,7 @@ export interface ModelLight {
   dense?: boolean;
   /** Пятно — между ног: центр двух групп нижних вершин модели (а не центр корня). */
   feet?: boolean;
-  /** След — по нижней полосе вершин (стопы), а не по габариту всего тела: руки и плечи пятно не раздувают. */
+  /** След — по нижней полосе вершин (стопы), а не по габариту всего тела: руки и плечи пятно не раздувают; пятно круглое. */
   footLow?: boolean;
 }
 export const MODEL_LIGHT: Record<string, ModelLight> = {
@@ -70,8 +70,8 @@ export const MODEL_LIGHT: Record<string, ModelLight> = {
   // Паук: подогнано в ?moblight=1 (текстура 1024, без свечения).
   monSpider: { emissive: 0.00, diffuse: 1.00, tex: 1.50 },
   // Ледяной гигант: кристаллы чуть светятся сами (в синем полумраке подземелья) — подогнать в ?moblight=1.
-  // Пятно — ровно по стопам (след нижних вершин, эллипс), плотнее; до этого — габарит тела ×1.2 (широкое).
-  monIceGiant: { emissive: 0.25, diffuse: 1.1, tex: 1.4, dense: true, feet: true, footLow: true },
+  // Пятно — круглое, по стопам (круг той же площади, что след нижних вершин), чуть крупнее и плотнее.
+  monIceGiant: { emissive: 0.25, diffuse: 1.1, tex: 1.4, shadow: 1.35, dense: true, feet: true, footLow: true },
 };
 export const MODEL_LIGHT_DEFAULT: ModelLight = { emissive: 0.3, diffuse: 1, tex: 1 };
 

@@ -901,7 +901,7 @@ export class Mob implements Hittable {
       }
       const footLow = modelLight(this.modelName).footLow === true;
       if (footLow) {
-        // Стопы: полуоси эллипса по нижней полосе вершин (руки и плечи пятно не раздувают).
+        // Стопы: круг той же площади, что след нижней полосы вершин (руки и плечи пятно не раздувают).
         const parts: MeshVerts[] = [];
         for (const m of rig.meshes) {
           const pos = m.getVerticesData(VertexBuffer.PositionKind);
@@ -909,8 +909,8 @@ export class Mob implements Hittable {
         }
         const half = lowFootHalf(parts, { x: 0, z: 0 }, FOOT_LOW_HEIGHT);
         if (half) {
-          this.footX = Math.max(0.05, half.hx);
-          this.footZ = Math.max(0.05, half.hz);
+          this.footX = Math.max(0.05, Math.sqrt(half.hx * half.hz));
+          this.footZ = this.footX;
         }
       } else if (Number.isFinite(hiX - loX) && hiX > loX && Number.isFinite(hiZ - loZ) && hiZ > loZ) {
         // Пятно круглое: радиус — корень из площади следа (расставленные руки призрака и длинный дракон
