@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>WebGPU в OBS — проверка</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #101018; color: #eee; font: 22px/1.4 system-ui, sans-serif; overflow: hidden; }
+  #info { position: absolute; left: 16px; top: 12px; right: 16px; white-space: pre-wrap; text-shadow: 0 1px 2px #000; }
+  #ok { font-size: 40px; font-weight: 700; }
+  canvas { position: absolute; right: 16px; bottom: 16px; width: 240px; height: 135px; border: 2px solid #444; }
+</style>
+</head>
+<body>
+<div id="info">проверка…</div>
+<canvas id="c" width="480" height="270"></canvas>
+<script>
+const out = document.getElementById("info");
+const lines = [];
+const say = (s) => { lines.push(s); out.textContent = lines.join("\n"); };
+(async () => {
+  say(`navigator.gpu: ${"gpu" in navigator ? "есть" : "НЕТ"}`);
+  say(`user agent: ${navigator.userAgent}`);
+  if (!("gpu" in navigator)) { say("WebGPU недоступен в этом движке."); return; }
+  let adapter = null;
+  try {
+    adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
+  } catch (e) { say(`requestAdapter: ошибка — ${e}`); return; }
+  if (!adapter) { say("requestAdapter: адаптера нет (WebGPU выключен или GPU не дали)."); return; }
+  const info = adapter.info ?? (adapter.requestAdapterInfo ? await adapter.requestAdapterInfo() : {});
+  say(`адаптер: ${info.vendor ?? "?"} ${info.architecture ?? ""} ${info.device ?? ""} ${info.description ?? ""}`.trim());
+  let device;
+  try { device = await adapter.requestDevice(); } catch (e) { say(`requestDevice: ошибка — ${e}`); return; }
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("webgpu");
+  const format = navigator.gpu.getPreferredCanvasFormat();
+  ctx.configure({ device, format, alphaMode: "opaque" });
+  say("WebGPU работает: устройство создано, холст настроен.");
+  let t = 0;
+  const frame = () => {
+    t += 0.02;
+    const enc = device.createCommandEncoder();
+    const pass = enc.beginRenderPass({ colorAttachments: [{ view: ctx.getCurrentTexture().createView(), clearValue: { r: 0.5 + 0.5 * Math.sin(t), g: 0.2, b: 0.6, a: 1 }, loadOp: "clear", storeOp: "store" }] });
+    pass.end();
+    device.queue.submit([enc.finish()]);
+    requestAnimationFrame(frame);
+  };
+  frame();
+  document.getElementById("ok").textContent = "";
+})().catch((e) => say(`ошибка: ${e}`));
+</script>
+</body>
+</html>

@@ -189,7 +189,7 @@ uniform mat4 viewProjection;
 uniform mat4 view;
 ${MV_HEAD}
 uniform vec3 uA;       // источник: пасть, центр, точка удара
-uniform vec3 uB;       // струя — куда (конец у земли); конус — направление; след — откуда падает
+uniform vec3 uB;       // струя — куда (конец у земли), конус — направление, след — откуда падает (без «;»: препроцессор режет комментарий по «;»)
 uniform float uMode;
 uniform float uTime;
 uniform float uDur;    // сколько секунд рождаются новые языки
