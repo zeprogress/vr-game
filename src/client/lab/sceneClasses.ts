@@ -33,6 +33,7 @@ import {
   type ClassId,
   type SkillId,
   type Summary2,
+  descNums,
 } from "#shared/classes2";
 import type { WeaponTier } from "#shared/items";
 import { BOT_GEAR, type GearTune } from "../entities/botGear";
@@ -816,7 +817,7 @@ export async function build(ctx: LabCtx): Promise<void> {
         renderSkillBar();
       };
       const t = document.createElement("span");
-      t.innerHTML = `${sk.icon} <b>${v?.name ?? sk.name}</b> · ${(sk.cooldown * s.cdMul).toFixed(1)} с<br><span style="opacity:.65;font-size:11.5px">${v?.desc ?? sk.desc}</span>`;
+      t.innerHTML = `${sk.icon} <b>${v?.name ?? sk.name}</b> · ${(sk.cooldown * s.cdMul).toFixed(1)} с<br><span style="opacity:.65;font-size:11.5px">${descNums(v?.desc ?? sk.desc)}</span>`;
       r.append(cb, t);
       skillBox.appendChild(r);
     }

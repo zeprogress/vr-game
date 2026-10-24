@@ -117,7 +117,7 @@ test("рубиновая броня сильнее уникальной, лом 
   assert.ok(ARMOR_TIER_MUL.ruby > ARMOR_TIER_MUL.legendary);
   assert.deepEqual(ARMOR_SCRAP_RANGE.ruby, ARMOR_SCRAP_RANGE.legendary.map((x) => x * 100));
   assert.equal(ARMOR_ENCHANT_COST_MUL.ruby, ARMOR_ENCHANT_COST_MUL.legendary * 8);
-  assert.equal(ARMOR_RUBY.dropChance, 0.1);
+  assert.equal(ARMOR_RUBY.dropChance, 0.2);
   const lg: ArmorInstance = { id: "l", part: "chest", tier: "legendary", rolls: [{ stat: "hp", pts: 10 }, { stat: "physDef", pts: 20 }] };
   const rb: ArmorInstance = { ...lg, id: "r", tier: "ruby" };
   // Округление по каждому аффиксу — до ±1 на аффикс.

@@ -3076,7 +3076,9 @@ export class Game {
     const cls = this.heroClass();
     // МДР с камнями колец (PlayerState.gb) — как на сервере.
     const me = this.net?.room?.state.players.get(this.net.sessionId);
-    return SKILLS2[id].cooldown * skillCdMul2(cls, { wis: this.progression.stats.wis, gb: me?.gb });
+    // Множитель отката варианта класса (archer/battlemage ×2) — как на сервере (castSkill): иначе таймер кончается раньше.
+    const variant = cls ? SKILLS2[id].variants?.[cls]?.cdMul ?? 1 : 1;
+    return SKILLS2[id].cooldown * skillCdMul2(cls, { wis: this.progression.stats.wis, gb: me?.gb }) * variant;
   }
 
   /** Герой внизу, в идущем забеге катакомб. */

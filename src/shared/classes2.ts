@@ -611,11 +611,11 @@ const pctR = (v: number): string => `${Math.round(v * 100)}%`;
 
 export const SKILLS2: Record<SkillId, SkillDef> = {
   stunBash: {
-    name: "Оглушающий удар", icon: glyph("s.stunBash"), desc: "Удар по кругу: оглушает всех рядом на 3 с; с мечом каждый удар может критовать",
+    name: "Оглушающий удар", icon: glyph("s.stunBash"), desc: "Удар по кругу: оглушает всех рядом на {d:3} с; с мечом каждый удар может критовать",
     cooldown: 12, castTime: 0.5, radius: 5, dmgMult: 1, hits: 1, // 0.6 → 1 (2026-10-05)
     variants: {
-      assassin: { name: "Смертельный прыжок", desc: "Прыжок на цель до 9 м: удар с гарантированным критом ×2 и оглушение 1.5 с" },
-      spearman: { name: "Подсечка", desc: "Древком по кругу: сбивает с ног всех рядом (оглушение 2 с) и замедляет на 4 с" },
+      assassin: { name: "Смертельный прыжок", desc: "Прыжок на цель до {r:9} м: удар с гарантированным критом ×2 и оглушение {d:1.5} с" },
+      spearman: { name: "Подсечка", desc: "Древком по кругу: сбивает с ног всех рядом (оглушение {d:2} с) и замедляет на {d:6} с" },
     },
   },
   arrowRain: {
@@ -623,12 +623,12 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     cooldown: 14, castTime: 0.9, radius: 6.5, dmgMult: 1, hits: 5,
     variants: {
       support: { name: "Огненный дождь", desc: "Круг огня вдалеке: 5 волн магии, каждая поджигает (горение 6 с)" },
-      assassin: { name: "Отскок с веером", desc: "Отскок назад на 5 м и три веера ножей конусом вперёд (9 м), каждый нож — кровотечение 5 с: 2% здоровья цели в секунду" },
-      spearman: { name: "Ливень копий", desc: "Три тяжёлых копья с неба в круг 5 м: каждое бьёт ×1.6 и оглушает на 1 с" },
+      assassin: { name: "Отскок с веером", desc: "Отскок назад на {r:5} м и три веера ножей конусом вперёд ({r:9} м), каждый нож — кровотечение 5 с: 2% здоровья цели в секунду" },
+      spearman: { name: "Ливень копий", desc: "Три тяжёлых копья с неба в круг {r:5} м: каждое бьёт ×1.6 и оглушает на 1 с" },
     },
   },
   massHeal: {
-    name: "Аура исцеления", icon: glyph("s.massHeal"), desc: "Сразу: аура вокруг героя на 6 с, ходит за ним и понемногу лечит всех союзников в ней",
+    name: "Аура исцеления", icon: glyph("s.massHeal"), desc: "Сразу: аура вокруг героя на {d:6} с, ходит за ним и понемногу лечит всех союзников в ней",
     cooldown: 14, castTime: 0, radius: 8, dmgMult: 0, hits: 1,
   },
   shadowStep: {
@@ -636,46 +636,46 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     cooldown: 10, castTime: 0.15, radius: 10, dmgMult: 0, hits: 1,
     variants: {
       assassin: { name: "Теневой рывок", desc: "Рывок сквозь мобов за спину цели: цель оглушена на 1 с, следующий удар — гарантированный крит" },
-      archer: { name: "Отскок", desc: "Прыжок назад на 7 м; на старом месте — дымовая ловушка (пригвождает 3 с), следующий выстрел — крит" },
-      spearman: { name: "Отскок", desc: "Короткий прыжок назад на 4 м; на старом месте — ловушка: все мобы вокруг стягиваются в кучку и замедлены на 50% на 3 с, следующий удар — крит" },
+      archer: { name: "Отскок", desc: "Прыжок назад на {r:7} м; на старом месте — дымовая ловушка (пригвождает 3 с), следующий выстрел — крит" },
+      spearman: { name: "Отскок", desc: "Короткий прыжок назад на {r:4} м; на старом месте — ловушка: все мобы вокруг стягиваются в кучку и замедлены на 50% на {d:3} с, следующий удар — крит" },
     },
   },
   crush: {
-    name: "Сокрушение", icon: glyph("s.crush"), desc: "Прыжок и удар о землю: волна по кругу, мобы оглушены на 1 с",
+    name: "Сокрушение", icon: glyph("s.crush"), desc: "Прыжок и удар о землю: волна по кругу, мобы оглушены на {d:1} с",
     cooldown: 14, castTime: 0.6, radius: 5, dmgMult: 2.2, hits: 1,
     variants: {
-      battlemage: { name: "Сокрушение бури", desc: `Прыжок и магический удар: волна по кругу, мобы замедлены на ${STORM_CRUSH.slowSec} с на ${Math.round((1 - STORM_CRUSH.slowMul) * 100)}%; урон волны — магия, растёт от интеллекта; лечит тебя на ${Math.round(STORM_CRUSH.healBase * 100)}% здоровья + ${(STORM_CRUSH.healPerWis * 100).toFixed(1)}% за очко мудрости, союзников в ${STORM_CRUSH.allyRadius} м — так же` },
+      battlemage: { name: "Сокрушение бури", desc: `Прыжок и магический удар: волна по кругу, мобы замедлены на {d:${STORM_CRUSH.slowSec}} с на ${Math.round((1 - STORM_CRUSH.slowMul) * 100)}%; урон волны — магия, растёт от интеллекта; лечит тебя на ${Math.round(STORM_CRUSH.healBase * 100)}% здоровья + ${(STORM_CRUSH.healPerWis * 100).toFixed(1)}% за очко мудрости, союзников в ${STORM_CRUSH.allyRadius} м — так же` },
     },
   },
   seal: {
-    name: "Печать света", icon: glyph("s.seal"), desc: "Круг на 6 с: союзникам лечение и щит −20% урона, врагам замедление 40%",
+    name: "Печать света", icon: glyph("s.seal"), desc: "Круг на {d:6} с: союзникам лечение и щит −20% урона, врагам замедление 40%",
     cooldown: 18, castTime: 0.4, radius: 5, dmgMult: 0, hits: 1,
     variants: {
-      warrior: { name: "Печать стража", desc: "Круг на 6 с: союзникам −40% урона, мобы в круге бросаются на воина" },
-      battlemage: { name: "Грозовое поле", cdMul: 2, desc: `Круг ${HAMMER_FIELD.radius} м на ${HAMMER_FIELD.duration} с: каждые 0.5 с молния бьёт врагов внутри магией и оглушает на ${HAMMER_FIELD.stunSec} с` },
+      warrior: { name: "Печать стража", desc: "Круг на {d:6} с: союзникам −40% урона, мобы в круге бросаются на воина" },
+      battlemage: { name: "Грозовое поле", cdMul: 2, desc: `Круг {r:${HAMMER_FIELD.radius}} м на {d:${HAMMER_FIELD.duration}} с: каждые 0.5 с молния бьёт врагов внутри магией и оглушает на {d:${HAMMER_FIELD.stunSec}} с` },
     },
   },
   whirlwind: {
     name: "Вихрь", icon: glyph("s.whirlwind"), desc: "2 с вращаешься с мечом: от 5 ударов по всем вокруг — больше со скоростью атаки (ЛОВ, ролл «Скорость атаки», клич), каждый удар может критовать; входящий урон −30%",
     cooldown: 14, castTime: 0, radius: 3.2, dmgMult: 0.9, hits: 5, // 0.7 → 0.9 (2026-10-05)
     variants: {
-      spearman: { name: "Град выпадов", desc: "Серия из 8 быстрых выпадов копьём вперёд (длинный конус 6 м): каждый колет всех в секторе" },
-      battlemage: { name: "Громовой вихрь", desc: `Молот по кругу: 5 физических ударов (растут от силы); последний бьёт молнией соседа в ${THUNDER_SPIN.range} м — ×${THUNDER_SPIN.minMul}, до ×${THUNDER_SPIN.maxMul} от интеллекта` },
-      assassin: { name: "Танец клинков", desc: "Вихрь-рывок: 2 с неуязвимости, проносишься вперёд на 6 м, 5 ударов по всем вокруг (с шансом крита), задетые замедлены на 30%" },
+      spearman: { name: "Град выпадов", desc: "Серия из 8 быстрых выпадов копьём вперёд (длинный конус {r:6.5} м): каждый колет всех в секторе" },
+      battlemage: { name: "Громовой вихрь", desc: `Молот по кругу: 5 физических ударов (растут от силы); последний бьёт молнией соседа в {r:${THUNDER_SPIN.range}} м — ×${THUNDER_SPIN.minMul}, до ×${THUNDER_SPIN.maxMul} от интеллекта` },
+      assassin: { name: "Танец клинков", desc: "Вихрь-рывок: 2 с неуязвимости, проносишься вперёд на {r:6} м, 5 ударов по всем вокруг (с шансом крита), задетые замедлены на 30%" },
     },
   },
   warcry: {
-    name: "Боевой клич", icon: glyph("s.warcry"), desc: "Союзникам в 12 м на 8 с +25% урона и +15% темпа; мобы рядом бросаются на тебя",
+    name: "Боевой клич", icon: glyph("s.warcry"), desc: "Союзникам в {r:12} м на {d:8} с +25% урона и +15% темпа; мобы рядом бросаются на тебя",
     cooldown: 22, castTime: 0.3, radius: 12, dmgMult: 0, hits: 1,
     variants: {
-      support: { name: "Благословение", desc: "Союзникам в 12 м на 10 с: +25% урона, +15% темпа атак и −15% входящего урона" },
+      support: { name: "Благословение", desc: "Союзникам в {r:12} м на {d:10} с: +25% урона, +15% темпа атак и −15% входящего урона" },
     },
   },
   mark: {
-    name: "Метка", icon: glyph("s.mark"), desc: "Цель 10 с: все атакующие (и ты сам) наносят ей +40% урона; умерла под меткой — откат сброшен",
+    name: "Метка", icon: glyph("s.mark"), desc: "Цель {d:10} с: все атакующие (и ты сам) наносят ей +40% урона; умерла под меткой — откат сброшен",
     cooldown: 12, castTime: 0.2, radius: 22, dmgMult: 0, hits: 1,
     variants: {
-      archer: { name: "Метка охотника", cdMul: 2, desc: `Цель 10 с. Твои стрелы по ней копят скорость стрельбы и урон стрел: +${pctR(MARK_FOCUS.perHit)} скорости и +${pctR(MARK_FOCUS.dmgPerHit)} урона за попадание, до +${pctR(MARK_FOCUS.perHit * MARK_FOCUS.max)} и +${pctR(MARK_FOCUS.dmgPerHit * MARK_FOCUS.max)} (${MARK_FOCUS.max} попаданий); ${MARK_FOCUS.resetSec} с без попаданий — сгорает. Цель умерла — метка спадает, откат сброшен` },
+      archer: { name: "Метка охотника", cdMul: 2, desc: `Цель {d:10} с. Твои стрелы по ней копят скорость стрельбы и урон стрел: +${pctR(MARK_FOCUS.perHit)} скорости и +${pctR(MARK_FOCUS.dmgPerHit)} урона за попадание, до +${pctR(MARK_FOCUS.perHit * MARK_FOCUS.max)} и +${pctR(MARK_FOCUS.dmgPerHit * MARK_FOCUS.max)} (${MARK_FOCUS.max} попаданий); ${MARK_FOCUS.resetSec} с без попаданий — сгорает. Цель умерла — метка спадает, откат сброшен` },
     },
   },
   plague: {
@@ -686,7 +686,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   smoke: {
     name: "Пелена смерти", icon: glyph("s.smoke"), test: true,
-    desc: "Дымовая бомба на цель (до 12 м; нет цели — под собой), дым 5 м на 6 с: мобы в дыму промахиваются в половине ударов, в стоящих в дыму не стреляют, союзникам в дыму +30% уворота",
+    desc: "Дымовая бомба на цель (до {r:12} м; нет цели — под собой), дым 5 м на {d:6} с: мобы в дыму промахиваются в половине ударов, в стоящих в дыму не стреляют, союзникам в дыму +30% уворота",
     cooldown: 18, castTime: 0.2, radius: 5, dmgMult: 0, hits: 1,
     attr: { attr: "wis", per: 0.01, what: "длительность дыма" },
   },
@@ -698,7 +698,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   drawIn: {
     name: "Стягивание", icon: glyph("s.drawIn"), test: true,
-    desc: "Резко стягивает мобов в 10 м в одну точку, которую задаёт оружие: с щитом — перед тобой кучкой, с одним мечом (вторая рука свободна) — по бокам, с двумя мечами — вокруг тебя. Стянутые стоят 1 с",
+    desc: "Резко стягивает мобов в {r:10} м в одну точку, которую задаёт оружие: с щитом — перед тобой кучкой, с одним мечом (вторая рука свободна) — по бокам, с двумя мечами — вокруг тебя. Стянутые стоят {d:1} с",
     cooldown: 14, castTime: 0, radius: 10, dmgMult: 0, hits: 1,
   },
   steelAura: {
@@ -719,46 +719,46 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   blastArrow: {
     name: "Разрывная стрела", icon: glyph("s.blastArrow"), test: true,
-    desc: `Стрела в цель до ${BLAST_ARROW.range} м: ×2.5 урона и взрыв — всем в ${BLAST_ARROW.radius} м вокруг ×${BLAST_ARROW.splash}; крит — у каждого попадания`,
+    desc: `Стрела в цель до {r:${BLAST_ARROW.range}} м: ×2.5 урона и взрыв — всем в {r:${BLAST_ARROW.radius}} м вокруг ×${BLAST_ARROW.splash}; крит — у каждого попадания`,
     cooldown: 8, castTime: 0.2, radius: BLAST_ARROW.range, dmgMult: 2.5, hits: 1,
   },
   arrowStorm: {
     name: "Шквал стрел", icon: glyph("s.arrowStorm"), test: true,
-    desc: `${ARROW_STORM.waves} волны стрел по всем врагам в ${ARROW_STORM.radius} м вокруг тебя: ×0.75 каждому за волну (свой крит), задетые замедлены на ${pctR(ARROW_STORM.slow)} на ${ARROW_STORM.slowSec} с; за каждого задетого в волне (до ${ARROW_STORM.healTargets}) — лечение ${pctR(ARROW_STORM.healFrac)} здоровья за волну`,
+    desc: `${ARROW_STORM.waves} волны стрел по всем врагам в {r:${ARROW_STORM.radius}} м вокруг тебя: ×0.75 каждому за волну (свой крит), задетые замедлены на ${pctR(ARROW_STORM.slow)} на ${ARROW_STORM.slowSec} с; за каждого задетого в волне (до ${ARROW_STORM.healTargets}) — лечение ${pctR(ARROW_STORM.healFrac)} здоровья за волну`,
     cooldown: 16, castTime: 0.3, radius: ARROW_STORM.radius, dmgMult: 0.75, hits: ARROW_STORM.waves, // 1 → 0.75 (2026-10-23)
   },
   ghostArrow: {
     name: "Стрела-призрак", icon: glyph("s.ghostArrow"), test: true,
-    desc: `${GHOST_ARROW.duration} с ты призрак: обычные мобы тебя не видят и не бьют (боссы видят); урон −${pctR(1 - GHOST_ARROW.dmgMul)}, каждое попадание стрелой лечит ${pctR(GHOST_ARROW.healFrac)} здоровья`,
+    desc: `{d:${GHOST_ARROW.duration}} с ты призрак: обычные мобы тебя не видят и не бьют (боссы видят); урон −${pctR(1 - GHOST_ARROW.dmgMul)}, каждое попадание стрелой лечит ${pctR(GHOST_ARROW.healFrac)} здоровья`,
     cooldown: 15, castTime: 0, radius: 0, dmgMult: 0, hits: 1,
     attr: { attr: "wis", per: 0.01, what: "длительность" },
   },
   swarmArrow: {
     name: "Стрела-рой", icon: glyph("s.swarmArrow"), test: true,
-    desc: `${SWARM_ARROW.volleys} залпа по ${SWARM_ARROW.arrows} стрел веером вперёд (${SWARM_ARROW.range} м): каждая ×0.6 и взрыв ${SWARM_ARROW.blastR} м ×${SWARM_ARROW.blast}; задел ${SWARM_ARROW.bonusTargets}+ врагов — бег +${pctR(SWARM_ARROW.run)} на ${SWARM_ARROW.runSec} с`,
+    desc: `${SWARM_ARROW.volleys} залпа по ${SWARM_ARROW.arrows} стрел веером вперёд ({r:${SWARM_ARROW.range}} м): каждая ×0.6 и взрыв {r:${SWARM_ARROW.blastR}} м ×${SWARM_ARROW.blast}; задел ${SWARM_ARROW.bonusTargets}+ врагов — бег +${pctR(SWARM_ARROW.run)} на {d:${SWARM_ARROW.runSec}} с`,
     cooldown: 10, castTime: 0.25, radius: SWARM_ARROW.range, dmgMult: 0.6, hits: SWARM_ARROW.arrows, // 0.8 → 0.6 (2026-10-23)
   },
   barrierArrow: {
     name: "Стрела-барьер", icon: glyph("s.barrierArrow"), test: true,
-    desc: `Кольцо стрел 4 м вокруг тебя на ${BARRIER_ARROW.duration} с: врагов в кольце всё время отталкивает наружу, урон ×0.8 (не чаще раза в ${BARRIER_ARROW.hitEvery} с); ты в кольце — +${pctR(BARRIER_ARROW.dodge)} уворота и ${pctR(BARRIER_ARROW.healFracPerSec)} здоровья в секунду`,
+    desc: `Кольцо стрел 4 м вокруг тебя на {d:${BARRIER_ARROW.duration}} с: врагов в кольце всё время отталкивает наружу, урон ×0.8 (не чаще раза в ${BARRIER_ARROW.hitEvery} с); ты в кольце — +${pctR(BARRIER_ARROW.dodge)} уворота и ${pctR(BARRIER_ARROW.healFracPerSec)} здоровья в секунду`,
     cooldown: 14, castTime: 0.3, radius: 4, dmgMult: 0.8, hits: 1,
   },
   webArrow: {
     name: "Стрела-паук", icon: glyph("s.webArrow"), test: true,
-    desc: `Паутина 6 м на ${WEB_ARROW.duration} с в точке до ${WEB_ARROW.range} м: враги в ней пригвождены (боссы — нет) и получают ×0.5 в секунду; ты лечишься на ${pctR(WEB_ARROW.healPerEnemy)} здоровья в секунду за каждого врага в паутине (до ${pctR(WEB_ARROW.healCap)})`,
+    desc: `Паутина 6 м на {d:${WEB_ARROW.duration}} с в точке до {r:${WEB_ARROW.range}} м: враги в ней пригвождены (боссы — нет) и получают ×0.5 в секунду; ты лечишься на ${pctR(WEB_ARROW.healPerEnemy)} здоровья в секунду за каждого врага в паутине (до ${pctR(WEB_ARROW.healCap)})`,
     cooldown: 12, castTime: 0.3, radius: 6, dmgMult: 0.5, hits: 1, // урон 0.2 → 0.5 в секунду (2026-10-20)
     attr: { attr: "wis", per: 0.01, what: "радиус и длительность паутины" },
   },
   cleave: {
     name: "Рассекающий удар", icon: glyph("s.cleave"),
-    desc: "Широкий удар мечом перед собой (конус 120°, 6 м): ×2.8 урона всем в секторе, отбрасывает и замедляет на 40% на 3 с",
+    desc: "Широкий удар мечом перед собой (конус 120°, 6 м): ×2.8 урона всем в секторе, отбрасывает и замедляет на 40% на {d:3} с",
     cooldown: 9, castTime: 0.25, radius: 6, dmgMult: 2.8, hits: 1, // 2.2 → 2.8 (2026-10-23)
   },
   chain: {
     name: "Цепная молния", icon: glyph("s.chain"), desc: "Разряд скачет по 4 врагам (каждый скачок слабее на 20%) и оглушает каждого на 0.5 с",
     cooldown: 11, castTime: 0.3, radius: 14, dmgMult: 1.6, hits: 4,
     variants: {
-      battlemage: { name: "Цепная молния", desc: `Разряд скачет по ${CHAIN_HAMMER.hops} врагам (каждый скачок слабее на 20%); задетые на ${CHAIN_HAMMER.vulnSec} с получают +${Math.round((CHAIN_HAMMER.vulnMul - 1) * 100)}% урона от молота` },
+      battlemage: { name: "Цепная молния", desc: `Разряд скачет по ${CHAIN_HAMMER.hops} врагам (каждый скачок слабее на 20%); задетые на {d:${CHAIN_HAMMER.vulnSec}} с получают +${Math.round((CHAIN_HAMMER.vulnMul - 1) * 100)}% урона от молота` },
     },
   },
 };
@@ -794,7 +794,7 @@ export function skillCdMul2(cls: ClassId | null, a: object): number {
 }
 
 /** Атрибуты героя для умений: база (как в PlayerState) и прибавка от колец и камней (PlayerState.gb). */
-export type SkillAttrs = Partial<Record<Attr, number>> & { gb?: Partial<Record<Attr, number>> };
+export type SkillAttrs = Partial<Record<Attr, number>> & { gb?: Partial<Record<Attr | "skRad" | "skDur" | "skCd", number>> };
 
 /** Откат умения героя, сек, до 0.1 — тот же расчёт, что у сервера: база × класс × МДР (с камнями). Без `a` — старт (МДР 1). */
 export function skillCooldownFor(id: SkillId, cls: ClassId | null, a: SkillAttrs = {}): number {
@@ -845,9 +845,19 @@ export function skillName(id: SkillId, cls: ClassId): string {
  * Описание умения для класса + строка про свой атрибут (если есть) — единый текст для всех окон.
  * С `a` (герой) — бонус, который сервер применяет сейчас (атрибут с кольцами и камнями); без `a` — формула.
  */
+/**
+ * Числа в описаниях умений, на которые влияют ожерелье и кольца: {r:N} — радиус и дальность (× (1 + skRad)),
+ * {d:N} — длительность эффектов (× (1 + skDur)). Без `a` — базовые значения. Тот же множитель, что на сервере (castSkill).
+ */
+export function descNums(text: string, a?: SkillAttrs): string {
+  const rad = 1 + (a?.gb?.skRad ?? 0);
+  const dur = 1 + (a?.gb?.skDur ?? 0);
+  return text.replace(/\{([rd]):([\d.]+)\}/g, (_m, k: string, n: string) => String(Math.round(Number(n) * (k === "r" ? rad : dur) * 10) / 10));
+}
+
 export function skillDesc(id: SkillId, cls: ClassId, a?: SkillAttrs): string {
   const sk = SKILLS2[id];
-  const d = sk.variants?.[cls]?.desc ?? sk.desc;
+  const d = descNums(sk.variants?.[cls]?.desc ?? sk.desc, a);
   if (!sk.attr) return d;
   const name = ATTR_INFO[sk.attr.attr].name;
   const per = `+${Math.round(sk.attr.per * 1000) / 10}% за очко`;

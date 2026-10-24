@@ -5268,7 +5268,8 @@ export class ZoneRoom extends Room<ZoneState> {
       titles: rec?.titles ?? [],
       title: rec?.title ?? "",
       attrs: { unspent: p.unspent, str: p.str, agi: p.agi, int: p.int, con: p.con, luc: p.luc, wis: p.wis },
-      gb: { str: p.gb.str, agi: p.gb.agi, int: p.gb.int, con: p.gb.con, luc: p.gb.luc, wis: p.gb.wis },
+      // Ожерелье (skRad/skDur/skCd) — тоже: откат и радиус на странице инвентаря считаются как в бою.
+      gb: { str: p.gb.str, agi: p.gb.agi, int: p.gb.int, con: p.gb.con, luc: p.gb.luc, wis: p.gb.wis, skRad: p.gb.skRad, skDur: p.gb.skDur, skCd: p.gb.skCd },
       strike: this.strikeOfLive(p, rt),
       strikePhys: this.strikePhysOfLive(p, rt),
       respecCost: RESPEC_ENABLED ? respecCostFor(rec?.respecCount ?? 0) : -1,
@@ -7664,7 +7665,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.reply(`💎 ${p.nick} получает рубиновую броню — ${armorLabel(a)}!`);
       }
       // Рубиновое ожерелье — свой бросок с тем же шансом, что у рубиновой брони; в запись героя (как кольца).
-      if (Math.random() < ARMOR_RUBY.dropChance && store.get(token)) {
+      if (Math.random() < RUBY.jewelDropChance && store.get(token)) {
         const js = this.jewelsFor(token);
         const n = newNecklace("ruby", `r${shortId(Math.random)}`);
         js.necks.push(n);
@@ -7674,7 +7675,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.reply(`💎 ${p.nick} получает рубиновое ожерелье — ${neckLabel(n)}!`);
       }
       // Рубиновое кольцо — тоже свой бросок с шансом рубиновой брони.
-      if (Math.random() < ARMOR_RUBY.dropChance && store.get(token)) {
+      if (Math.random() < RUBY.jewelDropChance && store.get(token)) {
         const js = this.jewelsFor(token);
         const r = newRing("ruby", `r${shortId(Math.random)}`);
         js.rings.push(r);
