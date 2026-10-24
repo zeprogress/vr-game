@@ -72,6 +72,9 @@ export type WeaponTier = "base" | "gold" | "legendary" | "ruby" | "craft";
 /**
  * Рубиновое оружие. Заточка ролла — та же, что у обычного (шанс и прирост), цена — ENCHANT_TIER_MUL.
  */
+/** Оружие по скрытому рецепту крафта: базовая атака × (сервер — rolledDmgMul; таблица героя и «Атака» — тот же множитель). */
+export const RECIPE_DMG = 1.15;
+
 export const RUBY = {
   /** Сила: × к уникальному того же класса (+15%, у меча 4.5 → ×5.2). */
   powerMul: 1.15,
@@ -1104,6 +1107,8 @@ export function heldAffixText(w: WeaponInstance | null | undefined): string {
     ...(sharp > 0 ? [`Точка атаки +${(attackPointBonus(sharp) * 100).toFixed(1)}%`] : []),
     // «Мастерство» крафта — множитель урона, как точка атаки (клиент читает обе строки: powerMulOfText).
     ...(cp > 0 ? [`Мастерство +${Math.round(cp * 1000) / 10}%`] : []),
+    // Скрытый рецепт — множитель урона (как «Мастерство»; powerMulOfText читает эту строку).
+    ...(w.rc ? [`Скрытый рецепт +${Math.round((RECIPE_DMG - 1) * 1000) / 10}%`] : []),
   ].join(", ");
 }
 
@@ -1383,7 +1388,8 @@ export function craftPctOfText(text: string | undefined): number {
 
 /** Множитель урона из строки роллов в руке: точка атаки × «Мастерство» (как attackPointMul на сервере). */
 export function powerMulOfText(text: string | undefined): number {
-  return (1 + sharpPctOfText(text) / 100) * (1 + craftPctOfText(text) / 100);
+  const recipe = text?.match(/Скрытый рецепт \+([\d.]+)%/);
+  return (1 + sharpPctOfText(text) / 100) * (1 + craftPctOfText(text) / 100) * (recipe ? 1 + Number(recipe[1]) / 100 : 1);
 }
 
 /** Лучший из двух рук — как роллы «Урон» (см. handsRoll). */

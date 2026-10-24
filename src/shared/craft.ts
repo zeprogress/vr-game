@@ -20,7 +20,7 @@
  * Результат — мастерское оружие (тир `craft`, тёмно-оранжевое): обычный экземпляр со своими роллами,
  * точится, передаётся и разбирается как остальное оружие.
  */
-import { ATTACK_CLASSES, CRAFT_RARE_POW, STAR_CAP, affixAtPoints, affixOverCap, AFFIX_NAME, isMeleeClass, LOOT_VER, POINTS_MAX, rollableSubs, shortId, sortAffixes, WEAPON_NOUN, type AffixSub, type RolledAffix, type WeaponClass, type WeaponInstance } from "./items";
+import { ATTACK_CLASSES, CRAFT_RARE_POW, RECIPE_DMG, STAR_CAP, affixAtPoints, affixOverCap, AFFIX_NAME, isMeleeClass, LOOT_VER, POINTS_MAX, rollableSubs, shortId, sortAffixes, WEAPON_NOUN, type AffixSub, type RolledAffix, type WeaponClass, type WeaponInstance } from "./items";
 import { GEM_LOOK, parseGem, type GemAttr } from "./jewels";
 
 // ---------------------------------------------------------------- материалы и катализаторы
@@ -157,7 +157,7 @@ export const CRAFT = {
   /** Скрытый рецепт: ролл-звезда — максимум вида × это. */
   starMul: STAR_CAP,
   /** Оружие по скрытому рецепту: без штрафа по аффиксам (потолки — только свои копии), базовая атака ×. */
-  recipeDmg: 1.15,
+  recipeDmg: RECIPE_DMG,
 } as const;
 
 // ---------------------------------------------------------------- мастерство кузнеца
