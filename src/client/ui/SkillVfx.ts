@@ -497,6 +497,16 @@ export class SkillVfx {
   }
 
   /** Столб света высотой h, радиус r; follow — держится над героем/мобом. */
+  /** Метка на мобе одна: новая снимает прежнее круг и столб на этом мобе (иначе две метки на одной цели). */
+  endMobMarks(mobId: string): void {
+    for (const d of this.decals) {
+      if (d.follow?.kind === "mob" && d.follow.id === mobId && d.age < d.life) { d.life = d.age; d.mesh.setEnabled(false); }
+    }
+    for (const p of this.pillars) {
+      if (p.follow?.kind === "mob" && p.follow.id === mobId && p.age < p.life) { p.life = p.age; p.mesh.setEnabled(false); }
+    }
+  }
+
   pillar(x: number, y: number, z: number, r: number, h: number, color: Color3, life: number, follow: { kind: "hero" | "mob"; id: string } | null = null): void {
     const p = this.pillars[this.nP];
     this.nP = (this.nP + 1) % this.pillars.length;

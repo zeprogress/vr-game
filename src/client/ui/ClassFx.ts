@@ -1186,6 +1186,7 @@ export function playClassAct(
       return true;
     case "markOn":
       if (mobId) {
+        vfx.endMobMarks(mobId);
         vfx.decal(x, y, z, 1.1, ATK, d ?? 8, 2, 1, { kind: "mob", id: mobId, dy: 0.4 });
         vfx.pillar(x, y, z, 0.5, 9, ATK, 0.5, { kind: "mob", id: mobId });
       }
