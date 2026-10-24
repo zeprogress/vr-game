@@ -1341,7 +1341,7 @@ export class Mob {
   pullX = 0;
   pullZ = 0;
   pullTo(x: number, z: number, sec: number): void {
-    if (this.dead || this.kind === "boss" || this.scarecrow || this.practice) return;
+    if (this.dead || this.kind === "boss" || this.iceGiant || this.scarecrow || this.practice) return; // гиганта тоже не тянуть
     this.pullX = x;
     this.pullZ = z;
     this.pullT = sec;
@@ -1349,7 +1349,7 @@ export class Mob {
 
   /** Отбросить моба: сильный импульс от источника (рассекающий удар и т.п.). */
   shove(dx: number, dz: number, power: number): void {
-    if (this.dead || this.kind === "boss" || this.scarecrow || this.practice) return; // босса и пугало с места не сдвинуть
+    if (this.dead || this.kind === "boss" || this.iceGiant || this.scarecrow || this.practice) return; // босса, гиганта и пугало с места не сдвинуть
     this.vx += dx * power;
     this.vz += dz * power;
     this.vy += power * 0.35;
@@ -2596,8 +2596,11 @@ export class Mob {
         this.strikeTo = np.sessionId;
         this.strikeDmg = MOB.attackDamage * this.dmgMul * rageDmg;
         this.strikePhys = this.physEvery > 0 && ++this.strikeN % this.physEvery === 0;
-        this.vx -= dx * 2;
-        this.vz -= dz * 2;
+        // Отскок после замаха — не у гиганта: тяжёлый, с места не сдвигается (иначе герой у его ног отталкивает его шаг за шагом).
+        if (!this.iceGiant) {
+          this.vx -= dx * 2;
+          this.vz -= dz * 2;
+        }
       }
     }
   }
