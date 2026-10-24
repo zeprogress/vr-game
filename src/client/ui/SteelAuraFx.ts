@@ -127,6 +127,8 @@ interface Dome {
   dur: number;
   R: number;
   track: (() => { x: number; y: number; z: number } | null) | null;
+  /** Чья аура (id героя): повторный старт той же ауры переиспользует купол — две ауры одного воина не рисуются. */
+  key?: string;
   c: Vector3;
   live: boolean;
 }
@@ -203,8 +205,9 @@ export class SteelAuraFx {
   }
 
   /** Аура: купол на всю площадь (track — ноги воина), R — радиус, dur — сколько держится, mode — цвет. */
-  start(track: () => { x: number; y: number; z: number } | null, R: number, dur: number, mode: number): void {
-    const d = this.domes.find((x) => !x.live) ?? this.domes.reduce((a, b) => (a.age > b.age ? a : b));
+  start(track: () => { x: number; y: number; z: number } | null, R: number, dur: number, mode: number, key?: string): void {
+    const d = (key !== undefined ? this.domes.find((x) => x.live && x.key === key) : undefined) ?? this.domes.find((x) => !x.live) ?? this.domes.reduce((a, b) => (a.age > b.age ? a : b));
+    d.key = key;
     const p = track() ?? { x: 0, y: 0, z: 0 };
     const pal = mode === 1 ? [FXC.steel, FXC.frost] : mode === 2 ? [FXC.fireRed, FXC.fire] : [FXC.steelHot, FXC.fire];
     d.mat.setColor3("uHot", pal[0]);

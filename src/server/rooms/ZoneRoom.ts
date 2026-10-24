@@ -10464,6 +10464,8 @@ export class ZoneRoom extends Room<ZoneState> {
         const mode = steelModeOf(p.leftCls, p.rightCls);
         const regen = maxHpFor(p.level, p) * (hpRegenFrac(p) + shieldRegen(shieldOf(p, rt)?.inst));
         const tick = steelAuraTick(mode, regen);
+        // Одна аура на воина: новая заменяет старую (иначе тик урона и визуал — дважды).
+        for (let i = this.steelAuras.length - 1; i >= 0; i--) if (this.steelAuras[i].owner === ownerId) this.steelAuras.splice(i, 1);
         this.steelAuras.push({ owner: ownerId, r: sk.radius, until: this.elapsed + STEEL_AURA.duration * DUR, mode, dmg: tick.dmg, tickT: 0 });
         this.broadcast(MSG.act, {
           k: "steelAura", id: ownerId, x: p.head.x, y: feetY, z: p.head.z, d: STEEL_AURA.duration * DUR, r: sk.radius,

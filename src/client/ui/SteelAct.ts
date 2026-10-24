@@ -30,7 +30,7 @@ export function playSteelAct(
       const dur = d ?? STEEL_AURA.duration;
       const R = r ?? 6;
       const hero = (): { x: number; y: number; z: number } | null => ctx.follow("hero", id);
-      SteelAuraFx.of(ctx.scene).start(hero, R, dur, v ?? 0);
+      SteelAuraFx.of(ctx.scene).start(hero, R, dur, v ?? 0, id);
       const p = hero() ?? { x, y, z };
       fire.burst(p.x, p.y + 1.1, p.z, color, { count: 18, speed: 4, life: 0.5, grav: 0, size: 0.18, spread: 1 });
       break;
