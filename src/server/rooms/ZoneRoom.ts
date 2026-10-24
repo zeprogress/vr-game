@@ -560,16 +560,6 @@ const LEGEND_DROP = ["sword", "bow", "shield", "staff", "dagger", "spear", "hamm
 /** Оружие шести классов (для выбора класса бота). */
 const BOT_CLASS_WEAPONS = ["sword", "bow", "staff", "dagger", "spear", "hammer"] as const;
 
-/**
- * Вторая рука класса по умолчанию: меч/посох — щит, кинжал — второй кинжал, двуручное — ничего.
- * Используется только для обычных предметов выше базы (см. offHandDefault); при обычном надевании щит сам не добавляется (shared/hands.ts).
- */
-function botOffHand(cls: string): string {
-  if (cls === "sword" || cls === "staff") return "shield";
-  if (cls === "dagger") return "dagger";
-  return "";
-}
-
 /** Выбрано ли у героя это умение (skill1/skill2). */
 function hasSkill(p: PlayerState, k: string): boolean {
   return p.skill1 === k || p.skill2 === k;
@@ -594,16 +584,6 @@ const ELITE_KEY_BY_NAME = new Map(Object.entries(ELITE_MOBS).map(([k, d]) => [d.
 /** Есть ли у героя хоть один предмет этого класса (bestOwnedTier даёт «base» и для отсутствующего). */
 function ownsClass(owned: readonly string[] | undefined, cls: string): boolean {
   return (owned ?? []).some((k) => k.split(":")[0] === cls);
-}
-
-/**
- * Левая рука по умолчанию для класса правой: второй кинжал и щит — только если герой поднял их выше базы.
- * Базовый щит/кинжал сам в руку не надеваем: без щита в левой руке один меч — один предмет, и уворот выше (holdsOneItem).
- */
-function offHandDefault(owned: readonly string[] | undefined, rightCls: string): string {
-  const off = botOffHand(rightCls);
-  if (off !== "dagger" && off !== "shield") return off;
-  return bestOwnedTier(owned, off as WeaponClass) === "base" ? "" : off;
 }
 
 function bestOwnedTier(owned: readonly string[] | undefined, cls: WeaponClass): WeaponTier {
@@ -1043,23 +1023,6 @@ function rolledCrit(
   rt: Runtime,
 ): { chance: number; mult: number } {
   return handsCrit(rolledIn(p, hand, rt)?.affixes, shieldRolledIn(p, hand, rt)?.affixes);
-}
-
-/** Ранг тира для сравнения апгрейдов: base < gold < legendary. */
-function tierRank(t: WeaponTier | string): number {
-  return t === "ruby" || t === "craft" ? 3 : t === "legendary" ? 2 : t === "gold" ? 1 : 0;
-}
-
-/**
- * Бот наденет найденное `w` сам: тот же класс (щит — в левую), тир выше — и оружие в этой руке
- * НЕ выбрано игроком (не закреплено в инвентаре). Выбранное игроком бот не меняет — найденное уходит в склад.
- */
-function botEquipUpgrade(p: PlayerState, rt: Runtime, w: { cls: WeaponClass; tier: WeaponTier }): boolean {
-  const hand = w.cls === "shield" ? "left" : "right";
-  if (w.cls === "shield" ? p.leftCls !== "shield" : w.cls !== p.rightCls) return false;
-  if (tierRank(w.tier) <= tierRank((hand === "left" ? p.leftTier : p.rightTier) as WeaponTier)) return false;
-  const inst = rolledIn(p, hand, rt);
-  return !(inst && (inst.id === rt.equippedWeaponId.left || inst.id === rt.equippedWeaponId.right));
 }
 
 /**
@@ -6845,27 +6808,14 @@ export class ZoneRoom extends Room<ZoneState> {
     const rightTier = pinR ? pinR.tier : savedRight?.cls === rc ? savedRight.tier : rc ? bestOwnedTier(rec?.owned, rc) : "";
     p.rightCls = rc;
     p.rightTier = rightTier;
-    // Лук занимает обе руки — без щита; меч/посох — со щитом, лучший
-    // когда-либо честно поднятый тир (та же логика, что и для правой руки).
-    // Левая рука: что герой держал в ней при сохранении — как есть, и пустая тоже. Класс по умолчанию
-    // (offHandDefault) — только новому герою и только для улучшенного щита/кинжала.
+    // Левая рука: только то, что герой держал сам (закреплено или сохранено) — пустая остаётся пустой.
     const leftSaved = savedHeld.left?.cls ?? "";
-    let off = handsSaved
-      ? (canHoldTogether(rc, leftSaved) ? leftSaved : "")
-      : (pinR || savedRight?.cls === rc) && canHoldTogether(rc, pinL?.cls ?? leftSaved)
-        ? (pinL?.cls ?? leftSaved)
-        : offHandDefault(rec?.owned, rc);
+    const leftWant = pinL?.cls ?? leftSaved;
+    let off = canHoldTogether(rc, leftWant) ? leftWant : "";
     // Кинжал в левой руке без кинжала в вещах — фантом (раньше появлялся при входе и выходе с бота).
     if (off === "dagger" && !ownsClass(rec?.owned, "dagger") && pinL?.cls !== "dagger") off = "";
     p.leftCls = off;
-    p.leftTier =
-      pinL && pinL.cls === off
-        ? pinL.tier
-        : savedHeld.left?.cls === off
-          ? savedHeld.left.tier
-          : off
-            ? bestOwnedTier(rec?.owned, off as WeaponClass)
-            : "";
+    p.leftTier = pinL && pinL.cls === off ? pinL.tier : savedHeld.left?.cls === off ? savedHeld.left.tier : "";
     // Сумку восстанавливаем из сейва (restoreBag — как у живого игрока) —
     // раньше тут был emptyBag() с нуля КАЖДЫЙ !play, и весь "Лом" от разборки
     // (и любые другие расходники) стирался при первом же выходе бота в мир
@@ -8200,8 +8150,6 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private botTakeDrop(bot: Bot, d: NonNullable<ReturnType<ZoneSim["drops"]["get"]>>): boolean {
     const p = bot.state;
-    // Апгрейд своего снаряжения — то, что бот реально наденет.
-    const isEquipUpgrade = (w: { cls: WeaponClass; tier: WeaponTier }): boolean => botEquipUpgrade(p, bot.rt, w);
     let took = false;
     const lw = ITEMS[d.item].weapon;
     if (d.armor) {
@@ -8213,30 +8161,13 @@ export class ZoneRoom extends Room<ZoneState> {
       this.persistBot(bot);
       took = true;
     } else if (lw) {
+      // Оружие никогда не надевается само: в склад (надеть — вручную на !inv).
       this.sim.takeDrop(d.id);
-      // Одеваем ТОЛЬКО реальный апгрейд своего снаряжения. Оружие
-      // чужого класса (или тира не выше текущего) просто уходит в
-      // склад — бот его несёт, но не переодевается в него сам.
-      const upgrade = isEquipUpgrade(lw);
-      if (upgrade) {
-        if (lw.cls === "shield") {
-          preserveLegacyWeapon(bot.rt, p.leftCls, p.leftTier);
-          // «Эгида» — в левую руку, правое оружие не трогаем.
-          p.leftCls = "shield";
-          p.leftTier = lw.tier;
-        } else {
-          preserveLegacyWeapon(bot.rt, p.rightCls, p.rightTier);
-          // Апгрейд — того же класса, что в правой руке: левую руку (пустую, щит,
-          // второй меч/кинжал) не трогаем.
-          p.rightCls = lw.cls;
-          p.rightTier = lw.tier;
-        }
-      }
       bot.rt.owned.add(weaponKey(lw.cls, lw.tier));
       if (d.instance) bot.rt.weapons.push(d.instance);
       this.persistBot(bot);
       this.announcePickup(bot.nick, lw.cls, lw.tier, d.instance);
-      console.log(`[bot] ${bot.nick} подобрал ${lw.cls}:${lw.tier}${upgrade ? "" : " (в склад)"}`);
+      console.log(`[bot] ${bot.nick} подобрал ${lw.cls}:${lw.tier} (в склад)`);
       took = true;
     } else {
       // бутылка зелья — в сумку
@@ -8563,12 +8494,9 @@ export class ZoneRoom extends Room<ZoneState> {
     }
 
     // Лут на земле — идём поднять раньше, чем добивать моба (моб подождёт).
-    // Приоритет: апгрейд оружия СВОЕГО класса (gold/legendary) > бутылка зелья
+    // Приоритет: оружие > бутылка зелья
     // (пока в сумке меньше BOT.potions+2 — не тащимся через полкарты за лишней).
     const wantPotion = countPotions(p) < BOT.potions + 2;
-    // Апгрейд своего снаряжения — то, что бот реально наденет (не путать с
-    // "любое оружие берём в склад" ниже, см. okLoot).
-    const isEquipUpgrade = (w: { cls: WeaponClass; tier: WeaponTier }): boolean => botEquipUpgrade(p, bot.rt, w);
     let loot = bot.lootTarget ? this.sim.drops.get(bot.lootTarget) : undefined;
     const okLoot = (d: typeof loot): boolean => {
       if (!d || !lootFreeFor(d, bot.id)) return false; // чужой трофей — не бежим и не претендуем
@@ -8591,13 +8519,12 @@ export class ZoneRoom extends Room<ZoneState> {
       for (const d of this.sim.drops.values()) {
         if (!okLoot(d)) continue;
         const w = ITEMS[d.item].weapon;
-        // Апгрейд своего класса бот готов забрать через полкарты; чужого
-        // класса — просто прибрать по пути, не делать ради него крюк.
-        const reach = w ? (isEquipUpgrade(w) ? BOT.lootRadius * 3 : BOT.lootRadius) : BOT.lootRadius;
+        // Оружие бот прибирает по пути, не делая ради него крюк.
+        const reach = BOT.lootRadius;
         const dd = Math.hypot(d.x - p.head.x, d.z - p.head.z);
         if (dd >= reach) continue;
-        // апгрейд > любое другое оружие > бутылка; при прочих равных — что ближе.
-        const score = (w ? (isEquipUpgrade(w) ? 2000 : 1000) : 0) - dd;
+        // оружие > бутылка; при прочих равных — что ближе.
+        const score = (w ? 1000 : 0) - dd;
         if (score > bestScore) {
           bestScore = score;
           loot = d;

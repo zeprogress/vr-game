@@ -796,8 +796,7 @@ export function playClassAct(
       vfx.pillar(x, y, z, (r ?? 10) * 0.08, 5, ULT_COLOR[v ?? 0] ?? FXC.gold, Math.max(0.4, d ?? 5));
       ultCastFx(c, v ?? 0, x, y, z, r ?? 10, Math.max(0.4, d ?? 5));
       vfx.burst(x, y + 0.2, z, ATK, { count: 30, speed: 3, life: Math.max(0.4, d ?? 5), grav: 0, size: 0.2 });
-      if (v === 2) c.sound(at, "holy");
-      else c.sample(at, "ult-warn");
+      c.sound(at, v === 2 ? "holy" : "horn");
       return true;
     case "ultHeal":
       // Союзник вылечен ультой: столб света, светлое кольцо у ног и искры, всплывающие вверх.

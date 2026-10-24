@@ -3716,14 +3716,14 @@ export class Game {
     net.onCatReport = (m) => showCatReport(m, { delayMs: 3500, holdSec: 30, closable: true });
     net.onCatacomb = (m) => {
       this.notifyBanner(m.title, m.sub, m.kind === "win" || m.kind === "chest" ? "win" : "warn", m.loot);
-      if (m.kind === "boss" || m.kind === "start" || m.kind === "gather") this.sfx.bossAnnounce();
+      if (m.kind === "boss" || m.kind === "start" || m.kind === "gather") this.sfx.bossHorn();
       else if (m.kind === "win" || m.kind === "chest") this.sfx.bossFanfare();
     };
     net.onLevelUp = (lvl) => this.levelUpFx(lvl);
     net.onBossEvent = (kind, by, _loot, lootItems) => {
       if (kind === "spawn") {
         this.notifyBanner("Босс появился", "Багровый слизень вышел на охоту", "warn");
-        this.sfx.bossAnnounce();
+        this.sfx.bossHorn();
       } else {
         const sub = by ? `Решающий удар: ${by}` : "";
         this.notifyBanner("Босс повержен!", sub, "win", lootItems);

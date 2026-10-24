@@ -36,7 +36,6 @@ export const HERO_SFX = [
   "shadow-step", "knife-fan", "smoke-puff", "caltrops",
   "spear-thrust", "spear-rain",
   "storm-zap", "storm-jump",
-  "ult-warn",
 ] as const;
 export type HeroSfx = (typeof HERO_SFX)[number];
 
@@ -216,7 +215,6 @@ export class Sfx {
     this.ensureMusicBus();
     this.preloadHeroSkills();
     this.preloadEventAnnounce();
-    this.preloadBossAnnounce();
     void this.ctx?.resume().then(() => {
       // Звук ивента/босса мог потеряться, если случился ДО этого resume —
       // ready() был false в момент вызова. Доигрываем один раз сейчас.
@@ -955,34 +953,6 @@ export class Sfx {
       return;
     }
     this.playSample(this.eventBuf, 0.9);
-  }
-
-  private bossBuf: AudioBuffer | null = null;
-  private bossLoading = false;
-
-  /** Один раз подгрузить сэмпл объявления босса. */
-  private preloadBossAnnounce(): void {
-    if (this.bossLoading || this.bossBuf || !this.ctx) return;
-    this.bossLoading = true;
-    fetch("/sfx/boss-announce.wav")
-      .then((r) => r.arrayBuffer())
-      .then((a) => new Promise<AudioBuffer>((res, rej) => this.ctx!.decodeAudioData(a, res, rej)))
-      .then((b) => (this.bossBuf = b))
-      .catch(() => {});
-  }
-
-  /** Объявление босса (появление, катакомбы, квест чата): медленное нарастание. Пока не загружено — рог. */
-  bossAnnounce(): void {
-    if (!this.ready()) {
-      this.pendingEventSound = () => this.bossAnnounce();
-      return;
-    }
-    if (!this.bossBuf) {
-      this.preloadBossAnnounce();
-      this.bossHorn();
-      return;
-    }
-    this.playSample(this.bossBuf, 0.9);
   }
 
   /** Звук умения героя. Пока не загружен — тишина: лучше промолчать, чем сыграть чужой звук. */
