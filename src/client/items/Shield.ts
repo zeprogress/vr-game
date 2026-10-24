@@ -31,7 +31,7 @@ const SHIELD_COLORS: Record<WeaponTier, { body: [number, number, number]; metal:
 
 export function createShield(scene: Scene, tier: WeaponTier = "base", aegis = false): Mesh {
   // Эгида (старый уникальный щит) — свой прежний вид: фиолетовый треугольник.
-  if (aegis) return createTriangleShield(scene, "legendary");
+  if (aegis) return createTriangleShield(scene, tier === "ruby" ? "ruby" : "legendary");
   const c = SHIELD_COLORS[tier] ?? SHIELD_COLORS.base;
   const body = c.body;
   const metal = c.metal;
@@ -78,7 +78,7 @@ export function createShield(scene: Scene, tier: WeaponTier = "base", aegis = fa
   const shield = mergeToVertexColors(scene, [disc, rim, boss, grip]);
   if (!shield) throw new Error("не удалось собрать щит");
   shield.name = "shield";
-  if (tier === "legendary") attachLegendaryGlow(scene, shield, 0.4, 1 / 1.5);
+  if (tier === "legendary" || tier === "ruby") attachLegendaryGlow(scene, shield, 0.4, 1 / 1.5);
   return shield;
 }
 
@@ -141,6 +141,6 @@ function createTriangleShield(scene: Scene, tier: WeaponTier): Mesh {
   shield.rotation.y = Math.PI / 2;
   shield.bakeCurrentTransformIntoVertices();
   shield.name = "shield";
-  if (tier === "legendary") attachLegendaryGlow(scene, shield, 0.4, 1 / 1.5);
+  if (tier === "legendary" || tier === "ruby") attachLegendaryGlow(scene, shield, 0.4, 1 / 1.5);
   return shield;
 }

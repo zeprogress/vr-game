@@ -64,6 +64,7 @@ export const WEAPON_DROP: Partial<Record<string, ItemId>> = {
   "dagger:ruby": "ruby_dagger",
   "spear:ruby": "ruby_spear",
   "hammer:ruby": "ruby_hammer",
+  "shield:ruby": "ruby_shield",
   "sword:craft": "craft_sword",
   "bow:craft": "craft_bow",
   "staff:craft": "craft_staff",

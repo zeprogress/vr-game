@@ -23,6 +23,7 @@ export type ItemId =
   | "ruby_dagger"
   | "ruby_spear"
   | "ruby_hammer"
+  | "ruby_shield"
   | "craft_sword"
   | "craft_bow"
   | "craft_staff"
@@ -161,6 +162,7 @@ export const WEAPONS: Partial<Record<WeaponKey, WeaponDef>> = {
   "sword:legendary": { cls: "sword", tier: "legendary", name: weaponName("sword", "legendary"), mult: 4.5, tint: [0.62, 0.3, 1] },
   "bow:legendary": { cls: "bow", tier: "legendary", name: weaponName("bow", "legendary"), mult: 4.1, tint: [0.62, 0.3, 1] },
   "shield:legendary": { cls: "shield", tier: "legendary", name: weaponName("shield", "legendary"), mult: 1, tint: [0.62, 0.3, 1] },
+  "shield:ruby": { cls: "shield", tier: "ruby", name: weaponName("shield", "ruby"), mult: 1, tint: [1, 0.12, 0.25] },
   "staff:legendary": { cls: "staff", tier: "legendary", name: weaponName("staff", "legendary"), mult: 2.3, tint: [0.62, 0.3, 1] },
 
   // «Классы 2.0»: урон удара задаёт профиль оружия (classes2 WEAPONS2.dmg), mult — только тир.
@@ -284,6 +286,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   ruby_dagger: weaponItem("dagger", "ruby"),
   ruby_spear: weaponItem("spear", "ruby"),
   ruby_hammer: weaponItem("hammer", "ruby"),
+  ruby_shield: weaponItem("shield", "ruby"),
   craft_sword: weaponItem("sword", "craft"),
   craft_bow: weaponItem("bow", "craft"),
   craft_staff: weaponItem("staff", "craft"),
@@ -349,7 +352,9 @@ function weaponItem(cls: WeaponClass, tier: WeaponTier): ItemDef {
           ? "блок и защита — только от роллов"
           : tier === "gold"
             ? "золотой щит · 1–2 ролла"
-            : "уникальный щит · 2–3 ролла"
+            : tier === "ruby"
+              ? "рубиновый щит · 4 ролла, всё сильнее уникального"
+              : "уникальный щит · 2–3 ролла"
         : tier === "craft"
           ? "мастерское · из крафта · 2–4 ролла"
           : tier === "ruby"
@@ -658,8 +663,11 @@ export const STAR_CAP = 1.5;
 const CHANCE_SUBS: ReadonlySet<AffixSub> = new Set<AffixSub>(["pierce", "ignite", "chill", "venom"]);
 
 /** Диапазон ролла вида `sub` на предмете (у Эгиды свой); cap — потолок ролла (крафт): максимум × cap. */
-function rangeFor(sub: AffixSub, aegis: boolean, cap = 1): readonly [number, number] {
-  const r = (aegis && AEGIS_RANGES[sub]) || AFFIX_RANGES[sub];
+function rangeFor(sub: AffixSub, form: boolean | ShieldForm, cap = 1): readonly [number, number] {
+  const f = typeof form === "boolean" ? (form ? "aegis" : "round") : form;
+  const base = ((f === "aegis" || f === "rubyAegis") && AEGIS_RANGES[sub]) || AFFIX_RANGES[sub];
+  // Рубиновый щит: все роллы в SHIELD.rubyMul раз сильнее уникального (той же формы).
+  const r: readonly [number, number] = f === "ruby" || f === "rubyAegis" ? [base[0] * SHIELD.rubyMul, base[1] * SHIELD.rubyMul] : base;
   if (cap === 1) return r;
   const hi = Math.max(r[0] + 1e-6, r[1] * cap);
   return [r[0], CHANCE_SUBS.has(sub) ? Math.min(1, hi) : hi];
@@ -670,11 +678,11 @@ const CRIT_ROLL_MULT = [0.15, 0.5] as const; // 2026-10-02: было +0.3..+1 �
 const OLD_CRIT_MULT_HI = 0.8;
 
 /** Доля ролла от минимума к максимуму своего вида (0..1). */
-function rollT(sub: AffixSub, value: number, aegis = false, cap = 1): number {
+function rollT(sub: AffixSub, value: number, aegis: boolean | ShieldForm = false, cap = 1): number {
   const [lo, hi] = rangeFor(sub, aegis, cap);
   return hi > lo ? Math.max(0, Math.min(1, (value - lo) / (hi - lo))) : 1;
 }
-function atT(sub: AffixSub, t: number, aegis = false, cap = 1): number {
+function atT(sub: AffixSub, t: number, aegis: boolean | ShieldForm = false, cap = 1): number {
   const [lo, hi] = rangeFor(sub, aegis, cap);
   return lo + t * (hi - lo);
 }
@@ -747,7 +755,7 @@ export function affixLabel(a: RolledAffix): string {
 }
 
 /** Потолок ролла для подсказки: «макс 19.5% (▲ +30%)»; пусто — обычный потолок. */
-export function affixCapNote(a: RolledAffix, w: Pick<WeaponInstance, "cls" | "nm">): string {
+export function affixCapNote(a: RolledAffix, w: Pick<WeaponInstance, "cls" | "nm" | "tier">): string {
   const c = a.cap ?? 1;
   if (Math.abs(c - 1) < 0.0005) return "";
   const hi = affixRange(a.sub, w, c)[1];
@@ -774,8 +782,8 @@ export function instanceLabels(w: Pick<WeaponInstance, "affixes">): string[] {
   return w.affixes.map(affixLabel);
 }
 
-function rollAffix(rnd: () => number, cls: WeaponClass, used: ReadonlySet<AffixSub>, aegis = false): RolledAffix | null {
-  const subs = rollableSubs(cls, aegis).filter((s) => !used.has(s));
+function rollAffix(rnd: () => number, cls: WeaponClass, used: ReadonlySet<AffixSub>, aegis: boolean | ShieldForm = false): RolledAffix | null {
+  const subs = rollableSubs(cls, aegisOf(aegis)).filter((s) => !used.has(s));
   if (subs.length === 0) return null;
   const sub = subs[Math.floor(rnd() * subs.length)];
   // Ролл — ровно на целом очке (1..33): иначе 32.6 очка показывались «32», а значение уже как у максимума.
@@ -802,9 +810,9 @@ function snapToPoint(a: RolledAffix, aegis: boolean): void {
 }
 
 /** Очки одного ролла: от 1 (самый низкий) до 33 (самый высокий) линейно по диапазону вида. */
-export function affixPoints(a: RolledAffix, w: Pick<WeaponInstance, "cls" | "nm">): number {
+export function affixPoints(a: RolledAffix, w: Pick<WeaponInstance, "cls" | "nm" | "tier">): number {
   // Роллы стоят на целых очках (lv 9); округление гасит погрешность чисел с плавающей точкой.
-  return Math.round(1 + 32 * rollT(a.sub, a.value, isAegis(w), a.cap ?? 1));
+  return Math.round(1 + 32 * rollT(a.sub, a.value, shieldForm(w), a.cap ?? 1));
 }
 
 /**
@@ -857,11 +865,13 @@ export function rollWeaponInstance(
   /** Эгида: уникальный щит с «Оплотом» и своими роллами (Блок, Физ. защита, Отражение). */
   aegis = false,
 ): WeaponInstance {
-  const count = rollAffixCount(tier, rnd);
+  // Рубиновый щит — всегда 4 ролла (круглый и Эгида), остальные тиры — как раньше.
+  const count = cls === "shield" && tier === "ruby" ? 4 : rollAffixCount(tier, rnd);
+  const form: ShieldForm | boolean = cls === "shield" ? (tier === "ruby" ? (aegis ? "rubyAegis" : "ruby") : aegis) : aegis;
   const affixes: RolledAffix[] = [];
   const used = new Set<AffixSub>();
   while (affixes.length < count) {
-    const a = rollAffix(rnd, cls, used, aegis);
+    const a = rollAffix(rnd, cls, used, form);
     if (!a) break;
     used.add(a.sub);
     affixes.push(a);
@@ -869,7 +879,7 @@ export function rollWeaponInstance(
   sortAffixes(affixes);
   return {
     id: shortId(rnd), cls, tier, affixes, lv: LOOT_VER,
-    ...(aegis ? { nm: LEGACY_LEGENDARY.shield?.name } : {}),
+    ...(aegis ? { nm: tier === "ruby" ? RUBY_AEGIS_NAME : LEGACY_LEGENDARY.shield?.name } : {}),
     ...(cls === "staff" ? { sv: 1 } : {}),
   };
 }
@@ -971,8 +981,8 @@ export function takeFromBag(bag: Slot[], id: ItemId, count: number): boolean {
 }
 
 /** Диапазон ролла [мин, макс] на этом предмете (у Эгиды свой) — и для лаборатории баланса. */
-export function affixRange(sub: AffixSub, w: Pick<WeaponInstance, "cls" | "nm">, cap = 1): readonly [number, number] {
-  return rangeFor(sub, isAegis(w), cap);
+export function affixRange(sub: AffixSub, w: Pick<WeaponInstance, "cls" | "nm" | "tier">, cap = 1): readonly [number, number] {
+  return rangeFor(sub, shieldForm(w), cap);
 }
 
 /**
@@ -1024,9 +1034,34 @@ export function shieldMagDef(inst?: Pick<WeaponInstance, "affixes"> | null): num
 
 /** Эгида — старый уникальный щит с особым свойством «Оплот». */
 export function isAegis(w: Pick<WeaponInstance, "cls" | "nm"> | null | undefined): boolean {
-  return !!w && w.cls === "shield" && w.nm === LEGACY_LEGENDARY.shield?.name;
+  return !!w && w.cls === "shield" && (w.nm === LEGACY_LEGENDARY.shield?.name || w.nm === RUBY_AEGIS_NAME);
 }
-/** Подпись свойства Эгиды (идёт первой в тексте в руке; heroStats/itemStats ищут по слову «Оплот»). */
+/** Форма щита: круглый, Эгида (уникальная и рубиновая) и рубиновый круглый — у каждой свои роллы и свойство. */
+export type ShieldForm = "round" | "aegis" | "ruby" | "rubyAegis";
+/** Имя рубиновой Эгиды (по нему её узнают на экземпляре, как Эгиду — по LEGACY_LEGENDARY). */
+export const RUBY_AEGIS_NAME = "Рубиновая Эгида";
+export function shieldForm(w: Pick<WeaponInstance, "cls" | "tier" | "nm"> | null | undefined): ShieldForm {
+  const aegis = isAegis(w);
+  if (w?.tier === "ruby") return aegis ? "rubyAegis" : "ruby";
+  return aegis ? "aegis" : "round";
+}
+/** Эгида (обе) — по форме: нужна для выбора набора роллов. */
+function aegisOf(form: boolean | ShieldForm): boolean {
+  return typeof form === "boolean" ? form : form === "aegis" || form === "rubyAegis";
+}
+/** Оплот — подпись свойства Эгиды (идёт первой в тексте в руке; heroStats/itemStats ищут по слову «Оплот»). */
+export function aegisHealOf(w: Pick<WeaponInstance, "cls" | "tier" | "nm"> | null | undefined): number {
+  if (!isAegis(w)) return 0;
+  return w?.tier === "ruby" ? SHIELD.rubyAegisHealFrac : SHIELD.aegisHealFrac;
+}
+export function aegisLabelOf(w: Pick<WeaponInstance, "cls" | "tier" | "nm"> | null | undefined): string {
+  return `Оплот: блок удара вблизи лечит ${Math.round(aegisHealOf(w) * 100)}% HP`;
+}
+/** Круглый рубиновый щит: успешный блок удара вблизи оглушает атакующего (как Оплот у Эгиды). */
+export function isRubyRound(w: Pick<WeaponInstance, "cls" | "tier" | "nm"> | null | undefined): boolean {
+  return !!w && w.cls === "shield" && w.tier === "ruby" && !isAegis(w);
+}
+export const RUBY_ROUND_LABEL = `Оглушение: блок удара вблизи оглушает атакующего на ${SHIELD.rubyStunSec} с`;
 export const AEGIS_LABEL = `Оплот: блок удара вблизи лечит ${Math.round(SHIELD.aegisHealFrac * 100)}% HP`;
 
 /** Свойства предмета помимо роллов — строки для инвентаря (сейчас у щитов: блок, отражение, «Оплот»). */
@@ -1040,7 +1075,8 @@ export function instanceEffects(w: WeaponInstance): string[] {
   if (w.cls !== "shield") return [];
   // Блок — только ролл (он и так в списке роллов): отдельной строкой не дублируем.
   const out: string[] = [];
-  if (isAegis(w)) out.push(AEGIS_LABEL);
+  if (isAegis(w)) out.push(aegisLabelOf(w));
+  if (isRubyRound(w)) out.push(RUBY_ROUND_LABEL);
   return out;
 }
 
@@ -1049,7 +1085,9 @@ export function instanceEffects(w: WeaponInstance): string[] {
  * (сервер пишет его только Эгиде, см. heldAffixText) — псевдо-тир "aegis".
  */
 export function aegisTier(cls: string, tier: string, affix: string | undefined): string {
-  return cls === "shield" && tier === "legendary" && !!affix?.startsWith("Оплот") ? "aegis" : tier;
+  if (cls !== "shield" || !affix?.startsWith("Оплот")) return tier;
+  if (tier === "legendary") return "aegis";
+  return tier === "ruby" ? "rubyAegis" : tier;
 }
 
 /** Текст «в руке» (PlayerState.left/rightAffix, таблица характеристик): свойство Эгиды + роллы. */
@@ -1058,7 +1096,8 @@ export function heldAffixText(w: WeaponInstance | null | undefined): string {
   const sharp = attackPointEligible(w) ? attackPoints(w) : 0;
   const cp = craftPow(w);
   return [
-    ...(isAegis(w) ? [AEGIS_LABEL] : []),
+    ...(isAegis(w) ? [aegisLabelOf(w)] : []),
+    ...(isRubyRound(w) ? [RUBY_ROUND_LABEL] : []),
     ...instanceLabels(w),
     ...(sharp > 0 ? [`Точка атаки +${(attackPointBonus(sharp) * 100).toFixed(1)}%`] : []),
     // «Мастерство» крафта — множитель урона, как точка атаки (клиент читает обе строки: powerMulOfText).
@@ -1203,10 +1242,10 @@ export function migrateLoot(w: WeaponInstance): boolean {
   if (ver < 13 && w.rc) {
     for (const a of w.affixes) {
       if (!(a.cap !== undefined && a.cap < 1)) continue;
-      const aegis = isAegis(w);
-      const [lo, hi] = rangeFor(a.sub, aegis, a.cap);
+      const form = shieldForm(w);
+      const [lo, hi] = rangeFor(a.sub, form, a.cap);
       const t = hi > lo ? Math.max(0, Math.min(1, (a.value - lo) / (hi - lo))) : 0;
-      a.value = atT(a.sub, t, aegis, 1);
+      a.value = atT(a.sub, t, form, 1);
       delete a.cap;
     }
   }
@@ -1436,7 +1475,7 @@ export function enchantApply(w: WeaponInstance, idx: number, gain: number): void
   const a = w.affixes[idx];
   if (!a) return;
   const pts = Math.min(POINTS_MAX, affixPoints(a, w) + gain);
-  a.value = atT(a.sub, (pts - 1) / 32, isAegis(w), a.cap ?? 1);
+  a.value = atT(a.sub, (pts - 1) / 32, shieldForm(w), a.cap ?? 1);
 }
 
 /**

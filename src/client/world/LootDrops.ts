@@ -197,7 +197,8 @@ export class LootDrops {
  * Меш под класс и уровень оружия — общий для лута и для рук. Тир "aegis" —
  * псевдо-тир щита Эгиды (старый уникальный со своим видом, см. aegisTier).
  */
-export function makeWeaponMesh(scene: Scene, cls: WeaponClass, tier: WeaponTier | "aegis"): Mesh {
+export function makeWeaponMesh(scene: Scene, cls: WeaponClass, tier: WeaponTier | "aegis" | "rubyAegis"): Mesh {
+  if (tier === "rubyAegis") return cls === "shield" ? createShield(scene, "ruby", true) : makeWeaponMesh(scene, cls, "ruby");
   if (tier === "aegis") return cls === "shield" ? createShield(scene, "legendary", true) : makeWeaponMesh(scene, cls, "legendary");
   if (cls === "dagger" || cls === "spear" || cls === "hammer") {
     return createClassWeapon(scene, cls, tier === "craft" ? 4 : tier === "ruby" ? 3 : tier === "legendary" ? 2 : tier === "gold" ? 1 : 0);

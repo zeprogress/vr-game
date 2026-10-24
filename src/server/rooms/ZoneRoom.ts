@@ -146,6 +146,8 @@ import {
   heldAffixText,
   instanceEffects,
   isAegis,
+  aegisHealOf,
+  isRubyRound,
   shieldReflect,
   shieldRegen,
   shieldPhysDef,
@@ -3935,7 +3937,7 @@ export class ZoneRoom extends Room<ZoneState> {
       reflect: shieldReflect(shieldOf(p, trt)?.inst),
       physDef: shieldPhysDef(shieldOf(p, trt)?.inst),
       magDef: shieldMagDef(shieldOf(p, trt)?.inst),
-      aegisHeal: isAegis(shieldOf(p, trt)?.inst) ? SHIELD.aegisHealFrac : 0,
+      aegisHeal: aegisHealOf(shieldOf(p, trt)?.inst),
       warriorMul: 1,
     };
     this.towerRuns
@@ -7698,6 +7700,16 @@ export class ZoneRoom extends Room<ZoneState> {
         const rid = WEAPON_DROP[weaponKey(r.cls, r.tier)];
         if (rid) loot.push({ id: rid, count: 1 });
         this.reply(`💎 ${p.nick} получает рубиновое оружие — ${instanceName(r)}: ${instanceLabels(r).join(", ")}!`);
+      }
+      // Рубиновый щит — свой бросок (как рубиновое оружие), круглый или Эгида поровну.
+      if (Math.random() < RUBY.dropChance) {
+        const sh = rollWeaponInstance("shield", "ruby", Math.random, Math.random() < 0.5);
+        rt.weapons.push(sh);
+        store.put(token, { weapons: rt.weapons });
+        this.announcePickup(p.nick, sh.cls, sh.tier, sh);
+        const rid = WEAPON_DROP[weaponKey(sh.cls, sh.tier)];
+        if (rid) loot.push({ id: rid, count: 1 });
+        this.reply(`💎 ${p.nick} получает рубиновый щит — ${instanceName(sh)}: ${instanceLabels(sh).join(", ")}!`);
       }
       // Рубиновая броня — свой бросок (вдвое чаще рубинового оружия), случайная часть — сразу на склад.
       if (Math.random() < ARMOR_RUBY.dropChance) {
@@ -11835,8 +11847,12 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     // Эгида, «Оплот»: успешный блок УДАРА ВБЛИЗИ лечит (снаряды и выстрелы — нет; 2026-10-05).
     if (shield && !h.projectile && block.by === 1 && block.mult === 0 && isAegis(shield.inst) && p.hp > 0) {
-      p.hp = Math.min(p.maxHp, p.hp + p.maxHp * SHIELD.aegisHealFrac);
+      p.hp = Math.min(p.maxHp, p.hp + p.maxHp * aegisHealOf(shield.inst));
       this.broadcast(MSG.act, { k: "healHit", id: h.target, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay);
+    }
+    // Круглый рубиновый щит (2026-10-24): успешный блок удара вблизи оглушает атакующего.
+    if (shield && !h.projectile && block.by === 1 && block.mult === 0 && isRubyRound(shield.inst) && p.hp > 0 && h.byMob) {
+      this.sim.stunMob(h.byMob, SHIELD.rubyStunSec);
     }
     // Вампиризм моба (Костяной призрак) — от реально прошедшего урона.
     if (h.lifesteal && h.byMob && dmg > 0) {

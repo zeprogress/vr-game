@@ -3912,11 +3912,10 @@ export class Game {
     // тексту «Оплот» в своём PlayerState (восстановление рук при входе).
     this.combat.makeWeaponMesh = (cls, tier) => {
       const self = this.net?.self;
-      const aegis =
-        cls === "shield" &&
-        tier === "legendary" &&
-        (this.nextAegis || aegisTier("shield", tier, self?.leftAffix) === "aegis" || aegisTier("shield", tier, self?.rightAffix) === "aegis");
-      return makeWeaponMesh(this.scene, cls as WeaponClass, aegis ? "aegis" : tier);
+      // Эгида — уникальная (aegis) или рубиновая (rubyAegis): по тексту «Оплот» в руке.
+      const held = [aegisTier("shield", tier, self?.leftAffix), aegisTier("shield", tier, self?.rightAffix)];
+      const aegis = cls === "shield" && (tier === "legendary" || tier === "ruby") && (this.nextAegis || held.includes("aegis") || held.includes("rubyAegis"));
+      return makeWeaponMesh(this.scene, cls as WeaponClass, aegis ? (tier === "ruby" ? "rubyAegis" : "aegis") : tier);
     };
     this.combat.onWeaponLanded = (cls, tier, x, z, hand) =>
       net.sendDropWeapon({ cls, tier, x, z, hand: hand ?? undefined });
