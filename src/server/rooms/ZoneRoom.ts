@@ -202,7 +202,7 @@ import {
   type Progress,
   type StatName,
 } from "#shared/progression";
-import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand } from "#shared/hands";
+import { canHoldTogether, equipHands, handsValid, unequipHand } from "#shared/hands";
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
 import { leashCut } from "../sim/leash";
 import { ATTR2 } from "#shared/attrs2";
@@ -805,11 +805,12 @@ function sanitizeHeld(v: unknown): HeldWeapons {
 }
 
 /**
- * Руки при входе: щит и кинжал — только если они у героя есть (owned). Раньше автоматический щит у одного меча
- * сохранялся в руках и при перезаходе снова «надевался» — второе оружие появлялось само.
+ * Руки при входе. Базовое оружие в руках не держим: его никто не надевает сам (ни при входе, ни при подборе),
+ * а сохранённое раньше — снимаем. Щит и кинжал — только если они у героя есть (owned).
  */
 function heldOwned(h: HeldWeapons, owned: readonly string[] | undefined): HeldWeapons {
-  const need = (c: CarriedWeapon | null): CarriedWeapon | null => (c && (c.cls === "shield" || c.cls === "dagger") && !ownsClass(owned, c.cls) ? null : c);
+  const need = (c: CarriedWeapon | null): CarriedWeapon | null =>
+    !c || c.tier === "base" || ((c.cls === "shield" || c.cls === "dagger") && !ownsClass(owned, c.cls)) ? null : c;
   return { left: need(h.left), right: need(h.right) };
 }
 
@@ -1091,11 +1092,6 @@ function applyEquip(
 ): void {
   const before = { ...p };
   const removed = equipHands(p, w.cls, w.tier, side);
-  // Щит вместо двуручного — без оружия героя не оставляем: в правую обычный меч.
-  if (!hasAttackWeapon(p)) {
-    p.rightCls = "sword";
-    p.rightTier = "base";
-  }
   for (const s of removed) {
     preserveLegacyWeapon(rt, s === "left" ? before.leftCls : before.rightCls, s === "left" ? before.leftTier : before.rightTier);
     rt.equippedWeaponId[s] = null;
@@ -2082,12 +2078,9 @@ export class ZoneRoom extends Room<ZoneState> {
         if (!claim || !isWeaponClass(claim.cls) || !isWeaponTier(claim.tier)) {
           return { cls: "", tier: "" };
         }
-        // Не поднимал — держит базовый вариант того же класса.
-        const tier =
-          claim.tier === "base" || rt.owned.has(weaponKey(claim.cls, claim.tier))
-            ? claim.tier
-            : "base";
-        return { cls: claim.cls, tier };
+        // Не поднимал — рука пустая (базовое сам не надеваем).
+        if (claim.tier !== "base" && !rt.owned.has(weaponKey(claim.cls, claim.tier))) return { cls: "", tier: "" };
+        return { cls: claim.cls, tier: claim.tier };
       };
 
       const l = put(msg.left);
@@ -4859,13 +4852,18 @@ export class ZoneRoom extends Room<ZoneState> {
     if (!w || w.tier !== "ruby") return this.sendShop(client, "Этого рубинового уже нет на складе");
     if (w.fav) return this.sendShop(client, "Это оружие в избранном ★ — сними звёздочку, чтобы обменять");
     if (!isWeaponClass(cls) || cls === "shield" || cls === w.cls) return this.sendShop(client, "Такой обмен не выйдет");
-    // Надето — рука освобождается, как при разборе: остаётся базовое оружие своего класса; новое уходит на склад.
+    // Надето — рука освобождается, как при разборе: пустая; новое уходит на склад.
     let freed = false;
     for (const side of ["left", "right"] as const) {
       if (rt.equippedWeaponId[side] !== w.id && rolledIn(p, side, rt)?.id !== w.id) continue;
       rt.equippedWeaponId[side] = null;
-      if (side === "left") p.leftTier = "base";
-      else p.rightTier = "base";
+      if (side === "left") {
+        p.leftCls = "";
+        p.leftTier = "";
+      } else {
+        p.rightCls = "";
+        p.rightTier = "";
+      }
       freed = true;
     }
     const nw = swapRubyClass(w, cls);
@@ -6397,7 +6395,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const equipped = sanitizeEquipped(rec.equippedWeaponId);
     if (act === "equip") {
       const held = sanitizeHeld(rec.held);
-      const right = held.right ?? { cls: "sword", tier: "base" };
+      const right = held.right ?? { cls: "", tier: "" };
       const hands: Hands = {
         rightCls: right.cls,
         rightTier: right.tier,
@@ -6446,11 +6444,13 @@ export class ZoneRoom extends Room<ZoneState> {
     rt.weapons.splice(idx, 1);
     if (rt.equippedWeaponId.left === w.id) {
       rt.equippedWeaponId.left = null;
-      p.leftTier = "base";
+      p.leftCls = "";
+      p.leftTier = "";
     }
     if (rt.equippedWeaponId.right === w.id) {
       rt.equippedWeaponId.right = null;
-      p.rightTier = "base";
+      p.rightCls = "";
+      p.rightTier = "";
     }
     return scrapValue(w);
   }
