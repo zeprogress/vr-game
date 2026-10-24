@@ -307,7 +307,7 @@ const MECH_CLASSES_HTML = (() => {
 <p>Уворот с одним оружием в руках (пустая вторая рука, лук, посох, копьё, молот) — в ${ATTR2.luc.dodgeOneItem} раза выше, потолок ${Math.round(ATTR2.luc.dodgeCap * 100)}%. Сброс всех очков — ${respecCostFor(0) === 0 ? "<b>бесплатно</b>" : `<b>${respecCostFor(0)} жетон ◈</b>`} (<code>!respec</code> или кнопка на вкладке «Атрибуты»). Бот зрителя раскидывает новые очки сам, пока хозяин не вложит их вручную или не сбросит (<code>!autostats</code> — вернуть авто).</p>
 
 <h2>Классы</h2>
-<p>Класс — это оружие в руках: взял кинжалы — ассасин, копьё — копейщик и т.д. У каждого класса свои умения, любые два можно выбрать на вкладке «Умения» (ПК — клавиши 2 и 3, телефон — кнопки ✦, VR — стики правой и левой руки). Ботам — <code>!class</code> и <code>!skills</code>.</p>
+<p>Класс — это оружие в руках: взял кинжалы — ассасин, копьё — копейщик и т.д. У каждого класса свои умения, любые два можно выбрать на вкладке «Умения» (ПК — клавиши 2 и 3, телефон — кнопки ✦, VR — стики правой и левой руки). Ботам — <code>!skills</code>.</p>
 ${classes}
 <p>Щит у воина — шанс полностью заблокировать удар — только от ролла Блок (врождённого блока у щитов нет); у щитов ещё роллы Физ. и Маг. защита, у Эгиды — Отражение, и она лечит при блоке. Молот боевого мага каждым ударом пускает магическую волну (урон от интеллекта). Копьё бьёт конусом перед собой — до ${WEAPONS2.spear.pierce} целей (за первой — ${Math.round(SPEAR_PIERCE_DMG * 100)}% урона). Два кинжала бьют по очереди чаще, один кинжал — крит и уворот выше.</p>
 
@@ -369,7 +369,7 @@ ${MECH_CLASSES_HTML}
 <p>Пока хозяин не в чате, его герой — бот: сам ходит, дерётся, лутается и лечится. Уходит из мира, если хозяин долго не пишет.</p>
 
 <h2>Команды в чате</h2>
-<p><code>!play</code>/<code>!stop</code> — герой в мир/из мира · <code>!stats</code> — прогресс · <code>!class</code> — класс · <code>!skills</code> — умения · <code>!str</code> <code>!dex</code> <code>!int</code> <code>!con</code> <code>!luc</code> <code>!wis</code> — атрибуты · <code>!respec</code> — сброс за 1 ◈ · <code>!inv</code> — эта страница · <code>!camp &lt;моб&gt;</code> — где качаться · <code>!fish</code> — рыбалка · <code>!follow &lt;ник&gt;</code> (<code>!следовать</code>) — рядом и защищает · <code>!raid</code> — поход на босса · <code>!event</code> — на ивент · <code>!квест</code> — квест чата · <code>!title</code> — титулы · <code>!focus</code> — показать героя в эфире · <code>!top</code> — лидеры.</p>
+<p><code>!play</code>/<code>!stop</code> — герой в мир/из мира · <code>!stats</code> — прогресс · <code>!skills</code> — умения · <code>!str</code> <code>!dex</code> <code>!int</code> <code>!con</code> <code>!luc</code> <code>!wis</code> — атрибуты · <code>!respec</code> — сброс за 1 ◈ · <code>!inv</code> — эта страница · <code>!camp &lt;моб&gt;</code> — где качаться · <code>!fish</code> — рыбалка · <code>!follow &lt;ник&gt;</code> (<code>!следовать</code>) — рядом и защищает · <code>!raid</code> — поход на босса · <code>!event</code> — на ивент · <code>!квест</code> — квест чата · <code>!title</code> — титулы · <code>!focus</code> — показать героя в эфире · <code>!top</code> — лидеры.</p>
 `;
 
 document.getElementById("mechBtn")!.addEventListener("click", () => {

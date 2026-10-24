@@ -561,25 +561,14 @@ const LEGEND_DROP = ["sword", "bow", "shield", "staff", "dagger", "spear", "hamm
 const BOT_CLASS_WEAPONS = ["sword", "bow", "staff", "dagger", "spear", "hammer"] as const;
 
 /**
- * Стартовая вторая рука класса (только когда класс выбран заново через !class или у
- * нового героя): меч/посох — щит, кинжал — второй кинжал, двуручное — ничего.
- * При обычном надевании оружия щит сам не добавляется (см. shared/hands.ts).
+ * Вторая рука класса по умолчанию: меч/посох — щит, кинжал — второй кинжал, двуручное — ничего.
+ * Используется только для обычных предметов выше базы (см. offHandDefault); при обычном надевании щит сам не добавляется (shared/hands.ts).
  */
 function botOffHand(cls: string): string {
   if (cls === "sword" || cls === "staff") return "shield";
   if (cls === "dagger") return "dagger";
   return "";
 }
-
-/** Чат: !class <имя> → оружие класса. */
-const CLASS_ALIASES: Record<string, (typeof BOT_CLASS_WEAPONS)[number]> = {
-  воин: "sword", меч: "sword", warrior: "sword", танк: "sword",
-  лучник: "bow", лук: "bow", archer: "bow",
-  маг: "staff", посох: "staff", mage: "staff", support: "staff", поддержка: "staff",
-  ассасин: "dagger", кинжал: "dagger", кинжалы: "dagger", assassin: "dagger", убийца: "dagger",
-  копейщик: "spear", копьё: "spear", копье: "spear", spear: "spear", spearman: "spear",
-  боевой: "hammer", "боевой маг": "hammer", молот: "hammer", hammer: "hammer", battlemage: "hammer",
-};
 
 /** Выбрано ли у героя это умение (skill1/skill2). */
 function hasSkill(p: PlayerState, k: string): boolean {
@@ -4394,7 +4383,6 @@ export class ZoneRoom extends Room<ZoneState> {
       }
     }
     else if (cmd === "!skin" || cmd === "!model" || cmd === "!skins") this.reskinBot(norm, parts[1]);
-    else if (cmd === "!class" || cmd === "!класс") this.setBotClass(nick, norm, parts.slice(1).join(" "));
     else if (cmd === "!skills" || cmd === "!skill" || cmd === "!умения") this.setBotSkills(nick, norm, parts.slice(1));
     else if (cmd === "!ульта" || cmd === "!ult") this.castUltChat(nick, norm);
     else if (cmd === "!info" || cmd === "!help" || cmd === "!commands") this.sayInfo();
@@ -6561,7 +6549,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const beforeMana = p.maxMana;
     p.maxMana = maxManaFor(p.level, p);
     p.mana = Math.min(p.maxMana, p.mana + Math.max(0, p.maxMana - beforeMana));
-    // «Классы 2.0»: класс бота больше не следует за атрибутами — его выбирают !class.
+    // «Классы 2.0»: класс бота больше не следует за атрибутами — он задан при создании героя.
     void autoClass;
     return done;
   }
@@ -6673,7 +6661,6 @@ export class ZoneRoom extends Room<ZoneState> {
     "Совет: !follow <ник> или !come — герой встанет рядом и будет защищать тебя, если на тебя нападут.",
     "Совет: у золотого и уникального оружия бывают роллы — урон, скорость атаки, крит, вампиризм (ближний бой), блок (щит).",
     "Совет: !raid — вести героя в рейд на Лунного аватара (гора с водопадом) толпой, !event — на нашествие, !top — таблица лидеров.",
-    "Совет: !class ассасин / копейщик / боевой маг / воин / лучник / маг — сменить класс героя (оружие класса — в руки).",
     "Совет: !skills — умения класса; выбрать два: !skills рывок печать (по началу названия).",
     "Совет: шесть атрибутов — !str !dex !int !con !luc !wis; цена очка растёт каждые 10 подъёмов. Бот раскидывает очки сам, пока ты не вложишь их вручную (вернуть — !autostats).",
     "Катакомбы: !катакомбы — отряд от 3 героев спускается в подземелье: волны мертвецов, два стража и Владыка Бездны, каждому — уникальное оружие. Командуй героем: !цель босс, !встать назад, !режим осторожно.",
@@ -6700,7 +6687,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.reply(
       "Команды: !play — твой герой выходит в мир и сам дерётся с мобами · " +
         "!stop — убрать его · !skin — сменить внешность (или !skin 3, всего " +
-        `${BOT.skins}) · !stats — его прогресс · !class — класс (воин, лучник, маг, ассасин, копейщик, боевой маг) · ` +
+        `${BOT.skins}) · !stats — его прогресс · ` +
         "!skills — умения класса (два на выбор) · !str !dex !int !con !luc !wis — атрибуты · " +
         "!respec — вернуть все очки атрибутов (за 1 жетон ◈) · " +
         "!delete — стереть героя и начать заново · !top — таблица лидеров.",
@@ -6844,27 +6831,24 @@ export class ZoneRoom extends Room<ZoneState> {
     const pinR = rawR && rawR.cls !== "shield" ? rawR : rawL && rawL.cls !== "shield" && bothHandsCls(rawL.cls) ? rawL : undefined;
     // Левая: щит или второй меч/кинжал, который держится вместе с правым.
     const pinL = rawL && rawL !== pinR && (rawL.cls === "shield" || (!!pinR && canHoldTogether(pinR.cls, rawL.cls))) ? rawL : undefined;
-    // Класс бота: закреплённое оружие → что было в руках при выходе (это и выбор на ПК, и !class) →
-    // класс из !class → у нового героя — случайный из шести.
-    const chosen = rec?.botClass && isWeaponClass(rec.botClass) && rec.botClass !== "shield" ? rec.botClass : null;
-    const rc = pinR ? pinR.cls : (savedRight?.cls ?? chosen ?? BOT_CLASS_WEAPONS[Math.floor(Math.random() * BOT_CLASS_WEAPONS.length)]);
+    // Руки героя-бота: своё сохранённое оружие (закреплённое на ПК или то, что было в руках) — как есть.
+    // Базовое оружие сам бот не надевает: пустая рука у сохранённого героя так и остаётся пустой.
+    // Случайный класс — только при создании героя (первый !play из чата).
+    const handsSaved = !!rec && ((rec.weapons?.length ?? 0) > 0 || (rec.owned?.length ?? 0) > 0 || !!rec.held?.right || !!rec.held?.left);
+    const rc = pinR ? pinR.cls : handsSaved ? (savedRight?.cls ?? "") : BOT_CLASS_WEAPONS[Math.floor(Math.random() * BOT_CLASS_WEAPONS.length)];
     // Лучший тир СВОЕГО класса из всего, что герой когда-либо честно поднял
     // (rt.owned/PlayerRecord.owned — копится на весь аккаунт), а не только
     // то, что осталось в руке или спрятано за спиной в VR на момент !stop:
     // подобрал легендарку, убрал за спину поносить базовым — бот всё равно
     // должен выйти с лучшим.
     // Тир: закреплённого — его; в руках был этот класс — тот тир, что держал (выбор игрока); иначе лучший найденный.
-    const rightTier = pinR ? pinR.tier : savedRight?.cls === rc ? savedRight.tier : bestOwnedTier(rec?.owned, rc);
+    const rightTier = pinR ? pinR.tier : savedRight?.cls === rc ? savedRight.tier : rc ? bestOwnedTier(rec?.owned, rc) : "";
     p.rightCls = rc;
     p.rightTier = rightTier;
     // Лук занимает обе руки — без щита; меч/посох — со щитом, лучший
     // когда-либо честно поднятый тир (та же логика, что и для правой руки).
-    const leftTier = pinL ? pinL.tier : bestOwnedTier(rec?.owned, "shield");
     // Левая рука: что герой держал в ней при сохранении — как есть, и пустая тоже. Класс по умолчанию
-    // (botOffHand: второй кинжал / щит) — только новому герою без сохранённых рук или если правая рука
-    // сменилась. Раньше пустая левая у сохранённого героя с кинжалом в правой заполнялась сама.
-    // Руки уже сохранялись: есть оружие/владения или занятая рука (у новой записи held пустой по умолчанию).
-    const handsSaved = !!rec && ((rec.weapons?.length ?? 0) > 0 || (rec.owned?.length ?? 0) > 0 || !!rec.held?.right || !!rec.held?.left);
+    // (offHandDefault) — только новому герою и только для улучшенного щита/кинжала.
     const leftSaved = savedHeld.left?.cls ?? "";
     let off = handsSaved
       ? (canHoldTogether(rc, leftSaved) ? leftSaved : "")
@@ -6877,13 +6861,11 @@ export class ZoneRoom extends Room<ZoneState> {
     p.leftTier =
       pinL && pinL.cls === off
         ? pinL.tier
-        : off === "shield"
-          ? leftTier
-          : off === "dagger"
-            ? (savedHeld.left?.cls === "dagger" ? savedHeld.left.tier : bestOwnedTier(rec?.owned, "dagger"))
-            : off === "sword"
-              ? (savedHeld.left?.tier ?? "base")
-              : "";
+        : savedHeld.left?.cls === off
+          ? savedHeld.left.tier
+          : off
+            ? bestOwnedTier(rec?.owned, off as WeaponClass)
+            : "";
     // Сумку восстанавливаем из сейва (restoreBag — как у живого игрока) —
     // раньше тут был emptyBag() с нуля КАЖДЫЙ !play, и весь "Лом" от разборки
     // (и любые другие расходники) стирался при первом же выходе бота в мир
@@ -8046,50 +8028,6 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /**
-   * `!class <класс>` — выбрать класс героя-бота: в руки — оружие класса
-   * (лучший честно найденный тир), выбор сохраняется. Без аргумента — список.
-   */
-  private setBotClass(nick: string, norm: string, arg: string): void {
-    const want = CLASS_ALIASES[arg.trim().toLowerCase()];
-    const list = "воин · лучник · маг · ассасин · копейщик · боевой маг";
-    if (!want) {
-      if (this.hintOk(norm)) this.reply(`@${nick} классы: ${list} — напиши, например, !class ассасин`);
-      return;
-    }
-    const token = `nick:${norm}`;
-    // Новый класс — старые закрепления (оружие прежнего класса) снимаем, иначе при выходе
-    // бот вернулся бы к закреплённому. Героя вне игры — сразу и руки в сейве (их бот берёт при выходе).
-    const rec0 = store.get(token);
-    const off0 = botOffHand(want);
-    store.put(token, {
-      botClass: want,
-      equippedWeaponId: { left: null, right: null },
-      held: {
-        right: { cls: want, tier: bestOwnedTier(rec0?.owned, want) },
-        left: off0 ? { cls: off0 as WeaponClass, tier: bestOwnedTier(rec0?.owned, off0 as WeaponClass) } : null,
-      },
-    });
-    const def = CLASSES2[classOf2(botOffHand(want) as Weapon2 | "", want) ?? "warrior"];
-    const bot = this.bots.get(norm);
-    if (bot) {
-      const p = bot.state;
-      preserveLegacyWeapon(bot.rt, p.rightCls, p.rightTier);
-      preserveLegacyWeapon(bot.rt, p.leftCls, p.leftTier);
-      p.rightCls = want;
-      p.rightTier = bestOwnedTier([...bot.rt.owned], want);
-      const off = offHandDefault([...bot.rt.owned], want);
-      p.leftCls = off;
-      p.leftTier = off ? bestOwnedTier([...bot.rt.owned], off as WeaponClass) : "";
-      bot.rt.equippedWeaponId = { left: null, right: null };
-      this.persistBot(bot);
-    }
-    this.reply(
-      `@${nick} класс: ${def.icon} ${def.name} (${def.weapons}). Новые очки атрибутов герой раскидает под класс сам; ` +
-        `вложенные раньше — !respec за 1 ◈.`,
-    );
-  }
-
-  /**
    * `!skills` — умения класса героя: без аргументов — список (выбранные с ✓),
    * `!skills <умение> <умение>` — выбрать два (по началу названия: «рывок печать»).
    */
@@ -8100,7 +8038,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const right = t ? t.p.rightCls : rec?.held?.right?.cls ?? "";
     const cls = classOf2(left as Weapon2 | "", right as Weapon2 | "");
     if (!cls) {
-      if (this.hintOk(norm)) this.reply(`@${nick} у героя нет оружия — сначала !play или !class.`);
+      if (this.hintOk(norm)) this.reply(`@${nick} у героя нет оружия — сначала !play.`);
       return;
     }
     const def = CLASSES2[cls];
