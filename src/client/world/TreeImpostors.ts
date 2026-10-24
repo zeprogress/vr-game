@@ -9,7 +9,6 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { RenderTargetTexture } from "@babylonjs/core/Materials/Textures/renderTargetTexture";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { Constants } from "@babylonjs/core/Engines/constants";
-import { Scene as SceneCls } from "@babylonjs/core/scene";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
 import { COS_CENTER, COS_SIDE, SIDE_K } from "./cullSectors";
 
@@ -221,6 +220,7 @@ export class TreeImpostors {
       cm.diffuseColor = new Color3(0, 0, 0);
       cm.specularColor = new Color3(0, 0, 0);
       cm.backFaceCulling = false;
+      cm.fogEnabled = false;
       c.material = cm;
       capMats.push(cm);
       c.layerMask = MASK;
@@ -291,15 +291,8 @@ export class TreeImpostors {
 
     // Свет не используем вовсе: у клонов свои материалы с эмиссивной заливкой (см. выше).
 
-    // Туман в снимок не пишем.
-    let fog = scene.fogMode;
-    rtt.onBeforeRenderObservable.add(() => {
-      fog = scene.fogMode;
-      scene.fogMode = SceneCls.FOGMODE_NONE;
-    });
-    rtt.onAfterRenderObservable.add(() => {
-      scene.fogMode = fog;
-    });
+    // Туман в снимок не пишем: у клонов свой материал с fogEnabled = false (см. выше). Глобально scene.fogMode
+    // не переключаем: каждая смена помечает все материалы сцены — ~1 с фриза на старте (профиль 2026-10-24).
     scene.customRenderTargets.push(rtt);
 
     return new Promise<void>((resolve) => {
