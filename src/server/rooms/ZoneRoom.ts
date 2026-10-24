@@ -9474,7 +9474,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Печати на земле: лечат/защищают союзников, замедляют (и у боевого мага жгут) врагов. */
   private readonly seals: {
-    x: number; z: number; r: number; until: number; owner: string; burn: number; tickT: number;
+    x: number; z: number; r: number; until: number; owner: string; kind: SkillId; burn: number; tickT: number;
     /** Молот: оглушение каждой молнии, с (0 — обычная печать, с замедлением). */
     stun: number;
     /** Лечит союзников (маг поддержки). */
@@ -9489,12 +9489,12 @@ export class ZoneRoom extends Room<ZoneState> {
    * 🧪 «Стрела-барьер»: кольцо на земле — отталкивает мобов в нём (раз в pushEvery с), ранит (раз в hitEvery с).
    */
   private readonly barriers: {
-    x: number; z: number; r: number; until: number; owner: string; dmg: number; tickT: number;
+    x: number; z: number; r: number; until: number; owner: string; kind: SkillId; dmg: number; tickT: number;
     /** Когда моб последний раз оттолкнут и ранен кольцом (elapsed). */
     pushAt: Map<string, number>; hitAt: Map<string, number>;
   }[] = [];
   /** 🧪 «Стрела-паук»: паутина на земле — пригвождает мобов, жалит, лечит стрелка за каждого пойманного. */
-  private readonly webs: { x: number; z: number; r: number; until: number; owner: string; dps: number; tickT: number }[] = [];
+  private readonly webs: { x: number; z: number; r: number; until: number; owner: string; kind: SkillId; dps: number; tickT: number }[] = [];
 
   /** Множитель отката умений: у магов (посох/молот) — МДР ускоряет. */
   private skillCdMul(p: PlayerState): number {
@@ -10444,7 +10444,8 @@ export class ZoneRoom extends Room<ZoneState> {
         // понемногу лечит всех союзников в радиусе (итого — totalMul «полных лечений»).
         const h = p.rightCls === "staff" ? "right" : "left";
         const total = healAmountFor(p.level, p, BOT.healCharge) * BOT.healGroupFraction * rolledDmgMul(p, h, rt) * HEAL_AURA.totalMul;
-        this.healAuras.push({ owner: ownerId, r: sk.radius, until: this.elapsed + HEAL_AURA.duration * DUR, perTick: total / (HEAL_AURA.duration * 2), tickT: 0 });
+        this.dropOwnerZones(ownerId, "massHeal");
+        this.healAuras.push({ owner: ownerId, kind: "massHeal", r: sk.radius, until: this.elapsed + HEAL_AURA.duration * DUR, perTick: total / (HEAL_AURA.duration * 2), tickT: 0 });
         act({ k: "healAura", x: p.head.x, y: feetY, z: p.head.z, d: HEAL_AURA.duration * DUR, r: sk.radius });
         return true;
       }
@@ -10464,9 +10465,8 @@ export class ZoneRoom extends Room<ZoneState> {
         const mode = steelModeOf(p.leftCls, p.rightCls);
         const regen = maxHpFor(p.level, p) * (hpRegenFrac(p) + shieldRegen(shieldOf(p, rt)?.inst));
         const tick = steelAuraTick(mode, regen);
-        // Одна аура на воина: новая заменяет старую (иначе тик урона и визуал — дважды).
-        for (let i = this.steelAuras.length - 1; i >= 0; i--) if (this.steelAuras[i].owner === ownerId) this.steelAuras.splice(i, 1);
-        this.steelAuras.push({ owner: ownerId, r: sk.radius, until: this.elapsed + STEEL_AURA.duration * DUR, mode, dmg: tick.dmg, tickT: 0 });
+        this.dropOwnerZones(ownerId, "steelAura");
+        this.steelAuras.push({ owner: ownerId, kind: "steelAura", r: sk.radius, until: this.elapsed + STEEL_AURA.duration * DUR, mode, dmg: tick.dmg, tickT: 0 });
         this.broadcast(MSG.act, {
           k: "steelAura", id: ownerId, x: p.head.x, y: feetY, z: p.head.z, d: STEEL_AURA.duration * DUR, r: sk.radius,
           v: ["shield", "sword", "dual"].indexOf(mode),
@@ -10524,8 +10524,9 @@ export class ZoneRoom extends Room<ZoneState> {
         const rad = hammer ? HAMMER_FIELD.radius * RAD : sk.radius;
         const burn = hammer ? HAMMER_FIELD.boltMul * pow.dmg : 0;
         const guard = cls === "warrior";
+        this.dropOwnerZones(ownerId, "seal");
         this.seals.push({
-          x: p.head.x, z: p.head.z, r: rad, until: this.elapsed + dur, owner: ownerId, burn, tickT: 0, stun: hammer ? HAMMER_FIELD.stunSec * DUR : 0,
+          x: p.head.x, z: p.head.z, r: rad, until: this.elapsed + dur, owner: ownerId, kind: "seal", burn, tickT: 0, stun: hammer ? HAMMER_FIELD.stunSec * DUR : 0,
           heal: cls === "support", shield: guard ? GUARD_SEAL.shield : cls === "support" ? SEAL.shield : 0, taunt: guard,
         });
         act({ k: "seal", x: p.head.x, y: feetY, z: p.head.z, d: dur, r: rad });
@@ -10757,7 +10758,8 @@ export class ZoneRoom extends Room<ZoneState> {
       case "barrierArrow": {
         // 🧪 Стрела-барьер: кольцо там, где стоит стрелок (тик — tickBarriers).
         const dur = BARRIER_ARROW.duration * DUR;
-        this.barriers.push({ x: p.head.x, z: p.head.z, r: sk.radius, until: this.elapsed + dur, owner: ownerId, dmg: sk.dmgMult * pow.dmg, tickT: 0, pushAt: new Map(), hitAt: new Map() });
+        this.dropOwnerZones(ownerId, "barrierArrow");
+        this.barriers.push({ x: p.head.x, z: p.head.z, r: sk.radius, until: this.elapsed + dur, owner: ownerId, kind: "barrierArrow", dmg: sk.dmgMult * pow.dmg, tickT: 0, pushAt: new Map(), hitAt: new Map() });
         shot(0, 12);
         act({ k: "arrowBarrier", x: p.head.x, y: feetY, z: p.head.z, d: dur, r: sk.radius });
         return true;
@@ -10778,7 +10780,8 @@ export class ZoneRoom extends Room<ZoneState> {
         act({ k: "webShot", x: ox, y: oy, z: oz, x2: cx, z2: cz, d: cy });
         // Паутина раскрывается, когда стрела воткнулась в землю.
         this.clock.setTimeout(() => {
-          this.webs.push({ x: cx, z: cz, r, until: this.elapsed + sec, owner: ownerId, dps: sk.dmgMult * pow.dmg, tickT: 0 });
+          this.dropOwnerZones(ownerId, "webArrow");
+          this.webs.push({ x: cx, z: cz, r, until: this.elapsed + sec, owner: ownerId, kind: "webArrow", dps: sk.dmgMult * pow.dmg, tickT: 0 });
           act({ k: "webZone", x: cx, y: cy, z: cz, d: sec, r });
         }, skillArrowTime(Math.hypot(cx - ox, cy - oy, cz - oz)) * 1000);
         return true;
@@ -10828,7 +10831,7 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** Ауры исцеления: ходят за хозяином и лечат союзников в радиусе. */
-  private readonly healAuras: { owner: string; r: number; until: number; perTick: number; tickT: number }[] = [];
+  private readonly healAuras: { owner: string; kind: SkillId; r: number; until: number; perTick: number; tickT: number }[] = [];
 
   private tickHealAuras(dt: number): void {
     for (let i = this.healAuras.length - 1; i >= 0; i--) {
@@ -10878,7 +10881,22 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** 🔥 Ауры раскалённой стали: ходят за воином; тик раз в секунду — урон врагам в радиусе (и лечение, замедление по режиму). */
-  private readonly steelAuras: { owner: string; r: number; until: number; mode: SteelMode; dmg: number; tickT: number }[] = [];
+  private readonly steelAuras: { owner: string; kind: SkillId; r: number; until: number; mode: SteelMode; dmg: number; tickT: number }[] = [];
+
+  /**
+   * Новое применение умения заменяет прежнее того же героя: его зона, аура или печать снимаются сразу
+   * (раньше старые тикали до конца своего срока — двойной урон и двойной визуал).
+   */
+  private dropOwnerZones(ownerId: string, kind: SkillId): void {
+    const drop = (list: { owner: string; kind: SkillId }[]): void => {
+      for (let i = list.length - 1; i >= 0; i--) if (list[i].owner === ownerId && list[i].kind === kind) list.splice(i, 1);
+    };
+    drop(this.seals);
+    drop(this.barriers);
+    drop(this.webs);
+    drop(this.healAuras);
+    drop(this.steelAuras);
+  }
 
   /** Аура воина в этом режиме действует сейчас (режим — по оружию при касте). */
   private steelMode(id: string, mode: SteelMode): boolean {
