@@ -160,6 +160,8 @@ export class TreeImpostors {
 
   /** Снимаем эталон каждого вида: клоны мешей в отдельном слое + ортокамера + дневной свет. */
   private async capture(): Promise<void> {
+    // Диагностика (?imp=0): без снимков — для замера, что стоит на старте (2026-10-24).
+    if (new URLSearchParams(location.search).get("imp") === "0") return;
     const byKind = new Map<number, ImpostorTree[]>();
     for (const t of this.trees) {
       const l = byKind.get(t.kind);
