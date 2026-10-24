@@ -116,16 +116,32 @@ export function treesGlowTick(daylight: number): void {
 /**
  * Полупрозрачные копии коры и листвы. Строим ДО freeze() исходников.
  */
+/**
+ * Клон материала БЕЗ копий текстур: Babylon при clone() создаёт новую Texture на каждый слот (та же картинка,
+ * лишние 5 МБ GPU и загрузка). Текстуры снимаем на время клона и отдаём клону те же объекты.
+ */
+const TEX_SLOTS = ["diffuseTexture", "bumpTexture", "specularTexture", "emissiveTexture", "ambientTexture", "opacityTexture", "reflectionTexture", "lightmapTexture"] as const;
+function cloneSharingTextures(src: StandardMaterial, name: string): StandardMaterial {
+  const held = TEX_SLOTS.map((k) => [k, src[k]] as const);
+  for (const [k] of held) (src as unknown as Record<string, unknown>)[k] = null;
+  const c = src.clone(name) as StandardMaterial;
+  for (const [k, t] of held) {
+    (src as unknown as Record<string, unknown>)[k] = t;
+    (c as unknown as Record<string, unknown>)[k] = t;
+  }
+  return c;
+}
+
 function buildFadeMaterials(bark: StandardMaterial, leaf: StandardMaterial): void {
   if (fadeBark.length) return;
   for (const a of FADE_STEPS) {
-    const b = bark.clone(`treeBarkFade${a}`);
+    const b = cloneSharingTextures(bark, `treeBarkFade${a}`);
     b.alpha = a;
     b.transparencyMode = 2; // ALPHABLEND
     b.disableDepthWrite = true;
     fadeBark.push(b);
 
-    const l = leaf.clone(`treeLeafFade${a}`);
+    const l = cloneSharingTextures(leaf, `treeLeafFade${a}`);
     l.alpha = a;
     // Смешивание вместо отсечки — иначе полупрозрачный лист уходит под
     // alphaCutOff целиком. Вырез листа (альфа текстуры) при этом сохраняется.
