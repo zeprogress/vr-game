@@ -67,6 +67,7 @@ import {
   type CtxMobFx,
 } from "./SpectatorCamera";
 import { setupRenderLayers } from "../engine/renderLayers";
+import { logSceneTextures } from "../engine/texlist";
 
 /** Как часто спектатор шлёт сводку производительности в журнал сервера. */
 const PERF_REPORT_MS = 10 * 60_000;
@@ -277,6 +278,7 @@ export class Spectator {
     // время с сервера. Пока не подключились — красивее полдень, чем угадывать.
     LOADOUT.world.hour = 12;
 
+    logSceneTextures(this.scene);
     const zone = buildZone(this.scene, {
       grass: preset.grass,
       grassFar: 2.2, // зритель: трава видна вдвое дальше
