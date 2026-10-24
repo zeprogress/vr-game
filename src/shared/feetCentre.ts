@@ -60,3 +60,42 @@ export function feetCentre(
   const b = centre(low.slice(cut));
   return { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 };
 }
+
+/**
+ * Полуоси следа по нижней полосе вершин: X и Z по вершинам, которые ниже `height` над самой низкой точкой
+ * модели (стопы, без рук и плеч). В координатах корня (origin вычитается). null — вершин нет.
+ */
+export function lowFootHalf(
+  parts: readonly MeshVerts[],
+  origin: { x: number; z: number },
+  height: number,
+): { hx: number; hz: number } | null {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  const zs: number[] = [];
+  for (const { pos, world: w } of parts) {
+    for (let i = 0; i + 2 < pos.length; i += 3) {
+      const px = pos[i];
+      const py = pos[i + 1];
+      const pz = pos[i + 2];
+      xs.push(px * w[0] + py * w[4] + pz * w[8] + w[12] - origin.x);
+      ys.push(px * w[1] + py * w[5] + pz * w[9] + w[13]);
+      zs.push(px * w[2] + py * w[6] + pz * w[10] + w[14] - origin.z);
+    }
+  }
+  if (ys.length === 0) return null;
+  const limit = Math.min(...ys) + height;
+  let loX = Infinity;
+  let hiX = -Infinity;
+  let loZ = Infinity;
+  let hiZ = -Infinity;
+  for (let i = 0; i < ys.length; i++) {
+    if (ys[i] > limit) continue;
+    loX = Math.min(loX, xs[i]);
+    hiX = Math.max(hiX, xs[i]);
+    loZ = Math.min(loZ, zs[i]);
+    hiZ = Math.max(hiZ, zs[i]);
+  }
+  if (!(hiX > loX && hiZ > loZ)) return null;
+  return { hx: (hiX - loX) / 2, hz: (hiZ - loZ) / 2 };
+}

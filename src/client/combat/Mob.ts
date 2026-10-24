@@ -40,7 +40,10 @@ import { HealthBar3D } from "../ui/HealthBar3D";
 import { difficultyRgb } from "../pc/difficulty";
 import { NameTag } from "../ui/NameTag";
 import { modelLight, trackMobMaterial } from "./mobLightTune";
-import { feetCentre, type MeshVerts } from "#shared/feetCentre";
+import { feetCentre, lowFootHalf, type MeshVerts } from "#shared/feetCentre";
+
+/** След по стопам: вершины ниже этой высоты над самой низкой точкой модели (м, модель — 2 м), см. footLow. */
+const FOOT_LOW_HEIGHT = 0.6;
 import { daylightAt } from "../world/DayTime";
 import { LOADOUT } from "../config/loadout";
 import { sharedMobMaterial } from "./mobMaterials";
@@ -896,7 +899,20 @@ export class Mob implements Hittable {
         loZ = Math.min(loZ, bb.minimumWorld.z);
         hiZ = Math.max(hiZ, bb.maximumWorld.z);
       }
-      if (Number.isFinite(hiX - loX) && hiX > loX && Number.isFinite(hiZ - loZ) && hiZ > loZ) {
+      const footLow = modelLight(this.modelName).footLow === true;
+      if (footLow) {
+        // Стопы: полуоси эллипса по нижней полосе вершин (руки и плечи пятно не раздувают).
+        const parts: MeshVerts[] = [];
+        for (const m of rig.meshes) {
+          const pos = m.getVerticesData(VertexBuffer.PositionKind);
+          if (pos) parts.push({ pos, world: m.getWorldMatrix().m });
+        }
+        const half = lowFootHalf(parts, { x: 0, z: 0 }, FOOT_LOW_HEIGHT);
+        if (half) {
+          this.footX = Math.max(0.05, half.hx);
+          this.footZ = Math.max(0.05, half.hz);
+        }
+      } else if (Number.isFinite(hiX - loX) && hiX > loX && Number.isFinite(hiZ - loZ) && hiZ > loZ) {
         // Пятно круглое: радиус — корень из площади следа (расставленные руки призрака и длинный дракон
         // не растягивают тень), площадь следа сохраняем.
         const fx = Math.max(0.05, (hiX - loX) / 2);
