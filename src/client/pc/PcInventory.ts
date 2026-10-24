@@ -1885,7 +1885,7 @@ export class PcInventory {
     // Аффиксы урона умений — заточка, как у брони и ожерелья.
     this.enchRows(body, r.id, r.ench, r.affs, d.scrap);
     this.resultLine(body);
-    body.append(div("pcinv-hint", "Аффиксы кольца усиливают урон умений и ульты; два кольца складываются. Чем ближе свойство к максимуму — тем дороже и меньше шанс заточки, при неудаче лом сгорает."));
+    body.append(div("pcinv-hint", "Аффиксы колец работают только на умения и ульту; два кольца складываются. Чем ближе свойство к максимуму — тем дороже и меньше шанс заточки, при неудаче лом сгорает."));
 
     if (r.gems.length) {
       this.socketRows(body, d, r.id, r.gems);
@@ -2038,7 +2038,7 @@ export class PcInventory {
 
   /** Подсказка при наведении на кольцо: как у оружия — оценка, аффиксы умений по строкам, гнёзда и лом. */
   private ringTip(c: HTMLElement, r: PcInvRing): void {
-    this.jewelTip(c, { name: ringName(r), tier: r.tier, pts: r.pts, rolls: r.nRolls, affs: r.affs, info: socketInfo(r.gems), fav: r.fav, scrap: r.scrap });
+    this.jewelTip(c, { name: ringName(r), tier: r.tier, pts: r.pts, rolls: r.nRolls, affs: r.affs, info: ["Работают только на умения и ульту", ...socketInfo(r.gems)], fav: r.fav, scrap: r.scrap });
   }
 
   /** Подсказка кольца и ожерелья в одном виде с подсказкой оружия (showTip): название, оценка, аффиксы строками. */

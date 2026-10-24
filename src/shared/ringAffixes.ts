@@ -98,7 +98,7 @@ export function ringRollText(tier: RingTier, r: { stat: RingStat; pts: number })
 export function ringValueText(stat: RingStat, value: number): string {
   const v = (value * 100).toFixed(1);
   if (stat === "crowd") return `${RING_STAT_NAME.crowd} +${v}% за цель`;
-  if (stat === "pen") return `${RING_STAT_NAME.pen} ${v}%`;
+  if (stat === "pen") return `${RING_STAT_NAME.pen} ${v}% (маг. и физ. защиты)`;
   const brief = RING_STAT_BRIEF[stat] ? ` ${RING_STAT_BRIEF[stat]}` : "";
   return `${RING_STAT_NAME[stat]} +${v}%${brief}`;
 }
