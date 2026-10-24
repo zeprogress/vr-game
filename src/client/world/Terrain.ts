@@ -483,7 +483,8 @@ function applyGroundAo(scene: Scene, mat: StandardMaterial): void {
  * заворачивается, поэтому текстура тайлится встык (WRAP) без шва — раньше
  * зеркальный режим давал складку по осям x=0/z=0 в центре карты.
  */
-function grassMaterial(scene: Scene): StandardMaterial {
+/** Пиксели текстур травы (RGBA, 1024²): диффузный цвет и карта нормалей. Чистый расчёт — его запекает scripts/bake-grass. */
+export function grassPixels(): { diffuse: Uint8ClampedArray; bump: Uint8ClampedArray } {
   const S = 1024;
   const SPAN = 5; // размер домена шума = период одного повтора текстуры
 
@@ -592,25 +593,17 @@ function grassMaterial(scene: Scene): StandardMaterial {
   }
 
   // --- diffuse ---
-  const tex = new DynamicTexture("grassTex", { width: S, height: S }, scene, true);
-  const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
-  const img = ctx.createImageData(S, S);
-  const d = img.data;
+  const diffuse = new Uint8ClampedArray(P * 4);
   for (let i = 0; i < P; i++) {
     const o = i * 4;
-    d[o] = R[i];
-    d[o + 1] = G[i];
-    d[o + 2] = B[i];
-    d[o + 3] = 255;
+    diffuse[o] = R[i];
+    diffuse[o + 1] = G[i];
+    diffuse[o + 2] = B[i];
+    diffuse[o + 3] = 255;
   }
-  ctx.putImageData(img, 0, 0);
-  tex.update(false);
 
   // --- bump (normal map из поля высот H) ---
-  const bumpDt = new DynamicTexture("grassBump", { width: S, height: S }, scene, false);
-  const bctx = bumpDt.getContext() as unknown as CanvasRenderingContext2D;
-  const bimg = bctx.createImageData(S, S);
-  const bd = bimg.data;
+  const bd = new Uint8ClampedArray(P * 4);
   const strength = 2.2;
   for (let py = 0; py < S; py++) {
     for (let px = 0; px < S; px++) {
@@ -633,8 +626,16 @@ function grassMaterial(scene: Scene): StandardMaterial {
       bd[o + 3] = 255;
     }
   }
-  bctx.putImageData(bimg, 0, 0);
-  bumpDt.update(false);
+  return { diffuse, bump: bd };
+}
+
+/** Запечённые текстуры травы (public/textures, scripts/bake-grass): грузятся картинками, без расчёта на старте. */
+export const GRASS_DIFFUSE_URL = "/textures/grass_diffuse.webp";
+export const GRASS_BUMP_URL = "/textures/grass_bump.webp";
+
+function grassMaterial(scene: Scene): StandardMaterial {
+  const tex = new Texture(GRASS_DIFFUSE_URL, scene, false, true);
+  const bumpDt = new Texture(GRASS_BUMP_URL, scene, true, true);
 
   // Один повтор ~16 м (было 30) — тайлим чаще, значит на каждый метр земли
   // приходится больше текселей одного и того же файла (бесплатнее в плане
