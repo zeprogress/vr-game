@@ -340,6 +340,8 @@ interface Runtime {
   lastSkillAt: number;
   /** «Классы 2.0»: когда последний раз применено каждое умение (сек. комнаты). */
   skillAt: Partial<Record<SkillId, number>>;
+  /** Когда умение в последний раз применено (даже если откат потом сброшен): жёсткий минимум между применениями. */
+  skillStartAt: Partial<Record<SkillId, number>>;
   /** Когда последний раз применена ульта (`!ульта`), сек. комнаты. */
   ultAt: number;
   /** До какого момента следующий удар — гарантированный крит («Теневой рывок»). */
@@ -1394,6 +1396,8 @@ const STAGING = process.env.STAGING === "1";
 const HIT_LAG_PAD = 1;
 /** На сколько секунд удар может опередить свой срок (тик сервера + разброс сети), см. tryHit. */
 const HIT_BUNCH = 0.15;
+/** Жёсткий минимум между двумя применениями одного умения (с): защита от дубля пакета и от сброса отката. */
+const SKILL_MIN_GAP = 0.3;
 /**
  * Стрелы: сервер видит не выстрел, а прилёт, а летят они разное время (близкая цель ~0.1 с, дальняя и неполный натяг —
  * до секунды). С допуском HIT_BUNCH до 17% попаданий отбрасывались как «слишком частые» (2026-10-23). Средний темп
@@ -6907,6 +6911,7 @@ export class ZoneRoom extends Room<ZoneState> {
       lastMassHeal: -999,
       lastSkillAt: -999,
       skillAt: {},
+      skillStartAt: {},
       ultAt: -1e9,
       forceCritUntil: -999,
       cryUntil: -999,
@@ -10070,6 +10075,9 @@ export class ZoneRoom extends Room<ZoneState> {
     const cd = sk0.cooldown * this.skillCdMul(p) * (sk.variants?.[cls]?.cdMul ?? 1);
     const due = rt.skillAt[kind] ?? -999;
     if (this.elapsed < due - HIT_BUNCH) return false;
+    // Тот же умение не запускается дважды подряд, даже если откат сброшен (пустой каст, смерть метки, дубль пакета).
+    if (this.elapsed - (rt.skillStartAt[kind] ?? -999) < SKILL_MIN_GAP) return false;
+    rt.skillStartAt[kind] = this.elapsed;
     rt.skillAt[kind] = Math.max(due, this.elapsed - HIT_BUNCH) + cd;
     rt.lastSkillAt = this.elapsed;
     const v = CLASS_IDS.indexOf(cls);
@@ -12434,6 +12442,7 @@ export class ZoneRoom extends Room<ZoneState> {
       lastMassHeal: -999,
       lastSkillAt: -999,
       skillAt: {},
+      skillStartAt: {},
       ultAt: -1e9,
       forceCritUntil: -999,
       cryUntil: -999,
