@@ -579,7 +579,7 @@ export class Spectator {
     };
     net.onCatacomb = (m) => {
       this.overlay?.showCard(m.title, m.sub, m.secs ?? 7, m.loot);
-      if (m.kind === "boss" || m.kind === "start" || m.kind === "gather") this.sfx.bossAnnounce();
+      if (m.kind === "boss" || m.kind === "start" || m.kind === "gather") this.sfx.eventAnnounce();
       else if (m.kind === "win" || m.kind === "chest") this.sfx.bossFanfare();
     };
     net.onLeaderboard = (rows) => this.overlay?.setLeaderboard(rows);
@@ -1567,7 +1567,7 @@ export class Spectator {
       return;
     }
     this.cqActive = active;
-    if (active) this.sfx.bossHorn();
+    if (active) this.sfx.eventAnnounce();
     else if (st.cqNeed > 0 && st.cqGot >= st.cqNeed) this.sfx.bossFanfare();
   }
 

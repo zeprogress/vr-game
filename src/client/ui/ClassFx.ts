@@ -1005,9 +1005,9 @@ export function playClassAct(
       c.fx.later(dur, () => {
         vfx.burst(x, y + 1, z, FXC.arcane, { count: fin ? 80 : 45, speed: fin ? 14 : 9, life: 1.1, grav: 4, size: 0.35 });
         vfx.decal(x, y, z, fin ? 10 : 6, FXC.arcane, 0.8, 0, 1.2);
-        c.sound(at, "bash");
+        c.sample(at, "cat-slam");
       });
-      c.sound(at, "thud");
+      c.sample(at, "cat-charge");
       return true;
     }
     case "catHazard": {
@@ -1043,7 +1043,7 @@ export function playClassAct(
         c.fx.later(0.3, () => {
           vfx.decal(x, y, z, rr * 1.2, FXC.gold, 0.7, 0, 1);
           vfx.burst(x, y + 0.5, z, SHADOW_GRAY, { count: 40, speed: 6, life: 1.4, grav: 2, size: 0.7 });
-          c.sound(at, "bash");
+          c.sample(at, "cat-rockfall");
         });
       } else if (v === 1) {
         // Столб пламени из пола.
@@ -1059,14 +1059,14 @@ export function playClassAct(
           vfx.pillar(x, y, z, rr * 0.45, 9, FXC.moon, 0.8);
           vfx.decal(x, y, z, rr * 1.15, FXC.moon, 0.9, 0, 1);
           vfx.burst(x, y + 0.6, z, FXC.moon, { count: 45, speed: 8, life: 0.9, grav: 6, size: 0.35 });
-          c.sound(at, "bash");
+          c.sample(at, "cat-crystal");
         });
       } else {
         // Гейзер душ: фиолетовый столб и вой — отбрасывает.
         vfx.pillar(x, y, z, rr * 0.6, 11, FXC.arcane, 1.1);
         vfx.burst(x, y + 0.5, z, FXC.arcane, { count: 45, speed: 9, life: 1.1, grav: -10, size: 0.35 });
         vfx.decal(x, y, z, rr * 1.3, FXC.shadowDark, 1, 0, 1);
-        c.sound(at, "thud");
+        c.sample(at, "cat-soul");
       }
       return true;
     }
@@ -1099,7 +1099,7 @@ export function playClassAct(
       vfx.pillar(x, y, z, 1.3, 5, FXC.shadowDark, life);
       for (let i = 0; i < 5; i++) c.fx.later(i * 0.3, () => vfx.burst(x, y + 1.2, z, FXC.arcane, { count: 16, speed: 3, life: 0.8, grav: -2, size: 0.3 }));
       c.fx.later(d ?? 1.4, () => vfx.burst(x, y + 1, z, FXC.arcane, { count: 36, speed: 7, life: 0.9, grav: 3, size: 0.32 }));
-      c.sound(at, "thud");
+      c.sample(at, "cat-gate");
       return true;
     }
     case "catShield":
@@ -1110,7 +1110,7 @@ export function playClassAct(
       } else {
         vfx.burst(x, y + 3, z, FXC.arcane, { count: 90, speed: 14, life: 1.2, grav: 6, size: 0.4 });
         vfx.decal(x, y, z, 9, FXC.arcane, 0.9, 0, 1.2);
-        c.sound(at, "bash");
+        c.sample(at, "cat-shield");
       }
       return true;
     case "catDust":
@@ -1135,7 +1135,7 @@ export function playClassAct(
       for (let i = 0; i < (fin ? 8 : 4); i++) {
         c.fx.later(i * 0.35, () => vfx.burst(x, y + 1.2, z, FXC.gold, { count: fin ? 40 : 24, speed: 8, life: 1, grav: 10, size: 0.25 }));
       }
-      c.sound(at, "bash");
+      c.sample(at, "cat-chest");
       return true;
     }
     case "bleedTick":
