@@ -603,10 +603,13 @@ function ownsClass(owned: readonly string[] | undefined, cls: string): boolean {
   return (owned ?? []).some((k) => k.split(":")[0] === cls);
 }
 
-/** Левая рука по умолчанию для класса правой: второй кинжал — только если кинжал у героя есть. */
+/**
+ * Левая рука по умолчанию для класса правой: второй кинжал и щит — только если они у героя есть.
+ * Без щита в левой руке один меч — один предмет, и уворот выше (holdsOneItem).
+ */
 function offHandDefault(owned: readonly string[] | undefined, rightCls: string): string {
   const off = botOffHand(rightCls);
-  return off === "dagger" && !ownsClass(owned, "dagger") ? "" : off;
+  return (off === "dagger" || off === "shield") && !ownsClass(owned, off) ? "" : off;
 }
 
 function bestOwnedTier(owned: readonly string[] | undefined, cls: WeaponClass): WeaponTier {
