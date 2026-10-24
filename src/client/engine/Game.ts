@@ -3716,7 +3716,7 @@ export class Game {
     net.onCatReport = (m) => showCatReport(m, { delayMs: 3500, holdSec: 30, closable: true });
     net.onCatacomb = (m) => {
       this.notifyBanner(m.title, m.sub, m.kind === "win" || m.kind === "chest" ? "win" : "warn", m.loot);
-      if (m.kind === "boss" || m.kind === "start" || m.kind === "gather") this.sfx.bossHorn();
+      if (m.kind === "boss" || m.kind === "start" || m.kind === "gather") this.sfx.bossAnnounce();
       else if (m.kind === "win" || m.kind === "chest") this.sfx.bossFanfare();
     };
     net.onLevelUp = (lvl) => this.levelUpFx(lvl);

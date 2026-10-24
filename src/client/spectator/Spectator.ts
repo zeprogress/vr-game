@@ -579,7 +579,7 @@ export class Spectator {
     };
     net.onCatacomb = (m) => {
       this.overlay?.showCard(m.title, m.sub, m.secs ?? 7, m.loot);
-      if (m.kind === "boss" || m.kind === "start" || m.kind === "gather") this.sfx.bossHorn();
+      if (m.kind === "boss" || m.kind === "start" || m.kind === "gather") this.sfx.bossAnnounce();
       else if (m.kind === "win" || m.kind === "chest") this.sfx.bossFanfare();
     };
     net.onLeaderboard = (rows) => this.overlay?.setLeaderboard(rows);
