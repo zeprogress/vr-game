@@ -689,16 +689,11 @@ export class IceFx {
 
   // ---------------------------------------------------------------- аура
 
-  /** Кольцо «Стужи» и снег одного гиганта (null — все заняты). */
+  /** Снег одного гиганта (без кольца на земле; null — все заняты). */
   aura(): IceAura | null {
     const snow = this.snows.find((s) => s.free);
     if (!snow) return null;
     snow.free = false;
-    const ring = this.decals.splice(this.decals.length - 1, 1)[0]; // своё кольцо — вне общего круга знаков
-    this.nD %= this.decals.length;
-    ring.mat.setFloat("uMode", DECAL.aura);
-    ring.mat.setFloat("uSeed", Math.random() * 50);
-    ring.mode = DECAL.aura;
     let on = false;
     return {
       place: (x, y, z, r, fury, active) => {
@@ -713,22 +708,12 @@ export class IceFx {
         if (!on) {
           on = true;
           snow.mesh.setEnabled(true);
-          ring.mesh.setEnabled(true);
         }
-        ring.mesh.position.set(x, y + 0.05, z);
-        ring.mesh.scaling.set(r, 1, r);
-        ring.alpha += ((active ? (fury ? 1 : 0.75) : 0.25) - ring.alpha) * 0.05;
-        ring.mat.setFloat("uAlpha", ring.alpha);
-        ring.mat.setFloat("uT", this.time);
-        ring.mat.setFloat("uTime", this.time);
       },
       release: () => {
         snow.free = true;
         snow.count = snow.want = 0;
         snow.mesh.setEnabled(false);
-        ring.mesh.setEnabled(false);
-        ring.alpha = 0;
-        this.decals.push(ring);
       },
     };
   }
