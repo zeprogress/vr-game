@@ -810,6 +810,15 @@ function sanitizeHeld(v: unknown): HeldWeapons {
   return { left: sanitizeCarried(h?.left), right: sanitizeCarried(h?.right) };
 }
 
+/**
+ * Руки при входе: щит и кинжал — только если они у героя есть (owned). Раньше автоматический щит у одного меча
+ * сохранялся в руках и при перезаходе снова «надевался» — второе оружие появлялось само.
+ */
+function heldOwned(h: HeldWeapons, owned: readonly string[] | undefined): HeldWeapons {
+  const need = (c: CarriedWeapon | null): CarriedWeapon | null => (c && (c.cls === "shield" || c.cls === "dagger") && !ownsClass(owned, c.cls) ? null : c);
+  return { left: need(h.left), right: need(h.right) };
+}
+
 /** Закреплённый вручную инстанс на руку (закрепляется на странице !inv) — строка-id или null. */
 function sanitizeEquipped(v: unknown): { left: string | null; right: string | null } {
   const e = v as { left?: unknown; right?: unknown } | undefined;
@@ -6807,7 +6816,7 @@ export class ZoneRoom extends Room<ZoneState> {
     p.mana = p.maxMana;
     // Оружие сохраняем (золотой меч из лута, ранее выданный лук/посох — не
     // должны сбрасываться на каждом !play).
-    const savedHeld = sanitizeHeld(rec?.held);
+    const savedHeld = heldOwned(sanitizeHeld(rec?.held), rec?.owned);
     // Класс по преобладающей характеристике — ТОЛЬКО пока в руке база
     // (нечего терять). Раньше botWeaponFor(str,agi,int) пересчитывал класс
     // на каждом !play и РОНЯЛ на землю честно найденный апгрейд, если билд
@@ -12382,7 +12391,7 @@ export class ZoneRoom extends Room<ZoneState> {
     p.mana = p.maxMana;
     // Руки заполняем из сейва СРАЗУ: иначе первое же сохранение (оно идёт
     // раз в 10 с) запишет пустые руки, ещё до того как клиент пришлёт свои.
-    const savedHeld = sanitizeHeld(rec?.held);
+    const savedHeld = heldOwned(sanitizeHeld(rec?.held), rec?.owned);
     p.leftCls = savedHeld.left?.cls ?? "";
     p.leftTier = savedHeld.left?.tier ?? "";
     p.rightCls = savedHeld.right?.cls ?? "";
