@@ -3855,7 +3855,7 @@ export class Game {
           ? e.up
             ? { up: true, text: `Успех! ${e.label} (+${e.gain}) · −${e.cost} лома` }
             : { up: false, text: `Не вышло… −${e.cost} лома` }
-          : { up: r.ok, text: r.text };
+          : { up: r.up ?? r.ok, text: r.text };
         this.sfx.pickup();
         this.net?.sendPcInvOpen();
       } else if (!r.enchant) this.notifyToast(r.text);

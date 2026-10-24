@@ -1165,6 +1165,7 @@ function sharpenTry(w: WeaponInstance, bag: Slot[]): InvActResult & { spent: boo
   takeFromBag(bag, "scrap", r.cost);
   return {
     ok: true,
+    up: r.up,
     spent: true,
     text: r.up
       ? `Точка атаки +${fmtPct(r.gain * 100, 2)}% · всего +${fmtPct(attackPointBonus(r.points) * 100)}% к урону`
@@ -6261,7 +6262,7 @@ export class ZoneRoom extends Room<ZoneState> {
           this.persistNick(norm);
           this.syncWarehouse(t.id, t.rt);
         }
-        return { ok: r.ok, text: r.text };
+        return { ok: r.ok, up: r.up, text: r.text };
       }
       const token = `nick:${norm}`;
       const rec = store.get(token);
@@ -6270,7 +6271,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const bag = restoreBag(rec.bag);
       const r = sharpenTry(w, bag);
       if (r.spent) store.put(token, { weapons: rec.weapons, bag });
-      return { ok: r.ok, text: r.text };
+      return { ok: r.ok, up: r.up, text: r.text };
     }
     // Выброс на землю со страницы не делаем — как у оружия на !inv (подсказка «только в игре»).
     if (act === "armorDrop") return { ok: false, text: "Выбросить можно только в игре." };

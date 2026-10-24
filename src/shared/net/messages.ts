@@ -428,6 +428,8 @@ export interface PcInvActMsg {
 export interface PcInvResult {
   ok: boolean;
   text: string;
+  /** Исход заточки и точки атаки: удача или неудача (неудача — красным, даже при ok). */
+  up?: boolean;
   enchant?: { id: string; idx: number; up: boolean; gain: number; cost: number; label: string };
   /** Крафт: исход (CRAFT_OUTCOMES, 0 — провал), id нового оружия, найденный рецепт. */
   craft?: { outcome: number; id?: string; found?: string };

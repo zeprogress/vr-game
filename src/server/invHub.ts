@@ -28,6 +28,8 @@ export type InvActKind = "equip" | "unequip" | "scrap" | "enchant" | "armorEncha
 export interface InvActResult {
   ok: boolean;
   text: string;
+  /** Исход заточки или точки атаки: удача (true) или неудача — красится красным, даже при ok. */
+  up?: boolean;
   /** Для заточки: чем кончилась попытка (страница играет анимацию). */
   enchant?: { id: string; idx: number; up: boolean; gain: number; cost: number; label: string };
   /** Крафт: исход (0 — провал), id нового оружия, найденный рецепт. */

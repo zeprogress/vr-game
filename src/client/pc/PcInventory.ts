@@ -468,7 +468,7 @@ export class PcInventory {
       return;
     }
     if (!this.forging) {
-      const res = { text: r.text, up: r.ok };
+      const res = { text: r.text, up: r.up ?? r.ok };
       this.lastResult = res;
       this.armResultTimer(res);
       if (this.isOpen) this.render();
@@ -1884,12 +1884,12 @@ export class PcInventory {
     this.cardHead(head, ico, ringName(r), `t-${r.tier}`, `Кольцо · оценка <b>${qualityStarsShort(r.pts, r.nRolls)}</b>${r.gems.length ? ` · гнёзд ${r.gems.length}` : ""}`, slot >= 0 ? `надето · слот ${slot + 1}` : "", bonus);
     // Аффиксы урона умений — заточка, как у брони и ожерелья.
     this.enchRows(body, r.id, r.ench, r.affs, d.scrap);
+    this.resultLine(body);
     body.append(div("pcinv-hint", "Аффиксы кольца усиливают урон умений и ульты; два кольца складываются. Чем ближе свойство к максимуму — тем дороже и меньше шанс заточки, при неудаче лом сгорает."));
 
     if (r.gems.length) {
       this.socketRows(body, d, r.id, r.gems);
     } else body.append(div("pcinv-small", "Без гнёзд — камни в него не вставляются."));
-    this.resultLine(body);
 
     if (slot >= 0) this.cardBtn(acts, "Снять", () => this.hooks.act({ act: "ringOff", id: "-", idx: slot }), "gold", true);
     else {
@@ -1968,7 +1968,7 @@ export class PcInventory {
       const e = r.enchant;
       // Точка атаки отвечает без e (только текст и ok) — успех берём из ok.
       this.lastResult = {
-        up: e ? !!e.up : r.ok,
+        up: e ? !!e.up : (r.up ?? r.ok),
         text: e ? (e.up ? `Успех! ${e.label}: +${e.gain} очк.` : `Неудача — ${e.cost} лома сгорело`) : r.text,
       };
     }
