@@ -13,6 +13,7 @@ import "@babylonjs/core/Meshes/Builders/torusBuilder";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import type { SkillVfx } from "./SkillVfx";
+import type { HeroSfx } from "../audio/Sfx";
 import { SkillArrows } from "./SkillArrows";
 import { CAT_SHRINES } from "#shared/catacombs";
 import { ARROW_STORM } from "#shared/classes2";
@@ -435,6 +436,8 @@ export interface ClassActCtx {
   vfx: SkillVfx;
   /** Звук в точке мира. */
   sound: (at: { x: number; y: number; z: number }, kind: "bash" | "swing" | "thud" | "horn" | "volley" | "bow" | "fire" | "holy" | "fanfare" | "ultW" | "ultA" | "ultS" | "ultK" | "ultP" | "ultB") => void;
+  /** Звук умения героя-сэмпл (hero-*.wav) в точке мира. */
+  sample: (at: { x: number; y: number; z: number }, name: HeroSfx) => void;
   /** Лучник `id` выпустил стрелы умением: клип выстрела из лука на его модели (volley — номер залпа: свой герой первый залп уже показал сам при касте). */
   shoot?: (id: string, volley: number) => void;
   /** Клип/эмоция на модели героя `id` (если она есть). */
@@ -793,7 +796,8 @@ export function playClassAct(
       vfx.pillar(x, y, z, (r ?? 10) * 0.08, 5, ULT_COLOR[v ?? 0] ?? FXC.gold, Math.max(0.4, d ?? 5));
       ultCastFx(c, v ?? 0, x, y, z, r ?? 10, Math.max(0.4, d ?? 5));
       vfx.burst(x, y + 0.2, z, ATK, { count: 30, speed: 3, life: Math.max(0.4, d ?? 5), grav: 0, size: 0.2 });
-      c.sound(at, v === 2 ? "holy" : "horn");
+      if (v === 2) c.sound(at, "holy");
+      else c.sample(at, "ult-warn");
       return true;
     case "ultHeal":
       // Союзник вылечен ультой: столб света, светлое кольцо у ног и искры, всплывающие вверх.
@@ -819,7 +823,8 @@ export function playClassAct(
     case "stunBash":
       // Замах: тонкое кольцо сходится к герою — удар вот-вот.
       vfx.decal(x, y, z, r ?? 5, ATK, Math.max(0.2, d ?? 0.5), 0, 0.35);
-      c.sound(at, "bash");
+      c.sample(at, "sword-windup");
+      c.fx.later(Math.max(0, d ?? 0.5), () => c.sample(at, "sword-impact"));
       return true;
     case "stunHit":
       vfx.decal(x, y, z, r ?? 5, ATK, 0.55, 0, 1);
@@ -849,7 +854,7 @@ export function playClassAct(
       }
       // Кувырок — отскоку лучника/копейщика; прыжки ассасина (кинжал) — без кувырков.
       if (v !== V_ASSASSIN) c.emote(id, "roll");
-      c.sound(at, "swing");
+      c.sample(at, "shadow-step");
       return true;
     case "leap":
       // Смертельный прыжок ассасина: серый след по дуге и всплеск в точке приземления.
@@ -906,9 +911,10 @@ export function playClassAct(
       // Удар молнии с неба в круг.
       vfx.lightning(x + 0.5, y + 12, z, x, y + 0.15, z, y, 0.35);
       vfx.burst(x, y + 0.4, z, FXC.lightningCore, { count: 18, speed: 7, life: 0.4, grav: 6, size: 0.2 });
-      c.sound(at, "bash");
+      c.sample(at, "storm-zap");
       return true;
     case "stormJump":
+      c.sample(at, "storm-jump");
       // Молния перескочила на соседа.
       if (x2 !== undefined && z2 !== undefined) vfx.lightning(x, y + 1.1, z, x2, y + 1.1, z2, null, 0.38);
       return true;
@@ -923,7 +929,7 @@ export function playClassAct(
       // Теневой ниндзя: облако дыма (исчез / появилась копия).
       vfx.burst(x, y + 1, z, FXC.shadowDark, { count: 26, speed: 3.5, life: 0.9, grav: -1.5, size: 0.55 });
       vfx.burst(x, y + 0.6, z, SHADOW_GRAY, { count: 14, speed: 2, life: 0.7, grav: -1, size: 0.4 });
-      c.sound(at, "swing");
+      c.sample(at, "smoke-puff");
       return true;
     case "parryOn":
       // Теневая стойка: тёмный круг под ниндзя на всё время стойки и тень вокруг — не бей, пережди.
@@ -937,6 +943,7 @@ export function playClassAct(
       c.sound(at, "bash");
       return true;
     case "caltrops":
+      c.sample(at, "caltrops");
       // Колючки Шипохвоста на земле: зона на всё время, пока лежат.
       vfx.decal(x, y, z, r ?? 1.4, ATK, d ?? 6, 1, 0.55);
       vfx.burst(x, y + 0.1, z, FXC.other, { count: 8, speed: 2, life: 0.4, grav: 8, size: 0.12 });
@@ -946,7 +953,7 @@ export function playClassAct(
       vfx.decal(x, y, z, r ?? 5, cc, 0.65, 0, 1.2);
       vfx.burst(x, y + 0.2, z, cc, { count: 28, speed: 9, life: 0.7, grav: 16, size: 0.26 });
       vfx.pillar(x, y, z, 1.4, 4, cc, 0.35);
-      c.sound(at, "bash");
+      c.sample(at, "ground-slam");
       return true;
     }
     case "seal": {
@@ -956,13 +963,13 @@ export function playClassAct(
       if (v === V_BATTLEMAGE) c.fx.stormZone(x, y, z, r ?? 5, d ?? 6);
       else vfx.pillar(x, y, z, (r ?? 5) * 0.9, 2.5, cc, 0.8);
       c.emote(id, "cheer");
-      c.sound(at, "thud");
+      c.sample(at, "holy-seal");
       return true;
     }
     case "spearFlurry":
       // Само колющее мелькание — спирпирс на каждый выпад; тут только звук и вспышка старта.
       vfx.burst(x, y + 1.2, z, ATK, { count: 10, speed: 5, life: 0.3, grav: 0, size: 0.14 });
-      c.sound(at, "swing");
+      c.sample(at, "spear-thrust");
       return true;
     case "whirl":
       vfx.decal(x, y, z, r ?? 3.2, ATK, d ?? 2, 1, 1, { kind: "hero", id, dy: 0 });
@@ -1236,7 +1243,7 @@ export function playClassAct(
             vfx.burst(x2, toY, z2, FXC.fire, { count: 18, speed: 5, life: 0.8, grav: -1, size: 0.55 });
             vfx.decal(x2, toY - 0.9, z2, R, FXC.fire, 0.5, 0, 1);
             c.fx.ring(x2, toY - 0.9, z2, 0.3, R, FXC.fireCore, 0.35, 0.8);
-            c.sound({ x: x2, y: toY, z: z2 }, "fire");
+            c.sample({ x: x2, y: toY, z: z2 }, "blast-boom");
           },
         });
       }
@@ -1319,6 +1326,7 @@ export function playClassAct(
       c.sound(at, "thud");
       return true;
     case "webShot":
+      c.sample(at, "web-shot");
       // Стрела-паук: стрела втыкается в землю, в точке — клубок нитей (паутина раскроется по webZone).
       if (x2 !== undefined && z2 !== undefined) {
         const toY = d ?? y;
@@ -1381,10 +1389,12 @@ export function playClassAct(
             c.fx.streak(x, y, z, x2, z2, ATK, 2.5, 0.25);
           });
         }
-        c.sound(at, "swing");
+        c.sample(at, "knife-fan");
       }
       return true;
     case "arrowRain":
+      c.sample(at, "arrow-whistle");
+      c.fx.later(Math.max(0, d ?? 0.9), () => c.sample(at, "arrow-impact"));
       // Зона града поверх древков (их рисует SkillFx в старом обработчике).
       vfx.decal(x, y, z, r ?? 6.5, ATK, (d ?? 0.9) + 3, 1, 0.8);
       return false;
@@ -1396,6 +1406,7 @@ export function playClassAct(
       }
       return false;
     case "healAura": {
+      c.sample(at, "heal-chime");
       // Аура исцеления: зона с рунами и столб света ходят за героем, искры всплывают.
       const dur = d ?? 6;
       vfx.decal(x, y, z, r ?? 8, HEALC, dur, 1, 0.9, { kind: "hero", id, dy: 0 });

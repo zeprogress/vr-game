@@ -335,6 +335,7 @@ export class Spectator {
       raidFlash: () => this.raidFx?.flash(),
       fx: this.classFx,
       vfx: this.skillVfx,
+      sample: (at, name) => this.sfx.at(at, () => this.sfx.heroSample(name)),
       sound: (at, kind) =>
         this.sfx.at(at, () =>
           kind === "bash" ? this.sfx.groundBash()
@@ -536,7 +537,7 @@ export class Spectator {
     net.onBossEvent = (kind, by, loot, lootItems) => {
       this.overlay?.bossBanner(kind, by, loot, lootItems);
       if (kind === "down") this.sfx.bossFanfare();
-      else this.sfx.bossHorn();
+      else this.sfx.bossAnnounce();
     };
     net.onWorldEvent = (phase, name, _x, _z, loot) => {
       const hunt = name === "Охота";
@@ -551,7 +552,7 @@ export class Spectator {
               : "мобы лезут волнами — герои сбегаются",
           9,
         );
-        this.sfx.bossHorn();
+        this.sfx.eventAnnounce();
       } else if (phase === "win") {
         // У башни нет общей награды за окно — награда персональная за каждый
         // забег (см. серверный endEvent/onTowerRunDone), карточка тут не нужна.
@@ -578,7 +579,7 @@ export class Spectator {
     };
     net.onCatacomb = (m) => {
       this.overlay?.showCard(m.title, m.sub, m.secs ?? 7, m.loot);
-      if (m.kind === "boss" || m.kind === "start" || m.kind === "gather") this.sfx.bossHorn();
+      if (m.kind === "boss" || m.kind === "start" || m.kind === "gather") this.sfx.bossAnnounce();
       else if (m.kind === "win" || m.kind === "chest") this.sfx.bossFanfare();
     };
     net.onLeaderboard = (rows) => this.overlay?.setLeaderboard(rows);
@@ -1566,7 +1567,7 @@ export class Spectator {
       return;
     }
     this.cqActive = active;
-    if (active) this.sfx.bossHorn();
+    if (active) this.sfx.bossAnnounce();
     else if (st.cqNeed > 0 && st.cqGot >= st.cqNeed) this.sfx.bossFanfare();
   }
 
