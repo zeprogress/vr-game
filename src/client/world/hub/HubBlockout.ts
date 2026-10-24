@@ -17,7 +17,6 @@ import { terrainHeight, troddenAt } from "#shared/terrain";
 import type { Obstacle } from "../props";
 import { WORLD } from "#shared/constants";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
-import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { buildHubCampfire } from "./HubCampfire";
 import { relightMaterials } from "../Fireflies";
 import { groundLayer } from "../../engine/renderLayers";
@@ -99,7 +98,8 @@ function clamp01(v: number): number {
  * земляная: сухой плотный грунт, редкие камешки, темнее в ложбинах. Тайлится
  * встык (шум периодичен по SPAN).
  */
-function campGroundTextures(scene: Scene): { diffuse: DynamicTexture; bump: DynamicTexture } {
+/** Пиксели земли лагеря (RGBA, 512²): запекает tools/grass/bake-grass.cjs; в игре грузятся файлы. */
+export function campGroundPixels(): { diffuse: Uint8ClampedArray; bump: Uint8ClampedArray } {
   const S = 512;
   const SPAN = 4;
   const hash = (x: number, y: number): number => {
@@ -170,21 +170,15 @@ function campGroundTextures(scene: Scene): { diffuse: DynamicTexture; bump: Dyna
     }
   }
 
-  const diffuse = new DynamicTexture("hubGroundTex", { width: S, height: S }, scene, true);
-  const dctx = diffuse.getContext() as unknown as CanvasRenderingContext2D;
-  const dimg = dctx.createImageData(S, S);
+  const diffuse = new Uint8ClampedArray(P * 4);
   for (let i = 0; i < P; i++) {
-    dimg.data[i * 4] = R[i];
-    dimg.data[i * 4 + 1] = G[i];
-    dimg.data[i * 4 + 2] = B[i];
-    dimg.data[i * 4 + 3] = 255;
+    diffuse[i * 4] = R[i];
+    diffuse[i * 4 + 1] = G[i];
+    diffuse[i * 4 + 2] = B[i];
+    diffuse[i * 4 + 3] = 255;
   }
-  dctx.putImageData(dimg, 0, 0);
-  diffuse.update(false);
 
-  const bump = new DynamicTexture("hubGroundBump", { width: S, height: S }, scene, false);
-  const bctx = bump.getContext() as unknown as CanvasRenderingContext2D;
-  const bimg = bctx.createImageData(S, S);
+  const bump = new Uint8ClampedArray(P * 4);
   const str = 2.0;
   for (let py = 0; py < S; py++) {
     for (let px = 0; px < S; px++) {
@@ -198,14 +192,22 @@ function campGroundTextures(scene: Scene): { diffuse: DynamicTexture; bump: Dyna
       const inv = 1 / Math.hypot(nx, ny, 1);
       nx *= inv;
       ny *= inv;
-      bimg.data[i * 4] = (nx * 0.5 + 0.5) * 255;
-      bimg.data[i * 4 + 1] = (ny * 0.5 + 0.5) * 255;
-      bimg.data[i * 4 + 2] = inv * 255;
-      bimg.data[i * 4 + 3] = 255;
+      bump[i * 4] = (nx * 0.5 + 0.5) * 255;
+      bump[i * 4 + 1] = (ny * 0.5 + 0.5) * 255;
+      bump[i * 4 + 2] = inv * 255;
+      bump[i * 4 + 3] = 255;
     }
   }
-  bctx.putImageData(bimg, 0, 0);
-  bump.update(false);
+  return { diffuse, bump };
+}
+
+/** Запечённые текстуры земли лагеря (public/textures). */
+export const CAMP_DIFFUSE_URL = "/textures/camp_ground_diffuse.webp";
+export const CAMP_BUMP_URL = "/textures/camp_ground_bump.webp";
+
+function campGroundTextures(scene: Scene): { diffuse: Texture; bump: Texture } {
+  const diffuse = new Texture(CAMP_DIFFUSE_URL, scene, false, true);
+  const bump = new Texture(CAMP_BUMP_URL, scene, true, true);
 
   const tile = (HUB.campRadius * 2) / 6; // ~6 м на повтор
   for (const tx of [diffuse, bump]) {
