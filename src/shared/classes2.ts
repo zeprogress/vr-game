@@ -787,10 +787,21 @@ export const CLASS_CD_MUL: Partial<Record<ClassId, number>> = { spearman: 0.7, b
 /** Базовый откат умения у класса (без МДР). */
 /** Множитель отката умений: класс × МДР (у всех классов). ОДИН для сервера, клиента и ботов. */
 /** Множитель отката умений: класс × МДР (с камнями) — ATTR2.wis.cd за очко, у всех классов (2026-10-07: было 1.5%). */
+/** Угасание сокращения отката: чем больше сокращение, тем меньше каждая доля (экспонента с масштабом fade). */
+export const CD_FADE = 0.25;
+/** Угасание сокращения от мудрости: масштаб шире — мудрость большая, по её высоким очкам тоже угасает. */
+export const WIS_CD_FADE = 0.8;
+
+/** Эффективное сокращение: при малой доле почти не меняется, у большой — выходит на потолок fade. */
+export function fadedCut(cut: number, fade: number): number {
+  return cut <= 0 ? 0 : fade * (1 - Math.exp(-cut / fade));
+}
+
 export function skillCdMul2(cls: ClassId | null, a: object): number {
-  // Откат от ожерелья (gb.skCd, доля): сокращает время отката, но не ниже половины.
-  const cut = (a as { gb?: { skCd?: number } }).gb?.skCd ?? 0;
-  return (((cls && CLASS_CD_MUL[cls]) || 1) / (1 + inv(attrOf(a, "wis")) * ATTR2.wis.cd)) * Math.max(0.5, 1 - cut);
+  // Откат от ожерелья (gb.skCd, доля) и от мудрости: оба сокращают с угасанием; не ниже половины от ожерелья.
+  const cut = fadedCut((a as { gb?: { skCd?: number } }).gb?.skCd ?? 0, CD_FADE);
+  const wisCut = fadedCut(1 - 1 / (1 + inv(attrOf(a, "wis")) * ATTR2.wis.cd), WIS_CD_FADE);
+  return ((cls && CLASS_CD_MUL[cls]) || 1) * (1 - wisCut) * Math.max(0.5, 1 - cut);
 }
 
 /** Атрибуты героя для умений: база (как в PlayerState) и прибавка от колец и камней (PlayerState.gb). */
