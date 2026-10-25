@@ -579,7 +579,7 @@ export const MARK_FOCUS = { perHit: 0.03, dmgPerHit: 0.03, max: 10, resetSec: 5 
  * 🧪 «Стрела-призрак»: duration с (× МДР — SkillDef.attr) обычные мобы не видят стрелка и не бьют его
  * (боссы видят); его урон ×dmgMul; каждое попадание стрелой (у бота — выстрел) лечит healFrac макс. HP.
  */
-export const GHOST_ARROW = { duration: 4, dmgMul: 0.7, healFrac: 0.03 } as const;
+export const GHOST_ARROW = { duration: 2, dmgMul: 0.7, healFrac: 0.03 } as const; // призрак: 4 → 2 с (2026-10-25)
 /**
  * 🧪 «Стрела-рой»: volleys залпов по arrows стрел веером ±halfAngle рад вперёд на range м; стрела бьёт первого моба
  * в коридоре ±lane м (+ радиус тела) — ×dmgMult (SKILLS2) и взрывается: ×blast всем в blastR м. Задето за все залпы
@@ -708,7 +708,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   abyss: {
     name: "Призрак бездны", icon: glyph("s.abyss"), test: true,
-    desc: "3 с в тени: мобы теряют тебя, бег +40%; первый удар из тени — рывок за спину цели, ×2 и крит, затем +30% темпа на 3 с",
+    desc: "1.5 с в тени: мобы теряют тебя, бег +40%; первый удар из тени — рывок за спину цели, ×2 и крит, затем +30% темпа на 3 с",
     cooldown: 16, castTime: 0, radius: 0, dmgMult: 2, hits: 1,
     attr: { attr: "agi", per: 0.015, what: "удар из тени" },
   },
@@ -923,7 +923,7 @@ export function steelAuraTick(mode: SteelMode, regenPerSec: number): { dmg: numb
 }
 /** «Призрак бездны»: сколько в тени, ускорение после выхода. */
 /** «Призрак бездны»: сколько в тени, ускорение после выхода, бег в тени; удар из тени — рывок за спину цели (blink м). */
-export const ABYSS = { duration: 3, hasteSec: 3, haste: 0.3, move: 0.4, blink: 4 } as const;
+export const ABYSS = { duration: 1.5, hasteSec: 3, haste: 0.3, move: 0.4, blink: 4 } as const;
 /** Ассасин: «Теневой рывок» оглушает цель, «Танец клинков» замедляет задетых. */
 export const ASSASSIN_STEP_STUN = 1;
 /**
