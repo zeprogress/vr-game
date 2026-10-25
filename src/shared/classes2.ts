@@ -661,7 +661,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     variants: {
       spearman: { name: "Град выпадов", desc: "Серия из 8 быстрых выпадов копьём вперёд (длинный конус {r:6.5} м): каждый колет всех в секторе" },
       battlemage: { name: "Громовой вихрь", desc: `Молот по кругу: 5 физических ударов (растут от силы); последний бьёт молнией соседа в {r:${THUNDER_SPIN.range}} м — ×${THUNDER_SPIN.minMul}, до ×${THUNDER_SPIN.maxMul} от интеллекта` },
-      assassin: { name: "Танец клинков", desc: "Вихрь-рывок: 2 с неуязвимости, проносишься вперёд на {r:6} м, 5 ударов по всем вокруг (с шансом крита), задетые замедлены на 30%" },
+      assassin: { name: "Танец клинков", desc: "Вихрь-рывок: 1.5 с неуязвимости, проносишься вперёд на {r:6} м, 5 ударов по всем вокруг (с шансом крита), задетые замедлены на 30%" },
     },
   },
   warcry: {
@@ -680,7 +680,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   plague: {
     name: "Чумной клинок", icon: glyph("s.plague"), test: true,
-    desc: "8 с отравленных клинков: удар вешает стак яда (до 5); на 5 стаках взрыв заражает соседей (+1 стак) — яд ползёт по толпе. Яд — от атаки кинжала (с заточкой) и мудрости",
+    desc: "8 с отравленных клинков: удар вешает стак яда (до 4); на 4 стаках взрыв заражает соседей (+1 стак) — яд ползёт по толпе. Яд — от атаки кинжала (с заточкой) и мудрости",
     cooldown: 16, castTime: 0, radius: 5, dmgMult: 0.288, hits: 1, // взрыв −20% (2026-10-15): было 0.36
     attr: { attr: "wis", per: 1, what: "сила яда" }, // 2026-10-16: ×10 к зависимости от мудрости (было 0.1 = +10% за очко; ×20 откатили); раньше: 2% → 4.5% → 8% → 14% → 11.2% → 10%
   },
@@ -818,7 +818,7 @@ export const SPEAR_FLURRY = { thrusts: 8, duration: 1.6, range: 6.5, cone: 0.5, 
 
 /** Числа новых умений. */
 /** warriorDmg — удар вихря воина (вместо SKILLS2.whirlwind.dmgMult 0.9): ослаблен 2026-10-23, когда вихрь стал критовать и бить чаще. */
-export const WHIRL = { duration: 2, spearRadius: 4, spearHits: 4, spearDmg: 0.9, warriorDef: 0.3, warriorMaxHits: 12, warriorDmg: 0.65 } as const;
+export const WHIRL = { duration: 2, assassinInvulSec: 1.5, spearRadius: 4, spearHits: 4, spearDmg: 0.9, warriorDef: 0.3, warriorMaxHits: 12, warriorDmg: 0.65 } as const;
 
 /**
  * Вихрь воина (2026-10-23): за те же WHIRL.duration с ударов тем больше, чем выше скорость атаки — база SKILLS2.whirlwind.hits
@@ -883,8 +883,8 @@ export function skillAttrMul(id: SkillId, a: SkillAttrs): number {
 
 /** «Чумной клинок»: стак яда тикает stackSec, доля удара в секунду за стак; на maxStacks — взрыв. */
 export const PLAGUE = {
-  duration: 8, stackSec: 3, maxStacks: 5, tickFrac: 0.024, burstRadius: 4, // яд −20% (2026-10-15): было 0.03; радиус взрыва 4 м (было 5)
-  /** Взрыв на 5 стаках не сжигает их; следующий взрыв того же моба — не раньше чем через burstCd с. */
+  duration: 8, stackSec: 3, maxStacks: 4, tickFrac: 0.024, burstRadius: 4, // яд −20% (2026-10-15): было 0.03; радиус взрыва 4 м (было 5)
+  /** Взрыв на maxStacks стаках не сжигает их; следующий взрыв того же моба — не раньше чем через burstCd с. */
   burstCd: 3,
   /** Взрыв заражает соседей в burstRadius: +spread стаков (цепочкой — их взрывы заражают дальше). */
   spread: 1, // соседи после взрыва: +1 стак (было 2, 2026-10-15)

@@ -10232,7 +10232,8 @@ export class ZoneRoom extends Room<ZoneState> {
         const hits = spear ? WHIRL.spearHits : cls === "warrior" ? warriorWhirlHits(p, rolledAtkSpeedMul(p, swordHand, rt) * this.cryTempo(rt)) : sk.hits;
         const swordCrit = cls === "warrior" ? rolledCrit(p, swordHand, rt) : null;
         const mult = spear ? WHIRL.spearDmg : cls === "warrior" ? WHIRL.warriorDmg : sk.dmgMult;
-        rt.whirlUntil = this.elapsed + WHIRL.duration;
+        // Ассасин: неуязвимость — assassinInvulSec (остальное время вихря — анимация); воин — −30% весь вихрь.
+        rt.whirlUntil = this.elapsed + (cls === "assassin" ? WHIRL.assassinInvulSec : WHIRL.duration);
         rt.whirlKind = cls === "assassin" ? 2 : cls === "warrior" ? 1 : 0;
         act({ k: "whirl", x: p.head.x, y: feetY, z: p.head.z, d: WHIRL.duration, r: radius });
         const step = WHIRL.duration / hits;
