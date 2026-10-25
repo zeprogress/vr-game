@@ -5,6 +5,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 
 import { SPECTATE } from "#shared/constants";
+import { CAM_TUNE } from "./camTune";
 import { inHubSafeZone } from "#shared/hub";
 import { TOWER_PROP_POS } from "#shared/tower";
 import { terrainHeight } from "#shared/terrain";
@@ -831,12 +832,12 @@ export class SpectatorCamera {
       this.botYaw = Math.atan2(live.forward.x, live.forward.z);
       return;
     }
-    const k = this.raw ? 1 : 1 - Math.exp(-dt * SPECTATE.eyeSmooth);
+    const k = this.raw ? 1 : 1 - Math.exp(-dt * CAM_TUNE.eyeSmooth);
     lerpV(this.eyePos, live.eye, k, this.eyePos);
     lerpV(this.eyeFwd, live.forward, k, this.eyeFwd);
 
-    const kp = this.raw ? 1 : 1 - Math.exp(-dt * SPECTATE.botCamPosSmooth);
-    const kf = this.raw ? 1 : 1 - Math.exp(-dt * SPECTATE.botCamFwdSmooth);
+    const kp = this.raw ? 1 : 1 - Math.exp(-dt * CAM_TUNE.botCamPosSmooth);
+    const kf = this.raw ? 1 : 1 - Math.exp(-dt * CAM_TUNE.botCamFwdSmooth);
     lerpV(this.botPos, live.eye, kp, this.botPos);
     if (this.raw) {
       this.botFwd.copyFrom(live.forward);

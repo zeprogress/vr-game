@@ -607,6 +607,8 @@ export type SpecCmd =
   | { t: "cam"; shot: string }
   /** Вкл/выкл авто-ротацию режиссёра. */
   | { t: "auto"; on: number }
+  /** Плавность камеры рендерящего спектатора (1/с): eyeSmooth | botCamPosSmooth | botCamFwdSmooth. */
+  | { t: "camTune"; key: string; v: number }
   /** Режим «только боты»: авто-ротация ходит лишь по ботам зрителей,
    *  чередуя из глаз / орбиту / вид напротив (Ф10). */
   | { t: "bots"; on: number }

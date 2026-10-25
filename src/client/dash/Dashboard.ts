@@ -5,6 +5,7 @@ import type { SpecCmd, OverlayPatch } from "#shared/net/messages";
 import { TTS_VOICES } from "#shared/tts";
 import { NetClient } from "../net/NetClient";
 import { CINE_PATHS } from "../spectator/cine";
+import { CAM_TUNE_DEFAULT, CAM_TUNE_KEYS, type CamTuneKey } from "../spectator/camTune";
 
 const LS_KEY = "zepDashKey";
 const LS_OVERLAY = "zepOverlayCfg";
@@ -60,6 +61,8 @@ export class Dashboard {
   private ttsBtn!: HTMLButtonElement;
   private ttsSel!: HTMLSelectElement;
   private musicVolInp!: HTMLInputElement;
+  /** Ползунки плавности камеры — для сброса к значениям по умолчанию. */
+  private camTuneInps: { key: CamTuneKey; input: HTMLInputElement; label: HTMLSpanElement }[] = [];
   private musicVolLbl!: HTMLSpanElement;
   private sfxVolInp!: HTMLInputElement;
   private sfxVolLbl!: HTMLSpanElement;
@@ -195,6 +198,28 @@ export class Dashboard {
     this.box.appendChild(ttsRow);
 
     // --- время суток: авто + слайдер часа ---
+    // --- плавность камеры рендерящего спектатора (живая подгонка; сбрасывается перезагрузкой спектатора) ---
+    this.section("Камера: плавность", false);
+    const camNames: Record<CamTuneKey, string> = {
+      eyeSmooth: "Глаза героя (общая)",
+      botCamPosSmooth: "Позиция камеры у бота",
+      botCamFwdSmooth: "Направление у бота",
+    };
+    for (const key of CAM_TUNE_KEYS) {
+      const r = this.rateSlider(camNames[key], CAM_TUNE_DEFAULT[key], (v) => this.send({ t: "camTune", key, v }));
+      this.camTuneInps.push({ key, input: r.input, label: r.label });
+      this.box.appendChild(r.row);
+    }
+    this.box.appendChild(
+      this.bigBtn("Сброс камеры", () => {
+        for (const c of this.camTuneInps) {
+          c.input.value = String(CAM_TUNE_DEFAULT[c.key]);
+          c.label.textContent = CAM_TUNE_DEFAULT[c.key].toFixed(2);
+          this.send({ t: "camTune", key: c.key, v: CAM_TUNE_DEFAULT[c.key] });
+        }
+      }),
+    );
+
     this.section("Время суток", false);
     this.dayAutoBtn = this.bigBtn("Авто-ход суток: —", () => this.toggleDayAuto());
     this.box.appendChild(this.dayAutoBtn);
@@ -579,6 +604,38 @@ export class Dashboard {
       "background:#1d1f2b;color:#e8ecf8;font:600 14px system-ui;cursor:pointer";
     b.addEventListener("click", on);
     return b;
+  }
+
+  /** Ползунок ставки плавности камеры (1/с, 0.2..15) с подписью. */
+  private rateSlider(
+    label: string,
+    init: number,
+    onInput: (v: number) => void,
+  ): { row: HTMLDivElement; input: HTMLInputElement; label: HTMLSpanElement } {
+    const row = document.createElement("div");
+    row.style.cssText = "margin:6px 0 10px";
+    const head = document.createElement("div");
+    head.style.cssText = "display:flex;justify-content:space-between;font:14px system-ui;margin-bottom:4px";
+    const nameEl = document.createElement("span");
+    nameEl.textContent = label;
+    const valEl = document.createElement("span");
+    valEl.textContent = init.toFixed(2);
+    valEl.style.color = "#8c96ad";
+    head.append(nameEl, valEl);
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = "0.2";
+    input.max = "15";
+    input.step = "0.05";
+    input.value = String(init);
+    input.style.cssText = "width:100%;accent-color:#3a7a4a";
+    input.addEventListener("input", () => {
+      const v = Number(input.value);
+      valEl.textContent = v.toFixed(2);
+      onInput(v);
+    });
+    row.append(head, input);
+    return { row, input, label: valEl };
   }
 
   /** Слайдер громкости 0..100 с подписью — для музыки/эффектов рендерящего спектатора. */

@@ -81,6 +81,7 @@ import {
   type PcInvData,
   type AutoGoMsg,
 } from "#shared/net/messages";
+import { isCamTuneKey, type CamTuneKey } from "#shared/camTune";
 import { ADMIN_NICK, NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, huntPhaseFor, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL } from "#shared/constants";
 import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, ICE_GIANT, mobArmorBits, type CatDefense } from "#shared/mobs";
 import { DragonFight, type DragonHost } from "./dragonFight";
@@ -1386,6 +1387,8 @@ export class ZoneRoom extends Room<ZoneState> {
   private persistClock = 0;
   /** Текущий оверлей стрима (мердж патчей с пульта) — источник правды, переживает рестарт. */
   private overlayCfg: Record<string, unknown> = {};
+  /** Плавность камеры стрима с пульта (сохраняется, отдаётся спектатору при входе). */
+  private camTuneCfg: Partial<Record<CamTuneKey, number>> = {};
   // Состояние авто-режиссёра камеры стрима живёт на клиенте-спектаторе; здесь
   // держим последнюю известную копию, чтобы пережить рестарт и отдать её
   // заново подключившемуся спектатору/дашборду (Ф10 — «всё с пульта глобально»).
@@ -1510,6 +1513,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.state.ttsOn = pult.ttsOn === true ? 1 : 0;
     this.state.ttsVoice = isTtsVoice(pult.ttsVoice ?? "") ? pult.ttsVoice! : TTS_DEFAULT_VOICE;
     this.overlayCfg = { ...(pult.overlay ?? {}) };
+    this.camTuneCfg = { ...(pult.camTune ?? {}) };
     this.pultAuto = pult.auto !== false;
     this.pultBotsOnly = pult.botsOnly === true;
     this.state.mobsOn = pult.mobsOn === false ? 0 : 1;
@@ -2362,6 +2366,9 @@ export class ZoneRoom extends Room<ZoneState> {
       } else if (msg.t === "ttsVoice" && isTtsVoice(msg.ref)) {
         this.state.ttsVoice = msg.ref;
         world.savePult({ ttsVoice: msg.ref });
+      } else if (msg.t === "camTune" && isCamTuneKey(msg.key) && Number.isFinite(msg.v) && msg.v >= 0.2 && msg.v <= 15) {
+        this.camTuneCfg[msg.key] = msg.v;
+        world.savePult({ camTune: { ...this.camTuneCfg } });
       } else if (msg.t === "overlay" && msg.patch && typeof msg.patch === "object") {
         Object.assign(this.overlayCfg, msg.patch);
         world.savePult({ overlay: this.overlayCfg });
@@ -12207,6 +12214,9 @@ export class ZoneRoom extends Room<ZoneState> {
         client.send(MSG.catBoard, this.catLeaderboard(5));
         if (Object.keys(this.overlayCfg).length) {
           client.send(MSG.specCmd, { t: "overlay", patch: this.overlayCfg } satisfies SpecCmd);
+        }
+        for (const [key, v] of Object.entries(this.camTuneCfg)) {
+          client.send(MSG.specCmd, { t: "camTune", key, v: v as number } satisfies SpecCmd);
         }
         client.send(MSG.specCmd, { t: "specVoice", on: this.state.specVoice } satisfies SpecCmd);
         client.send(MSG.specCmd, { t: "dmgNumbers", on: this.state.dmgNumbers } satisfies SpecCmd);

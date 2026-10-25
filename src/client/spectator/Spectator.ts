@@ -67,6 +67,7 @@ import {
   type CtxMobFx,
 } from "./SpectatorCamera";
 import { setupRenderLayers } from "../engine/renderLayers";
+import { CAM_TUNE, isCamTuneKey } from "./camTune";
 import { logSceneTextures } from "../engine/texlist";
 
 /** Как часто спектатор шлёт сводку производительности в журнал сервера. */
@@ -156,6 +157,8 @@ export class Spectator {
   private lastCamReport = 0;
   private lastVoiceNudge = 0;
   private readonly fpsCap: number;
+  /** Время прошлого отрисованного кадра (для dt камеры, см. tick). */
+  private lastTickAt = 0;
   private readonly fixedSize: { w: number; h: number } | null;
   private readonly reloadSec: number;
   /** Реальная частота вызовов scene.render() (getFps() врёт при кап-скипе). */
@@ -224,9 +227,8 @@ export class Spectator {
     gpuEngine?: Engine,
   ) {
     const preset = PRESETS[quality];
-    // Потолок fps: high — 60, остальные пресеты — 30. `?fpscap=` может только
-    // урезать дальше (слабый телефон), но не поднять выше потолка пресета.
-    const capMax = quality === "high" ? 60 : 30;
+    // Потолок fps: пресет по умолчанию (med/low/potato — 30, high — 60). `?fpscap=` задаёт свой кэп до 60 в любом пресете.
+    const capMax = 60;
     const requestedCap = override.fpsCap ?? preset.fpsCap;
     this.fpsCap = requestedCap > 0 ? Math.min(requestedCap, capMax) : capMax;
 
@@ -940,6 +942,9 @@ export class Spectator {
     }
     if (this.freeCtl) return; // окно свободной камеры: команды пульта не для него
     if (cmd.t === "cam") this.cam.forceShot(cmd.shot);
+    else if (cmd.t === "camTune") {
+      if (isCamTuneKey(cmd.key) && Number.isFinite(cmd.v) && cmd.v > 0) CAM_TUNE[cmd.key] = cmd.v;
+    }
     else if (cmd.t === "auto") this.cam.auto = cmd.on !== 0;
     else if (cmd.t === "bots") {
       this.cam.botsOnly = cmd.on !== 0;
@@ -1036,8 +1041,11 @@ export class Spectator {
   }
 
   private tick(): void {
-    const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.1);
+    // Время между отрисованными кадрами, а не engine.getDeltaTime(): тот меряет каждый rAF, и при кэпе fps
+    // камера шла бы вдвое медленнее (шаг считался за 16 мс, кадр приходил через 33).
     const now = performance.now();
+    const dt = this.lastTickAt > 0 ? Math.min((now - this.lastTickAt) / 1000, 0.1) : 1 / 60;
+    this.lastTickAt = now;
     const room = this.net?.room;
     if (now >= this.rootsScanAt) {
       this.rootsScanAt = now + 2000;

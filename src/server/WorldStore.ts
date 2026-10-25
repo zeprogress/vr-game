@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { CamTuneKey } from "#shared/camTune";
+
 import type { DropSave } from "./sim/ZoneSim";
 
 const FILE = resolve(dirname(fileURLToPath(import.meta.url)), ".data/world.json");
@@ -14,6 +16,8 @@ const FILE = resolve(dirname(fileURLToPath(import.meta.url)), ".data/world.json"
  * попросили сделать общими для всех и переживающими рестарт.
  */
 export interface PultSettings {
+  /** Плавность камеры стрима (пульт «Камера: плавность», 1/с): ключ → ставка. */
+  camTune: Partial<Record<CamTuneKey, number>>;
   specVisible: boolean;
   specRaysVisible: boolean;
   /** Слышит ли рендерящий спектатор голос игроков (по умолчанию нет). */
