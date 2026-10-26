@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b5a65605d7e6143c1b914a7e35b729e5, type: 3}
+  m_Name: SliceAssets
+  m_EditorClassIdentifier: Assembly-CSharp::Zep.SliceAssets
+  hero: {fileID: 8771091787928289351, guid: b3da93f08c70e4cd2b21a3e2ea1132ca, type: 3}
+  slime: {fileID: 2242888416370347441, guid: 2a6d771e156924bc69d2afce25c8a0bc, type: 3}
+  trees:
+  - {fileID: 3421157183088178265, guid: e466e52c52a9746cbab8f7ae91f24017, type: 3}
+  - {fileID: 870603837913383841, guid: 9fb43cb39aaaf4710b83ce565b2d6534, type: 3}
+  - {fileID: 168966669771962761, guid: 960f3d67e0af34493b329f8b2773917d, type: 3}
+  - {fileID: -927844241896336998, guid: 8ed57715882754a26aa5583bb7d260f8, type: 3}
+  - {fileID: 8024890445507039696, guid: 3844a44e724504b4aa871814cbb31d5d, type: 3}
+  treesJson: {fileID: 4900000, guid: f7b028d79c83f448d9bc56ca7015415c, type: 3}
