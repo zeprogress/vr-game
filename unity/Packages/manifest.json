@@ -38,6 +38,7 @@
     "com.unity.render-pipelines.universal": "17.3.0",
     "com.unity.inputsystem": "1.14.2",
     "io.colyseus.sdk": "https://github.com/colyseus/colyseus-unity-sdk.git?path=Assets/Colyseus#0.15.12",
-    "com.unity.cloud.gltfast": "6.20.0"
+    "com.unity.cloud.gltfast": "6.20.0",
+    "com.unity.ugui": "2.0.0"
   }
 }

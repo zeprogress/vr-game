@@ -37,6 +37,7 @@
     "ws": "^7.5.13"
   },
   "devDependencies": {
+    "@babylonjs/serializers": "^7.54.3",
     "@types/node": "^22.10.0",
     "@types/ws": "^7.4.7",
     "@vitejs/plugin-basic-ssl": "^1.2.0",

@@ -12,7 +12,7 @@ namespace Zep
         public float hitReach = 2.6f;
         public Camera cam;
 
-        Anim anim;
+        HeroRig rig;
         float yaw, pitch = 18f, camDist = 6f;
         float sendTimer, attackCd;
         bool placed;
@@ -21,11 +21,20 @@ namespace Zep
         int moveFinger = -1;
         Vector2 moveOrigin;
 
+        /// Свои события с сервера: флинч и новый уровень (свой замах играем сразу, без ожидания сети).
+        public void OnAct(string kind)
+        {
+            if (kind == "hurt") rig.PlayOneShot("RecieveHit", 1.6f);
+            else if (kind == "levelUp") rig.PlayOneShot("Victory");
+        }
+
         public bool Mobile => Application.isMobilePlatform;
 
-        public void Init(GameObject model)
+        public void Init(SliceAssets assets)
         {
-            anim = new Anim(Instantiate(model, transform));
+            rig = gameObject.AddComponent<HeroRig>();
+            rig.Init(assets);
+            rig.Apply(0, "", "", "sword", "");
             terrain = Terrain.activeTerrain;
             yaw = transform.eulerAngles.y;
         }
@@ -45,6 +54,8 @@ namespace Zep
                 transform.position = p;
                 placed = true;
             }
+            if (room != null && room.State.players.TryGetValue(room.SessionId, out var self))
+                rig.Apply(self.skin, self.leftCls, self.leftTier, self.rightCls, self.rightTier);
 
             Vector2 move = ReadMove();
             Vector2 look = ReadLook();
@@ -64,11 +75,7 @@ namespace Zep
 
             attackCd -= Time.deltaTime;
             if (ReadAttack() && attackCd <= 0) Attack();
-            if (!anim.Playing("SwordSlash"))
-            {
-                if (dir.sqrMagnitude > 0.01f) anim.Loop("Run");
-                else anim.Loop("Idle");
-            }
+            rig.Locomotion(dir.sqrMagnitude > 0.01f ? runSpeed : 0f, false);
 
             // Камера: орбита за спиной, не уходит под землю.
             var target = transform.position + Vector3.up * 1.6f;
@@ -87,11 +94,13 @@ namespace Zep
 
         void Attack()
         {
-            attackCd = 0.55f;
-            anim.Once("SwordSlash", 1.4f);
             var room = ZoneNet.I.Room;
+            ZepSchema.PlayerState me = null;
+            room?.State.players.TryGetValue(room.SessionId, out me);
+            int level = me?.level ?? 1;
+            attackCd = 0.8f / ZoneNet.I.Assets.MeleeRate(level);
+            rig.PlaySwing(level);
             if (room == null) return;
-            room.State.players.TryGetValue(room.SessionId, out var me);
             string weapon = me != null && !string.IsNullOrEmpty(me.rightCls) ? me.rightCls : "fist";
             if (weapon == "staff" || weapon == "bow" || weapon == "shield") weapon = "fist";
 

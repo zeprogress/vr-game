@@ -1,6 +1,6 @@
 import { defineConfig, type Plugin } from "vite";
 import basicSsl from "@vitejs/plugin-basic-ssl";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -179,8 +179,38 @@ function shortInvPath(): Plugin {
   };
 }
 
+/**
+ * Выгрузка для Unity-клиента: страница (client/dev/unityExport.ts) шлёт POST /__unity-export/<имя>.glb|json
+ * — в unity/Assets/Locations/, а /__unity-export/sfx/<имя>.wav (записанные звуки) — в unity/Assets/Resources/Sfx/.
+ */
+function unityExportWriter(): Plugin {
+  // ref — эталонные кадры веба для сверки с Unity (папка Logs у Unity в .gitignore).
+  const dirs = { loc: resolve(root, "unity/Assets/Locations"), sfx: resolve(root, "unity/Assets/Resources/Sfx"), ref: resolve(root, "unity/Logs/ref") };
+  return {
+    name: "unity-export-writer",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const m = /^\/__unity-export\/(?:(sfx)\/([\w-]+\.wav)|(ref)\/([\w-]+\.png)|([\w-]+\.(?:glb|json)))$/.exec((req.url ?? "").split("?")[0]);
+        if (req.method !== "POST" || !m) return next();
+        const dir = m[1] ? dirs.sfx : m[3] ? dirs.ref : dirs.loc;
+        const name = m[2] ?? m[4] ?? m[5];
+        const chunks: Buffer[] = [];
+        req.on("data", (c: Buffer) => chunks.push(c));
+        req.on("end", () => {
+          mkdirSync(dir, { recursive: true });
+          const buf = Buffer.concat(chunks);
+          writeFileSync(resolve(dir, name), buf);
+          server.config.logger.info(`[unity-export] ${name} — ${(buf.length / 1048576).toFixed(1)} МБ`);
+          res.setHeader("content-type", "application/json");
+          res.end(JSON.stringify({ ok: true, bytes: buf.length }));
+        });
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [loadoutWriter(), shortInvPath(), ...(vr ? [basicSsl()] : [])],
+  plugins: [loadoutWriter(), shortInvPath(), unityExportWriter(), ...(vr ? [basicSsl()] : [])],
   server: {
     host: true, // доступ по локальной сети
     port: 5173,

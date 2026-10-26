@@ -16,6 +16,19 @@ Unity Hub → Add → папка `unity/`. Сцена `Assets/Scenes/Slice.unity
 Обычные ники сервер пускает только после кода из чата Twitch, поэтому для теста —
 админ-ник с `ADMIN_PASS` сервера.
 
+## Спектатор (стрим)
+Сцена `Assets/Scenes/Spectator.unity`: тот же мир без героя, вход с ключом спектатора,
+камерой рулит `SpectatorDirector` — перенос `src/client/spectator/SpectatorCamera.ts`
+(обзор, орбита, бок, дуэль, группа, погоня, дрон, напротив, моб, босс, кинопути
+и вступление «Вся поляна»). Пульт работает как с веб-спектатором: кадр, авто,
+«только боты», плавность камеры. F3 — строка состояния. Кинопути и константы берутся
+из `Assets/Terrain/spectator.json` (тот же `scripts/unity-heightmap.mts`).
+Катакомбы, рейд, башня, оверлей и звук пока не перенесены.
+
+Программа для OBS: **Zep → Build Spectator (macOS / Windows)** → `unity/Builds/…`.
+Сервер задаётся при запуске:
+`open "unity/Builds/Spectator-mac/ZEP Spectator.app" --args -server wss://zepgame.duckdns.org`
+
 ## Управление
 ПК: WASD, ПКМ — обзор, колесо — дистанция, ЛКМ — удар.
 Телефон: левая половина экрана — стик, правая — обзор, тап — удар.

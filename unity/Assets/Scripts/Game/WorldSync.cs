@@ -11,52 +11,95 @@ namespace Zep
         public Hero hero;
 
         public static readonly Dictionary<string, MobView> Mobs = new();
-        readonly Dictionary<string, PlayerView> players = new();
+        public static readonly Dictionary<string, PlayerView> Players = new();
+        readonly Dictionary<string, GameObject> dummies = new();
+
+        [System.Serializable] class Npc { public string title, model; public float x, y, z, yaw; }
+        [System.Serializable] class NpcList { public Npc[] npcs; }
+
+        /// NPC лагеря (Zone.ts → spawnHubNpc): модель героя, лицом к костру, сиреневая плашка с титулом.
+        void SpawnNpcs()
+        {
+            if (!assets.propsJson) return;
+            foreach (var n in JsonUtility.FromJson<NpcList>(assets.propsJson.text).npcs)
+            {
+                var go = new GameObject("npc " + n.title);
+                go.transform.SetPositionAndRotation(new Vector3(n.x, n.y, n.z), Quaternion.Euler(0, n.yaw * Mathf.Rad2Deg, 0));
+                var rig = go.AddComponent<HeroRig>();
+                rig.Init(assets);
+                rig.ApplyModel(n.model);
+                rig.Anim.Loop("Idle");
+                var plate = Nameplates.Create(go.transform);
+                plate.offset = 2.5f;
+                plate.SetInfo(n.title, new Color(0.78f, 0.61f, 1f), null, Color.white, 0, 0);
+            }
+        }
 
         async void Start()
         {
-            hero.Init(assets.hero);
+            if (hero) hero.Init(assets);
+            SpawnNpcs();
             var net = ZoneNet.I;
+            net.Assets = assets;
             net.Joined += OnJoined;
+            net.Act += (kind, id, _) =>
+            {
+                if (id != null && Players.TryGetValue(id, out var pv)) pv.OnAct(kind);
+                else if (hero && id == net.Room?.SessionId) hero.OnAct(kind);
+            };
             await net.Connect();
         }
 
         void OnJoined(Colyseus.ColyseusRoom<ZoneState> room)
         {
             var st = room.State;
+            var shots = FindAnyObjectByType<Projectiles>();
+            if (shots) shots.Attach(st);
             st.mobs.OnAdd((id, m) =>
             {
                 var go = new GameObject("mob " + m.mobName);
                 var v = go.AddComponent<MobView>();
-                v.Init(id, m, assets.slime);
+                v.Init(id, m, assets);
                 Mobs[id] = v;
             });
             st.mobs.OnRemove((id, m) =>
             {
                 if (Mobs.Remove(id, out var v)) Destroy(v.gameObject);
             });
+            // Тренировочные манекены лагеря.
+            st.dummies.OnAdd((id, d) =>
+            {
+                var go = new GameObject("dummy " + id);
+                go.AddComponent<DummyView>().Init(d, assets);
+                dummies[id] = go;
+            });
+            st.dummies.OnRemove((id, d) =>
+            {
+                if (dummies.Remove(id, out var go)) Destroy(go);
+            });
             st.players.OnAdd((id, p) =>
             {
                 if (id == room.SessionId) return;
                 var go = new GameObject("player " + p.nick);
                 var v = go.AddComponent<PlayerView>();
-                v.Init(p, assets.hero);
-                players[id] = v;
+                v.Init(id, p, assets);
+                Players[id] = v;
             });
             st.players.OnRemove((id, p) =>
             {
-                if (players.Remove(id, out var v)) Destroy(v.gameObject);
+                if (Players.Remove(id, out var v)) Destroy(v.gameObject);
             });
         }
 
         void OnGUI()
         {
             var net = ZoneNet.I;
+            if (net.spectator) return; // в эфире своя строка — SpectatorDirector (F3)
             var room = net.Room;
             string line = net.Status;
             if (room != null && room.State.players.TryGetValue(room.SessionId, out var me))
                 line += $"   {me.nick} · ур. {me.level} · HP {me.hp:0}/{me.maxHp:0}";
-            line += $"   мобов {Mobs.Count} · игроков {players.Count} · {1f / Mathf.Max(Time.smoothDeltaTime, 1e-4f):0} fps · {QualitySettings.names[QualitySettings.GetQualityLevel()]}";
+            line += $"   мобов {Mobs.Count} · игроков {Players.Count} · {1f / Mathf.Max(Time.smoothDeltaTime, 1e-4f):0} fps · {QualitySettings.names[QualitySettings.GetQualityLevel()]}";
             GUI.Label(new Rect(12, 8, Screen.width - 24, 24), line);
         }
     }

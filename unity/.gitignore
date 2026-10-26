@@ -8,3 +8,12 @@
 *.csproj
 *.sln
 .DS_Store
+
+# Копии из ../public (модели, музыка) — раскладывает tools/sync-assets.sh. Сами файлы не храним,
+# а .meta храним: по их GUID на модели ссылаются сцены и SliceAssets.
+/Assets/Models/**/*.glb
+/Assets/Models/**/*.gltf
+/Assets/Models/**/*.bin
+/Assets/Models/**/*.png
+/Assets/Resources/Music/*.mp3
+!/Assets/Models/**/*.meta

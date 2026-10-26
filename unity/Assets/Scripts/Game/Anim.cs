@@ -2,7 +2,8 @@ using UnityEngine;
 
 namespace Zep
 {
-    /// Обёртка над Legacy Animation из glTFast: клипы ищутся по концу имени ("Slime|Hop" → "Hop").
+    /// Обёртка над Legacy Animation из glTFast. Клип ищется по списку имён без учёта регистра
+    /// и префикса ("Slime|Hop" → "Hop"): у паков разные имена — Bite_Front, Punch, Attack…
     public class Anim
     {
         readonly Animation a;
@@ -10,17 +11,35 @@ namespace Zep
 
         public Anim(GameObject go) { a = go.GetComponentInChildren<Animation>(); }
 
-        string Find(string name)
+        public bool Has(params string[] names) => Find(names) != null;
+
+        /// Длина клипа в секундах (0 — нет такого).
+        public float Length(params string[] names)
+        {
+            var n = Find(names);
+            return n != null ? a[n].length : 0f;
+        }
+
+        string Find(params string[] names)
         {
             if (a == null) return null;
-            foreach (AnimationState s in a)
-                if (s.name == name || s.name.EndsWith("|" + name) || s.name.EndsWith(name)) return s.name;
+            foreach (var want in names)
+            {
+                if (string.IsNullOrEmpty(want)) continue;
+                foreach (AnimationState s in a)
+                {
+                    var n = s.name;
+                    int bar = n.LastIndexOf('|');
+                    var tail = bar >= 0 ? n.Substring(bar + 1) : n;
+                    if (string.Equals(tail, want, System.StringComparison.OrdinalIgnoreCase)) return n;
+                }
+            }
             return null;
         }
 
-        public void Loop(string name, float speed = 1f)
+        public void Loop(float speed, params string[] names)
         {
-            var n = Find(name);
+            var n = Find(names);
             if (n == null) return;
             a[n].wrapMode = WrapMode.Loop;
             a[n].speed = speed;
@@ -29,20 +48,26 @@ namespace Zep
             current = n;
         }
 
-        public void Once(string name, float speed = 1f)
+        public void Loop(string name, float speed = 1f) => Loop(speed, name);
+
+        public void Once(float speed, params string[] names)
         {
-            var n = Find(name);
+            var n = Find(names);
             if (n == null) return;
-            a[n].wrapMode = WrapMode.Once;
+            a[n].wrapMode = WrapMode.ClampForever;
             a[n].speed = speed;
+            a[n].time = 0; // повторный замах — с начала, а не продолжением прошлого
             a.CrossFade(n, 0.08f);
             current = n;
         }
 
-        public bool Playing(string name)
+        public void Once(string name, float speed = 1f) => Once(speed, name);
+
+        /// Разовый клип ещё идёт (ClampForever держит последний кадр — считаем его законченным).
+        public bool Playing(params string[] names)
         {
-            var n = Find(name);
-            return n != null && a.IsPlaying(n);
+            var n = Find(names);
+            return n != null && a.IsPlaying(n) && a[n].normalizedTime < 1f;
         }
     }
 }
