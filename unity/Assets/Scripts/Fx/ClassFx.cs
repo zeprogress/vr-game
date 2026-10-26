@@ -73,9 +73,9 @@ namespace Zep
             Destroy(cube);
             for (int i = 0; i < 48; i++)
             {
-                var it = Make("arrow", cubeMesh, a.litTemplate);
-                it.go.transform.localScale = new Vector3(0.05f, 0.05f, 1.1f);
-                it.mat.SetColor(BaseColor, new Color(0.85f, 0.85f, 0.8f));
+                var it = Make("arrow", Projectiles.ArrowMesh, a.litTemplate);
+                it.go.transform.localScale = Vector3.one * 1.4f;
+                it.mat.SetColor(BaseColor, Projectiles.ArrowColor);
                 it.color = Color.clear;
                 arrows.Add(it);
             }
@@ -104,6 +104,7 @@ namespace Zep
             nRing = (nRing + 1) % rings.Count;
             r.color = color;
             r.go.transform.position = p + Vector3.up * 0.06f;
+            r.go.transform.rotation = Vfx.Tilt(p);
             r.age = 0; r.life = life; r.r0 = r0; r.r1 = r1; r.alpha = alpha;
             r.go.SetActive(true);
         }
@@ -141,6 +142,7 @@ namespace Zep
             nSeal = (nSeal + 1) % seals.Count;
             s.color = color;
             s.go.transform.position = p + Vector3.up * 0.07f;
+            s.go.transform.rotation = Vfx.Tilt(p);
             s.glow.transform.position = p + Vector3.up * 0.02f;
             s.go.transform.localScale = Vector3.one * radius;
             s.age = 0; s.life = life; s.radius = radius;

@@ -81,11 +81,12 @@ Shader "Zep/FxDecal"
                 // Маска формы: угол от +Z к +X (uv.y — локальная Z), кольцо от _R0; мягкий край.
                 float ang = atan2(p.x, p.y);
                 float aw = 0.03 / max(r, 0.05);
-                float mA = smoothstep(_A0 - aw, _A0 + aw, ang) * smoothstep(_A1 + aw, _A1 - aw, ang);
+                float full = step(6.2, _A1 - _A0);
+                // Полный круг — без маски угла: на стыке ±π маска давала тёмную полосу (круг «не сомкнут»).
+                float mA = full > 0.5 ? 1.0 : smoothstep(_A0 - aw, _A0 + aw, ang) * smoothstep(_A1 + aw, _A1 - aw, ang);
                 float mR = smoothstep(_R0 - 0.02, _R0 + 0.02, r);
                 float mask = mA * mR;
                 float edgeA = (1 - smoothstep(0.0, 0.035, abs(ang - _A0) * r)) + (1 - smoothstep(0.0, 0.035, abs(ang - _A1) * r));
-                float full = step(6.2, _A1 - _A0);
                 float outline = max(exp(-pow((r - 0.975) / 0.022, 2.0)), (1 - full) * edgeA * step(_R0, r));
                 outline = max(outline, step(0.01, _R0) * exp(-pow((r - _R0) / 0.02, 2.0)) * mA);
                 float al = 0.0;

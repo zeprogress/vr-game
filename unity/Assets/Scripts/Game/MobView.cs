@@ -213,7 +213,7 @@ namespace Zep
             var res = new Light[2];
             for (int i = 0; i < 2; i++)
             {
-                var l = new GameObject(i == 0 ? "lavaChest" : "lavaTop").AddComponent<Light>();
+                var l = new GameObject(i == 0 ? "lavaChest" : "lavaFloor").AddComponent<Light>();
                 l.transform.SetParent(transform, false);
                 l.type = LightType.Point;
                 l.color = c;
@@ -236,10 +236,9 @@ namespace Zep
                 var l = lavaLights[i];
                 l.enabled = on;
                 if (!on) continue;
-                // Оба огня выше тела: свет падает сверху вниз, и под мобом остаётся своя тень (низкий огонь её стирал).
-                l.transform.position = transform.position + Vector3.up * (i == 0 ? h * 0.8f : h * 1.2f) + transform.forward * (i == 0 ? h * 0.25f : -h * 0.1f);
-                l.range = i == 0 ? h * 2.8f : h * 2.4f;
-                l.intensity = (i == 0 ? 6f : 4f) * h * flick;
+                l.transform.position = transform.position + Vector3.up * (i == 0 ? h * 0.55f : 0.4f) + transform.forward * (i == 0 ? h * 0.15f : 0);
+                l.range = i == 0 ? h * 2.6f : h * 1.8f;
+                l.intensity = (i == 0 ? 6f : 5f) * h * flick;
             }
         }
 
@@ -262,14 +261,14 @@ namespace Zep
                 burnTick -= dt;
                 if (burnTick <= 0)
                 {
-                    burnTick = 0.045f;
+                    burnTick = 0.09f;
                     var col = bleedOnly ? FxColors.Blood : FxColors.Fire;
                     var p = center + new Vector3(Random.Range(-0.5f, 0.5f) * sc, Random.Range(-0.3f, 0.6f) * sc, Random.Range(-0.5f, 0.5f) * sc);
-                    Vfx.I.Burst(p, col, count: 5, speed: 1.2f * sc + 0.6f, life: 0.65f, grav: -5 * Mathf.Max(0.6f, sc), size: 0.75f * sc + 0.25f, dir: Vector3.up, spread: 0.3f);
+                    Vfx.I.Burst(p, col, count: 3, speed: 1f * sc + 0.5f, life: 0.55f, grav: -5 * Mathf.Max(0.6f, sc), size: 0.5f * sc + 0.18f, dir: Vector3.up, spread: 0.3f);
                     if (!bleedOnly)
                     {
-                        Vfx.I.Burst(p, FxColors.FireCore, count: 3, speed: 0.9f * sc + 0.4f, life: 0.4f, grav: -4, size: 0.4f * sc + 0.12f, dir: Vector3.up, spread: 0.25f);
-                        if (Random.value < 0.25f) Vfx.I.Burst(center + Vector3.up * sc * 0.8f, new Color(0.12f, 0.1f, 0.09f), count: 2, speed: 0.6f, life: 1.4f, grav: -1.2f, size: 0.5f * sc + 0.2f, smoke: true);
+                        Vfx.I.Burst(p, FxColors.FireCore, count: 1, speed: 0.8f * sc + 0.4f, life: 0.35f, grav: -4, size: 0.28f * sc + 0.08f, dir: Vector3.up, spread: 0.25f);
+                        if (Random.value < 0.1f) Vfx.I.Burst(center + Vector3.up * sc * 0.8f, new Color(0.12f, 0.1f, 0.09f), count: 2, speed: 0.6f, life: 1.4f, grav: -1.2f, size: 0.5f * sc + 0.2f, smoke: true);
                     }
                 }
             }
@@ -289,7 +288,7 @@ namespace Zep
                 {
                     burnLight.transform.position = center;
                     burnLight.range = 3 + sc * 4;
-                    burnLight.intensity = (5f + sc * 4) * burnGlow * fade * (0.8f + 0.2f * Mathf.Sin(Time.time * 17 + transform.position.x) + 0.1f * Mathf.Sin(Time.time * 31));
+                    burnLight.intensity = (3f + sc * 2.5f) * burnGlow * fade * (0.8f + 0.2f * Mathf.Sin(Time.time * 17 + transform.position.x) + 0.1f * Mathf.Sin(Time.time * 31));
                 }
             }
         }

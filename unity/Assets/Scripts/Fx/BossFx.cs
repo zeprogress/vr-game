@@ -315,9 +315,9 @@ namespace Zep
                 heats.Add(h);
             }
             h.id = id; h.age = 0; h.life = dur; h.r = r; h.color = color;
-            h.mat.SetColor(HColor, color * 1.6f);
+            h.mat.SetColor(HColor, color);
             h.mat.SetFloat(HRim, 2.2f);
-            foreach (var m in h.shellMats) { m.SetColor(HColor, Color.Lerp(color, new Color(1, 0.8f, 0.5f), 0.3f) * 1.4f); m.SetFloat(HRim, 3.5f); }
+            foreach (var m in h.shellMats) { m.SetColor(HColor, Color.Lerp(color, new Color(1, 0.8f, 0.5f), 0.3f)); m.SetFloat(HRim, 3.5f); }
             h.sphere.gameObject.SetActive(true);
             foreach (var t in h.shells) t.gameObject.SetActive(true);
         }
@@ -341,7 +341,7 @@ namespace Zep
                 float grow = Mathf.SmoothStep(0.2f, 1f, Mathf.Min(1, h.age / 0.35f));
                 h.sphere.position = p;
                 h.sphere.localScale = Vector3.one * h.r * 2 * grow * (1 + 0.015f * Mathf.Sin(h.age * 6));
-                h.mat.SetFloat(HAlpha, 0.22f * fade); // мягкое сияние, не навязчиво
+                h.mat.SetFloat(HAlpha, 0.1f * fade); // едва заметное сияние, не навязчиво
                 h.mat.SetFloat(HTime, Clock);
                 // Волны жара: три оболочки по очереди расходятся от героя к краю и гаснут.
                 for (int i = 0; i < h.shells.Length; i++)
@@ -349,7 +349,7 @@ namespace Zep
                     float u = Mathf.Repeat(h.age * 0.8f + i / 3f, 1f);
                     h.shells[i].position = p;
                     h.shells[i].localScale = Vector3.one * h.r * 2 * Mathf.Lerp(0.15f, 1f, u) * grow;
-                    h.shellMats[i].SetFloat(HAlpha, 0.15f * fade * Mathf.Sin(u * Mathf.PI));
+                    h.shellMats[i].SetFloat(HAlpha, 0.06f * fade * Mathf.Sin(u * Mathf.PI));
                     h.shellMats[i].SetFloat(HTime, Clock + i * 3.1f);
                 }
             }

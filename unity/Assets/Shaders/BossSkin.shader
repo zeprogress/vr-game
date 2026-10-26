@@ -206,8 +206,9 @@ Shader "Zep/BossSkin"
             }
             ENDHLSL
         }
-        UsePass "Universal Render Pipeline/Lit/ShadowCaster"
-        UsePass "Universal Render Pipeline/Lit/DepthOnly"
-        UsePass "Universal Render Pipeline/Lit/DepthNormals"
+        // Имена проходов в UsePass — заглавными (иначе Unity молча не находит проход и тени у модели нет).
+        UsePass "Universal Render Pipeline/Lit/SHADOWCASTER"
+        UsePass "Universal Render Pipeline/Lit/DEPTHONLY"
+        UsePass "Universal Render Pipeline/Lit/DEPTHNORMALS"
     }
 }

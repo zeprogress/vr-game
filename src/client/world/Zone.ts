@@ -1,4 +1,5 @@
 import { spawnHubNpc } from "./hub/HubNpc";
+import { startLocationEdits } from "./locationEdits";
 import type { Scene } from "@babylonjs/core/scene";
 import { secNow, secAdd } from "../engine/secProf";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -218,6 +219,8 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   const dungeon = new DungeonFx(scene);
   const raidArena = new RaidArenaFx(scene);
 
+  // Ручные правки локаций из Unity (locationEdits.json) — те же, что в Unity-сборке.
+  startLocationEdits(scene);
   return {
     catacombs,
     dungeon,

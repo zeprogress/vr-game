@@ -188,7 +188,8 @@ namespace Zep
             else { d = decals[nD]; nD = (nD + 1) % decals.Count; }
             var sh = shape ?? Shape.Circle;
             var tr = d.go.transform;
-            tr.rotation = Quaternion.Euler(0, sh.yaw * Mathf.Rad2Deg, 0);
+            // Пятно лежит по склону: наклон по нормали земли под центром (мишени на мобах — ровно).
+            tr.rotation = (fk == Follow.None ? Tilt(p) : Quaternion.identity) * Quaternion.Euler(0, sh.yaw * Mathf.Rad2Deg, 0);
             tr.position = new Vector3(p.x, p.y + 0.07f + (mode == 2 ? 0 : (nD % 5) * 0.004f), p.z);
             tr.localScale = new Vector3(radius, 1, radius);
             d.mat.SetColor(Color_, color * Glow);
@@ -207,6 +208,21 @@ namespace Zep
             if ((mode == 0 || mode == 5) && alpha >= 0.8f && radius >= 2.5f && life <= 1.2f) Flash(p + Vector3.up * 1.2f, color, radius * 1.6f, 10, life * 0.7f);
         }
 
+        /// Поворот «вверх → нормаль земли» под точкой (луч по коллайдерам локаций, иначе нормаль рельефа).
+        public static Quaternion Tilt(Vector3 p)
+        {
+            var n = Vector3.up;
+            if (Physics.Raycast(p + Vector3.up * 3f, Vector3.down, out var hit, 8f)) n = hit.normal;
+            else if (Terrain.activeTerrain)
+            {
+                var t = Terrain.activeTerrain;
+                var lp = p - t.transform.position;
+                n = t.terrainData.GetInterpolatedNormal(lp.x / t.terrainData.size.x, lp.z / t.terrainData.size.z);
+            }
+            if (n.y < 0.3f) n = Vector3.up; // стена или потолок — не кладём на них
+            return Quaternion.FromToRotation(Vector3.up, n);
+        }
+
         /// Волна сектором из p в сторону (dx,dz) на radius, полуугол half (рад).
         public void Cone(Vector3 p, float radius, float dx, float dz, float half, Color color, float life = 0.3f, float alpha = 0.5f)
         {
@@ -214,7 +230,7 @@ namespace Zep
             Decal(p, radius, color, life, 3, alpha);
             var d = decals[(nD + decals.Count - 1) % decals.Count];
             // Ось сектора в шейдере — локальная +x (uv.x вправо); поворот вокруг Y, чтобы +x смотрела по (dx,dz).
-            d.go.transform.rotation = Quaternion.Euler(0, Mathf.Atan2(-dz / l, dx / l) * Mathf.Rad2Deg, 0);
+            d.go.transform.rotation = Tilt(p) * Quaternion.Euler(0, Mathf.Atan2(-dz / l, dx / l) * Mathf.Rad2Deg, 0);
             d.mat.SetFloat(Half, half);
         }
 

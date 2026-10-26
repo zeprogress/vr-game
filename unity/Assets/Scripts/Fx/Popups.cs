@@ -48,9 +48,107 @@ namespace Zep
             go.transform.SetParent(Nameplates.Root, false);
             root = (RectTransform)go.transform;
             cross = MakeSprite((x, y) => Mathf.Abs(x) < 0.22f && Mathf.Abs(y) < 0.8f || Mathf.Abs(y) < 0.22f && Mathf.Abs(x) < 0.8f ? 1 : 0);
-            flash = MakeSprite((x, y) => { float r = Mathf.Sqrt(x * x + y * y); float a = Mathf.Atan2(y, x); return Mathf.Clamp01(1 - r) * (0.55f + 0.45f * Mathf.Abs(Mathf.Cos(a * 4))); });
-            ring = MakeSprite((x, y) => { float r = Mathf.Sqrt(x * x + y * y); return Mathf.Clamp01(1 - Mathf.Abs(r - 0.82f) / 0.12f); });
+            flash = CritFlash();
+            ring = CritRing();
             soft = MakeSprite((x, y) => { float r = Mathf.Sqrt(x * x + y * y); return Mathf.Clamp01(1 - r) * Mathf.Clamp01(1 - r); });
+        }
+
+        static float H(int i) { float v = Mathf.Sin(i * 127.1f + 311.7f) * 43758.5453f; return v - Mathf.Floor(v); }
+
+        /// Наложение цвета c с прозрачностью a поверх пикселя (как canvas source-over).
+        static void Over(Color[] px, int i, Color c, float a)
+        {
+            if (a <= 0) return;
+            var d = px[i];
+            float oa = a + d.a * (1 - a);
+            px[i] = oa <= 0 ? d : new Color((c.r * a + d.r * d.a * (1 - a)) / oa, (c.g * a + d.g * d.a * (1 - a)) / oa, (c.b * a + d.b * d.a * (1 - a)) / oa, oa);
+        }
+
+        static Sprite ToSprite(Color[] px, int N)
+        {
+            var t = new Texture2D(N, N, TextureFormat.RGBA32, true) { wrapMode = TextureWrapMode.Clamp };
+            t.SetPixels(px);
+            t.Apply(true);
+            return Sprite.Create(t, new Rect(0, 0, N, N), new Vector2(0.5f, 0.5f));
+        }
+
+        /// Вспышка крита как в атласе WorldCrossFx.ts: красный ореол, 13 игольчатых лучей (бело-розовый → алый),
+        /// обруч и раскалённое ядро. Рисуем на 256 px и в тех же пропорциях.
+        static Sprite CritFlash()
+        {
+            const int N = 256;
+            var px = new Color[N * N];
+            float cx = 128, cy = 128;
+            (float len, float w)[] spikes =
+            {
+                (126, 0.05f), (118, 0.045f), (124, 0.05f), (96, 0.05f), (88, 0.055f), (100, 0.05f), (92, 0.055f),
+                (62, 0.06f), (58, 0.065f), (66, 0.06f), (54, 0.07f), (60, 0.065f), (56, 0.07f),
+            };
+            var ang = new float[spikes.Length];
+            var len = new float[spikes.Length];
+            for (int i = 0; i < spikes.Length; i++)
+            {
+                ang[i] = i / (float)spikes.Length * Mathf.PI * 2 + (H(i + 5) - 0.5f) * 0.35f;
+                len[i] = spikes[i].len * (0.92f + 0.16f * H(i + 20));
+            }
+            for (int y = 0; y < N; y++)
+                for (int x = 0; x < N; x++)
+                {
+                    int idx = y * N + x;
+                    float dx = x + 0.5f - cx, dy = y + 0.5f - cy, r = Mathf.Sqrt(dx * dx + dy * dy);
+                    // Ореол.
+                    if (r < 78) Over(px, idx, Color.Lerp(new Color(1, 40 / 255f, 30 / 255f), new Color(1, 20 / 255f, 20 / 255f), Mathf.InverseLerp(8, 78, r)), Mathf.Lerp(0.95f, 0, Mathf.InverseLerp(8, 78, r)));
+                    // Лучи: треугольник от основания у центра к кончику.
+                    for (int i = 0; i < spikes.Length; i++)
+                    {
+                        float ux = Mathf.Cos(ang[i]), uy = Mathf.Sin(ang[i]);
+                        float along = dx * ux + dy * uy;
+                        if (along < 0 || along > len[i]) continue;
+                        float half = 128 * spikes[i].w * 0.5f * 1.7f + 3;
+                        float across = Mathf.Abs(-dx * uy + dy * ux);
+                        if (across > half * (1 - along / len[i])) continue;
+                        float u = along / len[i];
+                        var c = u < 0.3f ? Color.Lerp(new Color(1, 190 / 255f, 175 / 255f), new Color(1, 30 / 255f, 20 / 255f), u / 0.3f) : Color.Lerp(new Color(1, 30 / 255f, 20 / 255f), new Color(230 / 255f, 0, 0), (u - 0.3f) / 0.7f);
+                        Over(px, idx, c, 1);
+                    }
+                    // Обруч.
+                    if (Mathf.Abs(r - 36) < 3.5f) Over(px, idx, new Color(1, 60 / 255f, 50 / 255f), 1);
+                    // Ядро.
+                    if (r < 34)
+                    {
+                        float u = r / 34;
+                        var c = u < 0.4f ? Color.Lerp(new Color(1, 225 / 255f, 215 / 255f), new Color(1, 70 / 255f, 55 / 255f), u / 0.4f) : Color.Lerp(new Color(1, 70 / 255f, 55 / 255f), new Color(240 / 255f, 10 / 255f, 10 / 255f), (u - 0.4f) / 0.6f);
+                        Over(px, idx, c, 1);
+                    }
+                }
+            return ToSprite(px, N);
+        }
+
+        /// Кольцо крита: 20 алых чёрточек по окружности и искры-точки вокруг (WorldCrossFx.ts).
+        static Sprite CritRing()
+        {
+            const int N = 256;
+            var px = new Color[N * N];
+            float cx = 128, cy = 128;
+            var dots = new Vector3[20];
+            for (int i = 0; i < 20; i++)
+            {
+                float a = H(i + 60) * Mathf.PI * 2, rr = 70 + H(i + 80) * 50;
+                dots[i] = new Vector3(cx + Mathf.Cos(a) * rr, cy + Mathf.Sin(a) * rr, 2 + H(i + 100) * 3);
+            }
+            for (int y = 0; y < N; y++)
+                for (int x = 0; x < N; x++)
+                {
+                    int idx = y * N + x;
+                    float dx = x + 0.5f - cx, dy = y + 0.5f - cy, r = Mathf.Sqrt(dx * dx + dy * dy);
+                    float a = Mathf.Atan2(dy, dx);
+                    if (a < 0) a += Mathf.PI * 2;
+                    float seg = a / (Mathf.PI * 2) * 20;
+                    if (Mathf.Abs(r - 98) < 4.5f && seg - Mathf.Floor(seg) < 0.55f) Over(px, idx, new Color(1, 25 / 255f, 20 / 255f), 1);
+                    foreach (var d in dots)
+                        if ((x - d.x) * (x - d.x) + (y - d.y) * (y - d.y) < d.z * d.z) Over(px, idx, new Color(1, 70 / 255f, 55 / 255f), 1);
+                }
+            return ToSprite(px, N);
         }
 
         static Sprite MakeSprite(System.Func<float, float, float> a)
@@ -90,8 +188,8 @@ namespace Zep
         /// Крит: вспышка раздувается и гаснет, кольцо расходится.
         public static void Crit(Vector3 p)
         {
-            I.Add(Kind.Flash, p, 0.5f, new Color(1f, 0.75f, 0.3f), 1.5f, Vector3.zero);
-            I.Add(Kind.Ring, p, 0.5f, new Color(1f, 0.85f, 0.45f), 1.3f, Vector3.zero);
+            I.Add(Kind.Flash, p, 0.5f, Color.white, 1.5f, Vector3.zero);
+            I.Add(Kind.Ring, p, 0.5f, Color.white, 1.3f, Vector3.zero);
         }
 
         /// Дымка (призрак, магический удар): мягкий круг, раздувается и тает.

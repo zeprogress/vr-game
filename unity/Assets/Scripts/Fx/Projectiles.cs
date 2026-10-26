@@ -8,6 +8,36 @@ namespace Zep
     /// посоха, стрела лука). Между патчами летят по своей скорости (как в вебе), за огнём и стрелой — след.
     public class Projectiles : MonoBehaviour
     {
+        public static readonly Color ArrowColor = new(0.2f, 0.15f, 0.11f);
+        static Mesh arrowMesh;
+
+        /// Стрела вдоль +Z длиной 0.85 м: квадратное древко и четырёхгранный наконечник — 10 треугольников.
+        public static Mesh ArrowMesh
+        {
+            get
+            {
+                if (arrowMesh) return arrowMesh;
+                const float w = 0.014f, z0 = -0.45f, z1 = 0.28f, hw = 0.035f, tip = 0.4f;
+                var v = new[]
+                {
+                    new Vector3(-w, -w, z0), new Vector3(w, -w, z0), new Vector3(w, w, z0), new Vector3(-w, w, z0),
+                    new Vector3(-w, -w, z1), new Vector3(w, -w, z1), new Vector3(w, w, z1), new Vector3(-w, w, z1),
+                    new Vector3(-hw, -hw, z1), new Vector3(hw, -hw, z1), new Vector3(hw, hw, z1), new Vector3(-hw, hw, z1),
+                    new Vector3(0, 0, tip),
+                };
+                var t = new[]
+                {
+                    0, 4, 5, 0, 5, 1, 1, 5, 6, 1, 6, 2, 2, 6, 7, 2, 7, 3, 3, 7, 4, 3, 4, 0, // древко
+                    8, 9, 12, 9, 10, 12, 10, 11, 12, 11, 8, 12, // наконечник
+                    8, 11, 10, 8, 10, 9, // основание наконечника
+                };
+                arrowMesh = new Mesh { name = "arrow", vertices = v, triangles = t };
+                arrowMesh.RecalculateNormals();
+                arrowMesh.RecalculateBounds();
+                return arrowMesh;
+            }
+        }
+
         // Коды SHOTS в shared/mobs.ts: 0 — плевок, 1 — плевок босса, 2 — копьё, 3 — шип, 4 — паутина.
         // Как MobSystem.ts: плевок — цвет плевуна (SPITTER_CFG.tint), у босса — Багрового, полупрозрачный.
         static readonly Color Spit = new(0.86f, 0.52f, 0.16f, 0.62f);
@@ -70,12 +100,22 @@ namespace Zep
             if (bolt && kind == 1 || !bolt && (kind == 2 || kind == 3))
             {
                 // Стрела героя / копьё / шип моба — вытянуты вдоль полёта.
-                mf.sharedMesh = cube;
                 mr.sharedMaterial = a.litTemplate;
-                float len = bolt ? 0.8f : kind == 2 ? 1.6f : 0.5f;
-                float w = bolt ? 0.04f : kind == 2 ? 0.07f : 0.12f;
-                go.transform.localScale = new Vector3(w, w, len);
-                c = bolt ? new Color(0.85f, 0.85f, 0.8f) : Wood;
+                if (bolt)
+                {
+                    // Стрела — простая тёмная модель (древко + наконечник), а не светлый брусок.
+                    mf.sharedMesh = ArrowMesh;
+                    go.transform.localScale = Vector3.one;
+                    c = ArrowColor;
+                }
+                else
+                {
+                    mf.sharedMesh = cube;
+                    float len = kind == 2 ? 1.6f : 0.5f;
+                    float w = kind == 2 ? 0.07f : 0.12f;
+                    go.transform.localScale = new Vector3(w, w, len);
+                    c = Wood;
+                }
                 grav = bolt ? 0 : kind == 2 ? 2.5f : 3f; // SHOTS.spear/spike.grav
                 orient = true;
             }

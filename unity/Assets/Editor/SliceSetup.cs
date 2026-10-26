@@ -474,6 +474,8 @@ public static class SliceSetup
                 PropsBuilder.CatPools(go, assets.unlitAdd);
                 EditorUtility.SetDirty(assets);
             }
+            // Ручные правки локаций (меню «Zep → Локации → Сохранить правки», общий с вебом locationEdits.json).
+            LocationEditsTool.TagAndApply(go, name);
             if (name != "world")
                 foreach (var mf in go.GetComponentsInChildren<MeshFilter>())
                     if (mf.sharedMesh) mf.gameObject.AddComponent<MeshCollider>().sharedMesh = mf.sharedMesh;
