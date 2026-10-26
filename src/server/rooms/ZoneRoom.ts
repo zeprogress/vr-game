@@ -8320,8 +8320,12 @@ export class ZoneRoom extends Room<ZoneState> {
     const eventOnly = bot.eventing && this.state.eventKind !== 0;
     // Моб, который уже вплотную (бот в его ударе), цель держим, даже если он за границей зоны: иначе цель
     // сбрасывалась каждый тик, бот уходил на шаг и возвращался — топтался у стены подземелья.
-    const touchingMob = !!mob && !mob.dead && Math.hypot(mob.x - p.head.x, mob.z - p.head.z) < MOB.bodyRadius * mob.scale + PLAYER.radius + 0.8;
-    if (!mob || (!okMob(mob) && !touchingMob) || (eventOnly && !this.sim.eventMobs.has(mob.id))) {
+    // Цель держим, пока моб рядом (до поводка) и в той же области: граница зоны бота иначе переключала цель
+    // между мобом и точкой дома каждый тик — бот топтался у стены.
+    const keepMob =
+      !!mob && !mob.dead && mob.kind !== "boss" && mob.kind !== "shard" && !mob.scarecrow && !mob.practice &&
+      inDunRegion(mob.x, mob.z) === inDunRegion(p.head.x, p.head.z) && Math.hypot(mob.x - p.head.x, mob.z - p.head.z) < MOB.leashDistance;
+    if (!mob || (!okMob(mob) && !keepMob) || (eventOnly && !this.sim.eventMobs.has(mob.id))) {
       bot.target = null;
       mob = undefined;
       // Сколько других ботов уже целятся в каждого моба — предпочитаем «своего».
@@ -8837,6 +8841,23 @@ export class ZoneRoom extends Room<ZoneState> {
     // Дальник отходит, если моб подобрался ближе shootKeepDist.
     const retreat =
       !escape && ((ranged && chasingMob && dist < shootKeep - 1) || (kiter && kiteRetreatAt > kiteBody && dist < kiteRetreatAt));
+    // Отход — от цели, но не в стену: прямо назад, если проходимо, иначе первое проходимое направление вбок.
+    // Раньше шёл по обратному вектору маршрута — дальник пятился в стену подземелья и стоял там под ударами.
+    let retreatX = -dx;
+    let retreatZ = -dz;
+    if (retreat) {
+      const clearDir = inDunRegion(p.head.x, p.head.z) ? dunClear : straightOk;
+      const base = Math.atan2(-dx, -dz);
+      for (const a of [0, 0.7, -0.7, 1.4, -1.4, 2.1, -2.1, Math.PI]) {
+        const ux = Math.sin(base + a);
+        const uz = Math.cos(base + a);
+        if (clearDir(p.head.x, p.head.z, p.head.x + ux * 1.5, p.head.z + uz * 1.5)) {
+          retreatX = ux;
+          retreatZ = uz;
+          break;
+        }
+      }
+    }
     const wantSpeed = escape
       ? // Мягкая метка (выпад жнеца) — бот не бежит, если цель уже в ударе: иначе он уходил из удара,
         // потом возвращался — пауза в каждом выпаде. Жёсткая опасность — со всех ног, даже посреди замаха.
@@ -8853,7 +8874,7 @@ export class ZoneRoom extends Room<ZoneState> {
         : bot.swingIn > 0 || emoting
           ? 0
           : retreat
-            ? -botSpeed * 0.75
+            ? botSpeed * 0.75
             : dist > stopAt
               ? botSpeed * Math.min(1, (dist - stopAt) / 1.5)
               : 0;
@@ -8896,6 +8917,10 @@ export class ZoneRoom extends Room<ZoneState> {
     } else bot.progAt = undefined;
     // Убегая, соседей почти не расталкиваем (иначе толкают обратно в круг) и разгоняемся вдвое резче.
     const sepK = BOT.separationForce * (escape ? 0.3 : 1);
+    if (retreat) {
+      mdx = retreatX;
+      mdz = retreatZ;
+    }
     let wvx = mdx * wantSpeed + sepX * sepK + strafeX;
     let wvz = mdz * wantSpeed + sepZ * sepK + strafeZ;
     // Итог не быстрее бега: расталкивание и стрейф складываются с ходьбой, и иначе лучник в толпе
@@ -8911,7 +8936,9 @@ export class ZoneRoom extends Room<ZoneState> {
     // Дальник и копейщик не уходят от кемпа: моб бросает погоню за MOB.leashDistance от своей точки
     // спавна и встаёт, а бот стрелял бы в пустоту. Режем фактическую скорость (с инерцией), а не
     // желаемую: касательный ход вдоль края иначе понемногу выносит бота наружу (sim/leash.ts).
-    if (mob && !raidBoss && (ranged || kiter)) {
+    // Поводок — только когда моб рядом: пока бот идёт к лагерю (далеко от моба), поводок тянул его обратно
+    // от лагеря — в стену, по пути в обход. Поводок — чтобы дальник не уходил от кемпа, а не от пути к нему.
+    if (mob && !raidBoss && (ranged || kiter) && Math.hypot(mob.x - p.head.x, mob.z - p.head.z) < MOB.leashDistance) {
       [bot.vx, bot.vz] = leashCut(bot.vx, bot.vz, p.head.x, p.head.z, mob.homeX, mob.homeZ, MOB.leashDistance - BOT.campLeashMargin, strPhase(bot.id) < 0.5 ? -1 : 1);
     }
     // Общий потолок: скорость бота не выше его бега, что бы ни поменяло направление (поводок, толпа, отскок).

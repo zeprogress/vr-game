@@ -793,7 +793,8 @@ export const LAVA = {
   guard: {
     // windup — по кадру удара в клипе Slam (LAVA.hitSec.slam), чтобы урон и клип совпали.
     slam: { cooldown: 9, windup: 1.3, radius: 4, dmgMul: 2.0, stunSec: 1 },
-    spill: { cooldown: 12, windup: 1.0, length: 8, halfWidth: 1.2, dmgMul: 2.0, burnSec: 4, burnTick: 1, burnFrac: 0.25 },
+    // Магма (разлив): реже (12 → 18 с) и слабее (урон ×2 → ×1.2, горение ×0.25 → ×0.12) — 2026-10-26.
+    spill: { cooldown: 18, windup: 1.0, length: 8, halfWidth: 1.2, dmgMul: 1.2, burnSec: 4, burnTick: 1, burnFrac: 0.12 },
     // Клипа рёва нет: телеграф ярости — тот же клип удара о землю (замена до отдельного клипа Roar).
     fury: { at: 0.4, windup: 1.5, radius: 6, dmgMul: 2.0, knockback: 6, speedMul: 1.3, cdMul: 0.8 },
   },
