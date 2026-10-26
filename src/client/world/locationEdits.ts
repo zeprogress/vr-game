@@ -210,12 +210,51 @@ function apply(e: LocEdit, hit: { mesh: AbstractMesh; thin: number }): void {
   host.thinInstanceRefreshBoundingInfo(true);
 }
 
+/** Предмет подземелья (shared/dungeonDress): модуль, зона, место, взгляд вперёд и вверх, размер. */
+interface DressPiece {
+  k: string;
+  zone: string;
+  p: [number, number, number];
+  f: [number, number, number];
+  up: [number, number, number];
+  s: [number, number, number];
+}
+
+/**
+ * Правки предметов подземелья из Unity (loc "dress"): камни, обломки, бочки, кости… Предмет находится по
+ * модулю и исходному месту; правка — новое место целиком (место, поворот, размер), копии — так же.
+ * Применяется к списку до расстановки пачками (DungeonFx), так что пачки остаются пачками.
+ */
+export function applyDressEdits<T extends DressPiece>(list: T[]): T[] {
+  const dress = LIST.filter((e) => e.loc === "dress");
+  if (!dress.length) return list;
+  const place = (pc: T, t: Trs): T => {
+    const q = new Quaternion(...t.r);
+    const f = Vector3.Forward().applyRotationQuaternion(q);
+    const up = Vector3.Up().applyRotationQuaternion(q);
+    return { ...pc, p: [...t.p], f: [f.x, f.y, f.z], up: [up.x, up.y, up.z], s: [...t.s] };
+  };
+  const out: T[] = [];
+  for (const pc of list) {
+    const e = dress.find((x) => x.name === pc.k && Math.hypot(x.c[0] - pc.p[0], x.c[1] - pc.p[1], x.c[2] - pc.p[2]) < 0.05);
+    if (!e) {
+      out.push(pc);
+      continue;
+    }
+    for (const c of e.copies ?? []) out.push(place(pc, c));
+    if (e.hide) continue;
+    out.push(e.move ? place(pc, e.move) : pc);
+  }
+  return out;
+}
+
 /** Запустить правки на сцене: применяет, что уже построено, и дожидается остального. */
 export function startLocationEdits(scene: Scene): void {
   if (!LIST.length) return;
   const done = new Map<LocEdit, AbstractMesh>();
   const tick = (): void => {
     for (const e of LIST) {
+      if (e.loc === "dress") continue; // предметы подземелья — в расстановке (applyDressEdits)
       const m = done.get(e);
       if (m && !m.isDisposed()) continue;
       const hit = find(scene, e);

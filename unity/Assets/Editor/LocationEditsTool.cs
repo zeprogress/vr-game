@@ -192,6 +192,39 @@ public static class LocationEditsTool
         Save();
     }
 
+    /// Предметы подземелья (камни, обломки, бочки, кости…): спрятать, поставить на новое место, добавить копии.
+    public static void ApplyDress(Transform root)
+    {
+        var keys = root.GetComponentsInChildren<LocEditKey>(true);
+        foreach (var k in keys) baseline.Add(Key(k));
+        File.WriteAllLines(BasePath, baseline);
+        int n = 0;
+        foreach (var e in Load())
+        {
+            if (e.loc != "dress") continue;
+            var c = V(e.c);
+            LocEditKey best = null;
+            float bd = 0.05f;
+            foreach (var k in keys)
+            {
+                if (k.nm != e.name) continue;
+                float d = Vector3.Distance(k.c, c);
+                if (d < bd) { bd = d; best = k; }
+            }
+            if (!best) { Debug.LogWarning($"[locEdits] не нашёл предмет {e.name} у {c}"); continue; }
+            foreach (var cp in e.copies ?? new Trs[0])
+            {
+                var copy = Object.Instantiate(best.gameObject, root);
+                copy.name = best.name;
+                PutLocal(copy.transform, cp);
+            }
+            if (e.move != null && e.move.p != null && e.move.p.Length == 3) PutLocal(best.transform, e.move);
+            if (e.hide) best.gameObject.SetActive(false);
+            n++;
+        }
+        if (n > 0) Debug.Log($"[locEdits] предметы подземелья: применено правок {n}");
+    }
+
     [MenuItem("Zep/Локации/Сохранить правки (Unity и веб)")]
     public static void Save()
     {
@@ -224,7 +257,7 @@ public static class LocationEditsTool
             var e = new Edit { loc = orig.loc, name = orig.nm, c = A(orig.c) };
             bool any = false;
             if (!orig.gameObject.activeInHierarchy) { e.hide = true; any = true; hidden++; }
-            else if (!Identity(orig.transform)) { e.move = T(orig.transform); any = true; moved++; }
+            else if (orig.dress ? Moved(orig) : !Identity(orig.transform)) { e.move = orig.dress ? TLocal(orig.transform) : T(orig.transform); any = true; moved++; }
             // Части этого объекта: спрятанные, удалённые, сдвинутые.
             var partEdits = new List<Part>();
             var present = orig.GetComponentsInChildren<LocEditPart>(true);
@@ -243,7 +276,7 @@ public static class LocationEditsTool
             if (list.Count > 1)
             {
                 var cps = new List<Trs>();
-                for (int i = 1; i < list.Count; i++) if (list[i].gameObject.activeInHierarchy) cps.Add(T(list[i].transform));
+                for (int i = 1; i < list.Count; i++) if (list[i].gameObject.activeInHierarchy) cps.Add(orig.dress ? TLocal(list[i].transform) : T(list[i].transform));
                 if (cps.Count > 0) { e.copies = cps.ToArray(); any = true; copied += cps.Count; }
             }
             if (any) outEdits.Add(e);
@@ -269,6 +302,10 @@ public static class LocationEditsTool
     /// Локация стоит в начале координат без поворота — мировой TRS объекта и есть правка.
     static bool Identity(Transform t) =>
         t.position.sqrMagnitude < 1e-6f && Quaternion.Angle(t.rotation, Quaternion.identity) < 0.01f && (t.lossyScale - Vector3.one).sqrMagnitude < 1e-6f;
+
+    /// Предмет подземелья сдвинут, повёрнут или растянут относительно исходной расстановки.
+    static bool Moved(LocEditKey k) =>
+        (k.transform.localPosition - k.c).sqrMagnitude > 1e-6f || Quaternion.Angle(k.transform.localRotation, k.r0) > 0.01f || (k.transform.localScale - k.s0).sqrMagnitude > 1e-6f;
 
     static bool LocalIdentity(Transform t) =>
         t.localPosition.sqrMagnitude < 1e-6f && Quaternion.Angle(t.localRotation, Quaternion.identity) < 0.01f && (t.localScale - Vector3.one).sqrMagnitude < 1e-6f;

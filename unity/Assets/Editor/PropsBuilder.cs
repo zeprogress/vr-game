@@ -65,6 +65,9 @@ public static class PropsBuilder
         var origin = new Vector3(data.dunOrigin[0], data.dunOrigin[1], data.dunOrigin[2]);
         var root = new GameObject("dungeonDress").transform;
         root.SetParent(parent, false);
+        // Корень — в начале подземелья, предметы — в его осях: так их положение совпадает с dunDress в вебе
+        // (по нему правки из Unity находят и меняют те же предметы, LocationEditsTool / locationEdits.ts).
+        root.localPosition = origin;
         int made = 0;
         foreach (var d in data.dress)
         {
@@ -78,13 +81,21 @@ public static class PropsBuilder
             if (kind == "Brazier") go.GetComponent<MeshRenderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             var f = new Vector3(d.f[0], d.f[1], d.f[2]);
             var up = new Vector3(d.up[0], d.up[1], d.up[2]);
-            go.transform.position = origin + new Vector3(d.p[0], d.p[1], d.p[2]);
+            go.transform.localPosition = new Vector3(d.p[0], d.p[1], d.p[2]);
             if (f.sqrMagnitude > 1e-6f) go.transform.rotation = Quaternion.LookRotation(f, up.sqrMagnitude > 1e-6f ? up : Vector3.up);
             go.transform.localScale = new Vector3(d.s[0], d.s[1], d.s[2]);
             setStatic(go);
+            var lk = go.AddComponent<Zep.LocEditKey>();
+            lk.loc = "dress";
+            lk.nm = d.k;
+            lk.c = go.transform.localPosition;
+            lk.dress = true;
+            lk.r0 = go.transform.localRotation;
+            lk.s0 = go.transform.localScale;
             made++;
         }
         Debug.Log($"[slice] мелочь подземелья: {made} из {data.dress.Length}");
+        LocationEditsTool.ApplyDress(root);
     }
 
     // ---------------- пугало и манекен ----------------

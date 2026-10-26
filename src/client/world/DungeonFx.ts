@@ -38,6 +38,7 @@ import {
 } from "#shared/dungeon";
 import { type DunGeoMat, dunGeometry } from "#shared/dungeonGeo";
 import { type DunLight, dunDress, dunLights } from "#shared/dungeonDress";
+import { applyDressEdits } from "./locationEdits";
 import { PointLight } from "@babylonjs/core/Lights/pointLight";
 import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
 import "@babylonjs/core/Particles/particleSystemComponent";
@@ -713,7 +714,7 @@ export class DungeonFx {
     }
     // Расстановка → матрицы по (зона, модуль).
     const groups = new Map<string, Matrix[]>();
-    for (const pc of dunDress()) {
+    for (const pc of applyDressEdits(dunDress())) {
       const key = `${pc.zone}|${pc.k}`;
       let list = groups.get(key);
       if (!list) groups.set(key, (list = []));

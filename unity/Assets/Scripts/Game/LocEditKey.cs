@@ -11,5 +11,10 @@ namespace Zep
         public Vector3 c;
         /// Центры частей после нарезки (LocEditPart) — чтобы при сохранении заметить удалённую часть.
         public Vector3[] partCs;
+        /// Предмет подземелья (dunDress): c — его исходное место в осях подземелья, r0/s0 — поворот и размер.
+        /// Правка такого предмета — новое место целиком, а не сдвиг относительно исходного.
+        public bool dress;
+        public Quaternion r0 = Quaternion.identity;
+        public Vector3 s0 = Vector3.one;
     }
 }
