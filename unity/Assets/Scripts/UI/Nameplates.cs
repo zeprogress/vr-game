@@ -101,6 +101,8 @@ namespace Zep
         Transform anchor;
         /// Высота плашки над якорем, м.
         public float offset;
+        /// Множитель размера: герои крупнее мобов (по просьбе — плашки героев читаются издалека).
+        public float scaleMul = 1;
         /// Скрыть (моб погиб и т.п.), не удаляя.
         public bool visible = true;
         /// Дальность до камеры — ближние плашки рисуются поверх дальних.
@@ -269,6 +271,7 @@ namespace Zep
             float ppm = h / (2f * dist * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad));
             float k = Mathf.Max(ppm * Nameplates.PlateM / Nameplates.PlatePx, 0.34f * h / 1080f);
             Depth = dist;
+            k *= scaleMul;
             rt.localScale = Vector3.one * k;
             // Нижний край плашки — над якорем: центр выше на половину высоты текста.
             RectTransformUtility.ScreenPointToLocalPointInRectangle(Nameplates.CanvasRect, new Vector2(v.x, v.y + 64 * k), Nameplates.UiCamera, out var local);

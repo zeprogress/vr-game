@@ -640,15 +640,20 @@ namespace Zep
             var c = SteelMode[Mathf.Clamp(mode, 0, 2)];
             if (k == "steelBurn")
             {
-                // Горящий враг: тонкий столбик искр вверх.
-                vfx.Burst(P(x, y + 0.3f, z), c, count: 8, speed: 3, life: 0.5f, grav: -4, size: 0.16f, dir: Vector3.up, spread: 0.15f);
+                // Враг в зоне жара вспыхнул: язык пламени по телу, искры и короткий отсвет.
+                var p0 = P(x, y + 0.3f, z);
+                vfx.Burst(p0, c, count: 8, speed: 2.2f, life: 0.6f, grav: -5, size: 0.45f, dir: Vector3.up, spread: 0.3f);
+                vfx.Burst(p0, FireCore, count: 5, speed: 3, life: 0.4f, grav: -3, size: 0.2f, dir: Vector3.up, spread: 0.5f);
+                vfx.Flash(p0 + Vector3.up * 0.6f, c, 4, 4, 0.3f);
                 return;
             }
             float dur = d ?? SteelDur, R = r ?? 6;
-            vfx.Decal(P(x, y, z), R, c, dur, 1, 0.75f, Vfx.Follow.Hero, id);
-            vfx.Pillar(P(x, y, z), 0.9f, 2.6f, c, dur, Vfx.Follow.Hero, id);
-            vfx.Burst(P(x, y + 1.1f, z), c, count: 24, speed: 4, life: 0.5f, grav: 0, size: 0.2f);
-            // Кольцо языков пламени ходит за воином всё время ауры.
+            // Сфера жара: от героя исходит раскалённый купол на весь радиус, внутри — марево и угли,
+            // земля под ним тлеет. Враги внутри вспыхивают (steelBurn).
+            B.HeatSphere(id, R, dur, c);
+            vfx.Decal(P(x, y, z), R * 0.95f, c, dur, Vfx.Lava, 0.14f, Vfx.Follow.Hero, id);
+            vfx.Burst(P(x, y + 1.1f, z), c, count: 16, speed: R * 1.2f, life: 0.45f, grav: 0, size: 0.22f);
+            vfx.Flash(P(x, y + 1.2f, z), c, R * 2, 8, 0.5f);
             for (float t = 0; t < dur; t += 0.12f)
             {
                 float tt = t;
@@ -656,11 +661,15 @@ namespace Zep
                 {
                     var h = Hero(id);
                     if (!h.HasValue) return;
-                    for (int i = 0; i < 3; i++)
+                    var hp = h.Value;
+                    // Угли поднимаются внутри сферы, у самого героя — гуще.
+                    for (int i = 0; i < 2; i++)
                     {
-                        float a = tt * 2.4f + i * Mathf.PI * 2 / 3;
-                        vfx.Burst(h.Value + new Vector3(Mathf.Cos(a) * 1.2f, 0.2f, Mathf.Sin(a) * 1.2f), c, count: 3, speed: 1.2f, life: 0.5f, grav: -4, size: 0.35f, dir: Vector3.up, spread: 0.25f);
+                        float a = Rnd * Mathf.PI * 2, rr = Mathf.Pow(Rnd, 1.6f) * R * 0.9f;
+                        vfx.Burst(hp + new Vector3(Mathf.Cos(a) * rr, 0.15f, Mathf.Sin(a) * rr), FireCore, count: 2, speed: 2.2f, life: 1.1f, grav: -2.5f, size: 0.08f, dir: Vector3.up, spread: 0.5f);
                     }
+                    
+                    if (Mathf.Repeat(tt, 0.48f) < 0.12f) vfx.Flash(hp + Vector3.up * 1.2f, c, R * 1.8f, 5 + 1.5f * Mathf.Sin(tt * 7), 0.55f);
                 });
             }
         }

@@ -145,6 +145,9 @@ public static class SliceSetup
         Set("m_MainLightShadowmapResolution", p => p.intValue = shadowRes);
         Set("m_SoftShadowsSupported", p => p.boolValue = soft);
         Set("m_RequireDepthTexture", p => p.boolValue = ssao);
+        // ПК: тени от точечных огней (подземелье) — атлас под ближайшие к камере огни.
+        Set("m_AdditionalLightShadowsSupported", p => p.boolValue = ssao);
+        Set("m_AdditionalLightsShadowmapResolution", p => p.intValue = 4096);
         so.ApplyModifiedPropertiesWithoutUndo();
         EditorUtility.SetDirty(asset);
         return asset;
@@ -238,6 +241,8 @@ public static class SliceSetup
         a.fxSparks = FxTemplate("FxSparks");
         a.fxBolt = FxTemplate("FxBolt");
         a.fxPillar = FxTemplate("FxPillar");
+        a.bossSkin = FxTemplate("BossSkin");
+        a.fxHeat = FxTemplate("FxHeatSphere");
         a.spectatorJson = AssetDatabase.LoadAssetAtPath<TextAsset>("Assets/Terrain/spectator.json");
         // Оружие в руках из веба: узлы gear_* под кулаками в Gear.glb.
         var gearPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Locations/Gear.glb");
@@ -366,19 +371,35 @@ public static class SliceSetup
                 h[j, i] = BitConverter.ToUInt16(raw, (j * info.res + i) * 2) / 65535f;
         td.SetHeights(0, 0, h);
 
-        var grass = Layer("Grass", "Assets/Terrain/grass_diffuse.png", "Assets/Terrain/grass_bump.png", 5f);
+        var grass = Layer("Grass", "Assets/Terrain/grass_diffuse.png", "Assets/Terrain/grass_bump.png", 11f, default, new Vector4(0.86f, 0.9f, 0.86f, 1), new Vector4(0.2f, 0.2f, 0.2f, 0));
         var rock = Layer("Rock", "Assets/Terrain/rock_c.jpg", "Assets/Terrain/rock_n.jpg", 9f);
-        td.terrainLayers = new[] { grass, rock };
+        // Против повтора рисунка: та же трава ещё двумя слоями — другой шаг и сдвиг, суше и зеленее;
+        // слои смешиваются крупным шумом, рисунок не совпадает, по поляне — естественные пятна.
+        var grassDry = Layer("GrassDry", "Assets/Terrain/grass_diffuse.png", "Assets/Terrain/grass_bump.png", 23f, new Vector2(3.1f, 7.7f), new Vector4(0.9f, 0.84f, 0.66f, 1), new Vector4(0.2f, 0.18f, 0.14f, 0));
+        // Свой бесшовный слой «трава без рисунка»: шум средних цветов родной текстуры. Занимает около
+        // половины веса — повторяющийся узор травы тонет в нём, а поляна сохраняет её цвет и крупные пятна.
+        var grassLush = Layer("GrassNoise", GrassNoiseTexture(), null, 17f, new Vector2(2.3f, 4.1f), null, null);
+        td.terrainLayers = new[] { grass, rock, grassDry, grassLush };
         td.alphamapResolution = 512;
         int ar = td.alphamapResolution;
-        var al = new float[ar, ar, 2];
+        var al = new float[ar, ar, 4];
+        float Fbm(float u, float v, float f) => Mathf.PerlinNoise(u * f + 13.1f, v * f + 7.3f) * 0.65f + Mathf.PerlinNoise(u * f * 2.7f + 3.3f, v * f * 2.7f + 19.9f) * 0.35f;
         for (int y = 0; y < ar; y++)
             for (int x = 0; x < ar; x++)
             {
-                float steep = td.GetSteepness((x + 0.5f) / ar, (y + 0.5f) / ar);
+                float u = (x + 0.5f) / ar, v = (y + 0.5f) / ar;
+                float steep = td.GetSteepness(u, v);
                 float r = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(24f, 38f, steep));
-                al[y, x, 0] = 1 - r;
+                // Три тайлинга травы смешаны везде (рисунки с разным шагом гасят друг друга), доли плавают шумом.
+                float w0 = 0.15f + 0.35f * Fbm(u, v, 7f);
+                float w2 = 0.12f + 0.35f * Fbm(v + 0.37f, u + 0.61f, 9f);
+                float w3 = 0.75f + 0.3f * Fbm(u + 0.83f, v + 0.19f, 12f);
+                float sum = w0 + w2 + w3;
+                float g = 1 - r;
+                al[y, x, 0] = g * w0 / sum;
                 al[y, x, 1] = r;
+                al[y, x, 2] = g * w2 / sum;
+                al[y, x, 3] = g * w3 / sum;
             }
         td.SetAlphamaps(0, 0, al);
         AssetDatabase.DeleteAsset($"{Root}/Terrain.asset");
@@ -408,7 +429,14 @@ public static class SliceSetup
                 var p = new Vector3(t.x, 0, t.z);
                 p.y = terrain.SampleHeight(p) + tgo.transform.position.y;
                 go.transform.SetPositionAndRotation(p, Quaternion.Euler(0, t.yaw * Mathf.Rad2Deg, 0));
-                go.transform.localScale = Vector3.one * t.scale;
+                // Деревья крупнее и темнее веба (по просьбе): ×1.35 и тёмные копии материалов.
+                go.transform.localScale = Vector3.one * t.scale * 1.35f;
+                foreach (var r in go.GetComponentsInChildren<Renderer>())
+                {
+                    var mats = r.sharedMaterials;
+                    for (int i = 0; i < mats.Length; i++) mats[i] = DarkTree(mats[i]);
+                    r.sharedMaterials = mats;
+                }
                 SetStatic(go);
             }
         }
@@ -434,6 +462,7 @@ public static class SliceSetup
             // Пламя рисует DayCycle; пятна света на полу (dunFirePool) оставляем.
             foreach (var r in go.GetComponentsInChildren<Renderer>(true))
                 if (r.name.StartsWith("dunFire") && !r.name.StartsWith("dunFirePool")) r.enabled = false;
+            if (name == "dungeon") PropsBuilder.DunPools(go, assets.unlitAdd);
             // Под землёй камера спектатора идёт по полу и упирается в стены и свод — лучами по этим коллайдерам.
             if (name == "catacombs")
             {
@@ -570,6 +599,81 @@ public static class SliceSetup
 
     /// В вебе часть материалов — без освещения, только цвет свечения (StandardMaterial.disableLighting:
     /// дальние горы, руны). После выгрузки такой материал чёрный — меняем на URP Unlit цвета свечения.
+    /// Трещины лавы (lavaCrackTexture в world/Catacombs.ts): 14 изломанных линий от центра к краю, три слоя
+    /// толщины — багровый ореол, оранжевое тело, жёлто-белая середина; центр пустой (печать).
+    static readonly Dictionary<Material, Material> darkTrees = new();
+
+    static Material DarkTree(Material src)
+    {
+        if (!src) return src;
+        if (darkTrees.TryGetValue(src, out var d)) return d;
+        string path = $"{Root}/TreeMats/{src.name}_{darkTrees.Count}.mat";
+        if (!AssetDatabase.IsValidFolder($"{Root}/TreeMats")) AssetDatabase.CreateFolder(Root, "TreeMats");
+        AssetDatabase.DeleteAsset(path);
+        d = new Material(src) { name = src.name + "_dark" };
+        foreach (var prop in new[] { "baseColorFactor", "_BaseColor" })
+            if (d.HasProperty(prop)) { var c = d.GetColor(prop); d.SetColor(prop, new Color(c.r * 0.68f, c.g * 0.7f, c.b * 0.66f, c.a)); }
+        AssetDatabase.CreateAsset(d, path);
+        darkTrees[src] = d;
+        return d;
+    }
+
+    static Material lavaTpl;
+
+    static Texture2D LavaCrackTexture()
+    {
+        string path = $"{Root}/CatLavaCracks.asset";
+        var old = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        if (old) return old;
+        const int S = 512;
+        var px = new Color[S * S];
+        int seed = 17;
+        float Rnd() { seed = (int)((seed * 16807L) % 2147483647); return seed / 2147483647f; }
+        void Stroke(List<Vector2> pts, float w, Color c)
+        {
+            for (int k = 1; k < pts.Count; k++)
+            {
+                var a = pts[k - 1];
+                var b = pts[k];
+                int n = Mathf.CeilToInt(Vector2.Distance(a, b));
+                for (int i = 0; i <= n; i++)
+                {
+                    var p = Vector2.Lerp(a, b, i / (float)Mathf.Max(1, n));
+                    int r = Mathf.CeilToInt(w / 2);
+                    for (int dy = -r; dy <= r; dy++)
+                        for (int dx = -r; dx <= r; dx++)
+                        {
+                            int x = (int)p.x + dx, y = (int)p.y + dy;
+                            if (x < 0 || y < 0 || x >= S || y >= S || dx * dx + dy * dy > r * r) continue;
+                            var d = px[y * S + x];
+                            // Слои ложатся поверх (source-over), как в canvas.
+                            px[y * S + x] = new Color(Mathf.Lerp(d.r, c.r, c.a), Mathf.Lerp(d.g, c.g, c.a), Mathf.Lerp(d.b, c.b, c.a), d.a + c.a * (1 - d.a));
+                        }
+                }
+            }
+        }
+        for (int i = 0; i < 14; i++)
+        {
+            float a = i / 14f * Mathf.PI * 2 + Rnd() * 0.3f;
+            float r = S * (0.14f + Rnd() * 0.06f);
+            var pts = new List<Vector2>();
+            while (r < S * 0.48f)
+            {
+                pts.Add(new Vector2(S / 2f + Mathf.Cos(a) * r, S / 2f + Mathf.Sin(a) * r));
+                r += 10 + Rnd() * 18;
+                a += (Rnd() - 0.5f) * 0.22f;
+            }
+            Stroke(pts, 9, new Color(1f, 70 / 255f, 10 / 255f, 0.35f));
+            Stroke(pts, 4, new Color(1f, 140 / 255f, 30 / 255f, 0.85f));
+            Stroke(pts, 1.5f, new Color(1f, 230 / 255f, 140 / 255f, 1f));
+        }
+        var tex = new Texture2D(S, S, TextureFormat.RGBA32, true) { name = "CatLavaCracks", wrapMode = TextureWrapMode.Clamp };
+        tex.SetPixels(px);
+        tex.Apply(true);
+        AssetDatabase.CreateAsset(tex, path);
+        return tex;
+    }
+
     static void FixUnlit(GameObject root)
     {
         var cache = new Dictionary<Material, Material>();
@@ -589,7 +693,33 @@ public static class SliceSetup
                     Color em = m.HasProperty("emissiveFactor") ? m.GetColor("emissiveFactor") : m.HasProperty("_EmissionColor") ? m.GetColor("_EmissionColor") : Color.black;
                     if (r.name.StartsWith("mountainRing") && em.maxColorComponent < 0.01f) em = new Color(0.4f, 0.45f, 0.54f);
                     string p = $"{Root}/LocMats/{root.name}_{cache.Count}.mat";
-                    if (baseC.maxColorComponent < 0.02f && em.maxColorComponent > 0.01f)
+                    if (m.name.StartsWith("catLava"))
+                    {
+                        // Трещины лавы огненной ямы: в вебе — динамическая текстура (не выгружается), без неё
+                        // плоскость закрывала весь пол зала чёрным. Своя текстура трещин, аддитивно.
+                        lavaTpl = lavaTpl ? lavaTpl : UnlitTemplate("UnlitAddLava", additive: true);
+                        fixedMat = new Material(lavaTpl) { name = m.name + "_cracks" };
+                        fixedMat.SetTexture("_BaseMap", LavaCrackTexture());
+                        fixedMat.SetColor("_BaseColor", new Color(0.55f, 0.4f, 0.32f, 1f)); // приглушено: трещины были слишком явные
+                    }
+                    else if (m.name == "catSealMat" || m.name == "catRunnerMat")
+                    {
+                        // Печать и дорожка на полу катакомб в вебе тёмные, едва различимые; у нас светились оранжевым
+                        // на весь зал. Без свечения и темнее — узор читается тенью на плитах.
+                        fixedMat = new Material(m) { name = m.name + "_dim" };
+                        if (fixedMat.HasProperty("emissiveFactor")) fixedMat.SetColor("emissiveFactor", Color.black);
+                        if (fixedMat.HasProperty("_EmissionColor")) fixedMat.SetColor("_EmissionColor", Color.black);
+                        var bc = fixedMat.HasProperty("baseColorFactor") ? fixedMat.GetColor("baseColorFactor") : Color.white;
+                        if (fixedMat.HasProperty("baseColorFactor")) fixedMat.SetColor("baseColorFactor", new Color(bc.r * 0.35f, bc.g * 0.3f, bc.b * 0.3f, bc.a * 0.6f));
+                        if (fixedMat.HasProperty("_BaseColor")) fixedMat.SetColor("_BaseColor", new Color(bc.r * 0.35f, bc.g * 0.3f, bc.b * 0.3f, bc.a * 0.6f));
+                    }
+                    else if (m.name == "catObsidian")
+                    {
+                        fixedMat = new Material(m) { name = m.name + "_lit" };
+                        if (fixedMat.HasProperty("baseColorFactor")) fixedMat.SetColor("baseColorFactor", new Color(0.08f, 0.06f, 0.07f));
+                        if (fixedMat.HasProperty("roughnessFactor")) fixedMat.SetFloat("roughnessFactor", 0.35f);
+                    }
+                    else if (baseC.maxColorComponent < 0.02f && em.maxColorComponent > 0.01f)
                     {
                         fixedMat = new Material(unlit) { name = m.name + "_unlit" };
                         fixedMat.SetColor("_BaseColor", em);
@@ -716,18 +846,70 @@ public static class SliceSetup
         Debug.Log("[slice] снимок готов");
     }
 
-    static TerrainLayer Layer(string name, string diffuse, string normal, float tile)
+    static TerrainLayer Layer(string name, string diffuse, string normal, float tile, Vector2 offset = default, Vector4? remapMax = null, Vector4? remapMin = null)
+        => Layer(name, AssetDatabase.LoadAssetAtPath<Texture2D>(diffuse), normal, tile, offset, remapMax, remapMin);
+
+    /// Бесшовный шум цвета травы (периодический value-noise, 4 октавы): средний цвет родной текстуры травы,
+    /// светлее/темнее и чуть желтее/зеленее пятнами — без узнаваемого рисунка.
+    static Texture2D GrassNoiseTexture()
+    {
+        string path = $"{Root}/GrassNoise.asset";
+        AssetDatabase.DeleteAsset(path);
+        var src = new Texture2D(2, 2);
+        src.LoadImage(System.IO.File.ReadAllBytes("Assets/Terrain/grass_diffuse.png"));
+        var px = src.GetPixels32();
+        double r = 0, g = 0, b = 0;
+        foreach (var c in px) { r += c.r; g += c.g; b += c.b; }
+        var avg = new Color((float)(r / px.Length / 255), (float)(g / px.Length / 255), (float)(b / px.Length / 255));
+        const int S = 1024;
+        float Val(int x, int y, int period, int seed)
+        {
+            x = ((x % period) + period) % period; y = ((y % period) + period) % period;
+            return Mathf.Abs(Mathf.Sin(x * 127.1f + y * 311.7f + seed * 74.7f) * 43758.5453f) % 1f;
+        }
+        float Noise(float u, float v, int period, int seed)
+        {
+            float x = u * period, y = v * period;
+            int xi = Mathf.FloorToInt(x), yi = Mathf.FloorToInt(y);
+            float fx = x - xi, fy = y - yi;
+            fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+            return Mathf.Lerp(Mathf.Lerp(Val(xi, yi, period, seed), Val(xi + 1, yi, period, seed), fx),
+                              Mathf.Lerp(Val(xi, yi + 1, period, seed), Val(xi + 1, yi + 1, period, seed), fx), fy);
+        }
+        var outPx = new Color[S * S];
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float u = (float)x / S, v = (float)y / S;
+                float n = Noise(u, v, 6, 1) * 0.4f + Noise(u, v, 17, 2) * 0.3f + Noise(u, v, 53, 3) * 0.2f + Noise(u, v, 160, 4) * 0.1f;
+                float hue = Noise(u, v, 9, 5) - 0.5f;
+                float k = 0.78f + 0.44f * n;
+                outPx[y * S + x] = new Color(avg.r * k * (1 + hue * 0.25f), avg.g * k, avg.b * k * (1 - hue * 0.2f), 1);
+            }
+        var tex = new Texture2D(S, S, TextureFormat.RGBA32, true) { name = "GrassNoise", wrapMode = TextureWrapMode.Repeat };
+        tex.SetPixels(outPx);
+        tex.Apply(true);
+        AssetDatabase.CreateAsset(tex, path);
+        return tex;
+    }
+
+    static TerrainLayer Layer(string name, Texture2D diffuse, string normal, float tile, Vector2 offset, Vector4? remapMax, Vector4? remapMin)
     {
         string path = $"{Root}/Layer_{name}.terrainlayer";
         AssetDatabase.DeleteAsset(path);
         var l = new TerrainLayer
         {
-            diffuseTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(diffuse),
-            normalMapTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(normal),
+            diffuseTexture = diffuse,
+            normalMapTexture = normal != null ? AssetDatabase.LoadAssetAtPath<Texture2D>(normal) : null,
             tileSize = new Vector2(tile, tile),
-            normalScale = 1f,
+            tileOffset = offset,
+            // Рельеф травы — втрое мягче: одна карта на всех слоях давала одинаковые пятна света (повтор).
+            normalScale = name.StartsWith("Grass") ? 0.35f : 1f,
             smoothness = 0.05f,
         };
+        if (remapMax.HasValue) l.diffuseRemapMax = remapMax.Value;
+        // Подъём «нуля» — тёмные пятна текстуры мягче, повтор рисунка не бросается в глаза.
+        if (remapMin.HasValue) l.diffuseRemapMin = remapMin.Value;
         AssetDatabase.CreateAsset(l, path);
         return l;
     }

@@ -74,6 +74,8 @@ public static class PropsBuilder
             go.transform.SetParent(root, false);
             go.GetComponent<MeshFilter>().sharedMesh = mesh;
             go.GetComponent<MeshRenderer>().sharedMaterial = Mat(KitMat.TryGetValue(kind, out var key) ? key : "rock", lit);
+            // Огонь горит внутри чаши жаровни — её тень ложилась на пол тёмным кругом.
+            if (kind == "Brazier") go.GetComponent<MeshRenderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             var f = new Vector3(d.f[0], d.f[1], d.f[2]);
             var up = new Vector3(d.up[0], d.up[1], d.up[2]);
             go.transform.position = origin + new Vector3(d.p[0], d.p[1], d.p[2]);
@@ -192,9 +194,41 @@ public static class PropsBuilder
 
     /// catLightPools* — в вебе аддитивные пятна (emissive 1, 0.5, 0.16, мягкая круглая маска, alpha 0.7):
     /// именно они делают пол залов оранжевым. В glTF маска теряется — ставим свой материал.
-    public static void CatPools(GameObject catacombs, Material unlitAdd)
+    /// Подземелье: пятна света под жаровнями (dunFirePool) и свечение портала (dunBackPortal*Glow) — в вебе
+    /// круг задаёт маска прозрачности, а в glTF свечение рисовалось на весь квадрат (квадраты, белый портал).
+    public static void DunPools(GameObject dungeon, Material unlitAdd)
     {
-        if (!catacombs || !unlitAdd) return;
+        if (!dungeon || !unlitAdd) return;
+        var tex = PoolTexture();
+        Material Make(string name, Color c)
+        {
+            string path = $"{Root}/{name}.mat";
+            AssetDatabase.DeleteAsset(path);
+            var m = new Material(unlitAdd);
+            m.SetTexture("_BaseMap", tex);
+            m.SetColor("_BaseColor", c);
+            AssetDatabase.CreateAsset(m, path);
+            return m;
+        }
+        var pool = Make("DunFirePool", new Color(1f, 0.55f, 0.25f, 1f) * 0.55f);
+        var portal = Make("DunPortalGlow", new Color(0.55f, 0.35f, 1f, 1f) * 0.9f);
+        int n = 0;
+        foreach (var r in dungeon.GetComponentsInChildren<Renderer>(true))
+        {
+            // Имя узла веба — у самого объекта или у родителя (glTFast кладёт меш дочерним объектом).
+            string nm = r.name + "|" + (r.transform.parent ? r.transform.parent.name : "");
+            if (nm.Contains("dunFirePool")) r.sharedMaterial = pool;
+            else if (nm.Contains("dunBackPortal") && (nm.Contains("Disc") || nm.Contains("Pad"))) r.sharedMaterial = portal;
+            else continue;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            n++;
+        }
+        Debug.Log($"[props] пятна и свечение подземелья: {n}");
+    }
+
+    /// Мягкий круг (белый, прозрачность к краю) — маска световых пятен.
+    static Texture2D PoolTexture()
+    {
         string texPath = $"{Root}/CatPool.asset";
         var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(texPath);
         if (!tex)
@@ -211,11 +245,18 @@ public static class PropsBuilder
             tex.Apply();
             AssetDatabase.CreateAsset(tex, texPath);
         }
+        return tex;
+    }
+
+    public static void CatPools(GameObject catacombs, Material unlitAdd)
+    {
+        if (!catacombs || !unlitAdd) return;
+        var tex = PoolTexture();
         string matPath = $"{Root}/CatPool.mat";
         AssetDatabase.DeleteAsset(matPath);
         var m = new Material(unlitAdd);
         m.SetTexture("_BaseMap", tex);
-        m.SetColor("_BaseColor", new Color(1f, 0.5f, 0.16f, 1f) * 1.8f); // ярче веба: свет точечных огней в URP слабее
+        m.SetColor("_BaseColor", new Color(1f, 0.55f, 0.25f, 1f) * 0.7f); // было ×1.8 — пол катакомб заливало оранжевым
         AssetDatabase.CreateAsset(m, matPath);
         int n = 0;
         foreach (var r in catacombs.GetComponentsInChildren<Renderer>(true))

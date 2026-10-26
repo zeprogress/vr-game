@@ -63,7 +63,7 @@ namespace Zep
         /// Ходьба/бег/стойка — когда не идёт замах или разовый клип.
         public void Locomotion(float speed, bool dead)
         {
-            if (dead) { Anim.Once(1f, "Death"); return; }
+            if (dead) { Anim.Hold(1f, "Death", "death", "Defeat"); return; }
             if (Time.time < swingUntil || Time.time < oneShotUntil) return;
             var set = AnimSet;
             if (speed > 3.5f) Anim.Loop(1f, "Run");
@@ -132,8 +132,27 @@ namespace Zep
             if (!src) return null;
             // Instantiate с родителем сохраняет локальные позицию, поворот и масштаб — как под кулаком в Gear.glb.
             var g = Instantiate(src, fist).transform;
+            // Кинжалы в кулаке терялись — вдвое крупнее (по просьбе, 2026-10-26).
+            if (cls == "dagger") g.localScale *= 2f;
+            // Цвет грейда — в цветах вершин; материал glTF их не рисует (щиты были серые) — свой шейдер.
+            if (assets.bossSkin)
+            {
+                gearMat ??= MakeGearMat(assets.bossSkin);
+                foreach (var r in g.GetComponentsInChildren<Renderer>(true))
+                    if (!r.name.StartsWith("legGlow")) { var m = r.sharedMaterials; for (int i = 0; i < m.Length; i++) m[i] = gearMat; r.sharedMaterials = m; }
+            }
             WeaponGlow.Attach(g, src.name.Substring(src.name.LastIndexOf('_') + 1), assets.unlitAdd);
             return g;
+        }
+
+        static Material gearMat;
+
+        static Material MakeGearMat(Material tpl)
+        {
+            var m = new Material(tpl) { name = "gearVertexColor" };
+            m.SetFloat("_Mode", 4);
+            m.SetColor("_BaseColor", Color.white);
+            return m;
         }
 
         static Transform Find(Transform t, string name)

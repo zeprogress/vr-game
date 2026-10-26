@@ -70,7 +70,7 @@ namespace Zep
         public static void Damage(Vector3 p, float dmg, string c = null)
         {
             var col = c switch { "poison" => Poison, "venom" => Venom, "fire" => Fire, "heal" => Heal, "bleed" => Blood, "reflect" => Reflect, _ => DmgGold };
-            I.Add(Kind.Digits, p, 0.9f, col, 0.448f, new Vector3(Random.Range(-0.25f, 0.25f), 1.1f, Random.Range(-0.25f, 0.25f)), Mathf.Max(0, Mathf.Round(dmg)).ToString());
+            I.Add(Kind.Digits, p, 0.9f, col, 0.3f, new Vector3(Random.Range(-0.25f, 0.25f), 1.1f, Random.Range(-0.25f, 0.25f)), Mathf.Max(0, Mathf.Round(dmg)).ToString());
         }
 
         public static void Miss(Vector3 p) => I.Add(Kind.Miss, p + Vector3.up * 1.3f, 0.7f, new Color(0.92f, 0.92f, 0.92f), 0.41f, new Vector3(0, 0.8f, 0), "MISS");
@@ -193,7 +193,7 @@ namespace Zep
                     default: scale = pop * (1f - t * 0.1f); break;
                 }
                 // Размер в мире (м) → пиксели; не мельче читаемого (как плашки).
-                float px = Mathf.Max(it.size * ppm, it.kind == Kind.Digits || it.kind == Kind.Miss ? 22f * cam.pixelHeight / 1080f : 0f) * scale;
+                float px = Mathf.Max(it.size * ppm, it.kind == Kind.Digits || it.kind == Kind.Miss ? 15f * cam.pixelHeight / 1080f : 0f) * scale;
                 var rt = it.g.rectTransform;
                 RectTransformUtility.ScreenPointToLocalPointInRectangle(Nameplates.CanvasRect, v, Nameplates.UiCamera, out var local);
                 rt.localPosition = local;

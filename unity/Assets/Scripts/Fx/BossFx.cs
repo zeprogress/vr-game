@@ -67,7 +67,7 @@ namespace Zep
             crystal = CrystalMesh();
             // Лёд: прозрачный, гладкий, с холодным свечением изнутри — bloom даёт ореол на гранях.
             ice = new Material(a.litTransparent) { name = "bossIce" };
-            ice.SetColor("_BaseColor", new Color(0.62f, 0.86f, 1f, 0.62f));
+            ice.SetColor("_BaseColor", new Color(0.62f, 0.86f, 1f, 0.88f)); // плотнее — кристаллы заморозки и стаки читались слабо
             ice.SetColor("_EmissionColor", new Color(0.18f, 0.5f, 1f) * 1.6f);
             ice.SetFloat("_Smoothness", 0.95f);
             ice.SetFloat("_Metallic", 0.1f);
@@ -270,6 +270,91 @@ namespace Zep
             rk.tr.gameObject.SetActive(true);
         }
 
+        class Heat
+        {
+            public Transform sphere;
+            public Material mat;
+            public Transform[] shells;
+            public Material[] shellMats;
+            public string id;
+            public float age, life, r;
+            public Color color;
+        }
+
+        readonly List<Heat> heats = new();
+        static readonly int HColor = Shader.PropertyToID("_Color"), HAlpha = Shader.PropertyToID("_Alpha"), HTime = Shader.PropertyToID("_TimeS"), HRim = Shader.PropertyToID("_Rim");
+
+        /// Сфера жара вокруг героя id на dur с (аура воина): раскалённый купол радиусом r и горячие
+        /// оболочки, волнами расходящиеся от героя к краю. Ходит за героем.
+        public void HeatSphere(string id, float r, float dur, Color color)
+        {
+            var tpl = ZoneNet.I.Assets.fxHeat;
+            if (!tpl) return;
+            Heat h = null;
+            foreach (var x in heats) if (x.id == id || x.age >= x.life) { h = x; break; }
+            if (h == null)
+            {
+                var s = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                var mesh = s.GetComponent<MeshFilter>().sharedMesh;
+                Destroy(s);
+                Transform Make(out Material m)
+                {
+                    var go = new GameObject("heatSphere", typeof(MeshFilter), typeof(MeshRenderer));
+                    go.transform.SetParent(transform, false);
+                    go.GetComponent<MeshFilter>().sharedMesh = mesh;
+                    var rr = go.GetComponent<MeshRenderer>();
+                    m = new Material(tpl);
+                    rr.sharedMaterial = m;
+                    rr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                    rr.receiveShadows = false;
+                    return go.transform;
+                }
+                h = new Heat { shells = new Transform[3], shellMats = new Material[3] };
+                h.sphere = Make(out h.mat);
+                for (int i = 0; i < 3; i++) h.shells[i] = Make(out h.shellMats[i]);
+                heats.Add(h);
+            }
+            h.id = id; h.age = 0; h.life = dur; h.r = r; h.color = color;
+            h.mat.SetColor(HColor, color * 1.6f);
+            h.mat.SetFloat(HRim, 2.2f);
+            foreach (var m in h.shellMats) { m.SetColor(HColor, Color.Lerp(color, new Color(1, 0.8f, 0.5f), 0.3f) * 1.4f); m.SetFloat(HRim, 3.5f); }
+            h.sphere.gameObject.SetActive(true);
+            foreach (var t in h.shells) t.gameObject.SetActive(true);
+        }
+
+        void UpdateHeats(float dt)
+        {
+            foreach (var h in heats)
+            {
+                if (h.age >= h.life) continue;
+                h.age += dt;
+                var p = Vfx.FollowPos(Vfx.Follow.Hero, h.id);
+                if (h.age >= h.life || float.IsNaN(p.x))
+                {
+                    h.age = h.life;
+                    h.sphere.gameObject.SetActive(false);
+                    foreach (var t in h.shells) t.gameObject.SetActive(false);
+                    continue;
+                }
+                // Появляется за 0.35 с (раздувается от героя), гаснет за 0.6 с.
+                float fade = Mathf.Min(1, h.age / 0.35f) * Mathf.Min(1, (h.life - h.age) / 0.6f);
+                float grow = Mathf.SmoothStep(0.2f, 1f, Mathf.Min(1, h.age / 0.35f));
+                h.sphere.position = p;
+                h.sphere.localScale = Vector3.one * h.r * 2 * grow * (1 + 0.015f * Mathf.Sin(h.age * 6));
+                h.mat.SetFloat(HAlpha, 0.22f * fade); // мягкое сияние, не навязчиво
+                h.mat.SetFloat(HTime, Clock);
+                // Волны жара: три оболочки по очереди расходятся от героя к краю и гаснут.
+                for (int i = 0; i < h.shells.Length; i++)
+                {
+                    float u = Mathf.Repeat(h.age * 0.8f + i / 3f, 1f);
+                    h.shells[i].position = p;
+                    h.shells[i].localScale = Vector3.one * h.r * 2 * Mathf.Lerp(0.15f, 1f, u) * grow;
+                    h.shellMats[i].SetFloat(HAlpha, 0.15f * fade * Mathf.Sin(u * Mathf.PI));
+                    h.shellMats[i].SetFloat(HTime, Clock + i * 3.1f);
+                }
+            }
+        }
+
         public void Later(float sec, Action fn)
         {
             if (sec <= 0) fn();
@@ -312,6 +397,7 @@ namespace Zep
         {
             float dt = Time.deltaTime;
             Clock += dt;
+            UpdateHeats(dt);
             for (int i = timers.Count - 1; i >= 0; i--)
             {
                 var (t, fn) = timers[i];

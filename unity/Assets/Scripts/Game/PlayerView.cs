@@ -23,6 +23,7 @@ namespace Zep
             isBot = id.StartsWith("bot:");
             plate = Nameplates.Create(transform);
             plate.offset = Hero.EyeHeight + 0.42f;
+            plate.scaleMul = 1.5f;
             rig = gameObject.AddComponent<HeroRig>();
             rig.Init(assets);
             rig.Apply(s.skin, s.leftCls, s.leftTier, s.rightCls, s.rightTier);

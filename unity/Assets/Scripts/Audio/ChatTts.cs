@@ -20,7 +20,9 @@ namespace Zep
             src.volume = 0.9f;
             ZoneNet.I.SpecCmd += c =>
             {
-                if (!(c.TryGetValue("t", out var t) && (string)t == "ttsPlay") || !(c.TryGetValue("url", out var u) && u is string url)) return;
+                if (!(c.TryGetValue("t", out var t) && t as string == "ttsPlay")) return;
+                if (!(c.TryGetValue("url", out var u) && u is string url)) { Debug.LogWarning("[tts] команда без url"); return; }
+                Debug.Log($"[tts] пришла озвучка: {url}");
                 if (queue.Count >= 4) queue.Dequeue();
                 queue.Enqueue(Absolute(url));
                 if (!playing) StartCoroutine(Pump());
@@ -35,6 +37,17 @@ namespace Zep
             return s + (url.StartsWith("/") ? url : "/" + url);
         }
 
+        /// Речь в эфире была тише игры: усиление сэмплов с мягким ограничением (tanh) — громче без хрипа.
+        static void Louder(AudioClip clip, float gain)
+        {
+            if (clip.loadState != AudioDataLoadState.Loaded) clip.LoadAudioData();
+            var data = new float[clip.samples * clip.channels];
+            if (!clip.GetData(data, 0)) return;
+            float norm = 1f / (float)System.Math.Tanh(gain);
+            for (int i = 0; i < data.Length; i++) data[i] = (float)System.Math.Tanh(data[i] * gain) * norm * 0.95f;
+            clip.SetData(data, 0);
+        }
+
         IEnumerator Pump()
         {
             playing = true;
@@ -45,8 +58,11 @@ namespace Zep
                 yield return req.SendWebRequest();
                 if (req.result != UnityWebRequest.Result.Success) { Debug.LogWarning($"[tts] не проиграл {url}: {req.error}"); continue; }
                 var clip = DownloadHandlerAudioClip.GetContent(req);
+                if (!clip || clip.length <= 0) { Debug.LogWarning($"[tts] пустой звук {url}"); continue; }
+                Debug.Log($"[tts] играю {clip.length:0.0} с");
+                Louder(clip, 2.4f);
                 src.clip = clip;
-                src.volume = 0.9f * (SoundBank.I ? Mathf.Max(0.2f, SoundBank.I.sfxLevel) : 1f);
+                src.volume = 1f;
                 src.Play();
                 while (src.isPlaying) yield return null;
                 Destroy(clip);

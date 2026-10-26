@@ -62,6 +62,46 @@ namespace Zep
                 if (k.alpha < 1) MakeTransparent(m);
                 return m;
             }));
+            if (k.alpha < 1) ShadowProxies(go, litTemplate);
+        }
+
+        /// Прозрачный материал в URP тень не отбрасывает — у слизня тень была только от глаз. Каждому
+        /// прозрачному телу — невидимый двойник непрозрачным материалом, который рисуется только в карту теней.
+        static void ShadowProxies(GameObject go, Material opaque)
+        {
+            foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r.sharedMaterial == null || r.sharedMaterial.renderQueue < 3000 || r.name.EndsWith("_shadow")) continue;
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                var proxy = new GameObject(r.name + "_shadow");
+                proxy.transform.SetParent(r.transform, false);
+                Renderer pr;
+                if (r is SkinnedMeshRenderer sk)
+                {
+                    var ps = proxy.AddComponent<SkinnedMeshRenderer>();
+                    ps.sharedMesh = sk.sharedMesh;
+                    ps.bones = sk.bones;
+                    ps.rootBone = sk.rootBone;
+                    ps.localBounds = sk.localBounds;
+                    pr = ps;
+                    // Кости задают позу; сам двойник — без сдвига, как исходный меш.
+                    proxy.transform.SetParent(r.transform.parent, false);
+                    proxy.transform.localPosition = r.transform.localPosition;
+                    proxy.transform.localRotation = r.transform.localRotation;
+                    proxy.transform.localScale = r.transform.localScale;
+                }
+                else if (r is MeshRenderer && r.TryGetComponent<MeshFilter>(out var mf))
+                {
+                    proxy.AddComponent<MeshFilter>().sharedMesh = mf.sharedMesh;
+                    pr = proxy.AddComponent<MeshRenderer>();
+                }
+                else { Object.Destroy(proxy); continue; }
+                var mats = new Material[r.sharedMaterials.Length];
+                for (int i = 0; i < mats.Length; i++) mats[i] = opaque;
+                pr.sharedMaterials = mats;
+                pr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly;
+                pr.receiveShadows = false;
+            }
         }
 
         /// Оттенок элитного моба (ELITE_MOBS.tint, recolorMonster): цвет умножается на текстуру, без текстуры — заменяет цвет.

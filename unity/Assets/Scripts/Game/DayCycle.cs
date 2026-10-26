@@ -102,10 +102,12 @@ namespace Zep
             string r = camPos.z > 240 && Mathf.Abs(camPos.x) < 100 ? "cat"
                 : Mathf.Abs(camPos.x - DunOrigin.x) < 220 && Mathf.Abs(camPos.z - DunOrigin.z) < 220 ? "dun" : "world";
             if (r != region) { region = r; OnRegion(); }
-            if (r == "dun") { Underground(DunAmbient, DunFog, 8f, 150f); Flicker(dunAll); return; }
+            if (r == "dun") { Underground(DunAmbient, DunFog, 8f, 150f); SetAmbient(DunAmbient * 1.1f, DunAmbient * 0.8f, new Color(0.02f, 0.025f, 0.04f)); CaveFill(true); Flicker(dunAll); ShadowNearest(dunAll, 6); return; }
+            CaveFill(false);
             // Катакомбы: в вебе пол ровно-оранжевый от факелов (линейное затухание Babylon) — даём тёплую
             // заливку, а факелам — пятна у стен.
-            if (r == "cat") { Underground(new Color(0.22f, 0.11f, 0.05f), Color.black, 30f, 140f); Flicker(catFlameLights); return; }
+            // Заливка ослаблена и почти нейтральна (была 0.22, 0.11, 0.05 — пол целиком оранжевый); тепло дают огни.
+            if (r == "cat") { Underground(new Color(0.095f, 0.09f, 0.085f), Color.black, 30f, 140f); Flicker(catFlameLights); return; }
 
             var a = Row(hour, out var b, out float t);
             var dir = Vector3.Lerp(new Vector3(a.sunDir[0], a.sunDir[1], a.sunDir[2]), new Vector3(b.sunDir[0], b.sunDir[1], b.sunDir[2]), t);
@@ -115,7 +117,10 @@ namespace Zep
             {
                 sun.enabled = true;
                 if (dir.sqrMagnitude > 1e-6f) sun.transform.rotation = Quaternion.LookRotation(dir.normalized);
-                sun.color = L(a.sun, b.sun, t);
+                // Днём солнце белее веба: тёплый тон (1, 0.82, 0.48) в URP с Neutral-тонмаппингом читался жёлтым.
+                // Чем выше солнце, тем ближе к тёпло-белому; у горизонта цвет из таблицы.
+                float high = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.25f, 0.85f, -dir.normalized.y));
+                sun.color = Color.Lerp(L(a.sun, b.sun, t), new Color(1f, 0.96f, 0.9f), 0.75f * high);
                 sun.intensity = Mathf.Lerp(a.sunI, b.sunI, t) * sunScale;
                 sun.shadowStrength = Mathf.Lerp(0.35f, 0.85f, daylight);
             }
@@ -205,9 +210,13 @@ namespace Zep
             if (inCat && catLights.Count == 0)
                 foreach (var c in cat)
                 {
-                    var l = MakePoint(c.name, C(c.color), c.range);
+                    // catTorchN_ — заполняющие огни зала веба (дальность 26 м, густо-оранжевые): в URP они красили
+                    // рыжим весь зал, стены и модели. Короче и слабее — свет дают сами факелы и свечи (catFlames).
+                    bool fill = !c.name.Contains("_ch") && c.range > 20;
+                    float range = fill ? 11f : c.range;
+                    var l = MakePoint(c.name, fill ? new Color(1f, 0.62f, 0.34f) : C(c.color), range);
                     l.transform.position = new Vector3(c.p[0], c.p[1], c.p[2]);
-                    l.intensity = PointI(c.intensity, c.range);
+                    l.intensity = PointI(c.intensity, range) * (fill ? 0.55f : 0.9f);
                     catLights.Add(l);
                 }
             foreach (var l in catLights) l.enabled = inCat;
@@ -217,12 +226,12 @@ namespace Zep
                     // Свеча — маленькое тёплое пятно; факел и огонь в нише — больше и сильнее.
                     bool big = f.vent || !f.candle && f.size > 0.25f;
                     float range = f.vent ? 8f : big ? 9f : 4f, webI = big ? 1.3f : 0.8f;
-                    var l = MakePoint("catFlame", big ? new Color(1f, 0.5f, 0.18f) : new Color(1f, 0.66f, 0.32f), range);
+                    var l = MakePoint("catFlame", big ? new Color(1f, 0.6f, 0.3f) : new Color(1f, 0.74f, 0.45f), range);
                     l.transform.position = f.p + Vector3.up * 0.1f;
                     // Группа свечей — сильнее и дальше, но не линейно (как несколько свечей рядом).
                     float k = Mathf.Sqrt(Mathf.Max(1, f.count));
                     l.range = range * Mathf.Min(2f, 0.8f + 0.2f * k);
-                    float full = PointI(webI * k, l.range);
+                    float full = PointI(webI * k, l.range) * 1.15f;
                     l.intensity = full;
                     catFlameLights.Add((l, full));
                 }
@@ -271,6 +280,46 @@ namespace Zep
         }
 
         /// Мерцание огня (как flick в вебе); кристаллы (отрицательная сила в списке) светят ровно.
+        float shadowPick;
+        Light caveFill;
+
+        /// Холодный свет самой пещеры (HemisphericLight 0.42/0.52/0.78 в вебе светит сверху, а не ровно со всех
+        /// сторон): направленный заполняющий свет почти отвесно, без теней — свод его не перекрывает.
+        void CaveFill(bool on)
+        {
+            if (!on) { if (caveFill) caveFill.enabled = false; return; }
+            if (!caveFill)
+            {
+                caveFill = new GameObject("caveFill").AddComponent<Light>();
+                caveFill.transform.SetParent(transform, false);
+                caveFill.type = LightType.Directional;
+                caveFill.shadows = LightShadows.None;
+                caveFill.color = new Color(0.42f, 0.55f, 0.85f);
+                caveFill.transform.rotation = Quaternion.Euler(72, 35, 0);
+            }
+            caveFill.enabled = true;
+            caveFill.intensity = 0.7f;
+        }
+
+        /// Тени от точечных огней дороги (6 граней на огонь) — отбрасывают только ближайшие к камере n.
+        void ShadowNearest(List<(Light l, float full)> list, int n)
+        {
+            if (time < shadowPick || QualitySettings.GetQualityLevel() == 0) return;
+            shadowPick = time + 0.5f;
+            var cam = Camera.main;
+            if (!cam) return;
+            var cp = cam.transform.position;
+            var order = new List<(float d, Light l)>();
+            foreach (var (l, full) in list) order.Add(((l.transform.position - cp).sqrMagnitude / Mathf.Max(0.1f, Mathf.Abs(full)), l));
+            order.Sort((a, b) => a.d.CompareTo(b.d));
+            for (int i = 0; i < order.Count; i++)
+            {
+                var want = i < n ? LightShadows.Soft : LightShadows.None;
+                if (order[i].l.shadows != want) order[i].l.shadows = want;
+                if (i < n) { order[i].l.shadowStrength = 0.85f; order[i].l.shadowNearPlane = 0.2f; }
+            }
+        }
+
         void Flicker(List<(Light l, float full)> list)
         {
             foreach (var (l, full) in list)

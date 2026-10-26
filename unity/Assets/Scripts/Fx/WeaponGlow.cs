@@ -13,6 +13,20 @@ namespace Zep
         static readonly Color Legendary = new(0.6f, 0.22f, 1f), Ruby = new(1f, 0.1f, 0.22f), Craft = new(1f, 0.38f, 0.02f);
         static readonly Color Shimmer = new(1f, 0.82f, 0.36f);
         static Material mat;
+        static Mesh quad;
+        Light light;
+
+        static Mesh Quad()
+        {
+            var m = new Mesh
+            {
+                vertices = new[] { new Vector3(-0.5f, -0.5f, 0), new Vector3(0.5f, -0.5f, 0), new Vector3(0.5f, 0.5f, 0), new Vector3(-0.5f, 0.5f, 0) },
+                uv = new[] { new Vector2(0, 0), new Vector2(1, 0), new Vector2(1, 1), new Vector2(0, 1) },
+                triangles = new[] { 0, 2, 1, 0, 3, 2 },
+            };
+            m.RecalculateBounds();
+            return m;
+        }
         static readonly Regex SharpRx = new(@"Точка атаки \+([\d.]+)%");
 
         Renderer rend;
@@ -50,13 +64,31 @@ namespace Zep
             }
             var col = tier == "ruby" ? Ruby : tier == "craft" ? Craft : Legendary;
             float amp = tier == "ruby" ? 1.4f : tier == "craft" ? 1.2f : 1f;
-            foreach (var r in weapon.GetComponentsInChildren<Renderer>(true))
+            quad ??= Quad();
+            foreach (var src in weapon.GetComponentsInChildren<Renderer>(true))
             {
-                if (!r.name.StartsWith("legGlow")) continue;
+                if (!src.name.StartsWith("legGlow")) continue;
+                // Плоскость из glTF не рисуется (вершины без нужных данных) — своя плоскость того же размера в той же точке.
+                float size = Mathf.Max(src.localBounds.size.x, src.localBounds.size.y);
+                src.enabled = false;
+                var go = new GameObject("weaponGlow", typeof(MeshFilter), typeof(MeshRenderer));
+                go.transform.SetParent(src.transform, false);
+                go.transform.localPosition = src.localBounds.center;
+                go.transform.localScale = Vector3.one * size;
+                go.GetComponent<MeshFilter>().sharedMesh = quad;
+                var r = go.GetComponent<MeshRenderer>();
                 r.sharedMaterial = mat;
                 r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                var g = r.gameObject.AddComponent<WeaponGlow>();
+                r.receiveShadows = false;
+                var g = go.AddComponent<WeaponGlow>();
                 g.rend = r;
+                var l = go.AddComponent<Light>();
+                l.type = LightType.Point;
+                l.shadows = LightShadows.None;
+                l.range = 2.2f;
+                l.color = col;
+                l.enabled = false;
+                g.light = l;
                 g.col = col;
                 g.amp = amp;
                 g.shim = tier == "craft";
@@ -71,6 +103,7 @@ namespace Zep
             if (Mathf.Approximately(p, pct)) return;
             pct = p;
             rend.enabled = p > 0;
+            if (light) light.enabled = p > 0;
             if (p > 0) transform.localScale = Vector3.one * baseScale * Mathf.Sqrt(p / RefPct);
         }
 
@@ -82,7 +115,11 @@ namespace Zep
             float t = Time.time;
             float p = 0.5f + 0.5f * Mathf.Sin(t * 3.1f + transform.position.x);
             var c = shim ? Color.Lerp(col, Shimmer, 0.5f + 0.5f * Mathf.Sin(t * 1.7f)) : col;
-            c.a = Mathf.Clamp01((0.36f + p * 0.36f) * amp * (pct / RefPct));
+            float k = (0.36f + p * 0.36f) * amp * (pct / RefPct);
+            // HDR под bloom: ядро ярче единицы — ореол вокруг клинка; прозрачность по силе заточки.
+            c = c * (1.6f + 1.4f * p);
+            c.a = Mathf.Clamp01(k);
+            if (light) light.intensity = 0.6f * k * (0.8f + 0.4f * p);
             mpb ??= new MaterialPropertyBlock();
             mpb.SetColor(BaseColor, c);
             rend.SetPropertyBlock(mpb);

@@ -48,6 +48,10 @@ namespace Zep
         public Material unlitAlpha, unlitAdd;
         /// Шейдеры эффектов умений Zep/Fx* (Fx/Vfx.cs).
         public Material fxDecal, fxSparks, fxBolt, fxPillar;
+        /// Кожа боссов Zep/BossSkin: лава (страж и маг лавы) и лёд (ледяной гигант).
+        public Material bossSkin;
+        /// Сфера жара ауры воина (Zep/FxHeatSphere).
+        public Material fxHeat;
         /// spectator.json — константы эффектов умений (EffectsRouter) и режиссёра.
         public TextAsset spectatorJson;
 

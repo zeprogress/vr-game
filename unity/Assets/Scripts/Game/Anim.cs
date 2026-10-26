@@ -63,6 +63,16 @@ namespace Zep
 
         public void Once(string name, float speed = 1f) => Once(speed, name);
 
+        /// Разовый клип, который зовут каждый кадр (смерть): запускается один раз, дальше доигрывает и держит
+        /// последний кадр. Once каждый кадр сбрасывал время на 0 — смерть стояла на первом кадре.
+        public bool Hold(float speed, params string[] names)
+        {
+            var n = Find(names);
+            if (n == null) return false;
+            if (current != n) Once(speed, names);
+            return true;
+        }
+
         /// Разовый клип ещё идёт (ClampForever держит последний кадр — считаем его законченным).
         public bool Playing(params string[] names)
         {

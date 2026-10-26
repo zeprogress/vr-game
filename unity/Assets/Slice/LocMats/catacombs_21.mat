@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!114 &-6757505057960645424
+--- !u!114 &-7140491813293094844
 MonoBehaviour:
   m_ObjectHideFlags: 11
   m_CorrespondingSourceObject: {fileID: 0}
@@ -117,19 +117,19 @@ Material:
     - normalTexture_texCoord: 0
     - occlusionTexture_strength: 1
     - occlusionTexture_texCoord: 0
-    - roughnessFactor: 1
+    - roughnessFactor: 0.35
     - transmissionFactor: 0
     m_Colors:
-    - baseColorFactor: {r: 0.0249477, g: 0.013248456, b: 0.018597227, a: 1}
+    - baseColorFactor: {r: 0.08, g: 0.06, b: 0.07, a: 1}
     - baseColorTexture_Rotation: {r: 0, g: 0, b: 0, a: 0}
-    - emissiveFactor: {r: 0.0075, g: 0.002, b: 0.001, a: 0.25}
+    - emissiveFactor: {r: 0.03, g: 0.008, b: 0.004, a: 1}
     - emissiveTexture_Rotation: {r: 0, g: 0, b: 0, a: 0}
     - metallicRoughnessTexture_Rotation: {r: 0, g: 0, b: 0, a: 0}
     - normalTexture_Rotation: {r: 0, g: 0, b: 0, a: 0}
     - occlusionTexture_Rotation: {r: 0, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
---- !u!114 &5732064407741058884
+--- !u!114 &3770914521134945305
 MonoBehaviour:
   m_ObjectHideFlags: 11
   m_CorrespondingSourceObject: {fileID: 0}

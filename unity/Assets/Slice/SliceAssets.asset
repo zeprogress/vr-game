@@ -49,6 +49,8 @@ MonoBehaviour:
   fxSparks: {fileID: 2100000, guid: e6b87407095dc4f3081f6e72232df879, type: 2}
   fxBolt: {fileID: 2100000, guid: 79f0e0d0cdd384afdba480b3192d70b3, type: 2}
   fxPillar: {fileID: 2100000, guid: 020d5c5dce84c4f36b0e5226bd534d2e, type: 2}
+  bossSkin: {fileID: 2100000, guid: 05f22ecebf2d8487a8ab4eeedc1c4ef0, type: 2}
+  fxHeat: {fileID: 2100000, guid: 1bccc3c572e4145e8aba78b4fd579c2f, type: 2}
   spectatorJson: {fileID: 4900000, guid: 82ae04ff79bd54e688df1f41b873c9a5, type: 3}
   hero: {fileID: 8771091787928289351, guid: c1f8f55d4bd7d4d17a6b9175ed939781, type: 3}
   slime: {fileID: 2242888416370347441, guid: 2a6d771e156924bc69d2afce25c8a0bc, type: 3}
@@ -413,7 +415,7 @@ MonoBehaviour:
     drop: 0
     attackClip: 
     noSquash: 1
-    scaleMul: 2.6
+    scaleMul: 4.2
     tint:
     - 0.95
     - 0.42
