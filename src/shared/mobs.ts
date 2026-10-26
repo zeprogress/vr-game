@@ -754,7 +754,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   },
   lavaMage: {
     model: "monLavaMonster", name: "Маг лавы", blurb: "метка лавы с задержкой, кольцо углей замедляет",
-    level: 75, kind: "spitter", hp: 200000, dmgMul: 50, xp: 26552, xpFixed: true, scaleMul: 2.6, magicArmor: 0.4, // магическая броня: 40% урона магии съедает
+    level: 75, kind: "spitter", hp: 200000, dmgMul: 50, xp: 26552, xpFixed: true, scaleMul: 4.2, magicArmor: 0.4, // размер как у стража (2026-10-26, было 2.6); магическая броня: 40% урона магии съедает
     tint: [0.95, 0.42, 0.12], // раскалённый перекрас — отличается от стража
     lavaMage: true, gait: true, noSquash: true, walksOnly: true, blendAnims: true, turnRate: 60, // разворот шагами (TurnL/TurnR)
     strikeDelay: 0.6, attackSec: 1.3 /* = LAVA.clipSec.attack */, walkClipSpeed: 1.5, runClipSpeed: 3.5,
