@@ -21,7 +21,13 @@ interface Trs {
   r: [number, number, number, number];
   s: [number, number, number];
 }
+interface LocPart {
+  c: [number, number, number];
+  hide?: boolean;
+  move?: Trs;
+}
 interface LocEdit {
+  parts?: LocPart[];
   loc: string;
   name: string;
   c: [number, number, number];
@@ -78,17 +84,115 @@ function find(scene: Scene, e: LocEdit): { mesh: AbstractMesh; thin: number } | 
   return Vector3.Distance(center, c) < MATCH_M * 2 ? { mesh: host, thin: i } : null;
 }
 
+/**
+ * Части меша — как нарезка Unity (LocationEditsTool.Split): связные куски по совпадающим позициям вершин
+ * (1 мм), в порядке первого треугольника. Каждая — треугольники и центр вершин в мире.
+ */
+function meshParts(m: Mesh): { tris: number[]; c: Vector3 }[] {
+  const pos = m.getVerticesData("position");
+  const idx = m.getIndices();
+  if (!pos || !idx) return [];
+  const nv = pos.length / 3;
+  const weld = new Map<string, number>();
+  const vid = new Int32Array(nv);
+  for (let i = 0; i < nv; i++) {
+    const k = `${Math.round(pos[i * 3] * 1000)},${Math.round(pos[i * 3 + 1] * 1000)},${Math.round(pos[i * 3 + 2] * 1000)}`;
+    let w = weld.get(k);
+    if (w === undefined) weld.set(k, (w = weld.size));
+    vid[i] = w;
+  }
+  const parent = Int32Array.from({ length: weld.size }, (_, i) => i);
+  const root = (x: number): number => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  };
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = root(vid[idx[t]]);
+    parent[root(vid[idx[t + 1]])] = a;
+    parent[root(vid[idx[t + 2]])] = a;
+  }
+  const compOf = new Map<number, number>();
+  const parts: { tris: number[]; c: Vector3 }[] = [];
+  const W = m.computeWorldMatrix(true);
+  for (let t = 0; t < idx.length; t += 3) {
+    const r = root(vid[idx[t]]);
+    let ci = compOf.get(r);
+    if (ci === undefined) {
+      compOf.set(r, (ci = parts.length));
+      parts.push({ tris: [], c: new Vector3() });
+    }
+    parts[ci].tris.push(t);
+  }
+  for (const p of parts) {
+    const seen = new Set<number>();
+    const sum = new Vector3();
+    for (const t of p.tris)
+      for (let j = 0; j < 3; j++) {
+        const v = idx[t + j];
+        if (seen.has(v)) continue;
+        seen.add(v);
+        sum.addInPlaceFromFloats(pos[v * 3], pos[v * 3 + 1], pos[v * 3 + 2]);
+      }
+    p.c = Vector3.TransformCoordinates(sum.scale(1 / seen.size), W);
+  }
+  return parts;
+}
+
+/** Спрятать и сдвинуть отдельные части меша: их треугольники убираются из него, сдвинутые — отдельным мешем. */
+function applyParts(m: Mesh, list: LocPart[]): void {
+  const parts = meshParts(m);
+  if (parts.length < 2) return;
+  const idx = m.getIndices();
+  if (!idx) return;
+  const drop = new Set<number>();
+  const world = m.computeWorldMatrix(true).clone();
+  for (const pe of list) {
+    const c = new Vector3(...pe.c);
+    let best = -1;
+    let bd = 0.6;
+    parts.forEach((p, i) => {
+      const d = Vector3.Distance(p.c, c);
+      if (d < bd) {
+        bd = d;
+        best = i;
+      }
+    });
+    if (best < 0) continue;
+    for (const t of parts[best].tris) drop.add(t);
+    if (pe.hide || !pe.move) continue;
+    // Сдвинутая часть — свой меш с её треугольниками, мир = исходный · сдвиг (как в Unity).
+    const piece = m.clone(`${m.name}_part${best}`, m.parent) as Mesh;
+    piece.makeGeometryUnique();
+    const own: number[] = [];
+    for (const t of parts[best].tris) own.push(idx[t], idx[t + 1], idx[t + 2]);
+    piece.setIndices(own);
+    setWorld(piece, world.multiply(trsMatrix(pe.move)));
+  }
+  if (!drop.size) return;
+  const keep: number[] = [];
+  for (let t = 0; t < idx.length; t += 3) if (!drop.has(t)) keep.push(idx[t], idx[t + 1], idx[t + 2]);
+  m.makeGeometryUnique();
+  m.setIndices(keep);
+}
+
 function apply(e: LocEdit, hit: { mesh: AbstractMesh; thin: number }): void {
   const m = hit.mesh;
   if (hit.thin < 0) {
     const world = m.computeWorldMatrix(true).clone();
+    // Копии — до правки частей и как в Unity, целиком. Экземпляр делит геометрию с исходником (правка частей
+    // задела бы и его) и не рисуется без исходника — в этих случаях полная копия.
+    const own = e.hide || !!e.parts?.length;
     for (const [k, t] of (e.copies ?? []).entries()) {
-      // Исходник спрятан — экземпляр без него не рисуется, тогда полная копия.
-      const copy = (!e.hide && (m as Mesh).createInstance?.(`${m.name}_edit${k}`)) || m.clone(`${m.name}_edit${k}`, m.parent);
+      const copy = (!own && (m as Mesh).createInstance?.(`${m.name}_edit${k}`)) || m.clone(`${m.name}_edit${k}`, m.parent);
       if (!copy) continue;
+      if (own) (copy as Mesh).makeGeometryUnique?.();
       copy.parent = m.parent;
       setWorld(copy, world.multiply(trsMatrix(t)));
     }
+    if (e.parts?.length && typeof (m as Mesh).makeGeometryUnique === "function") applyParts(m as Mesh, e.parts);
     if (e.move) setWorld(m, world.multiply(trsMatrix(e.move)));
     if (e.hide) m.setEnabled(false);
     return;

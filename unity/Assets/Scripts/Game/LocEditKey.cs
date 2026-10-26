@@ -9,5 +9,7 @@ namespace Zep
         public string loc;
         public string nm;
         public Vector3 c;
+        /// Центры частей после нарезки (LocEditPart) — чтобы при сохранении заметить удалённую часть.
+        public Vector3[] partCs;
     }
 }

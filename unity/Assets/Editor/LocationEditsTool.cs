@@ -24,7 +24,12 @@ public static class LocationEditsTool
     static string BasePath => $"{Root}/LocKeys.txt";
 
     [System.Serializable] class Trs { public float[] p, r, s; }
-    [System.Serializable] class Edit { public string loc, name; public float[] c; public bool hide; public Trs move; public Trs[] copies; }
+    [System.Serializable] class Part { public float[] c; public bool hide; public Trs move; }
+    [System.Serializable] class Edit { public string loc, name; public float[] c; public bool hide; public Trs move; public Trs[] copies; public Part[] parts; }
+
+    /// Режем меш на части, только если их от 2 до стольких (пол из тысяч плиток не дробим).
+    const int MaxParts = 400;
+    const float PartMatchM = 0.6f;
     [System.Serializable] class File_ { public int version; public Edit[] edits; }
 
     static readonly List<string> baseline = new();
@@ -46,6 +51,9 @@ public static class LocationEditsTool
             k.nm = t.name;
             k.c = b.center;
             baseline.Add(Key(k));
+            foreach (var mf in t.GetComponentsInChildren<MeshFilter>(true)) Split(mf);
+            var parts = t.GetComponentsInChildren<LocEditPart>(true);
+            if (parts.Length > 0) k.partCs = System.Array.ConvertAll(parts, x => x.c);
         }
         File.WriteAllLines(BasePath, baseline);
 
@@ -71,11 +79,117 @@ public static class LocationEditsTool
                 copy.name = best.name;
                 Put(copy.transform, cp);
             }
+            foreach (var pe in e.parts ?? new Part[0])
+            {
+                var pc = V(pe.c);
+                LocEditPart bp = null;
+                float pd = PartMatchM;
+                foreach (var part in best.GetComponentsInChildren<LocEditPart>(true))
+                {
+                    float d = Vector3.Distance(part.c, pc);
+                    if (d < pd) { pd = d; bp = part; }
+                }
+                if (!bp) { Debug.LogWarning($"[locEdits] не нашёл часть {e.name} у {pc}"); continue; }
+                if (pe.move != null && pe.move.p != null && pe.move.p.Length == 3) PutLocal(bp.transform, pe.move);
+                if (pe.hide) bp.gameObject.SetActive(false);
+            }
             if (e.move != null && e.move.p != null && e.move.p.Length == 3) Put(best.transform, e.move);
             if (e.hide) best.gameObject.SetActive(false);
             n++;
         }
         if (n > 0) Debug.Log($"[locEdits] {locName}: применено правок {n}");
+    }
+
+    /// Меш из нескольких несвязных кусков → дочерние объекты «part N», по куску на каждый. Связность — по
+    /// совпадающим позициям вершин (шов UV/нормалей не разрывает кусок). Так же режет веб (locationEdits.ts).
+    static void Split(MeshFilter mf)
+    {
+        var mesh = mf.sharedMesh;
+        if (!mesh || mesh.subMeshCount != 1 || mf.GetComponent<LocEditPart>()) return;
+        var rend = mf.GetComponent<MeshRenderer>();
+        if (!rend) return;
+        var pos = mesh.vertices;
+        var tri = mesh.triangles;
+        var weld = new Dictionary<Vector3Int, int>();
+        var vid = new int[pos.Length];
+        for (int i = 0; i < pos.Length; i++)
+        {
+            var q = new Vector3Int(Mathf.RoundToInt(pos[i].x * 1000), Mathf.RoundToInt(pos[i].y * 1000), Mathf.RoundToInt(pos[i].z * 1000));
+            if (!weld.TryGetValue(q, out var w)) weld[q] = w = weld.Count;
+            vid[i] = w;
+        }
+        var parent = new int[weld.Count];
+        for (int i = 0; i < parent.Length; i++) parent[i] = i;
+        int FindRoot(int x) { while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+        for (int t = 0; t < tri.Length; t += 3)
+        {
+            int a = FindRoot(vid[tri[t]]), b = FindRoot(vid[tri[t + 1]]), c = FindRoot(vid[tri[t + 2]]);
+            parent[b] = a; parent[FindRoot(c)] = a;
+        }
+        var compOf = new Dictionary<int, int>();
+        var comps = new List<List<int>>();
+        for (int t = 0; t < tri.Length; t += 3)
+        {
+            int r = FindRoot(vid[tri[t]]);
+            if (!compOf.TryGetValue(r, out var ci)) { compOf[r] = ci = comps.Count; comps.Add(new List<int>()); }
+            comps[ci].Add(t);
+        }
+        if (comps.Count < 2 || comps.Count > MaxParts) return;
+        var nrm = mesh.normals;
+        var uv = mesh.uv;
+        var col = mesh.colors;
+        for (int ci = 0; ci < comps.Count; ci++)
+        {
+            var map = new Dictionary<int, int>();
+            var v = new List<Vector3>();
+            var n = new List<Vector3>();
+            var u = new List<Vector2>();
+            var cl = new List<Color>();
+            var it = new List<int>();
+            var sum = Vector3.zero;
+            foreach (int t in comps[ci])
+                for (int j = 0; j < 3; j++)
+                {
+                    int old = tri[t + j];
+                    if (!map.TryGetValue(old, out var nw))
+                    {
+                        map[old] = nw = v.Count;
+                        v.Add(pos[old]);
+                        sum += pos[old];
+                        if (nrm.Length == pos.Length) n.Add(nrm[old]);
+                        if (uv.Length == pos.Length) u.Add(uv[old]);
+                        if (col.Length == pos.Length) cl.Add(col[old]);
+                    }
+                    it.Add(nw);
+                }
+            var pm = new Mesh { name = $"{mesh.name}_part{ci}" };
+            if (v.Count > 65000) pm.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+            pm.SetVertices(v);
+            if (n.Count == v.Count) pm.SetNormals(n);
+            if (u.Count == v.Count) pm.SetUVs(0, u);
+            if (cl.Count == v.Count) pm.SetColors(cl);
+            pm.SetTriangles(it, 0);
+            pm.RecalculateBounds();
+            var go = new GameObject($"part {ci}", typeof(MeshFilter), typeof(MeshRenderer));
+            go.transform.SetParent(mf.transform, false);
+            go.isStatic = mf.gameObject.isStatic;
+            go.GetComponent<MeshFilter>().sharedMesh = pm;
+            var pr = go.GetComponent<MeshRenderer>();
+            pr.sharedMaterials = rend.sharedMaterials;
+            pr.shadowCastingMode = rend.shadowCastingMode;
+            pr.receiveShadows = rend.receiveShadows;
+            pr.enabled = rend.enabled;
+            go.AddComponent<LocEditPart>().c = mf.transform.TransformPoint(sum / v.Count);
+        }
+        Object.DestroyImmediate(rend);
+        Object.DestroyImmediate(mf);
+    }
+
+    /// Проверка из командной строки: открыть Slice.unity и сохранить правки (-executeMethod LocationEditsTool.SaveSlice).
+    public static void SaveSlice()
+    {
+        EditorSceneManager.OpenScene("Assets/Scenes/Slice.unity");
+        Save();
     }
 
     [MenuItem("Zep/Локации/Сохранить правки (Unity и веб)")]
@@ -91,7 +205,7 @@ public static class LocationEditsTool
             l.Add(k);
         }
         var outEdits = new List<Edit>();
-        int hidden = 0, moved = 0, copied = 0;
+        int hidden = 0, moved = 0, copied = 0, partsN = 0;
         // Удалённые из сцены — спрятать.
         var known = File.Exists(BasePath) ? new List<string>(File.ReadAllLines(BasePath)) : new List<string>();
         foreach (var id in known)
@@ -111,6 +225,21 @@ public static class LocationEditsTool
             bool any = false;
             if (!orig.gameObject.activeInHierarchy) { e.hide = true; any = true; hidden++; }
             else if (!Identity(orig.transform)) { e.move = T(orig.transform); any = true; moved++; }
+            // Части этого объекта: спрятанные, удалённые, сдвинутые.
+            var partEdits = new List<Part>();
+            var present = orig.GetComponentsInChildren<LocEditPart>(true);
+            foreach (var part in present)
+            {
+                if (!part.gameObject.activeSelf) partEdits.Add(new Part { c = A(part.c), hide = true });
+                else if (!LocalIdentity(part.transform)) partEdits.Add(new Part { c = A(part.c), move = TLocal(part.transform) });
+            }
+            foreach (var pc in orig.partCs ?? new Vector3[0])
+            {
+                bool found = false;
+                foreach (var part in present) if ((part.c - pc).sqrMagnitude < 1e-4f) { found = true; break; }
+                if (!found) partEdits.Add(new Part { c = A(pc), hide = true });
+            }
+            if (partEdits.Count > 0) { e.parts = partEdits.ToArray(); any = true; partsN += partEdits.Count; }
             if (list.Count > 1)
             {
                 var cps = new List<Trs>();
@@ -120,8 +249,8 @@ public static class LocationEditsTool
             if (any) outEdits.Add(e);
         }
         File.WriteAllText(JsonPath, ToJson(outEdits));
-        Debug.Log($"[locEdits] сохранено в {JsonPath}: спрятано {hidden}, сдвинуто {moved}, копий {copied}");
-        EditorUtility.DisplayDialog("Правки локаций", $"Сохранено: спрятано {hidden}, сдвинуто {moved}, копий {copied}.\n\nФайл: src/client/world/locationEdits.json — его читают и Unity, и веб.", "OK");
+        Debug.Log($"[locEdits] сохранено в {JsonPath}: спрятано {hidden}, сдвинуто {moved}, копий {copied}, правок частей {partsN}");
+        EditorUtility.DisplayDialog("Правки локаций", $"Сохранено: спрятано {hidden}, сдвинуто {moved}, копий {copied}, правок частей {partsN}.\n\nФайл: src/client/world/locationEdits.json — его читают и Unity, и веб.", "OK");
     }
 
     static string Key(LocEditKey k) => $"{k.loc}|{k.nm}|{k.c.x.ToString("0.00", CultureInfo.InvariantCulture)},{k.c.y.ToString("0.00", CultureInfo.InvariantCulture)},{k.c.z.ToString("0.00", CultureInfo.InvariantCulture)}";
@@ -141,6 +270,16 @@ public static class LocationEditsTool
     static bool Identity(Transform t) =>
         t.position.sqrMagnitude < 1e-6f && Quaternion.Angle(t.rotation, Quaternion.identity) < 0.01f && (t.lossyScale - Vector3.one).sqrMagnitude < 1e-6f;
 
+    static bool LocalIdentity(Transform t) =>
+        t.localPosition.sqrMagnitude < 1e-6f && Quaternion.Angle(t.localRotation, Quaternion.identity) < 0.01f && (t.localScale - Vector3.one).sqrMagnitude < 1e-6f;
+
+    /// Сдвиг части — в осях её объекта (он стоит в начале координат, так что это и мировые оси).
+    static Trs TLocal(Transform t)
+    {
+        var q = t.localRotation;
+        return new Trs { p = A(t.localPosition), r = new[] { q.x, q.y, q.z, q.w }, s = A(t.localScale) };
+    }
+
     static Trs T(Transform t)
     {
         var q = t.rotation;
@@ -151,6 +290,13 @@ public static class LocationEditsTool
     {
         t.position = V(x.p);
         t.rotation = new Quaternion(x.r[0], x.r[1], x.r[2], x.r[3]);
+        t.localScale = V(x.s);
+    }
+
+    static void PutLocal(Transform t, Trs x)
+    {
+        t.localPosition = V(x.p);
+        t.localRotation = new Quaternion(x.r[0], x.r[1], x.r[2], x.r[3]);
         t.localScale = V(x.s);
     }
 
@@ -176,6 +322,19 @@ public static class LocationEditsTool
             sb.Append($"    {{ \"loc\": \"{e.loc}\", \"name\": \"{e.name.Replace("\\", "\\\\").Replace("\"", "\\\"")}\", \"c\": {Arr(e.c)}");
             if (e.hide) sb.Append(", \"hide\": true");
             if (e.move != null) sb.Append($", \"move\": {TrsJson(e.move)}");
+            if (e.parts != null && e.parts.Length > 0)
+            {
+                sb.Append(", \"parts\": [");
+                for (int k = 0; k < e.parts.Length; k++)
+                {
+                    var pt = e.parts[k];
+                    sb.Append((k > 0 ? ", " : "") + $"{{ \"c\": {Arr(pt.c)}");
+                    if (pt.hide) sb.Append(", \"hide\": true");
+                    if (pt.move != null) sb.Append($", \"move\": {TrsJson(pt.move)}");
+                    sb.Append(" }");
+                }
+                sb.Append("]");
+            }
             if (e.copies != null && e.copies.Length > 0)
             {
                 sb.Append(", \"copies\": [");
