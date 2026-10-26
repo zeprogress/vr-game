@@ -36,7 +36,7 @@ interface LocEdit {
   copies?: Trs[];
 }
 
-const LIST = (edits as { edits?: LocEdit[] }).edits ?? [];
+const LIST = (edits as unknown as { edits?: LocEdit[] }).edits ?? [];
 /** Дальше этого от центра из выгрузки — не тот объект (центр рамки в Babylon и Unity чуть расходится у повёрнутых мешей). */
 const MATCH_M = 3;
 
