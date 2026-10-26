@@ -58,6 +58,12 @@ namespace Zep
             // Действие героя звучит от его тела (как `at` в вебе), остальное — от точки события.
             var at = id != null && WorldSync.Players.TryGetValue(id, out var pv) ? pv.Head : p;
             var to = new Vector3(Or(x2, p.x), p.y, Or(z2, p.z));
+            // Умения классов и особых мобов — как playClassAct в вебе (Fx/ClassActs.cs).
+            float? N(float f) => float.IsNaN(f) ? null : f;
+            float vv = F(m, "v");
+            string mobId = m.TryGetValue("mobId", out var mo) ? mo as string : null;
+            if (ClassActs.Play(k, id, p.x, p.y, p.z, N(d), N(x2), N(z2), float.IsNaN(vv) ? null : (int)vv, N(r), mobId)) return;
+            if (BossActs.Play(k, id, p.x, p.y, p.z, N(d), N(x2), N(z2), float.IsNaN(vv) ? null : (int)vv, N(r), mobId)) return;
             switch (k)
             {
                 case "swing": SoundBank.At(at, "sword-swing"); break;

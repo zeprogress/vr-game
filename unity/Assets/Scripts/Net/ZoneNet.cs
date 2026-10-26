@@ -31,6 +31,8 @@ namespace Zep
         public event Action<ColyseusRoom<ZoneState>> Joined;
         /// Команда пульта (MSG.specCmd = "sc", тип SpecCmd в messages.ts): поле "t" и его параметры.
         public event Action<Dictionary<string, object>> SpecCmd;
+        /// Мобы «Охотничьей башни» тик в тик (MSG.towerMobs): позиции, HP, замахи — их нет в ZoneState.
+        public event Action<Dictionary<string, object>> TowerMobs;
         /// Событие героя (MSG.act = "ac", ActRelay): k — вид (swing, bow, hurt, levelUp…), id — кто.
         public event Action<string, string, Dictionary<string, object>> Act;
         /// Числа урона за тик (MSG.dmgHits = "dh", DmgHitsMsg): список {x, y, z, dmg, c?}.
@@ -70,6 +72,7 @@ namespace Zep
                 });
                 Room.OnMessage<Dictionary<string, object>>("ac", m =>
                     Act?.Invoke(m.TryGetValue("k", out var k) ? k as string : null, m.TryGetValue("id", out var id) ? id as string : null, m));
+                Room.OnMessage<Dictionary<string, object>>("twmobs", m => TowerMobs?.Invoke(m));
                 MuteOtherMessages();
                 Room.OnLeave += code => Status = $"отключён ({code})";
                 Room.OnError += (code, msg) => Debug.LogWarning($"[net] {code}: {msg}");
@@ -93,7 +96,7 @@ namespace Zep
             var json = Resources.Load<TextAsset>("msgTypes");
             if (json == null) return;
             foreach (var t in JsonUtility.FromJson<MsgTypes>(json.text).types)
-                if (t != "sc" && t != "ac" && t != "dh") Room.OnMessage<object>(t, _ => { });
+                if (t != "sc" && t != "ac" && t != "dh" && t != "twmobs") Room.OnMessage<object>(t, _ => { });
         }
 
         static readonly float[] Zero7 = { 0, 0, 0, 0, 0, 0, 1 };

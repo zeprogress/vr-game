@@ -43,17 +43,17 @@ namespace Zep
             }
             Vector3 P(float dx, float dz) => new(c.x + dx, G(c.x + dx, c.z + dz), c.z + dz);
 
-            Act("stunBash", P(-9, 2));
-            Act("arrowRain", P(9, 4), new() { { "d", 0.2f } });
-            Act("sporeMark", P(0, 8), new() { { "d", 0.5f } });
-            Act("breathMark", P(-6, -3), new() { { "x2", c.x + 3 }, { "z2", c.z - 6 }, { "d", 2f } });
-            Act("healAura", P(0, -2));
-            Act("levelUp", P(-3, 0) + Vector3.up);
-            Act("crit", P(3, 0) + Vector3.up);
-            Act("dodge", P(5, -2) + Vector3.up * 2);
-            Act("magicHit", P(-5, 5) + Vector3.up * 2);
-            Act("swing", P(0, 0));
-            for (int i = 0; i < 6; i++) Popups.Damage(P(-1 + i * 0.6f, 1) + Vector3.up * 1.5f, 37 + i * 211, i == 2 ? "poison" : i == 4 ? "heal" : null);
+            // Приёмы боссов (BossActs): лёд гиганта, огонь Владыки, лава стража, телеграфы.
+            Act("giantSlamHit", P(-8, 6), new() { { "r", 5f } });
+            Act("giantThrowHit", P(-2, -4));
+            Act("giantFissureGo", P(-10, -2), new() { { "x2", c.x - 2 }, { "z2", c.z + 12 }, { "d", 0.6f } });
+            Act("dragonBurn", P(4, 2), new() { { "x2", c.x + 10 }, { "z2", c.z + 14 }, { "d", 3f } });
+            Act("dragonMeteorHit", P(8, -2));
+            Act("lavaSpillHit", P(-3, 2), new() { { "x2", c.x + 3 }, { "z2", c.z + 8 }, { "r", 1.5f } });
+            Act("dragonTail", P(12, 10), new() { { "x2", c.x + 2 }, { "z2", c.z + 10 }, { "d", 1.5f }, { "r", 8f } });
+            Act("lavaMark", P(3, -6), new() { { "r", 2.5f }, { "d", 2f } });
+            Act("dragonMeteorFall", P(0, 12), new() { { "d", 1.2f } });
+            yield return new WaitForSeconds(0.3f);
             yield return new WaitForSeconds(0.45f);
             ScreenCapture.CaptureScreenshot(outPath);
             Debug.LogWarning("[fxdemo] снимок → " + outPath);

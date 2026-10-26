@@ -47,12 +47,16 @@ namespace Zep
             }
         }
 
+        /// Эмоция героя от умения (ClassActs: roll/jump/cheer) — клипы как BOT_EMOTE_CLIP в вебе.
+        public void Emote(string e) => rig.PlayOneShot(e == "cheer" ? "Victory" : e == "roll" ? "Roll" : "Jump");
+
         Vector3 Target() => new Vector3(state.head.x, state.head.y - Hero.EyeHeight, state.head.z);
 
         void Update()
         {
             if (state == null) return;
             rig.Apply(state.skin, state.leftCls, state.leftTier, state.rightCls, state.rightTier);
+            rig.SetSharp(WeaponGlow.PctOf(state.leftAffix), WeaponGlow.PctOf(state.rightAffix));
             transform.position = Vector3.Lerp(transform.position, Target(), 1f - Mathf.Exp(-12f * Time.deltaTime));
             var fwd = Forward;
             fwd.y = 0;

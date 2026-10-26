@@ -73,6 +73,15 @@ namespace Zep
 
         public bool Swinging => Time.time < swingUntil;
 
+        /// Свечение заточки по прибавке рук (как applySharpGlow): двуручное (лук, посох) — по большей из двух.
+        public void SetSharp(float pctL, float pctR)
+        {
+            bool two = clsL == "bow" || clsR == "bow" || clsL == "staff" || clsR == "staff";
+            float both = Mathf.Max(pctL, pctR);
+            if (gearL) foreach (var g in gearL.GetComponentsInChildren<WeaponGlow>(true)) g.SetPct(two ? both : pctL);
+            if (gearR) foreach (var g in gearR.GetComponentsInChildren<WeaponGlow>(true)) g.SetPct(two ? both : pctR);
+        }
+
         /// Модель по ключу MODELS без оружия — NPC лагеря (charViking, charCowboy).
         public void ApplyModel(string key) => Build(assets.Model(key)?.prefab ?? assets.hero);
 
@@ -122,7 +131,9 @@ namespace Zep
             var src = assets.Gear(cls, tier);
             if (!src) return null;
             // Instantiate с родителем сохраняет локальные позицию, поворот и масштаб — как под кулаком в Gear.glb.
-            return Instantiate(src, fist).transform;
+            var g = Instantiate(src, fist).transform;
+            WeaponGlow.Attach(g, src.name.Substring(src.name.LastIndexOf('_') + 1), assets.unlitAdd);
+            return g;
         }
 
         static Transform Find(Transform t, string name)

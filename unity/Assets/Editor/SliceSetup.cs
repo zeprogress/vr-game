@@ -234,6 +234,10 @@ public static class SliceSetup
         a.litTransparent = tr;
         a.unlitAlpha = UnlitTemplate("UnlitAlpha", additive: false);
         a.unlitAdd = UnlitTemplate("UnlitAdd", additive: true);
+        a.fxDecal = FxTemplate("FxDecal");
+        a.fxSparks = FxTemplate("FxSparks");
+        a.fxBolt = FxTemplate("FxBolt");
+        a.fxPillar = FxTemplate("FxPillar");
         a.spectatorJson = AssetDatabase.LoadAssetAtPath<TextAsset>("Assets/Terrain/spectator.json");
         // Оружие в руках из веба: узлы gear_* под кулаками в Gear.glb.
         var gearPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Locations/Gear.glb");
@@ -275,6 +279,15 @@ public static class SliceSetup
         GameObjectUtility.SetStaticEditorFlags(go, StaticEditorFlags.BatchingStatic | StaticEditorFlags.OccluderStatic | StaticEditorFlags.OccludeeStatic);
 
     /// Шаблон URP Unlit для эффектов: прозрачный (alpha) или аддитивный (огонь, свечение), двусторонний.
+    static Material FxTemplate(string name)
+    {
+        string path = $"{Root}/{name}.mat";
+        AssetDatabase.DeleteAsset(path);
+        var m = new Material(Shader.Find("Zep/" + name));
+        AssetDatabase.CreateAsset(m, path);
+        return m;
+    }
+
     static Material UnlitTemplate(string name, bool additive)
     {
         string path = $"{Root}/{name}.mat";
@@ -500,6 +513,8 @@ public static class SliceSetup
 
         var net = new GameObject("Net").AddComponent<ZoneNet>();
         net.gameObject.AddComponent<SoundBank>();
+        net.gameObject.AddComponent<ChatTts>();
+        net.gameObject.AddComponent<TowerArena>();
         net.gameObject.AddComponent<EffectsRouter>();
         net.gameObject.AddComponent<Projectiles>();
         var hero = new GameObject("Hero").AddComponent<Hero>();

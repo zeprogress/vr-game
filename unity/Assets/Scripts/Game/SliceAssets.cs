@@ -46,6 +46,8 @@ namespace Zep
         public Material litTransparent;
         /// Неосвещённые прозрачный и аддитивный — эффекты умений, снаряды, следы.
         public Material unlitAlpha, unlitAdd;
+        /// Шейдеры эффектов умений Zep/Fx* (Fx/Vfx.cs).
+        public Material fxDecal, fxSparks, fxBolt, fxPillar;
         /// spectator.json — константы эффектов умений (EffectsRouter) и режиссёра.
         public TextAsset spectatorJson;
 

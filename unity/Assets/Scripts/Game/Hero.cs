@@ -55,7 +55,10 @@ namespace Zep
                 placed = true;
             }
             if (room != null && room.State.players.TryGetValue(room.SessionId, out var self))
+            {
                 rig.Apply(self.skin, self.leftCls, self.leftTier, self.rightCls, self.rightTier);
+                rig.SetSharp(WeaponGlow.PctOf(self.leftAffix), WeaponGlow.PctOf(self.rightAffix));
+            }
 
             Vector2 move = ReadMove();
             Vector2 look = ReadLook();

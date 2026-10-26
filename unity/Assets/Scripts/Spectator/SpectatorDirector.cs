@@ -7,8 +7,8 @@ namespace Zep
     /// Режиссёр стрима — перенос src/client/spectator/SpectatorCamera.ts (поляна):
     /// ротация кадров (обзор, орбита, бок, дуэль, группа, погоня, дрон, напротив, моб, босс),
     /// кинопути на пустом сервере, вступление «Вся поляна», плавные переезды, команды пульта
-    /// (cam / auto / bots / camTune). Катакомбы, рейд и башня — пока не перенесены.
-    public class SpectatorDirector : MonoBehaviour
+    /// (cam / auto / bots / camTune). Катакомбы, рейд и башня — SpectatorDirector.Arenas.cs.
+    public partial class SpectatorDirector : MonoBehaviour
     {
         public Camera cam;
         public TextAsset configJson; // Assets/Terrain/spectator.json (scripts/unity-heightmap.mts)
@@ -198,7 +198,8 @@ namespace Zep
             bool timedOut = shot.kind != "path" && sinceSwitch >= S.holdTime;
             bool idlePathInterrupted = shot.kind == "path" && !botsOnly && !introActive && players.Count > 0;
 
-            if (auto && fighting && !IsFightShot(shot)) SwitchTo(new Shot { kind = "orbitBoss" });
+            if (ArenaDirect(invalid)) { }
+            else if (auto && fighting && !IsFightShot(shot)) SwitchTo(new Shot { kind = "orbitBoss" });
             else if (invalid) SwitchTo(auto ? NextShot(fighting) : new Shot { kind = "overview" });
             else if (auto && (timedOut || idlePathInterrupted)) SwitchTo(NextShot(fighting));
 
@@ -214,7 +215,7 @@ namespace Zep
             }
 
             // Переход между поверхностью, катакомбами и подземельем — склейка, а не перелёт через всю карту.
-            string region = RegionOf(toTgt.x, toTgt.z);
+            string region = toTgt.y > 200 ? "tower" : RegionOf(toTgt.x, toTgt.z);
             if (lastRegion != "" && region != lastRegion)
             {
                 fromPos = toPos;
@@ -229,12 +230,13 @@ namespace Zep
             float minY = GroundY(p.x, p.z, tgt.y) + 1.2f;
             if (p.y < minY) p.y = minY;
             p = ClampToRooms(tgt, p);
+            p = ClampToTower(p);
 
             cam.transform.position = p;
             curTgt = tgt;
             if ((tgt - p).sqrMagnitude > 1e-6f) cam.transform.rotation = Quaternion.LookRotation(tgt - p);
 
-            float wantFov = shot.kind == "path" && cfg.paths[shot.idx].fov > 0 ? cfg.paths[shot.idx].fov : DefaultFov;
+            float wantFov = shot.kind == "path" && cfg.paths[shot.idx].fov > 0 ? cfg.paths[shot.idx].fov : shot.kind == "catTop" ? catFov : DefaultFov;
             float fov = cam.fieldOfView * Mathf.Deg2Rad;
             fov += (wantFov - fov) * (1 - Mathf.Exp(-dt * 2.5f));
             cam.fieldOfView = fov * Mathf.Rad2Deg;
@@ -281,6 +283,7 @@ namespace Zep
                     bossAggro = aggro;
                 }
             }
+            BuildArenas(room.State);
         }
 
         // ---------------- режиссура ----------------
@@ -389,6 +392,8 @@ namespace Zep
                         return critters.Count == 0 ? null : new Shot { kind = "eyeMob", id = critters[pickI % critters.Count].id };
                     }
             }
+            var arena = ArenaToken(kind, id);
+            if (arena != null) return arena;
             if (!PlayerShots.Contains(kind)) return null;
             if (id == "")
             {
@@ -403,6 +408,7 @@ namespace Zep
 
         bool ShotValid(Shot s)
         {
+            if (ArenaValid(s, out bool av)) return av;
             if (PlayerShots.Contains(s.kind)) return players.Exists(p => p.id == s.id);
             if (s.kind == "orbitBoss") return bossOn;
             if (s.kind == "crowd") return CrowdPlayers().Count > 0;
@@ -525,6 +531,7 @@ namespace Zep
 
         void EvalShot(Shot s, out Vector3 pos, out Vector3 tgt)
         {
+            if (EvalArena(s, out pos, out tgt)) return;
             switch (s.kind)
             {
                 case "orbitPlayer":
