@@ -139,6 +139,9 @@ function withRandomMechs(b: CatBoss): CatBoss {
 /** Ключ записи на катакомбы — ник в нижнем регистре: переживает перезапуск (сессии героев меняются). */
 export const catQueueKey = (nick: string): string => nick.trim().toLowerCase();
 
+/** Постоянная очередь катакомб: эти герои всегда записаны — не нужно писаться и не выйти из записи. */
+export const STANDING_QUEUE: readonly string[] = ["zeprogress"];
+
 /**
  * Добыча забега: одинаковое складывается. Камень и кольцо — с заглушкой id ("scrap"), различает их только jw,
  * поэтому сравниваем и его; иначе все камни склеивались в одну строку, а лом из сундуков писался на неё.
@@ -158,7 +161,7 @@ export class CatacombDirector {
    * записи не пропадают — при следующем сборе записанные попадают в отряд сами.
    * Ключи — ники (catQueueKey), сохраняются в мире (queueKeys / restoreReserved).
    */
-  readonly reserved = new Set<string>();
+  readonly reserved = new Set<string>(STANDING_QUEUE.map(catQueueKey));
   /** Ключ записи (ник) каждого героя отряда — чтобы снять или сохранить запись по id. */
   private readonly partyKey = new Map<string, string>();
   /** Открытые залы (стоять можно в lo..hi). */
@@ -382,6 +385,11 @@ export class CatacombDirector {
     return [...out];
   }
 
+  /** Постоянная очередь на месте (после выхода из записи или спуска в забег). */
+  private ensureStanding(): void {
+    for (const k of STANDING_QUEUE) this.reserved.add(catQueueKey(k));
+  }
+
   /** Поднять записи, сохранённые до перезапуска. */
   restoreReserved(keys: readonly string[]): void {
     for (const k of keys) if (k) this.reserved.add(k);
@@ -406,6 +414,7 @@ export class CatacombDirector {
     if (this.phase >= CAT_PHASE.run && this.party.has(id)) return "ты уже в катакомбах — выйти нельзя.";
     // Снимаем из обоих мест (и из записи, и из отряда сбора) — без короткого замыкания.
     const fromRes = this.reserved.delete(catQueueKey(nick));
+    this.ensureStanding();
     const fromParty = this.phase === CAT_PHASE.gather && this.party.delete(id);
     this.partyKey.delete(id);
     if (!fromRes && !fromParty) return "ты не записан на катакомбы.";
@@ -690,11 +699,12 @@ export class CatacombDirector {
 
   private startRun(): void {
     const now = this.host.now();
-    // Отряд спустился — записи тех, кто в забеге, сняты.
+    // Отряд спустился — записи тех, кто в забеге, сняты (постоянная очередь остаётся).
     for (const id of this.party) {
       const k = this.partyKey.get(id);
       if (k) this.reserved.delete(k);
     }
+    this.ensureStanding();
     this.phase = CAT_PHASE.run;
     // Отсчёт до следующих катакомб — с НАЧАЛА забега (2026-10-07: раньше с конца).
     this.nextAuto = this.host.now() + this.autoGap();

@@ -3212,11 +3212,12 @@ export class ZoneRoom extends Room<ZoneState> {
       this.activeEventKind = this.forcedEventKind;
     } else {
       const r = Math.random();
-      this.activeEventKind = r < EVENT.towerChance ? 3 : r < EVENT.towerChance + EVENT.huntChance ? 2 : 1;
+      // Нашествие из ротации убрано (2026-10-26): остаток после башни — охота. Нашествие — только ручным !goevent.
+      this.activeEventKind = r < EVENT.towerChance ? 3 : 2;
     }
     // Башня временно закрыта (TOWER_OPEN) — вместо неё охота или нашествие.
     if (this.activeEventKind === 3 && !TOWER_OPEN) {
-      this.activeEventKind = Math.random() < EVENT.huntChance / (1 - EVENT.towerChance) ? 2 : 1;
+      this.activeEventKind = 2;
     }
     // Выключенный админом вид — заменяем другим (оба выключены — сюда доходит только ручной !goevent).
     if (this.forcedEventKind === 0) {
