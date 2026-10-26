@@ -205,6 +205,7 @@ import {
 } from "#shared/progression";
 import { canHoldTogether, equipHands, handsValid, unequipHand } from "#shared/hands";
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
+import { wallSlide } from "../sim/wallSlide";
 import { leashCut } from "../sim/leash";
 import { ATTR2 } from "#shared/attrs2";
 import { DRAW_IN, drawInPlan, drawModeOf, type DrawMode } from "#shared/drawIn";
@@ -7472,6 +7473,8 @@ export class ZoneRoom extends Room<ZoneState> {
       const pt = { x: d.x + Math.sin(base + da) * R, z: d.z + Math.cos(base + da) * R };
       first ??= pt;
       if ((ok && !ok(pt.x, pt.z)) || this.inDanger(pt.x, pt.z, d)) continue;
+      // В подземелье точка выхода — на полу: круг опасности иногда заходит за стену, и бот шёл бы туда напрямик.
+      if (inDunRegion(pt.x, pt.z) && dunFloorLocal(pt.x - DUN_X, pt.z - DUN_Z, 0.4) === null) continue;
       return { ...pt, soft };
     }
     return first ? { ...first, soft } : null;
@@ -8315,7 +8318,10 @@ export class ZoneRoom extends Room<ZoneState> {
       inDunRegion(m.x, m.z) === inDunRegion(p.head.x, p.head.z);
     // Идёт событие (нашествие/охота), бот на нём: бьёт мобов ивента, пока они есть в зоне.
     const eventOnly = bot.eventing && this.state.eventKind !== 0;
-    if (!mob || !okMob(mob) || (eventOnly && !this.sim.eventMobs.has(mob.id))) {
+    // Моб, который уже вплотную (бот в его ударе), цель держим, даже если он за границей зоны: иначе цель
+    // сбрасывалась каждый тик, бот уходил на шаг и возвращался — топтался у стены подземелья.
+    const touchingMob = !!mob && !mob.dead && Math.hypot(mob.x - p.head.x, mob.z - p.head.z) < MOB.bodyRadius * mob.scale + PLAYER.radius + 0.8;
+    if (!mob || (!okMob(mob) && !touchingMob) || (eventOnly && !this.sim.eventMobs.has(mob.id))) {
       bot.target = null;
       mob = undefined;
       // Сколько других ботов уже целятся в каждого моба — предпочитаем «своего».
@@ -9498,7 +9504,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Подземелье: маршрут по графу подземелья (dunPath), прямо — если видно. Пересчёт как у поверхности. */
   private botDunNavDir(bot: Bot, p: PlayerState, tx: number, tz: number, dx: number, dz: number, dist: number): [number, number] {
-    if (dist < 2) return [dx, dz];
+    if (dist < 2) return dunClear(p.head.x, p.head.z, tx, tz) ? [dx, dz] : [0, 0];
     let nav = bot.nav;
     // Маршрут сбит: бот после боя или отскока далеко от старого пути (первая точка — за стеной или пустой путь
     // при дальней цели) — строим заново, а не ведём напрямую через стену.
@@ -9515,6 +9521,16 @@ export class ZoneRoom extends Room<ZoneState> {
       const path = dunPath(p.head.x, p.head.z, tx, tz).map((q): [number, number] => [q.x, q.z]);
       nav = { tx, tz, at: this.elapsed, path };
       bot.nav = nav;
+      // Цель недостижима по графу (пустой путь): не идём напрямик в стену — стоим и пробуем снова позже.
+      if (!path.length && dist >= 2) {
+        bot.nav = undefined;
+        return [0, 0];
+      }
+    }
+    // Пустой путь при дальней цели (маршрут сбит) — не шагаем напрямик: пересчёт на следующем тике.
+    if (nav.path.length === 0 && dist >= 2) {
+      bot.nav = undefined;
+      return [0, 0];
     }
     return this.followNav(nav, p, dx, dz, dunClear);
   }
@@ -9681,10 +9697,12 @@ export class ZoneRoom extends Room<ZoneState> {
     // Подземелье: шаг не проходит сквозь стену фигуры (иначе бот, скользя вдоль тел мобов, въезжал в стенку
     // и застревал). Такой шаг отменяем и гасим скорость в ту сторону.
     if (inDunRegion(x0, z0) && !dunClear(x0, z0, p.head.x, p.head.z)) {
-      p.head.x = x0;
-      p.head.z = z0;
-      bot.vx = 0;
-      bot.vz = 0;
+      // Вдоль стены: срезаем только ту ось, что упирается, — бот скользит по стене, а не встаёт.
+      const s = wallSlide(x0, z0, p.head.x, p.head.z, dunClear);
+      p.head.x = s.x;
+      p.head.z = s.z;
+      if (s.blockX) bot.vx = 0;
+      if (s.blockZ) bot.vz = 0;
     }
     // Катакомбы: стены залов; иначе — та же граница, что у игроков (карта + пандус + плато рейда).
     if (inCatRegion(p.head.x, p.head.z)) [p.head.x, p.head.z] = catProject(p.head.x, p.head.z, this.cat.open, PLAYER.radius);
