@@ -76,7 +76,7 @@ export function rollCritMult(
 ): number {
   const baseChance = (kind === "arrow" ? BOW.critChance : BASE_CRIT) + (hunterBow ? AFFIX.crit.chanceBonus : 0);
   const n = invested(luc);
-  const chance = Math.min(0.75, baseChance + extraChance + n * ATTR2.luc.crit);
+  const chance = Math.min(ATTR2.luc.critCap, baseChance + extraChance + n * ATTR2.luc.crit);
   if (chance <= 0) return 1;
   return rnd() < chance ? baseMult + extraMult + n * ATTR2.luc.critDmg : 1;
 }

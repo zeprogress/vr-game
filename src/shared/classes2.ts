@@ -162,7 +162,7 @@ export function dodge2(a: AttrsIn, oneItem: boolean, dagger = false): number {
 }
 
 export function critChance2(a: AttrsIn, weaponBase: number): number {
-  return Math.min(0.75, weaponBase + inv(attrOf(a, "luc")) * ATTR2.luc.crit + treeBonus(a, "crit"));
+  return Math.min(ATTR2.luc.critCap, weaponBase + inv(attrOf(a, "luc")) * ATTR2.luc.crit + treeBonus(a, "crit"));
 }
 
 export function critMult2(a: AttrsIn, weaponBase: number): number {

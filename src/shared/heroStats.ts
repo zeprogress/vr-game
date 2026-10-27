@@ -91,6 +91,9 @@ export interface HeroStatRow {
   value: string;
 }
 
+/** Пометка «упёрлось в потолок» в значении характеристики — видна везде, где рисуются строки (ПК, телефон, VR, !inv, эфир). */
+export const CAP_MARK = " · кап";
+
 /** Минимальный набор полей, нужный для расчёта — общий для PlayerState и записи в PlayerStore. */
 export interface HeroStatInput {
   /** Бонусы надетой брони (PlayerState.ab, shared/armor.ts): здоровье, защиты, регенерация, уворот. */
@@ -210,9 +213,10 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   // в формуле dodgeChance).
   const oneHanded = holdsOneItem(p.leftCls, p.rightCls);
   // «Пелена смерти» прибавляет уворот СВЕРХ потолка (см. hurtPlayer) — показываем так же.
+  const dodgeBase = dodgeChance(p, oneHanded, p.leftCls === "dagger" || p.rightCls === "dagger");
   rows.push({
     label: "Шанс уворота",
-    value: `${Math.round((dodgeChance(p, oneHanded, p.leftCls === "dagger" || p.rightCls === "dagger") + bm.dodge) * 100)}%${bm.dodge > 0 ? UP : ""}`,
+    value: `${Math.round((dodgeBase + bm.dodge) * 100)}%${bm.dodge > 0 ? UP : ""}${dodgeBase >= ATTR2.luc.dodgeCap - 1e-9 ? CAP_MARK : ""}`,
   });
 
   // Ролл Крит даёт и шанс, и силу (сила растёт вместе с шансом, см. critRollMult).
@@ -226,7 +230,7 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const newW = cls === "dagger" || cls === "spear" || cls === "hammer" ? WEAPONS2[cls] : null;
   const soloDagger = cls === "dagger" && (p.leftCls === "" || p.rightCls === "");
   const critChance = Math.min(
-    0.75,
+    ATTR2.luc.critCap,
     (cls === "bow" ? BOW.critChance : newW ? newW.critBase : BASE_CRIT) + (soloDagger ? DAGGER.soloCrit : 0) + critChanceBonus + luckN * ATTR2.luc.crit,
   );
   // Базовая сила крита — своя для каждого вида оружия (см. rollCritMult в
@@ -237,7 +241,7 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
     (soloDagger ? DAGGER.soloCritDmg : 0);
   // Показываем всегда (в т.ч. 0% у меча/посоха без ролла) — а не только при
   // ненулевом шансе: игроку/зрителю иначе непонятно, есть ли крит вообще.
-  rows.push({ label: "Шанс крита", value: `${Math.round(critChance * 100)}%` });
+  rows.push({ label: "Шанс крита", value: `${Math.round(critChance * 100)}%${critChance >= ATTR2.luc.critCap - 1e-9 ? CAP_MARK : ""}` });
   rows.push({ label: "Сила крита", value: `×${(baseCritMult + critMultBonus + luckN * ATTR2.luc.critDmg).toFixed(2)}` });
 
   // Вампиризм — только ролл на оружии ближнего боя (см. vampFrac в items.ts).
