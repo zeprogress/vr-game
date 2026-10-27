@@ -327,7 +327,9 @@ namespace Zep
                 lastHurt = state.hurtSeq;
                 SoundBank.At(transform.position, "mobHurt", range: 28f);
                 flash = 1f;
-                if (actionLeft <= 0) { anim.Once(1f, HurtClips); actionLeft = 0.4f; }
+                // Клип урона — только стоящему мобу: на бегу он подменял шаги, и моб «скользил» по земле.
+                // Порог — тот же, что включает ходьбу (speed > 0.4).
+                if (actionLeft <= 0 && speed <= 0.4f) { anim.Once(1f, HurtClips); actionLeft = 0.4f; }
             }
 
             if (state.dead != 0)
