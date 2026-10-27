@@ -1829,6 +1829,11 @@ export class Game {
     this.wristPanel.onGift = (m) => this.net?.sendPcInvAct(m);
     this.wristPanel.nearbyHeroes = () => this.nearbyHeroNicks();
     this.wristPanel.onRingsOpen = () => this.net?.sendPcInvOpen();
+    // Дерево прокачки на запястье: то же действие, что в окне инвентаря; свежие данные — следом.
+    this.wristPanel.onTreeAct = (id, take) => {
+      this.net?.sendPcInvAct({ act: "tree", id: String(id), idx: take ? 1 : 0 });
+      window.setTimeout(() => this.net?.sendPcInvOpen(), 250);
+    };
     this.wristPanel.onQuestSelect = (it) => this.setQuestCompass(it);
     this.wristPanel.onEnchant = (id) => {
       this.vrEnchId = id;
@@ -3805,6 +3810,7 @@ export class Game {
       this.pcInv?.setData(d);
       this.wristPanel?.setJewels(d.jewels, d.scrap);
       this.wristPanel?.setCraft(d.craft);
+      this.wristPanel?.setTree(d.tree ? { cls: d.tree.cls, taken: d.tree.taken, unspent: d.attrs.unspent } : null);
       this.wristPanel?.setArmor(d.armor ?? [], d.armorWorn ?? {});
       this.vrEnchPanel?.markDirty();
     };

@@ -1,4 +1,5 @@
-import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, skillCooldownFor, skillDesc, skillName, stepCost, type ClassId } from "#shared/classes2";
+import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, skillCooldownFor, skillDesc, skillName, type ClassId } from "#shared/classes2";
+import { pcTreePanel } from "./PcTree";
 import { SHOP, type ShopId } from "#shared/shop";
 import { armorIconKey, glyph, skillIcon, weaponIcon } from "#shared/icons";
 import { ARMOR_PART_NAME, ARMOR_PARTS, type ArmorPart } from "#shared/armor";
@@ -2653,22 +2654,31 @@ export class PcInventory {
     const gemB = pcJewelBonus(d.jewels);
     const wrap = div("pcinv-attrs");
     const head = div("pcinv-tabtop");
-    head.append(div(`pcinv-pts${a.unspent > 0 ? " on" : ""}`, a.unspent > 0 ? `Свободных очков: ${a.unspent}` : "Свободных очков нет — их дают за уровень"), div("pcinv-small", costRule()));
+    head.append(
+      div(`pcinv-pts${a.unspent > 0 ? " on" : ""}`, a.unspent > 0 ? `Свободных очков: ${a.unspent}` : "Свободных очков нет — их дают за уровень"),
+      div("pcinv-small", "Очко за уровень, узел дерева — 1 очко, узел атрибута — +4."),
+    );
     wrap.append(head);
+    // Дерево прокачки текущего класса (по оружию в руках).
+    if (d.tree && d.tree.cls) {
+      wrap.append(pcTreePanel({
+        cls: d.tree.cls as ClassId,
+        taken: d.tree.taken,
+        unspent: a.unspent,
+        act: (id, take) => this.hooks.act({ act: "tree", id: String(id), idx: take ? 1 : 0 }),
+        touch: this.hooks.touch,
+      }));
+    }
     for (const at of ATTRS) {
       const row = div("pcinv-arow");
       const v = a[at.id] ?? 1;
-      const cost = stepCost(v);
-      // Сколько стоят следующие 5 подъёмов (цена может вырасти на середине).
-      let cost5 = 0;
-      for (let i = 0; i < 5; i++) cost5 += stepCost(v + i);
       const gemAdd = gemB[at.id];
       const ic = div("pcinv-aic");
       ic.innerHTML = iconHtml(`a.${at.id}` as IconKey);
       const txt = div("pcinv-atxt");
       const nameEl = div("pcinv-aname", at.name);
       nameEl.style.color = ATTR_LOOK[at.id].c; // цвет атрибута — один на всю игру (look.ts)
-      txt.append(nameEl, div("pcinv-small", `${at.hint} · следующий подъём — ${cost} оч.`));
+      txt.append(nameEl, div("pcinv-small", at.hint));
       const val = div("pcinv-aval");
       val.append(span(String(v)));
       if (gemAdd > 0) {
@@ -2676,19 +2686,14 @@ export class PcInventory {
         g.title = "от камней в кольцах";
         val.append(g);
       }
+      // Быстро: ближайший узел этого атрибута в дереве (с узлами по пути).
       const b1 = document.createElement("button");
       b1.className = "pcinv-abtn";
-      b1.textContent = "+1";
-      b1.title = `${cost} оч.`;
-      b1.disabled = a.unspent < cost;
+      b1.textContent = "+4";
+      b1.title = "Взять ближайший узел этого атрибута в дереве (вместе с узлами по пути)";
+      b1.disabled = a.unspent < 1;
       b1.onclick = () => this.hooks.act({ act: "stat", id: at.id, idx: 1 });
-      const b5 = document.createElement("button");
-      b5.className = "pcinv-abtn";
-      b5.textContent = "+5";
-      b5.title = `${cost5} оч.`;
-      b5.disabled = a.unspent < cost5;
-      b5.onclick = () => this.hooks.act({ act: "stat", id: at.id, idx: 5 });
-      row.append(ic, txt, val, b1, b5);
+      row.append(ic, txt, val, b1);
       wrap.append(row);
     }
     const cost = d.respecCost;
@@ -2696,16 +2701,16 @@ export class PcInventory {
     if (cost >= 0) {
       const rb = document.createElement("button");
       rb.className = "pcinv-respec";
-      rb.textContent = cost === 0 ? "Сбросить атрибуты — бесплатно" : `Сбросить атрибуты — ${cost} ◈ (у тебя ${d.tokens ?? 0})`;
+      rb.textContent = cost === 0 ? "Сбросить дерево — бесплатно" : `Сбросить дерево — ${cost} ◈ (у тебя ${d.tokens ?? 0})`;
       rb.disabled = cost > (d.tokens ?? 0);
       rb.onclick = () =>
-        this.askConfirm("Сбросить все вложенные очки атрибутов? Их можно будет распределить заново.", "Сбросить", () =>
+        this.askConfirm("Сбросить дерево прокачки всех классов? Все очки вернутся, их можно будет вложить заново.", "Сбросить", () =>
           this.hooks.act({ act: "respec", id: "respec", idx: 0 }),
         );
       wrap.append(rb);
     }
     if (this.lastResult) wrap.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
-    this.body.append(tabPanel("Атрибуты", wrap));
+    this.body.append(tabPanel("Дерево и атрибуты", wrap));
   }
 
   // ---------------- перетаскивание / подсказки / подтверждение ----------------

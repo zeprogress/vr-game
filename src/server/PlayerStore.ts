@@ -10,6 +10,7 @@ import { emptyBag, type Slot, type WeaponInstance } from "#shared/items";
 import type { QuestSave, StorySave, WeeklySave } from "#shared/quests";
 import type { RingInst } from "#shared/jewels";
 import type { NeckInst } from "#shared/necklaces";
+import type { ClassId } from "#shared/classes2";
 
 /** Позиция + прогресс + здоровье. С этапа 7 всё это считает сервер. */
 import type { TradeSession } from "./trade";
@@ -99,6 +100,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   xpVer?: number;
   /** Хозяин сам распределяет очки атрибутов (вложил вручную или сбросил) — бот больше не раскидывает их сам. */
   manualAttrs?: boolean;
+  /** Дерево прокачки: взятые узлы по классам (shared/passiveTree.ts). Атрибуты str…wis считаются из него. */
+  tree?: Partial<Record<ClassId, number[]>>;
   /** Выбранные умения (2 из пула класса), по классу: { warrior: ["stunBash","crush"], … }. */
   skills?: Record<string, string[]>;
   /** Кольца и камни (shared/jewels.ts JewelSave): все кольца, надетые в слотах 1/2, камни в сумке. */
@@ -121,7 +124,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
 }
 
 /** Текущая версия системы атрибутов. */
-export const ATTR_VER = 2;
+/** 3 — дерево прокачки (2026-10-27): атрибуты — узлы дерева, очко за уровень. */
+export const ATTR_VER = 3;
 
 /** Текущая версия кривой опыта (2 — XP_CURVE от 2026-10-16). */
 export const XP_VER = 2;
@@ -151,6 +155,9 @@ export function migrateAttrs(r: PlayerRecord): boolean {
   resetAttrs(r);
   r.attrVer = ATTR_VER;
   r.respecCount = 0;
+  // Дерево прокачки: старт с пустого дерева, бот сам раскладывает очки по своему классу.
+  r.tree = {};
+  r.manualAttrs = false;
   return true;
 }
 

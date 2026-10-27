@@ -39,10 +39,10 @@ test("totalCost — сумма цен от старта до значения", 
   assert.equal(totalCost(12), 12);
 });
 
-test("очки: 0 на первом уровне, 297 к сотому (как в описании атрибутов)", () => {
-  assert.equal(pointsAt(1), 0);
-  assert.equal(pointsAt(2), ATTR2.pointsPerLevel);
-  assert.equal(pointsAt(100), 297);
+test("очки: по одному узлу дерева за уровень — 1 на первом, 100 к сотому", () => {
+  assert.equal(pointsAt(1), 1);
+  assert.equal(pointsAt(2), 2);
+  assert.equal(pointsAt(100), 100);
   assert.equal(spentOn(blankAttrs()), 0);
 });
 

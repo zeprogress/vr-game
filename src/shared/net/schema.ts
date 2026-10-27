@@ -43,6 +43,27 @@ export class ArmorBonusSync extends Schema {
   @type("float32") dodge = 0;
 }
 
+/** Бонусы дерева прокачки (shared/passiveTree.ts, TREE_FX): доли; формулы боя читают их через treeBonus(). */
+export class TreeBonusSync extends Schema {
+  @type("float32") dmg = 0;
+  @type("float32") atk = 0;
+  @type("float32") crit = 0;
+  @type("float32") critDmg = 0;
+  @type("float32") dodge = 0;
+  @type("float32") move = 0;
+  @type("float32") hp = 0;
+  @type("float32") physDef = 0;
+  @type("float32") magDef = 0;
+  @type("float32") regen = 0;
+  @type("float32") block = 0;
+  @type("float32") vamp = 0;
+  @type("float32") pierce = 0;
+  @type("float32") cd = 0;
+  @type("float32") skill = 0;
+  @type("float32") magic = 0;
+  @type("float32") heal = 0;
+}
+
 export class PlayerState extends Schema {
   @type("string") nick = "";
   @type("string") mode: PlayerMode = "flat";
@@ -140,6 +161,8 @@ export class PlayerState extends Schema {
   @type(GemBonusSync) gb = new GemBonusSync();
   /** Бонусы надетой брони (shared/armor.ts): синхронизируются, чтобы считать здоровье и защиту. */
   @type(ArmorBonusSync) ab = new ArmorBonusSync();
+  /** Бонусы дерева прокачки (узлы с бонусом в бою). */
+  @type(TreeBonusSync) tb = new TreeBonusSync();
   /** Убийств за последние 60 с (карточка «смотрим» у спектатора; считает server/sim/killRate.ts, не сохраняется). */
   @type("uint16") kpm = 0;
 }

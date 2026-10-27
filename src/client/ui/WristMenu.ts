@@ -54,6 +54,7 @@ import { STAT_LABELS, type Progression, type StatName } from "../player/Progress
 import { BAG, ITEMS, type Inventory } from "../player/Inventory";
 import { VR_SETTINGS, setVrSettings } from "../config/vrSettings";
 import { BOT } from "#shared/constants";
+import { treeOf, type TreeNode, type TreePart } from "#shared/passiveTree";
 import { BOT_SKIN_LABELS } from "../world/models";
 import { weaponStats, type HeroStats, type WornWeapon } from "./itemStats";
 import { LAYER } from "../engine/renderLayers";
@@ -115,7 +116,7 @@ const WH_PER_PAGE = WH_COLS * WH_ROWS;
 const TIER_COLOR = Object.fromEntries(Object.entries(TIER_LOOK).map(([t, l]) => [t, l.color])) as Record<WeaponTier, string>;
 const TIER_BG = Object.fromEntries(Object.entries(TIER_LOOK).map(([t, l]) => [t, l.bg])) as Record<WeaponTier, string>;
 
-type Tab = "char" | "rings" | "craft" | "chat" | "quest" | "skills" | "set";
+type Tab = "char" | "tree" | "rings" | "craft" | "chat" | "quest" | "skills" | "set";
 type Kind = "tab" | "button" | "cell" | "card" | "toggle" | "slider";
 type Side = "left" | "right";
 
@@ -289,6 +290,108 @@ export class WristMenu {
     if (this.tab === "chat") this.dirty = true;
   }
   private readonly chat: { nick: string; text: string; bot: boolean }[] = [];
+
+  // ---- дерево прокачки (вкладка «Дерево», те же действия, что в окне инвентаря) ----
+
+  private tree: { cls: string; taken: number[]; unspent: number } | null = null;
+  /** Взять (true) или снять (false) узел — Game шлёт действие tree на сервер. */
+  onTreeAct: ((id: number, take: boolean) => void) | null = null;
+
+  /** Дерево текущего класса и свободные очки (из данных окна инвентаря). */
+  setTree(t: { cls: string; taken: number[]; unspent: number } | null): void {
+    this.tree = t;
+    if (this.tab === "tree") this.dirty = true;
+  }
+
+  /**
+   * Дерево прокачки на запястье: узлы — кнопки (луч наводит — описание на полосе подсказки,
+   * курок/B — взять свободный или снять взятый), стик ходит по узлам. Цвета — как в окне на ПК (PcTree).
+   */
+  private drawTree(ctx: CanvasRenderingContext2D): void {
+    const LANE: Record<TreePart, string> = { dmg: "#f0664f", mixa: "#f08a3c", def: "#5fb0d6", mixb: "#f08a3c", skl: "#a98be0" };
+    const GOLD = "#d9b35a";
+    const d = this.tree;
+    const top = TAB_Y + TAB_H + 12;
+    ctx.font = "bold 26px system-ui, sans-serif";
+    ctx.fillStyle = "#f1ead6";
+    if (!d || !d.cls) {
+      ctx.fillText("Дерево загружается… (нужно оружие класса в руках)", 22, top + 8);
+      return;
+    }
+    const t = treeOf(d.cls as ClassId);
+    const taken = new Set(d.taken);
+    const isOn = (id: number) => id === 0 || taken.has(id);
+    const near = (id: number) => t.adj[id].some(isOn);
+    ctx.fillText(d.unspent > 0 ? `Свободных очков: ${d.unspent}` : "Свободных очков нет — их дают за уровень", 22, top);
+    ctx.font = "20px system-ui, sans-serif";
+    ctx.fillStyle = "#a9a498";
+    ctx.fillText("Наведи на узел — описание внизу · курок — взять / снять · узел атрибута +4", 22, top + 34);
+    // Область дерева: от подписей до полосы подсказки, масштаб — чтобы влезло целиком.
+    const x0 = 24, y0 = top + 74, w = TEX_W - 48, h = INFO_Y - 16 - y0;
+    const k = Math.min(w / (t.width + 1), h / (t.height + 0.6));
+    const ox = x0 + (w - t.width * k) / 2;
+    const X = (x: number) => ox + x * k;
+    const Y = (y: number) => y0 + y * k;
+    const R = Math.max(8, Math.min(15, k * 0.42));
+    const color = (n: TreeNode) => (n.kind === "key" ? GOLD : LANE[n.part]);
+    for (const l of t.laneTitles) {
+      ctx.font = "bold 16px system-ui, sans-serif";
+      ctx.fillStyle = "#8f8a7e";
+      ctx.textAlign = "center";
+      ctx.fillText(l.title.toUpperCase(), X(l.x), y0 - 26);
+      ctx.textAlign = "left";
+    }
+    for (const e of t.edges) {
+      const a = t.nodes[e.a], b = t.nodes[e.b];
+      const on = isOn(e.a) && isOn(e.b);
+      ctx.strokeStyle = e.bridge ? GOLD : on ? color(b) : "#4a4339";
+      ctx.lineWidth = on ? 4 : 2;
+      ctx.setLineDash(e.bridge && !on ? [6, 5] : []);
+      ctx.beginPath();
+      ctx.moveTo(X(a.x), Y(a.y));
+      ctx.lineTo(X(b.x), Y(b.y));
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    for (const n of t.nodes) {
+      const on = isOn(n.id);
+      const free = !on && near(n.id) && d.unspent > 0;
+      const cx = X(n.x), cy = Y(n.y), r = n.kind === "root" ? R + 3 : n.kind === "key" ? R + 2 : R;
+      const state = n.id === 0 ? "Стартовая точка"
+        : on ? "Взято · курок — снять (с тем, что от него оторвётся)"
+        : !near(n.id) ? "Сначала возьми соседний узел"
+        : d.unspent <= 0 ? "Нет свободных очков" : "Курок — взять за 1 очко";
+      const wd = this.add({
+        id: `tree:${n.id}`, x: cx - r - 3, y: cy - r - 3, w: 2 * r + 6, h: 2 * r + 6, kind: "button",
+        info: [`${n.name}${n.lane ? ` · ${n.lane} → ${n.theme}` : ""}`, `${n.desc} · ${state}`],
+        act: () => {
+          if (n.id === 0) return;
+          if (taken.has(n.id)) this.onTreeAct?.(n.id, false);
+          else if (free) this.onTreeAct?.(n.id, true);
+        },
+      });
+      const st = this.styleFor(wd);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = on ? color(n) : "#14120f";
+      ctx.fill();
+      ctx.lineWidth = st.stroke ? st.lw + 1 : free ? 3 : 2;
+      ctx.strokeStyle = st.stroke || (on || free ? color(n) : n.kind === "key" ? GOLD : "#4a4339");
+      ctx.setLineDash(n.kind === "attr" && !on ? [4, 3] : []);
+      ctx.globalAlpha = on || free || near(n.id) ? 1 : 0.45;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const g = n.kind === "root" ? "" : n.kind === "attr" ? (n.name.split(" ")[1]?.[0] ?? "") : n.kind === "skill" ? "★" : n.kind === "key" ? "◆" : "+";
+      ctx.font = `bold ${Math.round(r * 1.1)}px system-ui, sans-serif`;
+      ctx.fillStyle = on ? "#14120f" : free ? color(n) : "#8f8a7e";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(g, cx, cy + 1);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.globalAlpha = 1;
+    }
+  }
 
   /** Кольца и камни героя (из данных окна инвентаря) и лом в сумке. */
   setJewels(j: PcInvJewels | undefined, scrap: number): void {
@@ -762,7 +865,7 @@ export class WristMenu {
   private switchTab(t: Tab): void {
     if (this.tab === t) return;
     this.tab = t;
-    if (t === "rings" || t === "craft") this.onRingsOpen?.();
+    if (t === "rings" || t === "craft" || t === "tree") this.onRingsOpen?.();
     this.focusId = `tab:${t}`;
     this.dirty = true;
     this.lastDraw = 0;
@@ -849,6 +952,7 @@ export class WristMenu {
     ctx.textBaseline = "top";
 
     if (this.tab === "char") this.drawCharacter(ctx);
+    else if (this.tab === "tree") this.drawTree(ctx);
     else if (this.tab === "rings") this.drawRings(ctx);
     else if (this.tab === "craft") this.drawCraft(ctx);
     else if (this.tab === "chat") this.drawChat(ctx);
@@ -882,6 +986,7 @@ export class WristMenu {
   private drawTabs(ctx: CanvasRenderingContext2D): void {
     const tabs: [Tab, string][] = [
       ["char", "Персонаж"],
+      ["tree", "Дерево"],
       ["rings", "Кольца"],
       ["craft", "Крафт"],
       ["chat", "Чат"],
@@ -1100,7 +1205,7 @@ export class WristMenu {
           p.spend(s);
         },
         info: [
-          `${STAT_LABELS[s]}: ${p.stats[s]}${pcJewelBonus(this.jewels ?? undefined)[s] > 0 ? ` +${pcJewelBonus(this.jewels ?? undefined)[s]} от камней` : ""} · подъём стоит ${cost} оч.`,
+          `${STAT_LABELS[s]}: ${p.stats[s]}${pcJewelBonus(this.jewels ?? undefined)[s] > 0 ? ` +${pcJewelBonus(this.jewels ?? undefined)[s]} от камней` : ""} · нажми — ближайший узел дерева (+4)`,
           `${attrEffect(s)}${canSpend ? " · нажми — вложить" : ""}`,
         ],
       });

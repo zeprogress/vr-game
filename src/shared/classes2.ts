@@ -1,3 +1,4 @@
+import { attrsFromTree, autoTree, treeBonus } from "./passiveTree";
 import { BOW, MELEE, PLAYER, PLAYER_HP, PROGRESSION } from "./constants";
 import { MAGIC, magicPowerFor, magicResistFrac } from "./magic";
 import { levelGain } from "./levelGain";
@@ -110,16 +111,16 @@ const P = PROGRESSION.perLevel;
 export { invested };
 
 export function maxHp2(level: number, a: AttrsIn): number {
-  return (PLAYER_HP.max + levelGain(level, P.hp)) * (1 + inv(attrOf(a, "con")) * ATTR2.con.hp + armorBonus(a, "hp"));
+  return (PLAYER_HP.max + levelGain(level, P.hp)) * (1 + inv(attrOf(a, "con")) * ATTR2.con.hp + armorBonus(a, "hp") + treeBonus(a, "hp"));
 }
 
 export function moveSpeed2(level: number, a: AttrsIn): number {
-  return (PLAYER.runSpeed + levelGain(level, P.moveSpeed)) * (1 + inv(attrOf(a, "agi")) * ATTR2.agi.move);
+  return (PLAYER.runSpeed + levelGain(level, P.moveSpeed)) * (1 + inv(attrOf(a, "agi")) * ATTR2.agi.move + treeBonus(a, "move"));
 }
 
 /** Множитель физ. урона: уровень × СИЛ. Тир оружия и профиль — отдельно. */
 export function physPower2(level: number, a: AttrsIn): number {
-  return (1 + levelGain(level, P.weaponDmg)) * (1 + inv(attrOf(a, "str")) * ATTR2.str.physDmg);
+  return (1 + levelGain(level, P.weaponDmg)) * (1 + inv(attrOf(a, "str")) * ATTR2.str.physDmg) * (1 + treeBonus(a, "dmg"));
 }
 
 /** Мягкое затухание прироста без потолка: вначале ≈g, дальше растёт всё медленнее. */
@@ -137,7 +138,7 @@ function levelTempo(level: number): number {
  * `soft` — сила затухания роста от уровня: у ближнего боя сильнее (иначе «пропеллер»).
  */
 export function physTempo2(level: number, a: AttrsIn, soft: number): number {
-  return (1 + softGain(levelTempo(level) - 1, soft)) * agiTempo2(a);
+  return (1 + softGain(levelTempo(level) - 1, soft)) * agiTempo2(a) * (1 + treeBonus(a, "atk"));
 }
 
 /**
@@ -151,21 +152,21 @@ export function agiTempo2(a: AttrsIn, share = 1): number {
 
 /** Множитель скорости каста (посох): уровень (рост гаснет) × МДР — линейно, как ЛОВ у физ. темпа. */
 export function castTempo2(level: number, a: AttrsIn): number {
-  return (1 + softGain(levelTempo(level) - 1, ATK_SOFT)) * (1 + inv(attrOf(a, "wis")) * ATTR2.wis.cast);
+  return (1 + softGain(levelTempo(level) - 1, ATK_SOFT)) * (1 + inv(attrOf(a, "wis")) * ATTR2.wis.cast) * (1 + treeBonus(a, "atk"));
 }
 
 /** Уворот: УДЧ (один предмет в руках — ×dodgeOneItem) + врождённый уворот ассасина с кинжалом (DAGGER.dodge). */
 export function dodge2(a: AttrsIn, oneItem: boolean, dagger = false): number {
   const L = ATTR2.luc;
-  return Math.min(L.dodgeCap, inv(attrOf(a, "luc")) * L.dodge * (oneItem ? L.dodgeOneItem : 1) + (dagger ? DAGGER.dodge : 0) + armorBonus(a, "dodge"));
+  return Math.min(L.dodgeCap, inv(attrOf(a, "luc")) * L.dodge * (oneItem ? L.dodgeOneItem : 1) + (dagger ? DAGGER.dodge : 0) + armorBonus(a, "dodge") + treeBonus(a, "dodge"));
 }
 
 export function critChance2(a: AttrsIn, weaponBase: number): number {
-  return Math.min(0.75, weaponBase + inv(attrOf(a, "luc")) * ATTR2.luc.crit);
+  return Math.min(0.75, weaponBase + inv(attrOf(a, "luc")) * ATTR2.luc.crit + treeBonus(a, "crit"));
 }
 
 export function critMult2(a: AttrsIn, weaponBase: number): number {
-  return weaponBase + inv(attrOf(a, "luc")) * ATTR2.luc.critDmg;
+  return weaponBase + inv(attrOf(a, "luc")) * ATTR2.luc.critDmg + treeBonus(a, "critDmg");
 }
 
 // ---------------------------------------------------------------- оружие
@@ -290,12 +291,12 @@ const START: AttrsIn = { str: 1, agi: 1, int: 1, con: 1, luc: 1, wis: 1 };
 /** Регенерация здоровья от ТЕЛ — доля МАКС. HP в секунду, работает и в бою (вдобавок к PLAYER_HP.regen вне боя). Ролл щита «Регенерация» — сверху. */
 export function hpRegenFrac(a: AttrsIn): number {
   // Регенерация от брони — складывается с телосложением (доля макс. HP в секунду).
-  return inv(attrOf(a, "con")) * ATTR2.con.regen + armorBonus(a, "regen");
+  return inv(attrOf(a, "con")) * ATTR2.con.regen + armorBonus(a, "regen") + treeBonus(a, "regen");
 }
 
 /** Доля урона, гасимая физ. бронёй: броня от ТЕЛ, перемноженная с бронёй предметов (shared/armor.ts). */
 export function armorFrac(a: AttrsIn): number {
-  return 1 - (1 - physArmorBase(a)) * (1 - armorBonus(a, "physDef"));
+  return 1 - (1 - physArmorBase(a)) * (1 - armorBonus(a, "physDef")) * (1 - treeBonus(a, "physDef"));
 }
 
 /** Шанс увернуться от любой атаки (УДЧ); один предмет в руках — выше; кинжал в руке — врождённый уворот ассасина. */
@@ -335,7 +336,7 @@ export function attackSpeedFor(level: number, a: AttrsIn = START): number {
  */
 export function meleeSpeedFor(level: number, a: AttrsIn = START): number {
   const lvl = attackSpeedFor(level, START);
-  return (1 + softGain((lvl - 1) * MELEE_LEVEL_SHARE, MELEE_SOFT)) * agiTempo2(a, MELEE_AGI_SHARE);
+  return (1 + softGain((lvl - 1) * MELEE_LEVEL_SHARE, MELEE_SOFT)) * agiTempo2(a, MELEE_AGI_SHARE) * (1 + treeBonus(a, "atk"));
 }
 
 /** Оружие с паузой между атаками (посох — своя формула staffCastInterval). */
@@ -799,7 +800,7 @@ export function skillCdMul2(cls: ClassId | null, a: object): number {
   // Откат от ожерелья (gb.skCd, доля) — без угасания; от мудрости — с угасанием (WIS_CD_FADE). Не ниже половины.
   const cut = (a as { gb?: { skCd?: number } }).gb?.skCd ?? 0;
   const wisCut = fadedCut(1 - 1 / (1 + inv(attrOf(a, "wis")) * ATTR2.wis.cd), WIS_CD_FADE);
-  return ((cls && CLASS_CD_MUL[cls]) || 1) * (1 - wisCut) * Math.max(0.5, 1 - cut);
+  return ((cls && CLASS_CD_MUL[cls]) || 1) * (1 - wisCut) * Math.max(0.5, 1 - cut - treeBonus(a, "cd"));
 }
 
 /** Атрибуты героя для умений: база (как в PlayerState) и прибавка от колец и камней (PlayerState.gb). */
@@ -939,62 +940,13 @@ export const ASSASSIN_WHIRL_DASH = 6;
 // ---------------------------------------------------------------- раскладка
 
 /**
- * Раскладка очков по шаблону класса: каждое очко-подъём идёт в атрибут с
- * наибольшим «вес / (цена · (1 + вложено/20))» — так шаблон не сливает всё в
- * один атрибут, а повторяет то, как раскидал бы живой игрок.
+ * Раскладка атрибутов «как у бота» на уровне `level` (лаборатории, баланс): дерево прокачки класса
+ * заполняется по весам build, атрибуты — из взятых узлов (узел атрибута +4).
  */
 export function autoBuild(cls: ClassId, level: number): Attrs {
-  const a = blankAttrs();
-  let left = pointsAt(level);
-  const w = CLASSES2[cls].build;
-  for (;;) {
-    let best: Attr | null = null;
-    let bestScore = 0;
-    for (const k of ATTRS) {
-      const wk = w[k] ?? 0;
-      if (wk <= 0) continue;
-      const c = stepCost(a[k]);
-      if (c > left) continue;
-      const score = wk / (c * (1 + inv(a[k]) / 20));
-      if (score > bestScore) {
-        bestScore = score;
-        best = k;
-      }
-    }
-    if (!best) break;
-    left -= stepCost(a[best]);
-    a[best]++;
-  }
-  return a;
-}
-
-/**
- * Дораскидать свободные очки по шаблону класса (боты зрителей): тот же
- * выбор, что в autoBuild, но от текущих значений. Мутирует `a`, вернёт,
- * сколько подъёмов сделано.
- */
-export function autoSpend(a: Attrs & { unspent: number }, cls: ClassId): number {
-  const w = CLASSES2[cls].build;
-  let n = 0;
-  for (;;) {
-    let best: Attr | null = null;
-    let bestScore = 0;
-    for (const k of ATTRS) {
-      const wk = w[k] ?? 0;
-      if (wk <= 0) continue;
-      const c = stepCost(a[k]);
-      if (c > a.unspent) continue;
-      const score = wk / (c * (1 + inv(a[k]) / 20));
-      if (score > bestScore) {
-        bestScore = score;
-        best = k;
-      }
-    }
-    if (!best) return n;
-    a.unspent -= stepCost(a[best]);
-    a[best]++;
-    n++;
-  }
+  const taken: number[] = [];
+  autoTree(cls, taken, level, CLASSES2[cls].build);
+  return attrsFromTree(cls, taken, ATTR2.start);
 }
 
 // ---------------------------------------------------------------- сводка героя

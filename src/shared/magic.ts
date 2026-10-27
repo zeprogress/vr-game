@@ -2,6 +2,7 @@ import { AFFIX, PROGRESSION } from "./constants";
 import { levelGain } from "./levelGain";
 import { ATTR2, attrOf, invested, magicResistBase } from "./attrs2";
 import { armorBonus } from "./armor";
+import { treeBonus } from "./passiveTree";
 
 /**
  * Магия (этап 14). Всё считает сервер: ману, кулдаун, урон, снаряд.
@@ -106,7 +107,7 @@ export function burnHpFracFor(a: Pick<MagicAttrs, "int">): number {
  * огнешара, магических умений и объём лечения.
  */
 export function magicPowerFor(level: number, a: MagicAttrs): number {
-  return magicLevelFor(level) * (1 + invested(attrOf(a, "int")) * ATTR2.int.magic);
+  return magicLevelFor(level) * (1 + invested(attrOf(a, "int")) * ATTR2.int.magic) * (1 + treeBonus(a, "magic"));
 }
 
 /** Часть «силы магии» от уровня (без интеллекта) — умения молота считают интеллект сами (HAMMER_SKILL). */
@@ -128,7 +129,7 @@ export function manaRegenFor(a: MagicAttrs): number {
 export function magicResistFrac(a: MagicAttrs): number {
   const base = magicResistBase(a);
   // Маг. защита брони (shared/armor.ts) — множится с МДР; кольца магзащиту не дают.
-  return 1 - (1 - base) * (1 - armorBonus(a, "magDef"));
+  return 1 - (1 - base) * (1 - armorBonus(a, "magDef")) * (1 - treeBonus(a, "magDef"));
 }
 
 /** Множитель лечения зельями: +2% за каждый подъём ИНТ (сила лечения — от интеллекта). */
@@ -147,7 +148,7 @@ export function fireboltDamage(level: number, a: MagicAttrs, charge: number): nu
 export function healAmountFor(level: number, a: MagicAttrs, charge: number): number {
   const c = Math.max(0, Math.min(1, charge));
   const base = MAGIC.heal.baseHeal + c * MAGIC.heal.healPerCharge;
-  return base * magicPowerFor(level, a);
+  return base * magicPowerFor(level, a) * (1 + treeBonus(a, "heal"));
 }
 
 export function fireboltSpeed(pull01: number): number {

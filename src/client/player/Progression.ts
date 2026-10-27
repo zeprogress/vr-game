@@ -99,7 +99,7 @@ export class Progression {
 
   /** Потратить очко на характеристику. true — заявка принята. */
   spend(stat: StatName): boolean {
-    if (this.unspent < statCost(this.stats, stat)) return false;
+    if (this.unspent < this.costOf(stat)) return false;
     if (this.onSpendRequest) {
       // Онлайн: решает сервер, ответ придёт в applyRemote().
       this.onSpendRequest(stat);
@@ -122,9 +122,12 @@ export class Progression {
     };
   }
 
-  /** Цена следующего подъёма атрибута (растёт с вложенным). */
+  /**
+   * Сколько очков минимум нужно на «+атрибут». Онлайн атрибуты — узлы дерева прокачки: сервер берёт
+   * ближайший узел этого атрибута вместе с узлами по пути, поэтому здесь — одно очко.
+   */
   costOf(stat: StatName): number {
-    return statCost(this.stats, stat);
+    return this.onSpendRequest ? 1 : statCost(this.stats, stat);
   }
 
   private fromProgress(p: Progress): void {
