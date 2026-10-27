@@ -1160,6 +1160,39 @@ if (ONLY.has("skilltest")) {
   }
 }
 
+// Яд «Чумного клинка» у НАСТОЯЩИХ героев с кинжалом (--only plaguereal --players players.json): тик яда за стак
+// и взрыв, с их уровнем, атрибутами, деревом и заточкой — чтобы сравнивать формулу яда до/после правки.
+if (ONLY.has("plaguereal")) {
+  say("\n── Яд ассасинов с прода: урон за стак в секунду и взрыв ──");
+  const r = makeRoom(() => true);
+  const room = r.room;
+  const fs = await import("node:fs");
+  const all = JSON.parse(fs.readFileSync(arg("--players")!, "utf8")) as any[];
+  const recs = all.filter((x) => x?.level);
+  const rows: string[] = [];
+  let i = 0;
+  for (const rec of recs) {
+    const norm = `pl${i++}`;
+    store.put(`nick:${norm}`, { ...rec, token: `nick:${norm}`, nick: rec.nick, botActive: true, lastChatAt: simNow } as never);
+    room.spawnBot(rec.nick, norm);
+    const bot = room.bots.get(norm);
+    if (!bot) continue;
+    for (let k = 0; k < 2; k++) r.step();
+    const p = bot.state;
+    if (p.rightCls !== "dagger" && p.leftCls !== "dagger") { room.removeBot?.(norm); continue; }
+    const mob = [...room.sim.mobs.values()].find((m: any) => !m.dead && !m.scarecrow);
+    let got: number[] = [];
+    const pm = room.sim.poisonMob;
+    room.sim.poisonMob = (_id: string, dps: number, burst: number) => ((got = [dps, burst]), 1);
+    bot.rt.plagueUntil = room.elapsed + 5;
+    room.afterDaggerHit(bot.id, p, bot.rt, mob, 1);
+    room.sim.poisonMob = pm;
+    const sh = (h: "left" | "right") => (p[`${h}Cls`] === "dagger" ? `${p[`${h}Tier`]}` : "");
+    rows.push(`  ${String(p.nick).padEnd(16)} ур.${String(p.level).padStart(3)} СИЛ ${String(Math.round(p.str)).padStart(3)} МДР ${String(Math.round(p.wis)).padStart(3)} кинжал ${sh("right") || sh("left")}: яд ${f(got[0] ?? 0, 1).padStart(8)}/с за стак, взрыв ${f(got[1] ?? 0, 0).padStart(8)}`);
+  }
+  for (const x of rows) say(x);
+}
+
 // Обычная охота для сравнения с катакомбами (--only xpfarm --players … --roster …): герои с прода
 // фармят мир как боты --sec секунд (по умолчанию 330 — как средний забег катакомб); сколько уровня набрали.
 if (ONLY.has("xpfarm")) {

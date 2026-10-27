@@ -65,8 +65,10 @@ export function skillDamageText(id: SkillId, cls: ClassId, strike: number, a: Sk
       if (cls === "battlemage") return `Урон по скачкам: ${hops(base, CHAIN_HAMMER.hops, CHAIN.falloff)}`;
       return `Урон по скачкам: ${hops(base, sk.hits, CHAIN.falloff)}`;
     case "plague": {
+      // База яда — атака кинжала (plagueAtk, сервер шлёт её в phys у ассасина), не сила удара.
       const k = skillAttrMul("plague", a);
-      return `Яд ${n(strike * PLAGUE.tickFrac * k)} в секунду за стак, взрыв ${n(strike * SKILLS2.plague.dmgMult * k)}`;
+      const atk = phys ?? strike;
+      return `Яд ${n(atk * PLAGUE.tickFrac * k)} в секунду за стак, взрыв ${n(atk * SKILLS2.plague.dmgMult * k)}`;
     }
     case "soulSteal":
       return `Урон ${n(base)}; лечение ${n(base * SOUL_STEAL.transfer * skillAttrMul("soulSteal", a))}`;

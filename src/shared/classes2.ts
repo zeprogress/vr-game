@@ -525,7 +525,8 @@ export interface SkillDef {
   /** 🧪 Тестовое умение — идёт отбор: имя с пометкой, может уйти на переделку. */
   test?: boolean;
   /** Атрибут, усиливающий само умение (сверх общих), и на сколько за вложенное очко. */
-  attr?: { attr: Attr; per: number; what: string };
+  /** pow — рост с затуханием: множитель (1 + вложено)^pow вместо 1 + вложено × per. */
+  attr?: { attr: Attr; per: number; what: string; pow?: number };
 }
 
 /**
@@ -681,9 +682,9 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   plague: {
     name: "Чумной клинок", icon: glyph("s.plague"), test: true,
-    desc: "8 с отравленных клинков: удар вешает стак яда (до 4); на 4 стаках взрыв заражает соседей (+1 стак) — яд ползёт по толпе. Яд — от атаки кинжала (с заточкой) и мудрости",
+    desc: "8 с отравленных клинков: удар вешает стак яда (до 4); на 4 стаках взрыв заражает соседей (+1 стак) — яд ползёт по толпе. Яд — только от атаки кинжала (тир, ролл «Урон», заточка — вдвойне) и мудрости; уровень и сила на него не влияют",
     cooldown: 16, castTime: 0, radius: 5, dmgMult: 0.288, hits: 1, // взрыв −20% (2026-10-15): было 0.36
-    attr: { attr: "wis", per: 1, what: "сила яда" }, // 2026-10-16: ×10 к зависимости от мудрости (было 0.1 = +10% за очко; ×20 откатили); раньше: 2% → 4.5% → 8% → 14% → 11.2% → 10%
+    attr: { attr: "wis", per: 1, pow: 0.75, what: "сила яда" }, // 2026-10-27: (1 + вложено)^0.75 — МДР 17 ≈ ×8, 41 ≈ ×16, 200 ≈ ×53 // 2026-10-16: ×10 к зависимости от мудрости (было 0.1 = +10% за очко; ×20 откатили); раньше: 2% → 4.5% → 8% → 14% → 11.2% → 10%
   },
   smoke: {
     name: "Пелена смерти", icon: glyph("s.smoke"), test: true,
@@ -870,7 +871,7 @@ export function skillDesc(id: SkillId, cls: ClassId, a?: SkillAttrs): string {
   const d = descNums(sk.variants?.[cls]?.desc ?? sk.desc, a);
   if (!sk.attr) return d;
   const name = ATTR_INFO[sk.attr.attr].name;
-  const per = `+${Math.round(sk.attr.per * 1000) / 10}% за очко`;
+  const per = sk.attr.pow ? `растёт с затуханием, ×(1 + очки)^${sk.attr.pow}` : `+${Math.round(sk.attr.per * 1000) / 10}% за очко`;
   if (!a) return `${d}. ${name}: ${per} (${sk.attr.what})`;
   const pct = Math.round((skillAttrMul(id, a) - 1) * 1000) / 10;
   return `${d}. ${sk.attr.what}: +${pct}% сейчас (${name} ${attrOf(a, sk.attr.attr)}) · ${per}`;
@@ -879,11 +880,24 @@ export function skillDesc(id: SkillId, cls: ClassId, a?: SkillAttrs): string {
 /** Множитель умения от его атрибута (SkillDef.attr): 1 + (атрибут − старт) × per. Атрибут — с кольцами и камнями (attrOf), как на сервере. */
 export function skillAttrMul(id: SkillId, a: SkillAttrs): number {
   const at = SKILLS2[id].attr;
-  return at ? 1 + Math.max(0, attrOf(a, at.attr) - ATTR2.start) * at.per : 1;
+  if (!at) return 1;
+  const inv = Math.max(0, attrOf(a, at.attr) - ATTR2.start);
+  return at.pow ? (1 + inv) ** at.pow : 1 + inv * at.per;
 }
 
 /** «Чумной клинок»: стак яда тикает stackSec, доля удара в секунду за стак; на maxStacks — взрыв. */
+/**
+ * База яда «Чумного клинка» (2026-10-27): только атака самого кинжала — без уровня, силы и бонуса урона дерева.
+ * mult — тир, roll — ролл «Урон» × заточка × мастерство (как у удара), sharp — заточка × мастерство ещё раз
+ * (заточка для яда вдвойне). weaponK = 70: сборки 76 ур. с МДР 120–200 и заточкой +20–30 бьют ядом как раньше, умеренная мудрость — сильнее, СИЛ-сборки — слабее.
+ */
+export function plagueAtk(hand: { mult: number; roll: number }, sharp: number): number {
+  return PLAGUE.weaponK * WEAPONS2.dagger.dmg * hand.mult * hand.roll * sharp;
+}
+
 export const PLAGUE = {
+  /** Множитель базы яда (plagueAtk). */
+  weaponK: 70,
   duration: 8, stackSec: 3, maxStacks: 4, tickFrac: 0.024, burstRadius: 4, // яд −20% (2026-10-15): было 0.03; радиус взрыва 4 м (было 5)
   /** Взрыв на maxStacks стаках не сжигает их; следующий взрыв того же моба — не раньше чем через burstCd с. */
   burstCd: 3,

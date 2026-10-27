@@ -208,7 +208,7 @@ import { wallSlide } from "../sim/wallSlide";
 import { leashCut } from "../sim/leash";
 import { ATTR2 } from "#shared/attrs2";
 import { DRAW_IN, drawInPlan, drawModeOf, type DrawMode } from "#shared/drawIn";
-import { STEEL_AURA, steelAuraTick, steelModeOf, type SteelMode, ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, warriorWhirlHits, WARCRY, MARK, MARK_FOCUS, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { STEEL_AURA, steelAuraTick, steelModeOf, type SteelMode, ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, plagueAtk, SMOKE, SOUL_STEAL, skillAttrMul, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, warriorWhirlHits, WARCRY, MARK, MARK_FOCUS, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC } from "#shared/ultimates";
 import {
   MAGIC,
@@ -2751,8 +2751,8 @@ export class ZoneRoom extends Room<ZoneState> {
   private afterDaggerHit(ownerId: string, p: PlayerState, rt: Runtime, mob: Mob, add = 1): void {
     if (rt.plagueUntil <= this.elapsed || mob.dead) return;
     // Стак яда; на 5 стаках сим сам взрывает яд и заражает соседей (ZoneSim.poisonBurstAt).
-    // База яда — удар кинжалом по атаке оружия (с заточкой и тиром), как «сила удара» умения; сила — от мудрости.
-    const atk = skillStrike("assassin", p.level, p, this.strikeHandFor(p, "assassin", rt)).dmg;
+    // База яда — только атака кинжала (тир, ролл «Урон», заточка вдвойне), без уровня и силы; сила — от мудрости.
+    const atk = this.plagueAtkOf(p, rt);
     // Дерево прокачки: «урон яда +N%» (★) и «Чума» (◆).
     const tm = skillModsFor(rt.treeSkill, "plague");
     const k = skillAttrMul("plague", p) * (1 + (tm.dmg ?? 0)) * (tm.dmgMul ?? 1);
@@ -9471,9 +9471,21 @@ export class ZoneRoom extends Room<ZoneState> {
     return Math.round(skillStrike(cls, p.level, p, this.strikeHandFor(p, cls, rt)).dmg * 10) / 10;
   }
 
-  /** Боевой маг: сила физического удара молотом (от СИЛ) — для окна умений; у остальных классов не задана. */
+  /** База яда «Чумного клинка»: атака кинжала с заточкой вдвойне (plagueAtk), без уровня и силы. */
+  private plagueAtkOf(p: PlayerState, rt: Runtime): number {
+    const hand = this.strikeHandFor(p, "assassin", rt);
+    const h: "left" | "right" = p.rightCls === "dagger" ? "right" : "left";
+    return plagueAtk(hand, attackPointBest(rolledIn(p, h, rt), shieldRolledIn(p, h, rt)));
+  }
+
+  /**
+   * Вторая «сила» для окна умений: боевой маг — физический удар молотом (от СИЛ); ассасин — база яда
+   * (plagueAtkOf); у остальных классов не задана.
+   */
   private strikePhysOfLive(p: PlayerState, rt: Runtime): number | undefined {
-    if (classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "") !== "battlemage") return undefined;
+    const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
+    if (cls === "assassin") return Math.round(this.plagueAtkOf(p, rt) * 10) / 10;
+    if (cls !== "battlemage") return undefined;
     return Math.round(hammerPhysStrike(p.level, p, this.strikeHandFor(p, "battlemage", rt)) * 10) / 10;
   }
 
