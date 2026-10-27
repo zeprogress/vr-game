@@ -603,7 +603,8 @@ public static class SliceSetup
             "  [ -x \"$HOME/zep-spectator/current/Spectator.sh\" ] && ZEP_UPDATED=1 exec \"$HOME/zep-spectator/current/Spectator.sh\" \"$@\"\n" +
             "fi\n" +
             "chmod +x \"ZEP Spectator.x86_64\"\n" +
-            "exec \"./ZEP Spectator.x86_64\" -server \"${1:-wss://zepgame.duckdns.org}\"\n");
+            "# Окно ровно 1920×1080 для OBS (не полный экран; Unity помнит прошлый размер — задаём явно).\n" +
+            "exec \"./ZEP Spectator.x86_64\" -screen-width 1920 -screen-height 1080 -screen-fullscreen 0 -server \"${1:-wss://zepgame.duckdns.org}\"\n");
     }
 
     static void BuildSpectator(BuildTarget target, string path)
