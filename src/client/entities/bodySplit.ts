@@ -86,29 +86,29 @@ export function applyLegRate(g: AnimationGroup, rate: number): void {
 }
 
 /**
- * Доля подпрыгивания корпуса на бегу (0 — не подпрыгивает вовсе): кость Body в клипе бега ходит вверх-вниз на 0.33 ед.
- * (≈17 см у героя). Размах сжимается к середине. Unity (HeroRig.cs) держит то же число и ту же середину.
+ * Высота кости Body (ед. модели) на шаге и беге: одна и та же, близко к стойке (Idle 0.965–1.002). В клипах
+ * корпус ходил вверх-вниз (бег 0.681–1.007, шаг 0.851–1.000), а бег стоял на 14 см ниже стойки — на каждой смене
+ * стойка/шаг/бег (боты меняют их постоянно) герой проседал и поднимался. Unity (HeroRig.cs) держит то же число.
  */
-export const RUN_BOUNCE = 0;
+export const LOCO_BODY_Y = 0.93;
 
 /**
- * Сжать подпрыгивание в клипе бега героя: высота Body в ключах — к середине размаха × RUN_BOUNCE. Ключи у клонов
+ * Убрать подпрыгивание в клипах шага и бега: высота Body во всех ключах — LOCO_BODY_Y. Ключи у клонов
  * модели бывают общими — помечаем анимацию и правим один раз.
  */
 export function dampRunBounce(anims: Map<string, AnimationGroup>): void {
-  const g = anims.get("run");
-  if (!g) return;
-  for (const ta of g.targetedAnimations) {
-    if ((ta.target as { name?: string } | null)?.name !== "Body" || ta.animation.targetProperty !== "position") continue;
-    const anim = ta.animation as Animation & { zepBounce?: boolean };
-    if (anim.zepBounce) continue;
-    anim.zepBounce = true;
-    const keys = anim.getKeys();
-    const ys = keys.map((k) => (k.value as Vector3).y);
-    const mid = (Math.min(...ys) + Math.max(...ys)) / 2;
-    for (const k of keys) {
-      const v = k.value as Vector3;
-      k.value = new Vector3(v.x, mid + (v.y - mid) * RUN_BOUNCE, v.z);
+  for (const name of ["run", "walk"]) {
+    const g = anims.get(name);
+    if (!g) continue;
+    for (const ta of g.targetedAnimations) {
+      if ((ta.target as { name?: string } | null)?.name !== "Body" || ta.animation.targetProperty !== "position") continue;
+      const anim = ta.animation as Animation & { zepBounce?: boolean };
+      if (anim.zepBounce) continue;
+      anim.zepBounce = true;
+      for (const k of anim.getKeys()) {
+        const v = k.value as Vector3;
+        k.value = new Vector3(v.x, LOCO_BODY_Y, v.z);
+      }
     }
   }
 }

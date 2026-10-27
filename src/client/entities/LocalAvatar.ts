@@ -256,7 +256,7 @@ export class LocalAvatar {
         for (const m of rig.meshes) m.isPickable = false;
 
         // Клипы классов (выпад, молот, кинжалы, лук) — на скелете этой модели.
-        // Бег — корпус подпрыгивает вдвое меньше (bodySplit.dampRunBounce).
+        // Шаг и бег — корпус на одной высоте, без подпрыгивания (bodySplit.dampRunBounce).
         dampRunBounce(rig.anims);
         try {
           this.classGroups = classClipsFor(this.scene, rig, this.model());

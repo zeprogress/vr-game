@@ -42,18 +42,19 @@ namespace Zep
         const float MoveSpeedMin = 0.6f;
         /// Родная скорость клипов шага и бега (м/с) при RigScale — HERO_STRIDE в src/client/entities/bodySplit.ts.
         const float StrideWalk = 1.14f, StrideRun = 2.27f;
-        /// Подпрыгивание на бегу: высота Body в клипе бега 0.681…1.007 — сжимаем к середине (RUN_BOUNCE в bodySplit.ts).
-        const float RunBounce = 0f, RunBodyMid = 0.844f;
+        /// Высота Body на шаге и беге — постоянная, близко к стойке (LOCO_BODY_Y в bodySplit.ts): без подпрыгивания
+        /// и без проседания при смене стойка/шаг/бег.
+        const float LocoBodyY = 0.93f;
         Transform body;
 
-        /// После анимации: высота Body на бегу — к середине размаха (ключи легаси-клипа во время игры не прочитать).
+        /// После анимации: высота Body на шаге и беге — LocoBodyY по весу этих клипов (ключи легаси-клипа во время игры не прочитать).
         void LateUpdate()
         {
             if (!body || Anim == null) return;
-            float w = Anim.Weight("Run");
+            float w = Mathf.Min(1f, Anim.Weight("Run") + Anim.Weight("Walk"));
             if (w <= 0f) return;
             var p = body.localPosition;
-            p.y -= (p.y - RunBodyMid) * (1f - RunBounce) * w;
+            p.y = Mathf.Lerp(p.y, LocoBodyY, w);
             body.localPosition = p;
         }
 

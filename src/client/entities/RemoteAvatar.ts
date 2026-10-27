@@ -1032,7 +1032,7 @@ export class RemoteAvatar implements Hittable {
         rig.root.parent = holder;
         rig.root.position.setAll(0);
         holder.scaling.setAll(BOT_RIG_SCALE);
-        // Бег — корпус подпрыгивает вдвое меньше (bodySplit.dampRunBounce).
+        // Шаг и бег — корпус на одной высоте, без подпрыгивания (bodySplit.dampRunBounce).
         dampRunBounce(rig.anims);
         try {
           this.classGroups = classClipsFor(this.scene, rig, model);
