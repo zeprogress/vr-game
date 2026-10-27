@@ -10,7 +10,6 @@ import { playDrawAct } from "../ui/DrawAct";
 import { prewarmClassClips } from "../world/classPoses";
 import { BOT_SKIN_MODELS } from "../world/models";
 import { LightFocus } from "../world/lightFocus";
-import { buffList } from "../ui/buffList";
 import "../engine/billboardFix";
 import { installActiveMeshCandidates } from "../engine/meshCandidates";
 import { Engine } from "@babylonjs/core/Engines/engine";
@@ -20,16 +19,16 @@ import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
 import type { Room } from "colyseus.js";
 
 import { BOT, EVENT, EVENT_BUFF_MINUTES, PLAYER, SKILL, daylightAt } from "#shared/constants";
-import { BLINK, BOSS, CAT_BOSS_NAMES, MOB, PULL, CHARGE, SPIKES, CHIEF_HEAL, FREEZE, SPORE } from "#shared/mobs";
+import { BLINK, BOSS, MOB, PULL, CHARGE, SPIKES, CHIEF_HEAL, FREEZE, SPORE } from "#shared/mobs";
 import { TOWER, TOWER_HIDE } from "#shared/tower";
-import type { ZoneState, PlayerState } from "#shared/net/schema";
+import type { ZoneState } from "#shared/net/schema";
 import type { ActKind, SpecCmd } from "#shared/net/messages";
 import { LOADOUT } from "../config/loadout";
 import { buildZone } from "../world/Zone";
 import { PRESETS, type Quality } from "../config/quality";
 import { Overlay, type OverlayCtx } from "./Overlay";
 import type { OverlayFrame } from "#shared/net/overlayFrame";
-import { onlineOf, tickerOf } from "./overlayState";
+import { catacombsOf, chatQuestOf, onlineOf, shotLabel, tickerOf, watchPanels } from "./overlayState";
 import { createEyeGloves, type EyeGloves } from "./EyeGloves";
 import { NetMobs } from "../combat/MobSystem";
 import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
@@ -58,8 +57,6 @@ import { CatBossHud, catBossViewOf, HuntBossFinder } from "../ui/CatBossHud";
 import { RAID } from "#shared/raid";
 import { VoiceChat } from "../voice/VoiceChat";
 import type { NetClient } from "../net/NetClient";
-import { heroStatRows, type HeroStatRow } from "#shared/heroStats";
-import { ITEMS, weaponDef, type ItemId, type WeaponClass } from "#shared/items";
 import {
   SpectatorCamera,
   type DirectorCtx,
@@ -1360,65 +1357,6 @@ export class Spectator {
     }
   }
 
-  private static mobName(kind: string): string {
-    return kind === "boss" ? "Багровый" : kind === "spitter" ? "Плевун" : "Слизень";
-  }
-
-  private static shotLabel(kind: string): string {
-    if (kind === "free") return "Свободная камера";
-    if (kind === "overview") return "Обзор зоны";
-    if (kind.startsWith("path ")) return `Пролёт: ${kind.slice(6, -1)}`;
-    if (kind === "orbitBoss") return "Багровый";
-    return "Зона";
-  }
-
-  /** Собираем контекст для оверлеев (Ф6) и отдаём его слою. */
-  /** Таблица понятных характеристик игрока для панели «смотрим» (см. #shared/heroStats). */
-  private static playerStatRows(p: PlayerState): HeroStatRow[] {
-    // «Удар конусом» (прокол копья) зрителям не нужен — он есть в инвентаре игрока.
-    const rows = heroStatRows(p).filter((r) => r.label !== "Удар конусом");
-    rows.push({ label: "Убийств в минуту", value: String(p.kpm) });
-    return rows;
-  }
-
-  /** Баффы на герое — для плашек в «смотрим». */
-  private static playerBuffs(p: PlayerState): OverlayCtx["watchBuffs"] {
-    const list = buffList(p);
-    return list.length ? list : null;
-  }
-
-  /** Ярлык оружия/щита в руке для панели «HP цели». */
-  private static weaponLabel(cls: string, tier: string): string | null {
-    if (tier === "legendary" || tier === "ruby" || tier === "craft") return weaponDef(cls as WeaponClass, tier).name.toLowerCase();
-    if (cls === "shield") return "щит";
-    const base =
-      cls === "sword" ? "меч" : cls === "bow" ? "лук" : cls === "staff" ? "посох" : null;
-    if (!base) return null;
-    return tier === "gold" ? `золотой ${base}` : base;
-  }
-
-  /** Краткий инвентарь игрока: что в руках + содержимое сумки. */
-  private static playerInvLine(p: PlayerState): string {
-    const hands: string[] = [];
-    const r = Spectator.weaponLabel(p.rightCls, p.rightTier);
-    const l = Spectator.weaponLabel(p.leftCls, p.leftTier);
-    if (r) hands.push(r);
-    if (l && l !== r) hands.push(l);
-
-    const counts = new Map<string, number>();
-    p.bag.forEach((s) => {
-      if (s.item && s.count > 0) counts.set(s.item, (counts.get(s.item) ?? 0) + s.count);
-    });
-    const bag: string[] = [];
-    for (const [id, n] of counts) {
-      const short = id === "potion" ? "зелья" : (ITEMS[id as ItemId]?.short ?? id).toLowerCase();
-      bag.push(`${short} ×${n}`);
-    }
-
-    const parts = [...hands, ...bag];
-    return parts.length ? parts.join(" · ") : "";
-  }
-
   /** Чья модель сейчас спрятана (камера «из глаз» этого игрока) — чтобы вернуть при смене кадра. */
   private eyeHiddenId: string | null = null;
 
@@ -1467,35 +1405,7 @@ export class Spectator {
       console.error("[spectator] updateEyeVisibility упал:", e);
     }
     const subj = this.cam.subject;
-    let watching: string | null = null;
-    let watchStats: HeroStatRow[] | null = null;
-    let watchInv: string | null = null;
-    let watchBuffs: OverlayCtx["watchBuffs"] = null;
-    let watchLevel: number | null = null;
-    let watchTitle: string | null = null;
-    let targetHp: OverlayCtx["targetHp"] = null;
-
-    if (st && subj.id) {
-      if (subj.type === "player") {
-        const p = st.players.get(subj.id);
-        if (p) {
-          watching = p.nick;
-          watchStats = Spectator.playerStatRows(p);
-          watchInv = Spectator.playerInvLine(p);
-          watchBuffs = Spectator.playerBuffs(p);
-          watchLevel = p.level;
-          watchTitle = p.title || null;
-          targetHp = { frac: p.hp / (p.maxHp || 1), cur: p.hp, max: p.maxHp, name: p.nick, boss: false };
-        }
-      } else if (subj.type === "mob") {
-        const m = st.mobs.get(subj.id);
-        if (m && !m.dead) {
-          const name = m.mobName || Spectator.mobName(m.kind);
-          watching = name;
-          targetHp = { frac: m.hp / (m.maxHp || 1), cur: m.hp, max: m.maxHp, name, boss: m.kind === "boss" || CAT_BOSS_NAMES.includes(name) };
-        }
-      }
-    }
+    const { watching, watchStats, watchInv, watchBuffs, watchLevel, watchTitle, targetHp } = watchPanels(st, { type: subj.type, id: subj.id ?? null });
 
     const online = onlineOf(st, (id) => this.speakingIds.has(id));
     const { ticker, tickerKind } = tickerOf(st);
@@ -1508,15 +1418,12 @@ export class Spectator {
       watchBuffs,
       watchLevel,
       watchTitle,
-      shotLabel: Spectator.shotLabel(this.cam.shotKind),
+      shotLabel: shotLabel(this.cam.shotKind),
       targetHp,
       online,
       towerStatus: this._towerStatus,
-      chatQuest: st?.cqTitle ? { title: st.cqTitle, got: st.cqGot, need: st.cqNeed, secs: st.cqSecs } : null,
-      catacombs:
-        st && st.catPhase >= CAT_PHASE.gather
-          ? { gather: st.catPhase === CAT_PHASE.gather, hall: CAT_HALLS[catParseRoute(st.catRoute)[st.catHi] ?? 0].name, left: st.catLeft, party: st.catParty, final: st.catFinal === 1, lives: st.catLives }
-          : null,
+      chatQuest: chatQuestOf(st),
+      catacombs: catacombsOf(st),
       ticker,
       tickerKind,
     };

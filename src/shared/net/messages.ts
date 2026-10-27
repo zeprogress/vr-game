@@ -652,6 +652,9 @@ export type SpecCmd =
   /** Рендерящий спектатор -> страница оверлея (overlay.html): что сейчас в кадре.
    *  Оверлей вынесен в отдельный Browser Source и сам камеры не знает. */
   | { t: "frame"; d: OverlayFrame }
+  /** Unity-спектатор: кого показывает камера (type "player"/"mob"/"" и id) и вид кадра — панели «смотрим»
+   *  собирает страница оверлея сама из состояния комнаты (watchPanels). */
+  | { t: "subj"; type: string; id: string; shot: string }
   /** Свободная камера (отдельное окно `?freecam=1`) -> все спектаторы: положение
    *  и угол обзора. `on: 0` — камера закрыта, спектаторы возвращаются в свой режим. */
   | { t: "free"; on: number; x?: number; y?: number; z?: number; tx?: number; ty?: number; tz?: number; fov?: number; sm?: number }

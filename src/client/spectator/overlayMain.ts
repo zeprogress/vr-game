@@ -2,7 +2,7 @@ import { showCatReport } from "../ui/CatReport";
 import { EVENT_BUFF_MINUTES } from "#shared/constants";
 import { NetClient } from "../net/NetClient";
 import { Overlay } from "./Overlay";
-import { onlineOf, tickerOf } from "./overlayState";
+import { catacombsOf, chatQuestOf, onlineOf, shotLabel, tickerOf, watchPanels } from "./overlayState";
 import type { SpecCmd } from "#shared/net/messages";
 import type { OverlayFrame } from "#shared/net/overlayFrame";
 
@@ -36,6 +36,9 @@ if (bossOnly) {
 /** Последний кадр из рендерящего спектатора (контекст панелей и строка сверху). */
 let frame: OverlayFrame | null = null;
 let frameAt = 0;
+/** Цель кадра от Unity-спектатора (он не собирает панели сам). */
+let subj: { type: string; id: string; shot: string } | null = null;
+let subjAt = 0;
 let live = false;
 
 const net = new NetClient();
@@ -43,6 +46,10 @@ net.onSpecCmd = (cmd: SpecCmd) => {
   if (cmd.t === "frame") {
     frame = cmd.d;
     frameAt = performance.now();
+  } else if (cmd.t === "subj") {
+    // Unity-спектатор: только цель кадра — панели «смотрим» соберём сами (tick).
+    subj = { type: cmd.type, id: cmd.id, shot: cmd.shot };
+    subjAt = performance.now();
   } else if (bossOnly) return; // отдельный источник HP: карточки и настройки с пульта не нужны
   else if (cmd.t === "card") ov.showCard(cmd.title, cmd.sub ?? "", cmd.secs ?? 0);
   else if (cmd.t === "overlay") ov.setConfig(cmd.patch);
@@ -115,7 +122,14 @@ const EMPTY_FRAME: OverlayFrame = {
 
 function tick(): void {
   // Рендерящая страница молчит дольше 8 с (перезагрузка/закрыта) — гасим то, что она считала.
-  const f = frame && performance.now() - frameAt < 8000 ? frame : EMPTY_FRAME;
+  const st = net.room?.state;
+  const now = performance.now();
+  // Кадр веб-спектатора — целиком; нет его — панели «смотрим» по цели кадра Unity-спектатора, из состояния комнаты.
+  const f: OverlayFrame = frame && now - frameAt < 8000
+    ? frame
+    : subj && now - subjAt < 8000
+      ? { ...EMPTY_FRAME, ...watchPanels(st, subj), shotLabel: shotLabel(subj.shot) }
+      : EMPTY_FRAME;
   const isBoss = !!f.targetHp?.boss;
   if (bossOnly) {
     ov.setTicker("", "news");
@@ -124,10 +138,14 @@ function tick(): void {
   }
   // Строка сверху и онлайн — из состояния комнаты: кадр рендерящей страницы для них не нужен
   // (Unity-спектатор кадров не шлёт). Говорящих берём из последнего кадра, если он свежий.
-  const st = net.room?.state;
   const speakingNicks = new Set(f.online.filter((p) => p.speaking).map((p) => p.nick));
   const { ticker, tickerKind } = tickerOf(st);
-  const fromRoom = { ...f, ticker, tickerKind, online: onlineOf(st, (_id, nick) => speakingNicks.has(nick)) };
+  const fromRoom = {
+    ...f, ticker, tickerKind,
+    online: onlineOf(st, (_id, nick) => speakingNicks.has(nick)),
+    chatQuest: chatQuestOf(st),
+    catacombs: catacombsOf(st),
+  };
   // В полном оверлее босса показывает отдельный источник (part=boss) — здесь его не дублируем.
   const view = part === "main" && isBoss ? { ...fromRoom, targetHp: null } : fromRoom;
   ov.setTicker(view.ticker, view.tickerKind);

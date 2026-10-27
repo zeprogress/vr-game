@@ -149,6 +149,13 @@ namespace Zep
                 if (t != "sc" && t != "ac" && t != "dh" && t != "twmobs") Room.OnMessage<object>(t, _ => { });
         }
 
+        /// Команда пульта от спектатора (MSG.specCmd = "sc"): сервер рассылает её остальным спектаторам и странице оверлея.
+        public void SendSpecCmd(Dictionary<string, object> cmd)
+        {
+            if (Room == null) return;
+            _ = Room.Send("sc", cmd);
+        }
+
         static readonly float[] Zero7 = { 0, 0, 0, 0, 0, 0, 1 };
 
         /// Позиция «головы» (глаза над землёй) и поворот — как MoveMsg в плоском режиме.

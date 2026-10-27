@@ -209,6 +209,7 @@ namespace Zep
             else if (invalid) SwitchTo(auto ? NextShot(fighting) : new Shot { kind = "overview" });
             else if (auto && (timedOut || idlePathInterrupted)) SwitchTo(NextShot(fighting));
 
+            SendSubject(dt);
             frameDt = dt;
             bool jumped = FollowJumped();
             TrackEye(dt, jumped);
@@ -734,6 +735,27 @@ namespace Zep
                 float lift = Mathf.Max(0, outP.y - LookDip - outL.y);
                 outL.y += lift * w;
             }
+        }
+
+        // Цель кадра — странице оверлея (overlay.html): по ней она сама собирает панели «смотрим», HP цели,
+        // характеристики и баффы из состояния комнаты (overlayState.watchPanels). Сразу при смене и раз в 0,5 с.
+        string sentSubj = "";
+        float subjClock;
+
+        void SendSubject(float dt)
+        {
+            if (ZoneNet.I.Room == null) return;
+            string type = "", id = "";
+            if (PlayerShots.Contains(shot.kind)) { type = "player"; id = shot.id; }
+            else if (shot.kind == "eyeMob") { type = "mob"; id = shot.id; }
+            else if (shot.kind == "orbitBoss") { var b = mobs.Find(m => m.kind == "boss"); if (b != null) { type = "mob"; id = b.id; } }
+            string kind = shot.kind == "path" && shot.idx >= 0 && shot.idx < cfg.paths.Length ? $"path ({cfg.paths[shot.idx].name})" : shot.kind;
+            string key = $"{type}|{id}|{kind}";
+            subjClock += dt;
+            if (key == sentSubj && subjClock < 0.5f) return;
+            sentSubj = key;
+            subjClock = 0;
+            ZoneNet.I.SendSpecCmd(new Dictionary<string, object> { { "t", "subj" }, { "type", type }, { "id", id }, { "shot", kind } });
         }
 
         void OnGUI()
