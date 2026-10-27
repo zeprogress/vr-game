@@ -264,7 +264,9 @@ namespace Zep
                     burnTick = 0.09f;
                     var col = bleedOnly ? FxColors.Blood : FxColors.Fire;
                     var p = center + new Vector3(Random.Range(-0.5f, 0.5f) * sc, Random.Range(-0.3f, 0.6f) * sc, Random.Range(-0.5f, 0.5f) * sc);
-                    Vfx.I.Burst(p, col, count: 3, speed: 1f * sc + 0.5f, life: 0.55f, grav: -5 * Mathf.Max(0.6f, sc), size: 0.5f * sc + 0.18f, dir: Vector3.up, spread: 0.3f);
+                    // Кровь — мелкие плотные капли, падают вниз; огонь — языки вверх.
+                    if (bleedOnly) Vfx.I.Burst(p, col, count: 3, speed: 0.6f, life: 0.7f, grav: 9, size: 0.06f * Mathf.Sqrt(sc) + 0.04f, dir: Vector3.down, spread: 1f, drop: true);
+                    else Vfx.I.Burst(p, col, count: 3, speed: 1f * sc + 0.5f, life: 0.55f, grav: -5 * Mathf.Max(0.6f, sc), size: 0.5f * sc + 0.18f, dir: Vector3.up, spread: 0.3f);
                     if (!bleedOnly)
                     {
                         Vfx.I.Burst(p, FxColors.FireCore, count: 1, speed: 0.8f * sc + 0.4f, life: 0.35f, grav: -4, size: 0.28f * sc + 0.08f, dir: Vector3.up, spread: 0.25f);

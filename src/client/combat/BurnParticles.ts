@@ -40,6 +40,23 @@ export const FIRE_TUNE = {
   stretched: 1,
 };
 
+/**
+ * Кровотечение: мелкие плотные капли, срываются с тела и падают вниз (а не всплывают, как огонь).
+ * Поля — как у FIRE_TUNE; lift < 0 — тянет вниз.
+ */
+export const BLEED_TUNE: typeof FIRE_TUNE = {
+  rate: 34,
+  lifeMin: 0.45,
+  lifeMax: 0.8,
+  sizeMin: 0.06,
+  sizeMax: 0.11,
+  lift: -9,
+  rise: 0.5,
+  spread: 1.1,
+  alpha: 1,
+  stretched: 1,
+};
+
 interface Src {
   x: number;
   y: number;
@@ -64,12 +81,12 @@ const FIRE: Palette = [
   [0.75, 0.55, 0.1, 0.02, 0.2],
   [1, 0.15, 0.04, 0.02, 0],
 ];
+/** Капли крови — плотные (обычное смешивание, не сложение), тёмнеют и гаснут только в самом конце. */
 const BLOOD: Palette = [
-  [0, 1, 0.35, 0.3, 0],
-  [0.1, 1, 0.12, 0.08, 0.6],
-  [0.4, 0.85, 0.03, 0.02, 0.48],
-  [0.75, 0.45, 0.01, 0.01, 0.22],
-  [1, 0.12, 0, 0, 0],
+  [0, 0.75, 0.04, 0.03, 0.95],
+  [0.6, 0.55, 0.02, 0.02, 0.95],
+  [0.85, 0.4, 0.01, 0.01, 0.8],
+  [1, 0.3, 0, 0, 0],
 ];
 
 /** Частицы — огонь по умолчанию (одобрено на стенде 2026-09-28); ?fire=0 — старые карточки BurnFlameMat. */
@@ -81,7 +98,7 @@ export class BurnParticles {
     const map = blood ? PER_SCENE_BLOOD : PER_SCENE;
     let b = map.get(scene);
     if (!b) {
-      b = new BurnParticles(scene, blood ? BLOOD : FIRE);
+      b = new BurnParticles(scene, blood ? BLOOD : FIRE, blood ? BLEED_TUNE : FIRE_TUNE);
       map.set(scene, b);
     }
     return b;
@@ -96,20 +113,22 @@ export class BurnParticles {
   private constructor(
     scene: Scene,
     private readonly palette: Palette = FIRE,
+    private readonly tune: typeof FIRE_TUNE = FIRE_TUNE,
   ) {
     const ps = new ParticleSystem("burnFire", CAPACITY, scene);
     ps.renderingGroupId = LAYER.world; // частицы — мир (по умолчанию группа 0 = земля)
-    ps.particleTexture = softDot(scene);
-    ps.blendMode = ParticleSystem.BLENDMODE_ADD;
+    const blood = tune === BLEED_TUNE;
+    ps.particleTexture = blood ? hardDot(scene) : softDot(scene);
+    ps.blendMode = blood ? ParticleSystem.BLENDMODE_STANDARD : ParticleSystem.BLENDMODE_ADD;
     ps.emitter = Vector3.Zero();
     ps.isLocal = false;
     ps.minEmitPower = 1;
     ps.maxEmitPower = 1;
-    ps.gravity = new Vector3(0, FIRE_TUNE.lift, 0);
-    // Размер: вспыхивает, потом язык сужается кверху.
-    ps.addSizeGradient(0, 0.55);
+    ps.gravity = new Vector3(0, tune.lift, 0);
+    // Размер: огонь вспыхивает и сужается кверху; капля держит размер.
+    ps.addSizeGradient(0, blood ? 0.8 : 0.55);
     ps.addSizeGradient(0.15, 1);
-    ps.addSizeGradient(1, 0.25);
+    ps.addSizeGradient(1, blood ? 0.8 : 0.25);
     ps.emitRate = 0;
 
     ps.startPositionFunction = (_m, pos, p): void => {
@@ -131,7 +150,7 @@ export class BurnParticles {
       (p as ScaledParticle).__s = Math.min(2.2, Math.max(0.6, Math.sqrt(s.r / 0.55)));
     };
     ps.startDirectionFunction = (_m, dir): void => {
-      const t = FIRE_TUNE;
+      const t = this.tune;
       dir.set(
         (Math.random() - 0.5) * t.spread,
         t.rise * (0.7 + Math.random() * 0.6),
@@ -159,7 +178,7 @@ export class BurnParticles {
 
   /** Применить FIRE_TUNE (лаборатория меняет его на лету). */
   retune(): void {
-    const t = FIRE_TUNE;
+    const t = this.tune;
     const ps = this.ps;
     ps.minLifeTime = t.lifeMin;
     ps.maxLifeTime = Math.max(t.lifeMin, t.lifeMax);
@@ -211,7 +230,7 @@ export class BurnParticles {
       this.list.push(s);
       const w = s.glow * Math.max(0.5, s.r / 0.55);
       this.totalW += w;
-      rate += FIRE_TUNE.rate * w;
+      rate += this.tune.rate * w;
     }
     this.ps.emitRate = Math.min(rate, CAPACITY * 1.2);
   }
@@ -225,6 +244,21 @@ export class BurnParticles {
     }
     return this.list[this.list.length - 1];
   }
+}
+
+/** Плотная капля 32×32: сплошная в середине, край — узкий спад (без размытого ореола огня). */
+function hardDot(scene: Scene): DynamicTexture {
+  const tex = new DynamicTexture("bleedDot", { width: 32, height: 32 }, scene, false);
+  const ctx = tex.getContext() as CanvasRenderingContext2D;
+  const g = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.7, "rgba(255,255,255,1)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 32, 32);
+  tex.hasAlpha = true;
+  tex.update();
+  return tex;
 }
 
 /** Мягкое круглое пятно 64×64 — белое в центре, прозрачное к краю (цвет даёт градиент). */

@@ -42,7 +42,7 @@ namespace Zep
         int nD, nSc, nSm, nS, nB, nP;
         float time;
 
-        static readonly int Color_ = Shader.PropertyToID("_Color"), T = Shader.PropertyToID("_T"), Mode = Shader.PropertyToID("_Mode"),
+        static readonly int DropId = Shader.PropertyToID("_Drop"), Color_ = Shader.PropertyToID("_Color"), T = Shader.PropertyToID("_T"), Mode = Shader.PropertyToID("_Mode"),
             Half = Shader.PropertyToID("_Half"), Alpha = Shader.PropertyToID("_Alpha"), Seed = Shader.PropertyToID("_Seed"),
             Center = Shader.PropertyToID("_Center"), Dir = Shader.PropertyToID("_Dir"), Spread = Shader.PropertyToID("_Spread"),
             Life = Shader.PropertyToID("_Life"), Speed = Shader.PropertyToID("_Speed"), Grav = Shader.PropertyToID("_Grav"),
@@ -253,9 +253,10 @@ namespace Zep
         }
 
         /// Сноп искр: dir — направление (null — во все стороны), spread 0..1, grav > 0 — падают, < 0 — всплывают.
-        public void Burst(Vector3 p, Color color, int count = 20, float speed = 5, float life = 0.6f, float size = 0.22f, float grav = 9, Vector3? dir = null, float spread = 1, bool smoke = false)
+        public void Burst(Vector3 p, Color color, int count = 20, float speed = 5, float life = 0.6f, float size = 0.22f, float grav = 9, Vector3? dir = null, float spread = 1, bool smoke = false, bool drop = false)
         {
             Item s;
+            if (drop) smoke = true; // капли — из пула дыма (обычное смешивание), режим _Drop
             if (smoke) { s = smokes[nSm]; nSm = (nSm + 1) % smokes.Count; }
             else { s = sparks[nS]; nS = (nS + 1) % sparks.Count; }
             s.mat.SetVector(Center, p);
@@ -268,6 +269,7 @@ namespace Zep
             s.mat.SetFloat(Seed, Random.value * 50);
             s.mat.SetFloat(Count, Mathf.Min(Sparks, count));
             s.mat.SetColor(Color_, smoke ? color : color * Glow);
+            if (smoke) s.mat.SetFloat(DropId, drop ? 1 : 0);
             s.mat.SetFloat(T, 0);
             s.age = 0; s.life = life;
             s.go.SetActive(true);
