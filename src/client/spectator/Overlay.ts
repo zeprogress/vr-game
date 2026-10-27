@@ -714,7 +714,9 @@ export class Overlay {
       show(this.hp, true);
       this.hp.classList.toggle("boss", hp.boss);
       this.hpFill.style.width = `${Math.round(Math.max(0, Math.min(1, hp.frac)) * 100)}%`;
-      this.hpLabel.textContent = `${hp.name} — ${Math.max(0, Math.ceil(hp.cur))}/${Math.round(hp.max)}`;
+      this.hpLabel.textContent = hp.hits
+        ? `${hp.name} — ${Math.max(0, Math.ceil(hp.cur))} / ${Math.round(hp.max)} ударов`
+        : `${hp.name} — ${Math.max(0, Math.ceil(hp.cur))}/${Math.round(hp.max)}`;
       const inv = ctx.watchInv ?? "";
       show(this.hpInv, inv.length > 0);
       if (this.hpInv.textContent !== inv) this.hpInv.textContent = inv;

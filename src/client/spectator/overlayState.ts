@@ -147,21 +147,28 @@ export function watchPanels(st: ZoneState | null | undefined, subj: { type: stri
     if (!m || m.dead) return out;
     const name = m.mobName || mobName(m.kind);
     out.watching = name;
-    out.targetHp = { frac: m.hp / (m.maxHp || 1), cur: m.hp, max: m.maxHp, name, boss: isBossMob(st, subj.id, m) };
+    const hunt = st.eventKind === 2 && m.phase > 0; // дракон охоты: здоровье — удары
+    out.targetHp = { frac: m.hp / (m.maxHp || 1), cur: m.hp, max: m.maxHp, name: hunt ? `${name} · фаза ${m.phase}` : name, boss: isBossMob(st, subj.id, m), hits: hunt };
   }
   return out;
 }
+
+/** Последний босс плашки: держимся за него, пока жив и рядом, — плашка не прыгает между соседями. */
+let lastBossId = "";
 
 /**
  * HP живого босса рядом с камерой эфира (state.specX/Z, в пределах `near` м) — для полоски HP босса,
  * когда камера не смотрит на него прямо (Unity-спектатор не сообщает цель в аренах катакомб и общих планах).
  * Босс — как в watchPanels: Багровый, боссы катакомб, боссы мира и любой моб от BOSS_HP. null — рядом нет.
  */
-/** Последний босс плашки: держимся за него, пока жив и рядом, — плашка не прыгает между соседями. */
-let lastBossId = "";
-
 export function nearBossHp(st: ZoneState | null | undefined, near = 90): OverlayCtx["targetHp"] {
   if (!st) return null;
+  // Босс катакомб — главный: пока жив и камера в его арене (150 м), плашка за ним, как в игре (CatBossHud).
+  const cb = st.catBoss ? st.mobs.get(st.catBoss) : undefined;
+  if (cb && !cb.dead && (!st.specActive || Math.hypot(cb.x - st.specX, cb.z - st.specZ) < 150)) {
+    lastBossId = st.catBoss;
+    return { frac: cb.hp / (cb.maxHp || 1), cur: cb.hp, max: cb.maxHp, name: cb.mobName || "Босс катакомб", boss: true };
+  }
   // Камера эфира не прислала положение — ближайшим не выбрать: берём любого живого босса.
   const anywhere = !st.specActive;
   let best: OverlayCtx["targetHp"] = null;
@@ -176,7 +183,10 @@ export function nearBossHp(st: ZoneState | null | undefined, near = 90): Overlay
     if (score >= bestScore) return;
     bestScore = score;
     bestId = id;
-    best = { frac: m.hp / (m.maxHp || 1), cur: m.hp, max: m.maxHp, name: m.mobName || mobName(m.kind), boss: true };
+    // Дракон охоты (фаза > 0 во время охоты): здоровье — удары, в подписи фаза, как в игре (HuntBossFinder).
+    const hunt = st.eventKind === 2 && m.phase > 0;
+    const name = m.mobName || mobName(m.kind);
+    best = { frac: m.hp / (m.maxHp || 1), cur: m.hp, max: m.maxHp, name: hunt ? `${name} · фаза ${m.phase}` : name, boss: true, hits: hunt };
   });
   lastBossId = bestId;
   return best;
