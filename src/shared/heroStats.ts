@@ -1,3 +1,4 @@
+import type { TreeFx } from "./passiveTree";
 import type { ArmorStat } from "./armor";
 import { BOW, CAMPFIRE, EVENT, SHIELD, SWORD_CRIT_MULT, STAFF_CRIT_MULT } from "./constants";
 import { SCROLL } from "./shop";
@@ -107,6 +108,8 @@ export interface HeroStatInput {
   leftTier: string;
   /** Прибавка от колец и камней (PlayerState.gb / jewelBonus) — формулы читают атрибуты через attrOf. */
   gb?: { str: number; agi: number; int: number; con: number; luc: number; wis: number };
+  /** Бонусы дерева прокачки (PlayerState.tb, shared/passiveTree.ts) — формулы читают их через treeBonus. */
+  tb?: Partial<Record<TreeFx, number>>;
   /** Текст ролла на оружии в руке — синкается как affixLabel(...), см. items.ts. */
   rightAffix?: string;
   leftAffix?: string;

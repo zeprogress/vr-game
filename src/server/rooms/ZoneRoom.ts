@@ -5311,6 +5311,8 @@ export class ZoneRoom extends Room<ZoneState> {
       stats: heroStatRows({
         ab: { hp: p.ab.hp, physDef: p.ab.physDef, magDef: p.ab.magDef, regen: p.ab.regen, dodge: p.ab.dodge },
         gb: p.gb,
+        // Бонусы дерева прокачки — как в бою и в оверлее стрима (там считают по PlayerState.tb).
+        tb: Object.fromEntries(TREE_FX.map((k) => [k, p.tb[k]])),
         level: p.level,
         str: p.str,
         agi: p.agi,
