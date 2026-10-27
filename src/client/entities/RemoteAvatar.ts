@@ -18,7 +18,7 @@ import "@babylonjs/core/Meshes/Builders/capsuleBuilder";
 import type { PlayerMode, PlayerState, Xf } from "#shared/net/schema";
 import { isWeaponClass, type WeaponClass, type WeaponTier } from "#shared/items";
 import { CLASS_CLIP_NAMES, CLASS_ONE_SHOT, classAnimSet, classClipsFor, type ClassAnimSet } from "../world/classPoses";
-import { applySplitWeight, blendSplit, legClip, startSplitWeight } from "./bodySplit";
+import { applySplitWeight, blendSplit, legClip, legRate, startSplitWeight } from "./bodySplit";
 import type { WeaponKind } from "#shared/combat";
 import { LOADOUT } from "../config/loadout";
 import { NameTag } from "../ui/NameTag";
@@ -1281,12 +1281,13 @@ export class RemoteAvatar implements Hittable {
     const k = Math.min(1, dt * 12);
     // Темп ног — от фактической скорости: клип бега/шага иначе крутится в полном темпе и на разгоне
     // (после возрождения, у новой цели) выглядит быстрее, чем бот реально бежит. Полный бег = 1.
-    const pace = Math.max(0.35, Math.min(1.4, this.planarSpeed / PLAYER.runSpeed));
+
     for (const n of BOT_CLIPS) {
       if (n === "death") continue;
       const g = rig.anims.get(n);
       if (!g) continue;
-      if (n === "run" || n === "walk") g.speedRatio = pace;
+      // Темп ног — от фактической скорости и родной скорости клипа: ноги перебирают ровно под движение.
+      if (n === "run" || n === "walk") g.speedRatio = legRate(n, this.planarSpeed);
       const wanted = n === wantLow || n === wantUp;
       const { legs: w, upper: wu } = blendSplit(n, wantLow, wantUp, k, this.animW, this.animWUp);
       if (w === 0 && wu === 0) {

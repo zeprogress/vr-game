@@ -4,7 +4,7 @@ import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { BuffOrbitFx } from "../ui/BuffOutlineFx";
 import { CLASS_CLIP_NAMES, CLASS_ONE_SHOT, classAnimSet, classClipsFor, type ClassAnimSet } from "../world/classPoses";
-import { applySplitWeight, blendSplit, legClip, startSplitWeight } from "./bodySplit";
+import { applySplitWeight, blendSplit, legClip, legRate, startSplitWeight } from "./bodySplit";
 import { StunStarsFx } from "../ui/StunStarsFx";
 import { WebCocoonFx } from "./WebCocoonFx";
 
@@ -378,6 +378,8 @@ export class LocalAvatar {
       const g = rig.anims.get(n);
       if (!g) continue;
       const wanted = n === want || n === wantLegs;
+      // Темп ног — от скорости героя и родной скорости клипа: без скольжения по земле.
+      if (n === "run" || n === "walk") g.speedRatio = legRate(n, speed);
       const { legs: w, upper: wu } = blendSplit(n, wantLegs, want, k, this.animW, this.animWUp);
       if (w === 0 && wu === 0) {
         if (g.isPlaying && !wanted) g.stop();

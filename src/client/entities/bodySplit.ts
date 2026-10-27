@@ -61,3 +61,15 @@ export function blendSplit(
   upperW.set(name, wu);
   return { legs: w, upper: wu };
 }
+
+/**
+ * Родная скорость клипов шага и бега героя (м/с) при масштабе модели 0.52: с какой скоростью стопа уезжает назад,
+ * пока стоит на земле. Измерено по Foot.L в Knight_Male.glb (клипы общие у всех скинов CharacterArmature):
+ * шаг 2.19 ед/с, бег 4.36 ед/с × 0.52. Unity (HeroRig.cs) держит те же числа.
+ */
+export const HERO_STRIDE = { walk: 1.14, run: 2.27 } as const;
+
+/** Темп клипа шага/бега, чтобы ноги перебирали со скоростью движения (без скольжения). */
+export function legRate(clip: "walk" | "run", speed: number): number {
+  return Math.max(0.5, Math.min(2.5, speed / HERO_STRIDE[clip]));
+}

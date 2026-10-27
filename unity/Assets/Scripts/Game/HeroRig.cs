@@ -40,6 +40,8 @@ namespace Zep
         bool actionUpper;
         float upperUntil;
         const float MoveSpeedMin = 0.6f;
+        /// Родная скорость клипов шага и бега (м/с) при RigScale — HERO_STRIDE в src/client/entities/bodySplit.ts.
+        const float StrideWalk = 1.14f, StrideRun = 2.27f;
 
         /// Действие на бегу — корпусом поверх бега, стоя — всем телом (как bodySplit.ts в вебе).
         void PlayAction(float rate, string clip)
@@ -86,8 +88,9 @@ namespace Zep
             // Действие всем телом — ноги ждут; корпусом — ноги продолжают бег.
             if (!actionUpper && (Time.time < swingUntil || Time.time < oneShotUntil)) return;
             var set = AnimSet;
-            if (speed > 3.5f) Anim.Loop(1f, "Run");
-            else if (speed > 0.6f) Anim.Loop(1f, "Walk");
+            // Темп ног — скорость / родная скорость клипа (как legRate в bodySplit.ts): без скольжения.
+            if (speed > 3.5f) Anim.Loop(Mathf.Clamp(speed / StrideRun, 0.5f, 2.5f), "Run");
+            else if (speed > 0.6f) Anim.Loop(Mathf.Clamp(speed / StrideWalk, 0.5f, 2.5f), "Walk");
             else Anim.Loop(1f, set?.idle, "Idle");
         }
 
