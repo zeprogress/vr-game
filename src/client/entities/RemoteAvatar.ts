@@ -18,7 +18,7 @@ import "@babylonjs/core/Meshes/Builders/capsuleBuilder";
 import type { PlayerMode, PlayerState, Xf } from "#shared/net/schema";
 import { isWeaponClass, type WeaponClass, type WeaponTier } from "#shared/items";
 import { CLASS_CLIP_NAMES, CLASS_ONE_SHOT, classAnimSet, classClipsFor, type ClassAnimSet } from "../world/classPoses";
-import { applySplitWeight, blendSplit, dampRunBounce, legClip, legRate, startSplitWeight } from "./bodySplit";
+import { applyLegRate, applySplitWeight, blendSplit, dampRunBounce, legClip, legRate, startSplitWeight } from "./bodySplit";
 import type { WeaponKind } from "#shared/combat";
 import { LOADOUT } from "../config/loadout";
 import { NameTag } from "../ui/NameTag";
@@ -1289,7 +1289,7 @@ export class RemoteAvatar implements Hittable {
       const g = rig.anims.get(n);
       if (!g) continue;
       // Темп ног — от фактической скорости и родной скорости клипа: ноги перебирают ровно под движение.
-      if (n === "run" || n === "walk") g.speedRatio = legRate(n, this.planarSpeed);
+      if (n === "run" || n === "walk") applyLegRate(g, legRate(n, this.planarSpeed));
       const wanted = n === wantLow || n === wantUp;
       const { legs: w, upper: wu } = blendSplit(n, wantLow, wantUp, k, this.animW, this.animWUp);
       if (w === 0 && wu === 0) {

@@ -103,9 +103,10 @@ namespace Zep
             if (!actionUpper && (Time.time < swingUntil || Time.time < oneShotUntil)) return;
             var set = AnimSet;
             // Темп ног — скорость / родная скорость клипа (как legRate в bodySplit.ts): без скольжения.
-            if (speed > 3.5f) Anim.Loop(Mathf.Clamp(speed / StrideRun, 0.5f, 2.5f), "Run");
-            else if (speed > 0.6f) Anim.Loop(Mathf.Clamp(speed / StrideWalk, 0.5f, 2.5f), "Walk");
-            else Anim.Loop(1f, set?.idle, "Idle");
+            // Корпус (руки, голова) — в родном темпе клипа: копия на слое 1, ускоряются только ноги.
+            if (speed > 3.5f) { Anim.Loop(Mathf.Clamp(speed / StrideRun, 0.5f, 2.5f), "Run"); if (!actionUpper) Anim.LoopUpper(1f, "Run"); }
+            else if (speed > 0.6f) { Anim.Loop(Mathf.Clamp(speed / StrideWalk, 0.5f, 2.5f), "Walk"); if (!actionUpper) Anim.LoopUpper(1f, "Walk"); }
+            else { if (!actionUpper) Anim.StopUpper(); Anim.Loop(1f, set?.idle, "Idle"); }
         }
 
         public bool Swinging => Time.time < swingUntil;

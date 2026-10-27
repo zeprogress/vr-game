@@ -119,6 +119,19 @@ namespace Zep
             upperCur = u;
         }
 
+        /// Цикл корпусом в своём темпе поверх ног (бег/шаг: ноги быстрее под скорость, руки — в родном темпе).
+        public void LoopUpper(float speed, params string[] names)
+        {
+            var n = Find(names);
+            if (n == null || !CanSplit) return;
+            var u = UpperOf(n);
+            a[u].wrapMode = WrapMode.Loop;
+            a[u].speed = speed;
+            if (upperCur == u) return;
+            a.CrossFade(u, 0.15f, PlayMode.StopSameLayer);
+            upperCur = u;
+        }
+
         /// Корпус возвращается к общему клипу: копия на слое 1 плавно гаснет.
         public void StopUpper()
         {

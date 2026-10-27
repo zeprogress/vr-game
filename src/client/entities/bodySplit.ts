@@ -77,6 +77,15 @@ export function legRate(clip: "walk" | "run", speed: number): number {
 }
 
 /**
+ * Темп шага/бега только ногам (кости LEG_BONES); корпус (руки, голова) — в родном темпе клипа,
+ * чтобы на быстром беге руки не мельтешили. Группу держим на 1: её speedRatio перетирал бы кости.
+ */
+export function applyLegRate(g: AnimationGroup, rate: number): void {
+  if (g.speedRatio !== 1) g.speedRatio = 1;
+  for (const a of g.animatables) a.speedRatio = LEG_BONES.has((a.target as { name?: string } | null)?.name ?? "") ? rate : 1;
+}
+
+/**
  * Доля подпрыгивания корпуса на бегу (0.25 — вчетверо меньше клипа): кость Body в клипе бега ходит вверх-вниз на 0.33 ед.
  * (≈17 см у героя). Размах сжимается к середине. Unity (HeroRig.cs) держит то же число и ту же середину.
  */
