@@ -113,6 +113,26 @@ export function killXp(mobLevel: number, level: number, boss = false): number {
   return own * k * (boss ? XP_CURVE.bossMul : 1);
 }
 
+/**
+ * Штраф дропа за мобов ниже героя (2026-10-27): до `free` уровней разницы — полный дроп, дальше −`perLevel`
+ * за уровень, не ниже `min`. Штучные предметы (оружие, броня, камни, кольца, материалы) — множитель шанса;
+ * стопки (лом, зелья) — множитель количества. Боссы — без штрафа. Обычный (не элитный) моб — 1 уровень.
+ */
+export const LOW_MOB_DROP = { free: 5, perLevel: 0.1, min: 0.1 } as const;
+
+export function lowMobDropMul(heroLevel: number, mobLevel: number): number {
+  const diff = heroLevel - Math.max(1, mobLevel) - LOW_MOB_DROP.free;
+  return diff <= 0 ? 1 : Math.max(LOW_MOB_DROP.min, 1 - diff * LOW_MOB_DROP.perLevel);
+}
+
+/** Количество со штрафом: дробная часть — шансом (12 × 0.25 = 3; 3 × 0.25 — 0 или 1). */
+export function scaleCount(count: number, mul: number, rnd: () => number = Math.random): number {
+  if (mul >= 1) return count;
+  const x = count * mul;
+  const n = Math.floor(x);
+  return n + (rnd() < x - n ? 1 : 0);
+}
+
 export function atMaxLevel(level: number): boolean {
   return level >= PROGRESSION.maxLevel;
 }

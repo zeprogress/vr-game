@@ -193,7 +193,9 @@ import {
   maxHpFor,
   moveSpeedFor,
   heroAttackInterval,
+  lowMobDropMul,
   resetAttrs,
+  scaleCount,
   STAT_NAMES,
   xpToNext,
   type Progress,
@@ -5553,25 +5555,30 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Кольцо/камень с добитого моба — сразу в запись героя (не на землю: боты и игроки одинаково). */
   /** Лом с моба: шанс 10% на 1 ур. → 100% на 70 ур. (shared/scrapDrop.ts). Падает в сумку убийцы. */
   /** Лом, который делится: один бросок шанса, потом поровну всем, кто бил моба (остаток — первым по списку). */
-  private scrapShare(owners: string[], level: number, total: number): void {
+  private scrapShare(owners: string[], level: number, total: number, boss = false): void {
     if (Math.random() >= scrapDropChance(level)) return;
     const ps = owners.map((id) => this.state.players.get(id)).filter((p): p is PlayerState => !!p);
     if (ps.length === 0) return;
     const base = Math.floor(total / ps.length);
     const rem = total - base * ps.length;
     ps.forEach((p, i) => {
+      // Штраф за моба ниже героя — у каждого участника по его уровню (боссы — без штрафа).
+      const n = scaleCount(base + (i < rem ? 1 : 0), boss ? 1 : lowMobDropMul(p.level, level));
+      if (n <= 0) return;
       const bag = readBag(p);
-      addToBag(bag, "scrap", base + (i < rem ? 1 : 0));
+      addToBag(bag, "scrap", n);
       writeBag(p, bag);
     });
   }
 
-  private scrapDrop(owner: string, level: number, amount: number): void {
+  private scrapDrop(owner: string, level: number, amount: number, boss = false): void {
     if (Math.random() >= scrapDropChance(level)) return;
     const p = this.state.players.get(owner);
     if (!p) return;
+    const n = scaleCount(amount, boss ? 1 : lowMobDropMul(p.level, level));
+    if (n <= 0) return;
     const bag = readBag(p);
-    addToBag(bag, "scrap", amount);
+    addToBag(bag, "scrap", n);
     writeBag(p, bag);
   }
 
@@ -11577,12 +11584,15 @@ export class ZoneRoom extends Room<ZoneState> {
       const krt = this.rt.get(k.owner);
       if (krt) krt.kills++;
       this.killRates.add(k.owner, nowSec);
+      // Штраф дропа за моба ниже героя (lowMobDropMul): камни, кольца и материалы — шансом, лом — количеством.
+      const boss = k.kind === "boss";
+      const pen = boss ? 1 : lowMobDropMul(this.state.players.get(k.owner)?.level ?? 1, k.jl);
       if (k.jm > 0) {
-        this.jewelDrop(k.owner, k.jm, k.jr, k.jl);
-        if (k.pt) this.scrapShare(k.pt.length ? k.pt : [k.owner], k.jl, k.sc);
-        else this.scrapDrop(k.owner, k.jl, k.sc);
+        this.jewelDrop(k.owner, k.jm * pen, k.jr, k.jl);
+        if (k.pt) this.scrapShare(k.pt.length ? k.pt : [k.owner], k.jl, k.sc, boss);
+        else this.scrapDrop(k.owner, k.jl, k.sc, boss);
       }
-      this.craftDrop(k.owner, k.campType, k.name, k.champ);
+      if (Math.random() < pen) this.craftDrop(k.owner, k.campType, k.name, k.champ);
       this.chatQuestKill(k.owner, k.champ);
       if (k.campType) {
         // Охота и вожаки — всем, кто нанёс мобу урон (как делится опыт), а не только добившему. Боссы — по bossXpShare ниже.

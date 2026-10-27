@@ -13,7 +13,7 @@ import type { DmgHitColor } from "#shared/net/messages";
 
 // Сервер: высоты рельефа — из кеша плиток (точная формула съедала ~⅓ CPU).
 enableTerrainHeightCache();
-import { maxHpFor, weaponDmgFromLevel } from "#shared/progression";
+import { lowMobDropMul, maxHpFor, scaleCount, weaponDmgFromLevel } from "#shared/progression";
 
 /** Стартовые атрибуты — эталон «голого» героя для адаптивного урона. */
 const START_ATTRS = { str: 1, agi: 1, int: 1, con: 1, luc: 1, wis: 1 };
@@ -4442,6 +4442,16 @@ export class ZoneSim {
           const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
           rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "legendary") });
         }
+      }
+    }
+    // Штраф за моба ниже героя (lowMobDropMul): штучное — шансом, стопки — количеством. Боссы — без штрафа.
+    const pen = attacker && m.kind !== "boss" && !m.bossFight ? lowMobDropMul(this.getAttackerLevel(attacker), m.eliteLevel) : 1;
+    if (pen < 1) {
+      for (let i = rolled.length - 1; i >= 0; i--) {
+        const r = rolled[i];
+        const n = ITEMS[r.id].stack > 1 ? scaleCount(r.count, pen) : Math.random() < pen ? r.count : 0;
+        if (n > 0) r.count = n;
+        else rolled.splice(i, 1);
       }
     }
     // Обычный моб убит игроком: добыча сразу в его инвентарь, на землю — только остаток (что не влезло).
