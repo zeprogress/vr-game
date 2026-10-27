@@ -44,17 +44,21 @@ namespace Zep
         const float StrideWalk = 1.14f, StrideRun = 2.27f;
         /// Высота Body на шаге и беге — постоянная, близко к стойке (LOCO_BODY_Y в bodySplit.ts): без подпрыгивания
         /// и без проседания при смене стойка/шаг/бег.
-        const float LocoBodyY = 0.93f;
+        const float LocoBodyY = 0.93f, LocoBounce = 0.25f;
+        /// Середина размаха Body в клипах бега и шага (для лёгкого подскока вокруг LocoBodyY).
+        const float RunMid = 0.844f, WalkMid = 0.9255f;
         Transform body;
 
         /// После анимации: высота Body на шаге и беге — LocoBodyY по весу этих клипов (ключи легаси-клипа во время игры не прочитать).
         void LateUpdate()
         {
             if (!body || Anim == null) return;
-            float w = Mathf.Min(1f, Anim.Weight("Run") + Anim.Weight("Walk"));
+            float wr = Anim.Weight("Run"), ww = Anim.Weight("Walk");
+            float w = Mathf.Min(1f, wr + ww);
             if (w <= 0f) return;
+            float mid = (wr * RunMid + ww * WalkMid) / (wr + ww);
             var p = body.localPosition;
-            p.y = Mathf.Lerp(p.y, LocoBodyY, w);
+            p.y = Mathf.Lerp(p.y, LocoBodyY + (p.y - mid) * LocoBounce, w);
             body.localPosition = p;
         }
 

@@ -92,8 +92,11 @@ export function applyLegRate(g: AnimationGroup, rate: number): void {
  */
 export const LOCO_BODY_Y = 0.93;
 
+/** Доля исходного подпрыгивания на шаге и беге (вокруг LOCO_BODY_Y): 0 — ровно, 1 — как в клипе. Unity — то же. */
+export const LOCO_BOUNCE = 0.25;
+
 /**
- * Убрать подпрыгивание в клипах шага и бега: высота Body во всех ключах — LOCO_BODY_Y. Ключи у клонов
+ * Подпрыгивание в клипах шага и бега: высота Body — LOCO_BODY_Y плюс LOCO_BOUNCE исходного размаха. Ключи у клонов
  * модели бывают общими — помечаем анимацию и правим один раз.
  */
 export function dampRunBounce(anims: Map<string, AnimationGroup>): void {
@@ -105,9 +108,12 @@ export function dampRunBounce(anims: Map<string, AnimationGroup>): void {
       const anim = ta.animation as Animation & { zepBounce?: boolean };
       if (anim.zepBounce) continue;
       anim.zepBounce = true;
-      for (const k of anim.getKeys()) {
+      const keys = anim.getKeys();
+      const ys = keys.map((k) => (k.value as Vector3).y);
+      const mid = (Math.min(...ys) + Math.max(...ys)) / 2;
+      for (const k of keys) {
         const v = k.value as Vector3;
-        k.value = new Vector3(v.x, LOCO_BODY_Y, v.z);
+        k.value = new Vector3(v.x, LOCO_BODY_Y + (v.y - mid) * LOCO_BOUNCE, v.z);
       }
     }
   }
