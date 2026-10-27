@@ -60,5 +60,8 @@ systemctl --user enable --now zep-spectator-update.timer
 systemctl --user enable zep-spectator.service
 systemctl --user restart zep-spectator.service
 
+# Старые версии и распакованный архив установки больше не нужны — место на диске.
+for d in "$APP/versions"/*; do [ "$d" = "$APP/versions/$VER" ] || rm -rf "$d"; done
 echo "Готово: версия $VER в $APP."
+echo "Папку, из которой ставили ($HERE), и скачанный архив можно удалить."
 echo "Спектатор запущен; обновления ставятся сами. Журнал: journalctl --user -u zep-spectator -f"
