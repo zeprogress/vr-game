@@ -43,7 +43,7 @@ namespace Zep
         /// Родная скорость клипов шага и бега (м/с) при RigScale — HERO_STRIDE в src/client/entities/bodySplit.ts.
         const float StrideWalk = 1.14f, StrideRun = 2.27f;
         /// Подпрыгивание на бегу: высота Body в клипе бега 0.681…1.007 — сжимаем к середине (RUN_BOUNCE в bodySplit.ts).
-        const float RunBounce = 0.25f, RunBodyMid = 0.844f;
+        const float RunBounce = 0f, RunBodyMid = 0.844f;
         Transform body;
 
         /// После анимации: высота Body на бегу — к середине размаха (ключи легаси-клипа во время игры не прочитать).
