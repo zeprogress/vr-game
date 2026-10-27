@@ -32,6 +32,12 @@ namespace Zep
         };
         static readonly string[] DungeonMusic = { "dungeon-subterranean-silence", "dungeon-deep-temple" };
         static readonly string[] CatacombsMusic = { "catacombs" };
+        /// Тема супербосса: последний зал катакомб (Трон Бездны) и бой с рейд-боссом — как в вебе (catacombs-boss.mp3).
+        static readonly string[] SuperBossMusic = { "catacombs-boss" };
+        static readonly string[] BossMusic = { "boss" };
+        // Числа — из src/shared (catacombs.ts CAT_STEPS, CAT_PHASE.run; raid.ts RAID; mobs.ts BOSS.musicRange/musicOut).
+        const int CatSteps = 4, CatPhaseRun = 2;
+        const float RaidX = -84f, RaidZ = -219f, RaidR = 30f, BossNear = 26f, BossOut = 40f;
 
         void Awake()
         {
@@ -115,7 +121,9 @@ namespace Zep
             s.Play();
         }
 
-        /// Музыка по области камеры: поляна — город, подземелье и катакомбы — свои наборы (как в вебе).
+        /// Музыка по области камеры (как у веб-спектатора, Spectator.updateBossMusic): катакомбы — свои треки,
+        /// в последнем зале и на финальном боссе — тема супербосса; бой с рейд-боссом рядом — она же;
+        /// подземелье — своя; рядом с живым Багровым — boss; иначе — город.
         void Update()
         {
             if ((musicCheck -= Time.unscaledDeltaTime) > 0 && music.isPlaying) { music.volume = MusicVol * musicLevel; return; }
@@ -123,15 +131,36 @@ namespace Zep
             var cam = Camera.main;
             if (!cam) return;
             var p = cam.transform.position;
-            string set = p.z > 240 && Mathf.Abs(p.x) < 100 ? "cat" : p.x < -220 ? "dun" : "town";
+            var st = ZoneNet.I && ZoneNet.I.Room != null ? ZoneNet.I.Room.State : null;
+            string set;
+            if (p.z > 240 && Mathf.Abs(p.x) < 100)
+                set = st != null && st.catPhase >= CatPhaseRun && (st.catFinal == 1 || st.catHi >= CatSteps - 1) ? "superBoss" : "cat";
+            else if (st != null && st.raid != null && st.raid.ph > 0 && Vector2.Distance(new Vector2(p.x, p.z), new Vector2(RaidX, RaidZ)) < RaidR + 60f)
+                set = "superBoss";
+            else if (p.x < -220) set = "dun";
+            else set = BossNearby(p) ? "boss" : "town";
             if (set == musicSet && music.isPlaying) return;
             musicSet = set;
-            var list = set == "cat" ? CatacombsMusic : set == "dun" ? DungeonMusic : TownMusic;
+            var list = set == "superBoss" ? SuperBossMusic : set == "boss" ? BossMusic : set == "cat" ? CatacombsMusic : set == "dun" ? DungeonMusic : TownMusic;
             var clip = Resources.Load<AudioClip>("Music/" + list[Random.Range(0, list.Length)]);
             if (!clip) return;
             music.clip = clip;
             music.volume = MusicVol * musicLevel;
             music.Play();
+        }
+
+        /// Живой Багровый ближе BossNear; уже играет его тема — держим до BossOut (гистерезис, как в вебе).
+        bool BossNearby(Vector3 p)
+        {
+            float lim = musicSet == "boss" ? BossOut : BossNear;
+            foreach (var kv in WorldSync.Mobs)
+            {
+                var m = kv.Value.state;
+                if (m == null || m.dead != 0 || m.kind != "boss") continue;
+                var mp = kv.Value.transform.position;
+                if (Vector2.Distance(new Vector2(p.x, p.z), new Vector2(mp.x, mp.z)) < lim) return true;
+            }
+            return false;
         }
     }
 }
