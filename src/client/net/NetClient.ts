@@ -421,8 +421,9 @@ export class NetClient {
     if (this.reconnecting || !this.client) return;
     this.reconnecting = true;
     this.onConnectionLost?.();
-    for (let attempt = 0; attempt < 150 && !this.closedByUs; attempt++) {
-      await new Promise((r) => setTimeout(r, 2000));
+    // Пробуем, пока страница открыта (эфир не должен застывать до ручной перезагрузки); пауза растёт до 10 с.
+    for (let attempt = 0; !this.closedByUs; attempt++) {
+      await new Promise((r) => setTimeout(r, Math.min(10_000, 2000 + attempt * 500)));
       try {
         // Сначала пробуем вернуться В ТУ ЖЕ сессию (сервер держит место ~20 с
         // после обрыва) — тогда персонаж не мигает в бота и обратно. Не вышло
@@ -445,7 +446,13 @@ export class NetClient {
           );
         }
         this.wireRoom(room);
-        await firstSync(room);
+        // Первое состояние тоже может не прийти (обрыв сразу после входа) — не висим вечно, пробуем заново.
+        try {
+          await withTimeout(firstSync(room), JOIN_TIMEOUT_MS);
+        } catch (e) {
+          void room.leave(true).catch(() => {});
+          throw e;
+        }
         this.room = room;
         this.reconnecting = false;
         console.log(`[net] переподключились к ${room.roomId}`);

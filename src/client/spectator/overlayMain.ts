@@ -99,12 +99,19 @@ net.onWorldEvent = (phase, name, _x, _z, loot) => {
     );
   }
 };
+/** Когда пропала связь (0 — есть): дольше 45 с без связи — перезагружаем страницу (OBS сам её не перезапустит). */
+let lostAt = 0;
 net.onConnectionLost = () => {
   live = false;
+  lostAt = performance.now();
   ov.setShown(false);
 };
+setInterval(() => {
+  if (!live && lostAt && performance.now() - lostAt > 45_000) location.reload();
+}, 5000);
 net.onReconnected = () => {
   live = true;
+  lostAt = 0;
   ov.setShown(true);
 };
 
@@ -188,7 +195,10 @@ if (!key) {
   console.error("[overlay] нужен ?spectator=КЛЮЧ");
 } else {
   void net.connectSpectator(key).then((ok) => {
-    if (!ok) console.error("[overlay] не удалось подключиться к серверу");
+    if (!ok) {
+      console.error("[overlay] не удалось подключиться к серверу");
+      lostAt = performance.now(); // первый вход не удался — через 45 с перезагрузка
+    }
     else {
       live = true;
       ov.setShown(true);

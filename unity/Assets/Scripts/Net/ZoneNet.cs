@@ -44,6 +44,10 @@ namespace Zep
         bool leaving;   // выходим сами (выключение) — не переподключаться
         bool retrying;  // цикл переподключения уже идёт
         bool wantRetry; // попросили войти снова — запустим из Update (главный поток)
+        /// Когда пришло последнее обновление состояния (realtimeSinceStartup): долго тихо — связь мертва.
+        float lastStateAt;
+        /// Сколько ждать обновлений от сервера и ответа на вход, с. Сервер шлёт патчи каждый тик (мобы двигаются).
+        const float StaleSec = 15f, JoinTimeoutSec = 15f;
 
         void Awake()
         {
@@ -69,7 +73,12 @@ namespace Zep
                     opts["nick"] = nick;
                     if (!string.IsNullOrEmpty(adminPass)) opts["adminPass"] = adminPass;
                 }
-                Room = await client.JoinOrCreate<ZoneState>("zone", opts);
+                var joined = await client.JoinOrCreate<ZoneState>("zone", opts);
+                // Вход, брошенный сторожем по таймауту, мог ответить поздно — уже есть другая комната: этот выходим.
+                if (Room != null || leaving) { _ = joined.Leave(true); return; }
+                Room = joined;
+                lastStateAt = Time.realtimeSinceStartup;
+                Room.OnStateChange += (_, _) => lastStateAt = Time.realtimeSinceStartup;
                 Room.OnMessage<Dictionary<string, object>>("sc", m => SpecCmd?.Invoke(m));
                 Room.OnMessage<Dictionary<string, object>>("dh", m =>
                 {
@@ -81,6 +90,8 @@ namespace Zep
                 MuteOtherMessages();
                 Room.OnLeave += code =>
                 {
+                    // Поздний выход уже брошенной сторожем комнаты — новую не трогаем.
+                    if (Room != joined) return;
                     Status = $"отключён ({code})";
                     Room = null;
                     Left?.Invoke();
@@ -109,10 +120,22 @@ namespace Zep
         {
             // Колбэк потери комнаты может прийти не с главного потока — цикл стартуем здесь, чтобы
             // Joined и создание объектов мира шли по главному потоку Unity.
-            if (wantRetry && !retrying && !leaving && Room == null)
+            // Сторож: комнаты нет и вход не идёт — входим (даже если OnLeave не пришёл или цикл оборвался).
+            if (!retrying && !leaving && Room == null && (wantRetry || Time.realtimeSinceStartup - lastStateAt > 3f))
             {
                 wantRetry = false;
                 _ = RetryLoop();
+            }
+            // Комната есть, но обновлений нет StaleSec с — связь полумёртвая (обрыв без закрытия сокета): бросаем и входим снова.
+            if (Room != null && !leaving && Time.realtimeSinceStartup - lastStateAt > StaleSec)
+            {
+                Debug.LogWarning($"[net] {StaleSec:0} с без обновлений — переподключаюсь");
+                var dead = Room;
+                Room = null;
+                Status = "нет обновлений, переподключение";
+                Left?.Invoke();
+                try { _ = dead.Leave(false); } catch { /* сокет уже мёртв */ }
+                wantRetry = true;
             }
         }
 
@@ -127,7 +150,13 @@ namespace Zep
                     Status = $"нет связи, новая попытка через {delay:0} с";
                     await Task.Delay(TimeSpan.FromSeconds(delay));
                     if (leaving || Room != null) break;
-                    await Connect();
+                    // Вход может зависнуть (сокет без ответа) — не ждём дольше JoinTimeoutSec, пробуем снова.
+                    var join = Connect();
+                    if (await Task.WhenAny(join, Task.Delay(TimeSpan.FromSeconds(JoinTimeoutSec))) != join)
+                    {
+                        Status = "вход завис, новая попытка";
+                        Debug.LogWarning("[net] вход завис — новая попытка");
+                    }
                     delay = Mathf.Min(delay * 1.5f, 10f);
                 }
             }
