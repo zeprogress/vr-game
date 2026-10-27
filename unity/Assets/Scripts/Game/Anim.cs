@@ -11,6 +11,9 @@ namespace Zep
 
         public Anim(GameObject go) { a = go.GetComponentInChildren<Animation>(); }
 
+        /// Дальше FxCull.Far от камеры — анимация на паузе (поза замирает), ближе — снова идёт.
+        public void Cull(Vector3 at) { if (a) a.enabled = FxCull.Near(at); }
+
         public bool Has(params string[] names) => Find(names) != null;
 
         /// Длина клипа в секундах (0 — нет такого).

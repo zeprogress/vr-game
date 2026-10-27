@@ -53,6 +53,8 @@ namespace Zep
         public void OnAct(string k, string id, Dictionary<string, object> m)
         {
             var p = new Vector3(F(m, "x", 0), F(m, "y", 0), F(m, "z", 0));
+            // Бой дальше 200 м от камеры не показываем и не озвучиваем.
+            if (!FxCull.Near(p)) return;
             float d = F(m, "d"), r = F(m, "r"), x2 = F(m, "x2"), z2 = F(m, "z2");
             float Or(float v, float def) => float.IsNaN(v) ? def : v;
             // Действие героя звучит от его тела (как `at` в вебе), остальное — от точки события.

@@ -65,6 +65,7 @@ namespace Zep
                 transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(fwd),
                     1f - Mathf.Exp(-10f * Time.deltaTime));
 
+            rig.Anim?.Cull(transform.position);
             float speed = (transform.position - lastPos).magnitude / Mathf.Max(Time.deltaTime, 1e-4f);
             lastPos = transform.position;
             rig.Locomotion(speed, state.dead != 0);

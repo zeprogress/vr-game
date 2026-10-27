@@ -197,6 +197,7 @@ namespace Zep
 
         void Add(Kind k, Vector3 p, float life, Color c, float size, Vector3 drift, string text = null)
         {
+            if (!FxCull.Near(p)) return;
             var it = new Item { kind = k, pos = p, life = life, color = c, size = size, drift = drift, born = Time.time, rot = Random.value * 360 };
             if (text != null)
             {
@@ -262,7 +263,7 @@ namespace Zep
                 }
                 var world = it.pos + it.drift * t;
                 var v = cam.WorldToScreenPoint(world);
-                if (v.z < 0.3f) { it.g.enabled = false; continue; }
+                if (v.z < 0.3f || v.z > FxCull.Far || FxCull.Hidden(cam.transform.position, world)) { it.g.enabled = false; continue; }
                 it.g.enabled = true;
                 float ppm = cam.pixelHeight / (2f * v.z * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad));
                 float pop = Mathf.Min(1f, age / 0.1f), alpha = Mathf.Min(1f, (1f - t) * 2.2f), scale = pop;

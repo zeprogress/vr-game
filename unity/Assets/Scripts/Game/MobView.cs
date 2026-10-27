@@ -256,7 +256,7 @@ namespace Zep
             float fade = state.burning > 0 ? 1 - burnLastSec : 0;
             float sc = (state.scale > 0 ? state.scale : 1f) * bodyRadius;
             var center = transform.position + Vector3.up * sc * 1.1f;
-            if (burnGlow > 0.01f && Vfx.I != null)
+            if (burnGlow > 0.01f && Vfx.I != null && FxCull.Near(transform.position))
             {
                 burnTick -= dt;
                 if (burnTick <= 0)
@@ -304,6 +304,7 @@ namespace Zep
                 Quaternion.Euler(0, state.yaw * Mathf.Rad2Deg, 0), 1f - Mathf.Exp(-10f * Time.deltaTime));
             float sc = state.scale > 0 ? state.scale : 1f;
             transform.localScale = Vector3.one * sc;
+            anim.Cull(transform.position);
 
             float speed = (transform.position - lastPos).magnitude / Mathf.Max(Time.deltaTime, 1e-4f) / sc;
             lastPos = transform.position;
