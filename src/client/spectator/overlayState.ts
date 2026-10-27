@@ -55,18 +55,9 @@ export function catacombsOf(st: ZoneState | null | undefined): OverlayCtx["catac
  * Босс для полоски HP: Багровый, текущий босс катакомб (catBoss), дракон «Охоты на элиту» (фаза),
  * рейд-босс (Лунный аватар) и суперболссы катакомб по имени.
  */
-/** Одиночные боссы мира (элиты с полоской HP босса): охота на элиту, голем, колосс, чародей руин, рейд-босс. */
-const WORLD_BOSS_NAMES = new Set(
-  ["worldElite", "golem", "mushColossus", "ruinMage", RAID.boss].map((k) => ELITE_MOBS[k]?.name).filter(Boolean),
-);
-
-/** От стольких HP моб — босс для плашки (Ледяной гигант, Страж лавы и т.п.). Пугало (у него табло в info) — не босс. */
-const BOSS_HP = 100_000;
-
-function isBossMob(st: ZoneState, id: string, m: { kind: string; mobName: string; phase: number; maxHp: number; info: string }): boolean {
+function isBossMob(st: ZoneState, id: string, m: { kind: string; mobName: string; phase: number }): boolean {
   const name = m.mobName || mobName(m.kind);
-  if (m.info) return false; // табло над Пугалом
-  return m.kind === "boss" || id === st.catBoss || m.phase > 0 || CAT_BOSS_NAMES.includes(name) || WORLD_BOSS_NAMES.has(name) || m.maxHp >= BOSS_HP;
+  return m.kind === "boss" || id === st.catBoss || m.phase > 0 || CAT_BOSS_NAMES.includes(name) || name === ELITE_MOBS[RAID.boss]?.name;
 }
 
 export function mobName(kind: string): string {
@@ -153,41 +144,3 @@ export function watchPanels(st: ZoneState | null | undefined, subj: { type: stri
   return out;
 }
 
-/** Последний босс плашки: держимся за него, пока жив и рядом, — плашка не прыгает между соседями. */
-let lastBossId = "";
-
-/**
- * HP живого босса рядом с камерой эфира (state.specX/Z, в пределах `near` м) — для полоски HP босса,
- * когда камера не смотрит на него прямо (Unity-спектатор не сообщает цель в аренах катакомб и общих планах).
- * Босс — как в watchPanels: Багровый, боссы катакомб, боссы мира и любой моб от BOSS_HP. null — рядом нет.
- */
-export function nearBossHp(st: ZoneState | null | undefined, near = 90): OverlayCtx["targetHp"] {
-  if (!st) return null;
-  // Босс катакомб — главный: пока жив и камера в его арене (150 м), плашка за ним, как в игре (CatBossHud).
-  const cb = st.catBoss ? st.mobs.get(st.catBoss) : undefined;
-  if (cb && !cb.dead && (!st.specActive || Math.hypot(cb.x - st.specX, cb.z - st.specZ) < 150)) {
-    lastBossId = st.catBoss;
-    return { frac: cb.hp / (cb.maxHp || 1), cur: cb.hp, max: cb.maxHp, name: cb.mobName || "Босс катакомб", boss: true };
-  }
-  // Камера эфира не прислала положение — ближайшим не выбрать: берём любого живого босса.
-  const anywhere = !st.specActive;
-  let best: OverlayCtx["targetHp"] = null;
-  let bestId = "";
-  let bestScore = Infinity;
-  st.mobs.forEach((m, id) => {
-    if (m.dead || !isBossMob(st, id, m)) return;
-    // Ближе к камере или к точке, куда она смотрит; босс в бою (ранен) — впереди целого.
-    const d = anywhere ? 0 : Math.min(Math.hypot(m.x - st.specX, m.z - st.specZ), Math.hypot(m.x - st.specTX, m.z - st.specTZ));
-    if (d > near && !anywhere) return;
-    const score = d + (m.hp < m.maxHp ? 0 : 1000) - (id === lastBossId ? 500 : 0);
-    if (score >= bestScore) return;
-    bestScore = score;
-    bestId = id;
-    // Дракон охоты (фаза > 0 во время охоты): здоровье — удары, в подписи фаза, как в игре (HuntBossFinder).
-    const hunt = st.eventKind === 2 && m.phase > 0;
-    const name = m.mobName || mobName(m.kind);
-    best = { frac: m.hp / (m.maxHp || 1), cur: m.hp, max: m.maxHp, name: hunt ? `${name} · фаза ${m.phase}` : name, boss: true, hits: hunt };
-  });
-  lastBossId = bestId;
-  return best;
-}

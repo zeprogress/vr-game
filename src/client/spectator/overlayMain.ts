@@ -1,8 +1,10 @@
 import { showCatReport } from "../ui/CatReport";
+import { CatBossHud, catBossViewOf, HuntBossFinder } from "../ui/CatBossHud";
+import { inCatRegion } from "#shared/catacombs";
 import { EVENT_BUFF_MINUTES } from "#shared/constants";
 import { NetClient } from "../net/NetClient";
 import { Overlay } from "./Overlay";
-import { catacombsOf, chatQuestOf, nearBossHp, onlineOf, shotLabel, tickerOf, watchPanels } from "./overlayState";
+import { catacombsOf, chatQuestOf, onlineOf, shotLabel, tickerOf, watchPanels } from "./overlayState";
 import type { SpecCmd } from "#shared/net/messages";
 import type { OverlayFrame } from "#shared/net/overlayFrame";
 
@@ -23,7 +25,7 @@ ov.setShown(false);
 
 /**
  * Какую часть оверлея рисовать — чтобы HP боссов можно было ставить отдельным источником OBS:
- * `part=boss` — только полоска HP босса/супербосса (без событий, часов, онлайна и т.д.);
+ * `part=boss` — только панель босса катакомб / дракона охоты (без событий, часов, онлайна и т.д.);
  * `part=main` — всё, кроме неё; без параметра — как раньше, всё вместе.
  */
 const part = params.get("part") === "boss" ? "boss" : params.get("part") === "main" ? "main" : "all";
@@ -32,6 +34,10 @@ if (bossOnly) {
   // Отдельный источник — только HP: остальные блоки и настройки с пульта её не трогают.
   ov.setConfig({ wm: 0, clock: 0, online: 0, watching: 0, feed: 0, top: 0, ticker: 0, hp: 1 });
 }
+
+/** Панель босса катакомб / дракона охоты — та же, что в игре (CatBossHud), в стиле эфира. */
+const bossHud = new CatBossHud(true);
+const huntBoss = new HuntBossFinder();
 
 /** Последний кадр из рендерящего спектатора (контекст панелей и строка сверху). */
 let frame: OverlayFrame | null = null;
@@ -130,12 +136,12 @@ function tick(): void {
     : subj && now - subjAt < 8000
       ? { ...EMPTY_FRAME, ...watchPanels(st, subj), shotLabel: shotLabel(subj.shot) }
       : EMPTY_FRAME;
-  const isBoss = !!f.targetHp?.boss;
-  // HP босса: цель кадра — босс; иначе живой босс рядом с камерой эфира (без цели кадра у Unity-спектатора).
-  const bossHp = isBoss ? f.targetHp : nearBossHp(st);
+  // Панель босса сверху (имя, HP/удары, значки защит) — как в игре и в веб-спектаторе: в катакомбах — босс
+  // катакомб, вне их — дракон охоты на элиту рядом с камерой эфира (specX/Z от Unity- или веб-спектатора).
+  bossHud.update(st && part !== "main" ? (inCatRegion(st.specX, st.specZ) ? catBossViewOf(st) : huntBoss.view(st, st.specX, st.specZ, 140)) : null);
   if (bossOnly) {
     ov.setTicker("", "news");
-    ov.update({ ...EMPTY_FRAME, bossHp });
+    ov.update(EMPTY_FRAME);
     return;
   }
   // Строка сверху и онлайн — из состояния комнаты: кадр рендерящей страницы для них не нужен
@@ -148,8 +154,8 @@ function tick(): void {
     chatQuest: chatQuestOf(st),
     catacombs: catacombsOf(st),
   };
-  // Плашка босса сверху — и в полном оверлее (OBS часто стоит без part); при part=main её рисует отдельный источник.
-  const view = part === "main" ? { ...fromRoom, targetHp: isBoss ? null : f.targetHp, bossHp: null } : { ...fromRoom, bossHp };
+  // HP цели-босса не дублируем полоской — босса показывает панель сверху.
+  const view = f.targetHp?.boss ? { ...fromRoom, targetHp: null } : fromRoom;
   ov.setTicker(view.ticker, view.tickerKind);
   ov.update(view);
 }

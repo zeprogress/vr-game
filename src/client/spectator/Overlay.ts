@@ -234,10 +234,6 @@ export class Overlay {
   private readonly hpFill: HTMLDivElement;
   private readonly hpLabel: HTMLElement;
   private readonly hpInv: HTMLElement;
-  /** Плашка босса сверху — своя, чтобы HP цели снизу и босс были видны одновременно. */
-  private readonly boss2: HTMLDivElement;
-  private readonly boss2Fill: HTMLDivElement;
-  private readonly boss2Label: HTMLElement;
   private readonly card: HTMLDivElement;
   private readonly cardTitle: HTMLElement;
   private readonly cardSub: HTMLElement;
@@ -297,12 +293,6 @@ export class Overlay {
     bar.appendChild(this.hpFill);
     this.hpInv = document.createElement("i");
     this.hp.append(this.hpLabel, bar, this.hpInv);
-    this.boss2 = div("box ov-hp boss");
-    this.boss2Label = document.createElement("b");
-    const bar2 = div("bar");
-    this.boss2Fill = div("fill");
-    bar2.appendChild(this.boss2Fill);
-    this.boss2.append(this.boss2Label, bar2);
 
     this.card = div("box ov-card");
     const t = div("t");
@@ -333,7 +323,6 @@ export class Overlay {
       this.online,
       this.watch,
       this.hp,
-      this.boss2,
       this.feed,
       this.card,
       this.boss,
@@ -720,24 +709,14 @@ export class Overlay {
       }
     }
 
-    // Босс — плашкой сверху (своя или из цели кадра), цель-не-босс — снизу; обе могут быть сразу.
-    const boss = ctx.bossHp !== undefined ? ctx.bossHp : ctx.targetHp?.boss ? ctx.targetHp : null;
-    const hp = ctx.targetHp && !ctx.targetHp.boss ? ctx.targetHp : null;
-    const label = (v: NonNullable<OverlayCtx["targetHp"]>): string =>
-      v.hits
-        ? `${v.name} — ${Math.max(0, Math.ceil(v.cur))} / ${Math.round(v.max)} ударов`
-        : `${v.name} — ${Math.max(0, Math.ceil(v.cur))}/${Math.round(v.max)}`;
-    if (this.cfg.hp && boss) {
-      show(this.boss2, true);
-      this.boss2Fill.style.width = `${Math.round(Math.max(0, Math.min(1, boss.frac)) * 100)}%`;
-      this.boss2Label.textContent = label(boss);
-    } else {
-      show(this.boss2, false);
-    }
+    const hp = ctx.targetHp;
     if (this.cfg.hp && hp) {
       show(this.hp, true);
+      this.hp.classList.toggle("boss", hp.boss);
       this.hpFill.style.width = `${Math.round(Math.max(0, Math.min(1, hp.frac)) * 100)}%`;
-      this.hpLabel.textContent = label(hp);
+      this.hpLabel.textContent = hp.hits
+        ? `${hp.name} — ${Math.max(0, Math.ceil(hp.cur))} / ${Math.round(hp.max)} ударов`
+        : `${hp.name} — ${Math.max(0, Math.ceil(hp.cur))}/${Math.round(hp.max)}`;
       const inv = ctx.watchInv ?? "";
       show(this.hpInv, inv.length > 0);
       if (this.hpInv.textContent !== inv) this.hpInv.textContent = inv;

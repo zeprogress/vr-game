@@ -13,8 +13,6 @@ export interface OverlayCtx {
   /** HP цели 0..1 и абсолютные значения — или null, если у кадра нет цели. */
   /** hits — «здоровье» в ударах (дракон охоты на элиту), подпись «N / M ударов». */
   targetHp: { frac: number; cur: number; max: number; name: string; boss: boolean; hits?: boolean } | null;
-  /** Плашка босса сверху — отдельно от HP цели (босс рядом с камерой эфира); не задано — берётся targetHp, если это босс. */
-  bossHp?: OverlayCtx["targetHp"];
   /** Таблица характеристик игрока под ником в «смотрим» (см. #shared/heroStats). */
   watchStats: HeroStatRow[] | null;
   /** Титул героя (под ником) или null. */
