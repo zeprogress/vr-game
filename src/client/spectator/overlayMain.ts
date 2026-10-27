@@ -2,6 +2,7 @@ import { showCatReport } from "../ui/CatReport";
 import { EVENT_BUFF_MINUTES } from "#shared/constants";
 import { NetClient } from "../net/NetClient";
 import { Overlay } from "./Overlay";
+import { onlineOf, tickerOf } from "./overlayState";
 import type { SpecCmd } from "#shared/net/messages";
 import type { OverlayFrame } from "#shared/net/overlayFrame";
 
@@ -121,8 +122,14 @@ function tick(): void {
     ov.update({ ...EMPTY_FRAME, targetHp: isBoss ? f.targetHp : null });
     return;
   }
+  // Строка сверху и онлайн — из состояния комнаты: кадр рендерящей страницы для них не нужен
+  // (Unity-спектатор кадров не шлёт). Говорящих берём из последнего кадра, если он свежий.
+  const st = net.room?.state;
+  const speakingNicks = new Set(f.online.filter((p) => p.speaking).map((p) => p.nick));
+  const { ticker, tickerKind } = tickerOf(st);
+  const fromRoom = { ...f, ticker, tickerKind, online: onlineOf(st, (_id, nick) => speakingNicks.has(nick)) };
   // В полном оверлее босса показывает отдельный источник (part=boss) — здесь его не дублируем.
-  const view = part === "main" && isBoss ? { ...f, targetHp: null } : f;
+  const view = part === "main" && isBoss ? { ...fromRoom, targetHp: null } : fromRoom;
   ov.setTicker(view.ticker, view.tickerKind);
   ov.update(view);
 }

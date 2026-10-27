@@ -29,6 +29,7 @@ import { buildZone } from "../world/Zone";
 import { PRESETS, type Quality } from "../config/quality";
 import { Overlay, type OverlayCtx } from "./Overlay";
 import type { OverlayFrame } from "#shared/net/overlayFrame";
+import { onlineOf, tickerOf } from "./overlayState";
 import { createEyeGloves, type EyeGloves } from "./EyeGloves";
 import { NetMobs } from "../combat/MobSystem";
 import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
@@ -1496,36 +1497,8 @@ export class Spectator {
       }
     }
 
-    const online: { nick: string; speaking: boolean; bot: boolean; plat: number }[] = [];
-    st?.players.forEach((p, id) =>
-      online.push({
-        nick: p.nick,
-        speaking: this.speakingIds.has(id),
-        bot: id.startsWith("bot:"),
-        plat: p.plat,
-      }),
-    );
-
-    // Строка сверху: идёт ивент — крупно; иначе крутим свежие изменения игры.
-    let ticker = "";
-    let tickerKind: "event" | "news" = "news";
-    if (st && st.catPhase >= CAT_PHASE.run) {
-      // Идут катакомбы — сверху пусто: зрителю и так видно, что это забег (баннеры, таблица урона).
-      ticker = "";
-      tickerKind = "event";
-    } else if (st?.catPhase === CAT_PHASE.gather) {
-      ticker = "Идёт сбор в Катакомбы (!катакомбы)";
-      tickerKind = "event";
-    } else if (st?.eventKind === 1) {
-      ticker = "Идёт ивент — нашествие мобов (!event)";
-      tickerKind = "event";
-    } else if (st?.eventKind === 2) {
-      ticker = "Идёт ивент — охота на элиту (!event)";
-      tickerKind = "event";
-    } else if (st?.eventKind === 3) {
-      ticker = "Идёт ивент — Охотничья башня (!event)";
-      tickerKind = "event";
-    }
+    const online = onlineOf(st, (id) => this.speakingIds.has(id));
+    const { ticker, tickerKind } = tickerOf(st);
 
     // Один кадр на оба оверлея: в самом спектраторе и на отдельной странице (overlay.html) — одинаковые панели.
     const frame: OverlayFrame = {
