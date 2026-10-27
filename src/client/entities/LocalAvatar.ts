@@ -4,6 +4,7 @@ import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { BuffOrbitFx } from "../ui/BuffOutlineFx";
 import { CLASS_CLIP_NAMES, CLASS_ONE_SHOT, classAnimSet, classClipsFor, type ClassAnimSet } from "../world/classPoses";
+import { applySplitWeight, blendSplit, legClip, startSplitWeight } from "./bodySplit";
 import { StunStarsFx } from "../ui/StunStarsFx";
 import { WebCocoonFx } from "./WebCocoonFx";
 
@@ -38,7 +39,9 @@ export class LocalAvatar {
   private readonly root: TransformNode;
   private holder: TransformNode | null = null;
   private rig: RigInstance | null = null;
+  /** Веса клипов: на ногах (и всём теле) и на корпусе — на бегу корпус играет действие (bodySplit). */
   private readonly animW = new Map<string, number>();
+  private readonly animWUp = new Map<string, number>();
   private fistL: TransformNode | null = null;
   private fistR: TransformNode | null = null;
 
@@ -155,8 +158,7 @@ export class LocalAvatar {
       if (g.isPlaying) g.stop();
       g.reset();
       g.start(false, this.swingSpeed, g.from, g.to, false);
-      g.setWeightForAllAnimatables(1);
-      this.animW.set(name, 1);
+      startSplitWeight(g, name, this.locoMove, this.animW, this.animWUp);
     } else {
       this.swingUntil = performance.now() + 500 / this.swingSpeed;
     }
@@ -198,8 +200,7 @@ export class LocalAvatar {
     if (g.isPlaying) g.stop();
     g.reset();
     g.start(false, rate, g.from, g.to, false);
-    g.setWeightForAllAnimatables(1);
-    this.animW.set(name, 1);
+    startSplitWeight(g, name, this.locoMove, this.animW, this.animWUp);
     return performance.now() + ((g.to - g.from) / 60 / rate) * 1000;
   }
 
@@ -262,6 +263,7 @@ export class LocalAvatar {
         }
         for (const g of rig.anims.values()) g.stop();
         this.animW.clear();
+        this.animWUp.clear();
         for (const n of CLIPS) this.animW.set(n, n === "idle" ? 1 : 0);
         const idle = rig.anims.get("idle");
         idle?.start(true, 1, idle.from, idle.to, false);
@@ -368,27 +370,26 @@ export class LocalAvatar {
     else if (move) want = "walk";
     else want = this.animSet && rig.anims.has(this.animSet.idle) ? this.animSet.idle : "idle";
 
+    // На бегу действие (удар, выстрел, урон, подбор) — только корпусом, ноги продолжают бег/шаг (bodySplit).
+    const wantLegs = legClip(want, move, run);
     const k = Math.min(1, dt * 12);
     for (const n of CLIPS) {
       if (n === "death") continue;
       const g = rig.anims.get(n);
       if (!g) continue;
-      const target = n === want ? 1 : 0;
-      let w = this.animW.get(n) ?? 0;
-      w += (target - w) * k;
-      if (w <= 0.003) {
-        w = 0;
-        if (g.isPlaying && n !== want) g.stop();
+      const wanted = n === want || n === wantLegs;
+      const { legs: w, upper: wu } = blendSplit(n, wantLegs, want, k, this.animW, this.animWUp);
+      if (w === 0 && wu === 0) {
+        if (g.isPlaying && !wanted) g.stop();
       } else if (!g.isPlaying && !ONE_SHOT.has(n)) {
         g.start(true, 1, g.from, g.to, false);
-      } else if (!g.isPlaying && n === want) {
+      } else if (!g.isPlaying && wanted) {
         // Разовый клип (swordslash/recievehit): триггер уже прошёл, но клип
         // мог доиграть — перезапускаем, пока окно не закрылось.
         const rate = n === this.swingClip ? this.swingSpeed : n === "pickup" ? PICKUP_RATE : n === this.extraClip ? this.extraRate : 1;
         g.start(false, rate, g.from, g.to, false);
       }
-      this.animW.set(n, w);
-      g.setWeightForAllAnimatables(w);
+      applySplitWeight(g, w, wu);
     }
   }
 

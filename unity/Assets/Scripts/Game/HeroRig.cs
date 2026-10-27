@@ -34,6 +34,20 @@ namespace Zep
 
         bool stabLeft;
         float swingUntil;
+        /// Скорость с прошлого Locomotion — бежит ли герой, когда пришло действие.
+        float moveSpeed;
+        /// Идущее действие играет только корпус (на бегу) — ноги не блокирует.
+        bool actionUpper;
+        float upperUntil;
+        const float MoveSpeedMin = 0.6f;
+
+        /// Действие на бегу — корпусом поверх бега, стоя — всем телом (как bodySplit.ts в вебе).
+        void PlayAction(float rate, string clip)
+        {
+            actionUpper = moveSpeed > MoveSpeedMin && Anim.CanSplit;
+            if (actionUpper) { Anim.OnceUpper(rate, clip); upperUntil = Time.time + Anim.Length(clip) / rate; }
+            else { Anim.StopUpper(); Anim.Once(rate, clip); }
+        }
 
         /// Замах по сети (act: swing / bow) — клип класса или SwordSlash, темп растёт с уровнем (RemoteAvatar.playSwing).
         public void PlaySwing(int level)
@@ -46,7 +60,7 @@ namespace Zep
                 stabLeft = set.Value.alt != null && !stabLeft;
             }
             float rate = assets.MeleeRate(level);
-            Anim.Once(rate, clip);
+            PlayAction(rate, clip);
             swingUntil = Time.time + Anim.Length(clip) / rate;
         }
 
@@ -56,15 +70,21 @@ namespace Zep
         public void PlayOneShot(string clip, float speed = 1f)
         {
             if (Time.time < swingUntil) return;
-            Anim.Once(speed, clip);
+            // Урон и подбор на бегу — корпусом; победа и прочие эмоции — всем телом.
+            if (clip == "RecieveHit" || clip == "PickUp") PlayAction(speed, clip);
+            else { actionUpper = false; Anim.StopUpper(); Anim.Once(speed, clip); }
             oneShotUntil = Time.time + Anim.Length(clip) / speed;
         }
 
         /// Ходьба/бег/стойка — когда не идёт замах или разовый клип.
         public void Locomotion(float speed, bool dead)
         {
-            if (dead) { Anim.Hold(1f, "Death", "death", "Defeat"); return; }
-            if (Time.time < swingUntil || Time.time < oneShotUntil) return;
+            moveSpeed = speed;
+            if (dead) { Anim.StopUpper(); Anim.Hold(1f, "Death", "death", "Defeat"); return; }
+            // Действие корпусом кончилось — корпус снова за ногами.
+            if (actionUpper && Time.time >= upperUntil) { actionUpper = false; Anim.StopUpper(); }
+            // Действие всем телом — ноги ждут; корпусом — ноги продолжают бег.
+            if (!actionUpper && (Time.time < swingUntil || Time.time < oneShotUntil)) return;
             var set = AnimSet;
             if (speed > 3.5f) Anim.Loop(1f, "Run");
             else if (speed > 0.6f) Anim.Loop(1f, "Walk");
@@ -119,6 +139,9 @@ namespace Zep
                 foreach (var c in assets.classClips)
                     if (c && !animation.GetClip(c.name)) animation.AddClip(c, c.name);
             Anim = new Anim(model);
+            // Корпус — от Hips (ноги растут от Body): на бегу действия играют только им (Anim.OnceUpper).
+            var hips = Find(model.transform, "Hips");
+            if (hips) Anim.SetUpperRoot(hips);
             fistL = Find(model.transform, "Fist.L");
             fistR = Find(model.transform, "Fist.R");
             clsL = clsR = null;

@@ -18,6 +18,7 @@ import "@babylonjs/core/Meshes/Builders/capsuleBuilder";
 import type { PlayerMode, PlayerState, Xf } from "#shared/net/schema";
 import { isWeaponClass, type WeaponClass, type WeaponTier } from "#shared/items";
 import { CLASS_CLIP_NAMES, CLASS_ONE_SHOT, classAnimSet, classClipsFor, type ClassAnimSet } from "../world/classPoses";
+import { applySplitWeight, blendSplit, legClip, startSplitWeight } from "./bodySplit";
 import type { WeaponKind } from "#shared/combat";
 import { LOADOUT } from "../config/loadout";
 import { NameTag } from "../ui/NameTag";
@@ -248,8 +249,10 @@ export class RemoteAvatar implements Hittable {
   private builtSkin = -1;
   private mode: PlayerMode | null = null;
 
-  // Анимации модели бота (crossfade по весам).
+  // Анимации модели бота (crossfade по весам): animW — вес клипа на ногах (и на всём теле, когда
+  // корпус и ноги играют одно), animWUp — на корпусе (на бегу корпус может играть другой клип).
   private readonly animW = new Map<string, number>();
+  private readonly animWUp = new Map<string, number>();
   private planarSpeed = 0;
   /** Текущий режим ходьбы — для гистерезиса порогов (иначе клип щёлкает). */
   private locoRun = false;
@@ -400,8 +403,7 @@ export class RemoteAvatar implements Hittable {
       if (g.isPlaying) g.stop();
       g.reset();
       g.start(false, rate, g.from, g.to, false);
-      g.setWeightForAllAnimatables(1);
-      this.animW.set(name, 1);
+      startSplitWeight(g, name, this.locoMove, this.animW, this.animWUp);
       this.swingUntil = this.now + ((g.to - g.from) / 60 / rate) * 1000;
     }
   }
@@ -434,8 +436,7 @@ export class RemoteAvatar implements Hittable {
     if (!g) return 0;
     if (this.animFrozen) return this.now + durationMs; // анимация стоит — клип не запускаем (см. playSwing)
     g.start(false, speed, g.from, g.to, false);
-    g.setWeightForAllAnimatables(1);
-    this.animW.set(clip, 1);
+    startSplitWeight(g, clip, this.locoMove, this.animW, this.animWUp);
     return this.now + durationMs;
   }
 
@@ -480,6 +481,7 @@ export class RemoteAvatar implements Hittable {
     this.builtRigSkin = 0;
     this.smoothInit = false;
     this.animW.clear();
+    this.animWUp.clear();
     this.deadAnim = false;
     this.handL = this.handR = this.capsule = this.botBody = null;
     // Оружие висело на кистях/корпусе — пересоберём под новый режим.
@@ -1272,6 +1274,9 @@ export class RemoteAvatar implements Hittable {
     else if (run) want = "run";
     else if (move) want = "walk";
     else want = this.animSet && rig.anims.has(this.animSet.idle) ? this.animSet.idle : "idle";
+    // На бегу действие (удар, выстрел, урон, подбор) — только корпусом, ноги продолжают бег/шаг (bodySplit).
+    const wantUp = want;
+    const wantLow = legClip(want, move, run);
 
     const k = Math.min(1, dt * 12);
     // Темп ног — от фактической скорости: клип бега/шага иначе крутится в полном темпе и на разгоне
@@ -1282,23 +1287,20 @@ export class RemoteAvatar implements Hittable {
       const g = rig.anims.get(n);
       if (!g) continue;
       if (n === "run" || n === "walk") g.speedRatio = pace;
-      const target = n === want ? 1 : 0;
-      let w = this.animW.get(n) ?? 0;
-      w += (target - w) * k;
-      if (w <= 0.003) {
-        w = 0;
-        if (g.isPlaying && n !== want) g.stop();
+      const wanted = n === wantLow || n === wantUp;
+      const { legs: w, upper: wu } = blendSplit(n, wantLow, wantUp, k, this.animW, this.animWUp);
+      if (w === 0 && wu === 0) {
+        if (g.isPlaying && !wanted) g.stop();
       } else if (!g.isPlaying && !BOT_ONE_SHOT_CLIPS.has(n)) {
         // Циклические клипы (idle/walk/run) — гоняем сами, чтобы не заглохли.
         g.start(true, 1, g.from, g.to, false);
-      } else if (!g.isPlaying && n === want && BOT_ONE_SHOT_CLIPS.has(n)) {
+      } else if (!g.isPlaying && wanted && BOT_ONE_SHOT_CLIPS.has(n)) {
         // Разовый клип ещё «хочется» (окно открыто), но он уже доиграл —
         // перезапускаем, иначе модель зависает на последнем кадре.
         const rate = n === this.swingClip ? this.swingRate : 1;
         g.start(false, rate, g.from, g.to, false);
       }
-      this.animW.set(n, w);
-      g.setWeightForAllAnimatables(w);
+      applySplitWeight(g, w, wu);
     }
   }
 

@@ -73,6 +73,50 @@ namespace Zep
             return true;
         }
 
+        // ---- корпус поверх ног (как bodySplit.ts в вебе) ----
+        // На бегу действие играет копия клипа с маской «корпус» (кость Hips и ниже по иерархии: Abdomen, Torso,
+        // руки, голова — ноги растут от Body и в маску не входят) на слое 1, а бег на слое 0 не прерывается.
+        Transform upperRoot;
+        string upperCur;
+
+        /// Кость, от которой начинается корпус (у героев — Hips). Без неё разделения нет — всё тело.
+        public void SetUpperRoot(Transform t) { upperRoot = t; }
+
+        public bool CanSplit => upperRoot != null && a != null;
+
+        string UpperOf(string n)
+        {
+            var u = n + "#upper";
+            if (a[u] == null)
+            {
+                a.AddClip(a[n].clip, u);
+                a[u].AddMixingTransform(upperRoot, true);
+                a[u].layer = 1;
+            }
+            return u;
+        }
+
+        /// Разовый клип только корпусом (на бегу); ноги продолжают то, что играет слой 0.
+        public void OnceUpper(float speed, params string[] names)
+        {
+            var n = Find(names);
+            if (n == null || !CanSplit) return;
+            var u = UpperOf(n);
+            a[u].wrapMode = WrapMode.ClampForever;
+            a[u].speed = speed;
+            a[u].time = 0;
+            a.CrossFade(u, 0.08f, PlayMode.StopSameLayer);
+            upperCur = u;
+        }
+
+        /// Корпус возвращается к общему клипу: копия на слое 1 плавно гаснет.
+        public void StopUpper()
+        {
+            if (upperCur == null) return;
+            a.Blend(upperCur, 0f, 0.15f);
+            upperCur = null;
+        }
+
         /// Разовый клип ещё идёт (ClampForever держит последний кадр — считаем его законченным).
         public bool Playing(params string[] names)
         {
