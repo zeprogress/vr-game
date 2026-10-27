@@ -191,7 +191,10 @@ public PlayerState() { }
 		[Type(57, "ref", typeof(ArmorBonusSync))]
 		public ArmorBonusSync ab = new ArmorBonusSync();
 
-		[Type(58, "uint16")]
+		[Type(58, "ref", typeof(TreeBonusSync))]
+		public TreeBonusSync tb = new TreeBonusSync();
+
+		[Type(59, "uint16")]
 		public ushort kpm = default(ushort);
 
 		/*
@@ -894,6 +897,18 @@ public PlayerState() { }
 			};
 		}
 
+		protected event PropertyChangeHandler<TreeBonusSync> __tbChange;
+		public Action OnTbChange(PropertyChangeHandler<TreeBonusSync> __handler, bool __immediate = true) {
+			if (__callbacks == null) { __callbacks = new SchemaCallbacks(); }
+			__callbacks.AddPropertyCallback(nameof(this.tb));
+			__tbChange += __handler;
+			if (__immediate && this.tb != null) { __handler(this.tb, null); }
+			return () => {
+				__callbacks.RemovePropertyCallback(nameof(tb));
+				__tbChange -= __handler;
+			};
+		}
+
 		protected event PropertyChangeHandler<ushort> __kpmChange;
 		public Action OnKpmChange(PropertyChangeHandler<ushort> __handler, bool __immediate = true) {
 			if (__callbacks == null) { __callbacks = new SchemaCallbacks(); }
@@ -966,6 +981,7 @@ public PlayerState() { }
 				case nameof(cryKind): __cryKindChange?.Invoke((byte) change.Value, (byte) change.PreviousValue); break;
 				case nameof(gb): __gbChange?.Invoke((GemBonusSync) change.Value, (GemBonusSync) change.PreviousValue); break;
 				case nameof(ab): __abChange?.Invoke((ArmorBonusSync) change.Value, (ArmorBonusSync) change.PreviousValue); break;
+				case nameof(tb): __tbChange?.Invoke((TreeBonusSync) change.Value, (TreeBonusSync) change.PreviousValue); break;
 				case nameof(kpm): __kpmChange?.Invoke((ushort) change.Value, (ushort) change.PreviousValue); break;
 				default: break;
 			}
