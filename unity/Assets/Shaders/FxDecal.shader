@@ -46,6 +46,8 @@ Shader "Zep/FxDecal"
                 o.uv = v.texcoord.xy;
                 return o;
             }
+            // exp(−x²) без pow: pow(отрицательное, 2) на Vulkan/OpenGL даёт NaN — белые пятна в bloom (Linux).
+            float Gauss(float x) { return exp(-x * x); }
             float hash(float n) { return frac(sin(n * 12.9898 + _Seed) * 43758.5453); }
             float vnoise(float2 q)
             {
@@ -87,8 +89,8 @@ Shader "Zep/FxDecal"
                 float mR = smoothstep(_R0 - 0.02, _R0 + 0.02, r);
                 float mask = mA * mR;
                 float edgeA = (1 - smoothstep(0.0, 0.035, abs(ang - _A0) * r)) + (1 - smoothstep(0.0, 0.035, abs(ang - _A1) * r));
-                float outline = max(exp(-pow((r - 0.975) / 0.022, 2.0)), (1 - full) * edgeA * step(_R0, r));
-                outline = max(outline, step(0.01, _R0) * exp(-pow((r - _R0) / 0.02, 2.0)) * mA);
+                float outline = max(Gauss((r - 0.975) / 0.022), (1 - full) * edgeA * step(_R0, r));
+                outline = max(outline, step(0.01, _R0) * Gauss((r - _R0) / 0.02) * mA);
                 float al = 0.0;
                 if (_Mode > 5.5)
                 {
@@ -97,7 +99,7 @@ Shader "Zep/FxDecal"
                         // Телеграф: контур, слабая заливка, нарастающая заливка с ярким фронтом.
                         float u = _Sweep < -0.5 ? saturate((_A1 - ang) / max(0.001, _A1 - _A0)) : saturate((r - _R0) / max(0.001, 1 - _R0));
                         float filled = step(u, _Prog);
-                        float front = exp(-pow((u - _Prog) / 0.025, 2.0)) * step(0.01, _Prog);
+                        float front = Gauss((u - _Prog) / 0.025) * step(0.01, _Prog);
                         float pulse = 0.85 + 0.15 * sin(_T * 18.0);
                         al = (outline * (0.9 + 0.6 * _Prog) * mA + 0.1 + filled * (0.22 + 0.25 * _Prog) + front * 1.3) * pulse;
                         al *= max(mask, outline * mA);
@@ -134,7 +136,7 @@ Shader "Zep/FxDecal"
                 if (_Mode < 0.5 || _Mode > 3.5)
                 {
                     float front = 0.12 + 0.88 * sqrt(_T);
-                    float band = exp(-pow((r - front) / 0.07, 2.0));
+                    float band = Gauss((r - front) / 0.07);
                     float sector = floor((a + 3.14159) / 6.28318 * 11.0);
                     float crackA = abs(frac((a + 3.14159) / 6.28318 * 11.0) - 0.5 + (hash(sector) - 0.5) * 0.5);
                     float crack = smoothstep(0.06, 0.0, crackA) * step(r, front) * smoothstep(0.1, 0.35, r) * step(_Mode, 0.5);
@@ -143,10 +145,10 @@ Shader "Zep/FxDecal"
                 }
                 else if (_Mode < 1.5)
                 {
-                    float edge = exp(-pow((r - 0.965) / 0.03, 2.0));
+                    float edge = Gauss((r - 0.965) / 0.03);
                     float runeBand = smoothstep(0.78, 0.8, r) * smoothstep(0.9, 0.88, r);
                     float runes = step(0.55, frac((a + 3.14159) / 6.28318 * 18.0 + _T * 0.12)) * runeBand;
-                    float inner = exp(-pow((r - 0.6) / 0.015, 2.0)) * 0.6;
+                    float inner = Gauss((r - 0.6) / 0.015) * 0.6;
                     float fill = 0.14 * smoothstep(1.0, 0.2, r);
                     float pulse = 0.75 + 0.25 * sin(_T * 3.0);
                     al = (edge * 1.1 + runes * 0.8 + inner + fill) * pulse;
@@ -156,13 +158,13 @@ Shader "Zep/FxDecal"
                     float ang = abs(a);
                     float side = smoothstep(_Half, _Half * 0.7, ang);
                     float front = 0.15 + 0.85 * sqrt(_T);
-                    float band = exp(-pow((r - front) / 0.05, 2.0));
+                    float band = Gauss((r - front) / 0.05);
                     float trail = step(r, front) * 0.1 * smoothstep(0.15, front, r);
                     al = (band + trail) * side * (1.0 - _T) * smoothstep(0.05, 0.2, r);
                 }
                 else
                 {
-                    float ring = exp(-pow((r - 0.78) / 0.05, 2.0));
+                    float ring = Gauss((r - 0.78) / 0.05);
                     float aa = a + _T * 1.6;
                     float ticks = smoothstep(0.92, 1.0, abs(cos(aa * 2.0))) * smoothstep(0.55, 0.62, r) * smoothstep(1.0, 0.92, r);
                     al = ring + ticks * 1.2;

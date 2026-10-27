@@ -530,6 +530,8 @@ public static class SliceSetup
         cam.nearClipPlane = 0.1f;
         cam.fieldOfView = 60;
         var cd = cam.gameObject.AddComponent<UniversalAdditionalCameraData>();
+        // Отсечь «битые» пиксели (NaN/Inf) до bloom: на Linux один такой пиксель раздувался в белое пятно.
+        cd.stopNaN = true;
         cd.renderPostProcessing = true;
         cd.antialiasing = AntialiasingMode.SubpixelMorphologicalAntiAliasing;
         cam.gameObject.AddComponent<AudioListener>();
