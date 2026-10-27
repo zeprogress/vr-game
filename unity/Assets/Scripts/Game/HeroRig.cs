@@ -42,6 +42,20 @@ namespace Zep
         const float MoveSpeedMin = 0.6f;
         /// Родная скорость клипов шага и бега (м/с) при RigScale — HERO_STRIDE в src/client/entities/bodySplit.ts.
         const float StrideWalk = 1.14f, StrideRun = 2.27f;
+        /// Подпрыгивание на бегу: высота Body в клипе бега 0.681…1.007 — сжимаем к середине (RUN_BOUNCE в bodySplit.ts).
+        const float RunBounce = 0.5f, RunBodyMid = 0.844f;
+        Transform body;
+
+        /// После анимации: высота Body на бегу — к середине размаха (ключи легаси-клипа во время игры не прочитать).
+        void LateUpdate()
+        {
+            if (!body || Anim == null) return;
+            float w = Anim.Weight("Run");
+            if (w <= 0f) return;
+            var p = body.localPosition;
+            p.y -= (p.y - RunBodyMid) * (1f - RunBounce) * w;
+            body.localPosition = p;
+        }
 
         /// Действие на бегу — корпусом поверх бега, стоя — всем телом (как bodySplit.ts в вебе).
         void PlayAction(float rate, string clip)
@@ -143,6 +157,7 @@ namespace Zep
                     if (c && !animation.GetClip(c.name)) animation.AddClip(c, c.name);
             Anim = new Anim(model);
             // Корпус — от Hips (ноги растут от Body): на бегу действия играют только им (Anim.OnceUpper).
+            body = Find(model.transform, "Body");
             var hips = Find(model.transform, "Hips");
             if (hips) Anim.SetUpperRoot(hips);
             fistL = Find(model.transform, "Fist.L");

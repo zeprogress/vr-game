@@ -79,6 +79,13 @@ namespace Zep
         Transform upperRoot;
         string upperCur;
 
+        /// Вес клипа сейчас (0 — не играет): для поправок поверх анимации (HeroRig — подпрыгивание на бегу).
+        public float Weight(params string[] names)
+        {
+            var n = Find(names);
+            return n != null && a[n].enabled ? a[n].weight : 0f;
+        }
+
         /// Кость, от которой начинается корпус (у героев — Hips). Без неё разделения нет — всё тело.
         public void SetUpperRoot(Transform t) { upperRoot = t; }
 

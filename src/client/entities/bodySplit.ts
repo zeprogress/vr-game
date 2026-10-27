@@ -1,4 +1,6 @@
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
+import type { Animation } from "@babylonjs/core/Animations/animation";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { CLASS_ONE_SHOT } from "../world/classPoses";
 
 /**
@@ -72,4 +74,32 @@ export const HERO_STRIDE = { walk: 1.14, run: 2.27 } as const;
 /** Темп клипа шага/бега, чтобы ноги перебирали со скоростью движения (без скольжения). */
 export function legRate(clip: "walk" | "run", speed: number): number {
   return Math.max(0.5, Math.min(2.5, speed / HERO_STRIDE[clip]));
+}
+
+/**
+ * Во сколько раз меньше подпрыгивает корпус на бегу: кость Body в клипе бега ходит вверх-вниз на 0.33 ед.
+ * (≈17 см у героя). Размах сжимается к середине. Unity (HeroRig.cs) держит то же число и ту же середину.
+ */
+export const RUN_BOUNCE = 0.5;
+
+/**
+ * Сжать подпрыгивание в клипе бега героя: высота Body в ключах — к середине размаха × RUN_BOUNCE. Ключи у клонов
+ * модели бывают общими — помечаем анимацию и правим один раз.
+ */
+export function dampRunBounce(anims: Map<string, AnimationGroup>): void {
+  const g = anims.get("run");
+  if (!g) return;
+  for (const ta of g.targetedAnimations) {
+    if ((ta.target as { name?: string } | null)?.name !== "Body" || ta.animation.targetProperty !== "position") continue;
+    const anim = ta.animation as Animation & { zepBounce?: boolean };
+    if (anim.zepBounce) continue;
+    anim.zepBounce = true;
+    const keys = anim.getKeys();
+    const ys = keys.map((k) => (k.value as Vector3).y);
+    const mid = (Math.min(...ys) + Math.max(...ys)) / 2;
+    for (const k of keys) {
+      const v = k.value as Vector3;
+      k.value = new Vector3(v.x, mid + (v.y - mid) * RUN_BOUNCE, v.z);
+    }
+  }
 }

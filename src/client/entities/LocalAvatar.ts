@@ -4,7 +4,7 @@ import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { BuffOrbitFx } from "../ui/BuffOutlineFx";
 import { CLASS_CLIP_NAMES, CLASS_ONE_SHOT, classAnimSet, classClipsFor, type ClassAnimSet } from "../world/classPoses";
-import { applySplitWeight, blendSplit, legClip, legRate, startSplitWeight } from "./bodySplit";
+import { applySplitWeight, blendSplit, dampRunBounce, legClip, legRate, startSplitWeight } from "./bodySplit";
 import { StunStarsFx } from "../ui/StunStarsFx";
 import { WebCocoonFx } from "./WebCocoonFx";
 
@@ -256,6 +256,8 @@ export class LocalAvatar {
         for (const m of rig.meshes) m.isPickable = false;
 
         // Клипы классов (выпад, молот, кинжалы, лук) — на скелете этой модели.
+        // Бег — корпус подпрыгивает вдвое меньше (bodySplit.dampRunBounce).
+        dampRunBounce(rig.anims);
         try {
           this.classGroups = classClipsFor(this.scene, rig, this.model());
         } catch (e) {

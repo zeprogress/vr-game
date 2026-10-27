@@ -18,7 +18,7 @@ import "@babylonjs/core/Meshes/Builders/capsuleBuilder";
 import type { PlayerMode, PlayerState, Xf } from "#shared/net/schema";
 import { isWeaponClass, type WeaponClass, type WeaponTier } from "#shared/items";
 import { CLASS_CLIP_NAMES, CLASS_ONE_SHOT, classAnimSet, classClipsFor, type ClassAnimSet } from "../world/classPoses";
-import { applySplitWeight, blendSplit, legClip, legRate, startSplitWeight } from "./bodySplit";
+import { applySplitWeight, blendSplit, dampRunBounce, legClip, legRate, startSplitWeight } from "./bodySplit";
 import type { WeaponKind } from "#shared/combat";
 import { LOADOUT } from "../config/loadout";
 import { NameTag } from "../ui/NameTag";
@@ -1032,6 +1032,8 @@ export class RemoteAvatar implements Hittable {
         rig.root.parent = holder;
         rig.root.position.setAll(0);
         holder.scaling.setAll(BOT_RIG_SCALE);
+        // Бег — корпус подпрыгивает вдвое меньше (bodySplit.dampRunBounce).
+        dampRunBounce(rig.anims);
         try {
           this.classGroups = classClipsFor(this.scene, rig, model);
         } catch (e) {
