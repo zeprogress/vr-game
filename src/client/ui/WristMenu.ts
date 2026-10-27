@@ -322,7 +322,7 @@ export class WristMenu {
     const taken = new Set(d.taken);
     const isOn = (id: number) => id === 0 || taken.has(id);
     const near = (id: number) => t.adj[id].some(isOn);
-    ctx.fillText(d.unspent > 0 ? `Свободных очков: ${d.unspent}` : "Свободных очков нет — их дают за уровень", 22, top);
+    ctx.fillText(`Дерево характеристик · ${d.unspent > 0 ? `свободных очков: ${d.unspent}` : "свободных очков нет — их дают за уровень"}`, 22, top);
     ctx.font = "20px system-ui, sans-serif";
     ctx.fillStyle = "#a9a498";
     ctx.fillText("Наведи на узел — описание внизу · курок — взять / снять · узел атрибута +4", 22, top + 34);
@@ -1197,16 +1197,12 @@ export class WristMenu {
     STATS.forEach((s, i) => {
       const cx = LX + (i % 2) * (cellW + 8);
       const cy = y + Math.floor(i / 2) * 46;
-      const cost = p.costOf(s);
-      const canSpend = p.unspent >= cost;
+      // Атрибуты растут только узлами дерева характеристик (вкладка «Дерево») — здесь лишь итог.
       const wd = this.add({
-        id: `stat:${s}`, x: cx, y: cy, w: cellW, h: 42, kind: "button",
-        act: () => {
-          p.spend(s);
-        },
+        id: `stat:${s}`, x: cx, y: cy, w: cellW, h: 42, kind: "cell",
         info: [
-          `${STAT_LABELS[s]}: ${p.stats[s]}${pcJewelBonus(this.jewels ?? undefined)[s] > 0 ? ` +${pcJewelBonus(this.jewels ?? undefined)[s]} от камней` : ""} · нажми — ближайший узел дерева (+4)`,
-          `${attrEffect(s)}${canSpend ? " · нажми — вложить" : ""}`,
+          `${STAT_LABELS[s]}: ${p.stats[s]}${pcJewelBonus(this.jewels ?? undefined)[s] > 0 ? ` +${pcJewelBonus(this.jewels ?? undefined)[s]} от камней` : ""} · очки — во вкладке «Дерево»`,
+          attrEffect(s),
         ],
       });
       const st = this.styleFor(wd);
@@ -1228,18 +1224,6 @@ export class WristMenu {
       // Как на ПК: база + прибавка от камней в гнёздах (сам атрибут в бою — их сумма).
       const gemAdd = pcJewelBonus(this.jewels ?? undefined)[s];
       ctx.fillText(String(p.stats[s]) + (gemAdd > 0 ? ` +${gemAdd}` : ""), cx + 128, cy + 7);
-      ctx.font = "16px system-ui, sans-serif";
-      ctx.fillStyle = "#a9a498";
-      ctx.fillText(`за ${cost}`, cx + 178, cy + 13);
-      if (canSpend) {
-        ctx.fillStyle = "#2f7a3a";
-        ctx.fillRect(cx + cellW - 48, cy + 4, 40, 34);
-        ctx.fillStyle = "#e9ffe9";
-        ctx.font = "bold 28px system-ui, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("+", cx + cellW - 28, cy + 5);
-        ctx.textAlign = "left";
-      }
     });
     y += Math.ceil(STATS.length / 2) * 46;
     ctx.font = "bold 22px system-ui, sans-serif";

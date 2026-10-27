@@ -557,7 +557,7 @@ export class PcInventory {
     this.tabsEl.innerHTML = "";
     const tabs: [InvTab, string, number][] = [
       ["gear", "Снаряжение", 0],
-      ["attrs", "Атрибуты", d?.attrs.unspent ?? 0],
+      ["attrs", "Дерево характеристик", d?.attrs.unspent ?? 0],
       ["skills", "Умения", 0],
       ["craft", "Крафт", 0],
       ["trade", "Обмен", d?.trade?.sessions.filter((x) => x.theirs.ok && !x.mine.ok).length ?? 0],
@@ -2686,14 +2686,8 @@ export class PcInventory {
         g.title = "от камней в кольцах";
         val.append(g);
       }
-      // Быстро: ближайший узел этого атрибута в дереве (с узлами по пути).
-      const b1 = document.createElement("button");
-      b1.className = "pcinv-abtn";
-      b1.textContent = "+4";
-      b1.title = "Взять ближайший узел этого атрибута в дереве (вместе с узлами по пути)";
-      b1.disabled = a.unspent < 1;
-      b1.onclick = () => this.hooks.act({ act: "stat", id: at.id, idx: 1 });
-      row.append(ic, txt, val, b1);
+      // Атрибуты растут только узлами дерева — здесь лишь итог.
+      row.append(ic, txt, val);
       wrap.append(row);
     }
     const cost = d.respecCost;
@@ -2710,7 +2704,7 @@ export class PcInventory {
       wrap.append(rb);
     }
     if (this.lastResult) wrap.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
-    this.body.append(tabPanel("Дерево и атрибуты", wrap));
+    this.body.append(tabPanel("Дерево характеристик", wrap));
   }
 
   // ---------------- перетаскивание / подсказки / подтверждение ----------------

@@ -46,7 +46,6 @@ import {
   isActKind,
   type OverridesMsg,
   type RtcMsg,
-  type SpendMsg,
   type SetSkinMsg,
   type SetSkillsMsg,
   type SetLeaveBotMsg,
@@ -191,7 +190,6 @@ import {
   holdsOneItem,
   grantXp,
   killXp,
-  isStatName,
   maxHpFor,
   moveSpeedFor,
   heroAttackInterval,
@@ -202,7 +200,7 @@ import {
   type StatName,
 } from "#shared/progression";
 import { canHoldTogether, equipHands, handsValid, unequipHand } from "#shared/hands";
-import { attrsFromTree, autoTree, canTake, cleanTaken, dropNode, skillModsFor, takeAttr, TREE_FX, treeBonusTotals, treeOf, treePointsAt, treeSkillState, type KeySpecial, type SkillMods } from "#shared/passiveTree";
+import { attrsFromTree, autoTree, canTake, cleanTaken, dropNode, skillModsFor, TREE_FX, treeBonusTotals, treeOf, treePointsAt, treeSkillState, type KeySpecial, type SkillMods } from "#shared/passiveTree";
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
 import { wallSlide } from "../sim/wallSlide";
 import { leashCut } from "../sim/leash";
@@ -552,12 +550,7 @@ interface Bot {
 }
 
 
-/** Русские имена атрибутов (чат). */
-const STAT_RU: Record<StatName, string> = {
-  str: "сила", agi: "ловкость", int: "интеллект", con: "телосложение", luc: "удача", wis: "мудрость",
-};
-
-/** Чат-команды атрибутов → атрибут. */
+/** Бывшие чат-команды атрибутов: теперь только подсказка про дерево характеристик. */
 const CHAT_STATS: Record<string, StatName> = {
   "!str": "str", "!сила": "str",
   "!dex": "agi", "!agi": "agi", "!ловк": "agi", "!ловкость": "agi",
@@ -1717,12 +1710,8 @@ export class ZoneRoom extends Room<ZoneState> {
       this.tryHit(client, msg),
     );
 
-    // Кнопка «+атрибут»: взять ближайший узел этого атрибута в дереве класса (с узлами по пути).
-    this.onMessage(MSG.spend, (client: Client, msg: SpendMsg) => {
-      const p = this.state.players.get(client.sessionId);
-      if (!p || !isStatName(msg?.stat)) return;
-      this.spendStats(p, client.sessionId, msg.stat, 1);
-    });
+    // Прокачка атрибутов мимо дерева убрана (2026-10-27): старые клиенты ещё шлют MSG.spend — молча пропускаем.
+    this.onMessage(MSG.spend, () => {});
 
     // Смена модельки (панель C) — реальные игроки теперь тоже её носят,
     // не только боты. Живёт только в плоском режиме — рендер решает клиент.
@@ -4382,9 +4371,8 @@ export class ZoneRoom extends Room<ZoneState> {
     else if (cmd === "!stats" || cmd === "!stat" || cmd === "!hero" || cmd === "!me") {
       this.sayStats(norm);
     } else if (CHAT_STATS[cmd]) {
-      // В чате ловкость — !dex (запасной алиас !agi), есть и русские: !сила !ловк !инт !тел !удача !мудр.
-      const stat: StatName = CHAT_STATS[cmd];
-      this.spendBotPoint(norm, stat, parts[1]);
+      // Атрибуты качаются только деревом характеристик — подсказываем, где оно.
+      if (this.hintOk(norm)) this.reply(`@${nick} атрибуты качаются только в дереве характеристик — открой !inv (вкладка «Дерево характеристик»). Бот раскладывает дерево сам, пока ты не возьмёшь узел вручную (!autostats — вернуть авто).`);
     } else if (
       cmd === "!respec" ||
       cmd === "!reroll" ||
@@ -5352,11 +5340,6 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Последние строки чата — новому игроку при входе (панель чата не пустая). */
   private readonly chatHistory: ChatLineMsg[] = [];
 
-  /** Русское имя атрибута для чата. */
-  private static statName(stat: StatName): string {
-    return STAT_RU[stat];
-  }
-
   /** Антиспам подсказок для ников без активного бота. */
   private hintOk(norm: string): boolean {
     const now = Date.now();
@@ -6196,14 +6179,8 @@ export class ZoneRoom extends Room<ZoneState> {
       return { ok: r.ok, text: r.ok ? "Атрибуты сброшены" : r.text };
     }
     if (act === "stat") {
-      if (!isStatName(id)) return { ok: false, text: "Нет такого атрибута." };
-      const name = ZoneRoom.statName(id);
-      if (!t) return { ok: false, text: "Герой не в мире — выведи его (!play), чтобы вложить очки в дерево." };
-      const n = this.spendStats(t.p, t.id, id, Math.max(1, idx));
-      if (n === 0) return { ok: false, text: t.p.unspent > 0 ? `До ближайшего узла «${name}» не хватает очков.` : "Свободных очков нет — их дают за уровень." };
-      this.persistNick(norm);
-      store.put(`nick:${norm}`, { manualAttrs: true });
-      return { ok: true, text: `${name} +${n * 4}` };
+      // Прокачка атрибутов мимо дерева убрана — только узлы дерева характеристик (действие tree).
+      return { ok: false, text: "Атрибуты качаются только в дереве характеристик." };
     }
     if (act === "fav") {
       // ★ Избранное: звёздочка у экземпляра (герой в мире — живой склад, иначе сейв).
@@ -6492,52 +6469,13 @@ export class ZoneRoom extends Room<ZoneState> {
     const p = bot.state;
     const xp = atMaxLevel(p.level) ? "макс" : `${Math.floor(p.xp)}/${xpToNext(p.level)}`;
     const points =
-      p.unspent > 0 ? `свободных очков ${p.unspent} → !str !dex !int !con !luc !wis (узел дерева, +4)` : "свободных очков нет";
+      p.unspent > 0 ? `свободных очков ${p.unspent} → дерево характеристик в !inv` : "свободных очков нет";
     this.reply(
       `@${bot.nick} ур.${p.level} · опыт ${xp} · HP ${Math.ceil(p.hp)}/${Math.round(p.maxHp)} · ` +
         `сила ${p.str} · ловкость ${p.agi} · интеллект ${p.int} · телосложение ${p.con} · удача ${p.luc} · мудрость ${p.wis} · ${points} · ${heroStatLine(p)}`,
     );
   }
 
-  /** `!str` / `!agi` / `!int` [сколько] — вложить очки в атрибут. */
-  private spendBotPoint(norm: string, stat: StatName, arg: string | undefined): void {
-    const bot = this.bots.get(norm);
-    if (!bot) {
-      if (this.hintOk(norm)) this.reply(`@${norm} героя нет в мире — сначала !play.`);
-      return;
-    }
-    const p = bot.state;
-    const want = Math.max(1, Math.min(99, Math.floor(Number(arg)) || 1));
-    const done = this.spendStats(p, bot.id, stat, want);
-    if (done === 0) {
-      // Без кулдауна тут был бы флуд отказами, поэтому делим его со !stats.
-      const now = Date.now();
-      if (now - bot.statsAt < BOT.statsCooldown * 1000) return;
-      bot.statsAt = now;
-      this.reply(
-        p.unspent > 0
-          ? `@${bot.nick} до ближайшего узла «${ZoneRoom.statName(stat)}» в дереве не хватает очков (свободно ${p.unspent}).`
-          : `@${bot.nick} свободных очков нет — очко дают за каждый новый уровень.`,
-      );
-      return;
-    }
-    this.persistBot(bot);
-    store.put(`nick:${norm}`, { manualAttrs: true });
-    const prog = readProgress(p);
-
-    const name = ZoneRoom.statName(stat);
-    this.reply(
-      `@${bot.nick} ${name} ${prog[stat]}` +
-        (done > 1 ? ` (+${done})` : "") +
-        ` · осталось очков ${p.unspent}`,
-    );
-  }
-
-  /**
-   * Вложить `want` очков в `stat` живому герою: потолки HP/маны растут сразу
-   * (как MSG.spend). `autoClass` — бот на базовом оружии меняет класс под
-   * преобладающий атрибут (найденный апгрейд не трогаем). Возвращает, сколько вложено.
-   */
   /** Класс героя по оружию в руках — у каждого класса своё дерево прокачки. */
   private heroCls(p: PlayerState): ClassId {
     return classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "") ?? "warrior";
@@ -6616,18 +6554,6 @@ export class ZoneRoom extends Room<ZoneState> {
     this.syncTree(p, id);
   }
 
-  /** Вложить до `want` узлов атрибута `stat` (кратчайшими путями по дереву). Вернёт, сколько узлов атрибута взято. */
-  private spendStats(p: PlayerState, id: string, stat: StatName, want: number): number {
-    const token = this.tokenOf(id);
-    if (!token) return 0;
-    const cls = this.heroCls(p);
-    const taken = this.treeTaken(token, cls);
-    const got = takeAttr(cls, taken, p.level, stat, want);
-    if (got === 0) return 0;
-    this.saveTree(token, cls, taken);
-    this.syncTree(p, id);
-    return got;
-  }
 
   /**
    * `!delete` — убрать героя и стереть его прогресс. Следующий `!play`
@@ -6708,7 +6634,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (t) {
       this.syncTree(t.p, t.id);
       this.persistNick(norm);
-      return { ok: true, text: `дерево прокачки сброшено ${costTxt} · свободных очков ${t.p.unspent} → !str !dex !int !con !luc !wis` };
+      return { ok: true, text: `дерево прокачки сброшено ${costTxt} · свободных очков ${t.p.unspent} → дерево характеристик в !inv` };
     }
     const lvl = rec?.level ?? 1;
     store.put(token, { str: base, agi: base, int: base, con: base, luc: base, wis: base, unspent: treePointsAt(lvl) });
@@ -6724,7 +6650,7 @@ export class ZoneRoom extends Room<ZoneState> {
     "Совет: у золотого и уникального оружия бывают роллы — урон, скорость атаки, крит, вампиризм (ближний бой), блок (щит).",
     "Совет: !raid — вести героя в рейд на Лунного аватара (гора с водопадом) толпой, !event — на нашествие, !top — таблица лидеров.",
     "Совет: !skills — умения класса; выбрать два: !skills рывок печать (по началу названия).",
-    "Совет: атрибуты — узлы дерева прокачки (+4, очко за уровень): !str !dex !int !con !luc !wis берут ближайший узел; само дерево — в !inv. Бот раскидывает очки сам, пока ты не вложишь их вручную (вернуть — !autostats).",
+    "Совет: атрибуты и пассивки качаются в дереве характеристик (очко за уровень, узел атрибута +4) — открой !inv. Бот раскладывает дерево сам, пока ты не возьмёшь узел вручную (вернуть — !autostats).",
     "Катакомбы: !катакомбы — отряд от 3 героев спускается в подземелье: волны мертвецов, два стража и Владыка Бездны, каждому — уникальное оружие. Командуй героем: !цель босс, !встать назад, !режим осторожно.",
   ];
 
@@ -6750,8 +6676,8 @@ export class ZoneRoom extends Room<ZoneState> {
       "Команды: !play — твой герой выходит в мир и сам дерётся с мобами · " +
         "!stop — убрать его · !skin — сменить внешность (или !skin 3, всего " +
         `${BOT.skins}) · !stats — его прогресс · ` +
-        "!skills — умения класса (два на выбор) · !str !dex !int !con !luc !wis — атрибуты · " +
-        "!respec — вернуть все очки атрибутов (за 1 жетон ◈) · " +
+        "!skills — умения класса (два на выбор) · дерево характеристик — в !inv · " +
+        "!respec — сбросить дерево характеристик (за жетон ◈) · " +
         "!delete — стереть героя и начать заново · !top — таблица лидеров.",
     );
     this.reply(

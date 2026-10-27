@@ -720,15 +720,7 @@ export class Hud {
       val.textContent = String(p.stats[s]);
       row.append(name, val);
 
-      if (p.unspent >= p.costOf(s)) {
-        const btn = document.createElement("button");
-        btn.textContent = "+";
-        btn.style.cssText =
-          `width:${t ? 34 : 30}px;height:${t ? 30 : 28}px;cursor:pointer;background:#2f7a35;` +
-          "color:#fff;border:1px solid #4c4;border-radius:5px;font-weight:bold;font-size:16px;";
-        btn.addEventListener("click", () => p.spend(s));
-        row.appendChild(btn);
-      }
+      // Атрибуты растут только узлами дерева характеристик (окно инвентаря).
       this.panel.appendChild(row);
 
       if (!t) {
