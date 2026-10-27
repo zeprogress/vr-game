@@ -55,9 +55,14 @@ export function catacombsOf(st: ZoneState | null | undefined): OverlayCtx["catac
  * Босс для полоски HP: Багровый, текущий босс катакомб (catBoss), дракон «Охоты на элиту» (фаза),
  * рейд-босс (Лунный аватар) и суперболссы катакомб по имени.
  */
+/** Одиночные боссы мира (элиты с полоской HP босса): охота на элиту, голем, колосс, чародей руин, рейд-босс. */
+const WORLD_BOSS_NAMES = new Set(
+  ["worldElite", "golem", "mushColossus", "ruinMage", RAID.boss].map((k) => ELITE_MOBS[k]?.name).filter(Boolean),
+);
+
 function isBossMob(st: ZoneState, id: string, m: { kind: string; mobName: string; phase: number }): boolean {
   const name = m.mobName || mobName(m.kind);
-  return m.kind === "boss" || id === st.catBoss || m.phase > 0 || CAT_BOSS_NAMES.includes(name) || name === ELITE_MOBS[RAID.boss]?.name;
+  return m.kind === "boss" || id === st.catBoss || m.phase > 0 || CAT_BOSS_NAMES.includes(name) || WORLD_BOSS_NAMES.has(name);
 }
 
 export function mobName(kind: string): string {
@@ -146,9 +151,9 @@ export function watchPanels(st: ZoneState | null | undefined, subj: { type: stri
 /**
  * HP живого босса рядом с камерой эфира (state.specX/Z, в пределах `near` м) — для полоски HP босса,
  * когда камера не смотрит на него прямо (Unity-спектатор не сообщает цель в аренах катакомб и общих планах).
- * Босс — как в watchPanels: вид «boss» или имя босса катакомб. null — рядом нет.
+ * Босс — как в watchPanels: Багровый, боссы катакомб, одиночные боссы мира (WORLD_BOSS_NAMES). null — рядом нет.
  */
-export function nearBossHp(st: ZoneState | null | undefined, near = 60): OverlayCtx["targetHp"] {
+export function nearBossHp(st: ZoneState | null | undefined, near = 90): OverlayCtx["targetHp"] {
   if (!st) return null;
   // Камера эфира не прислала положение — ближайшим не выбрать: берём любого живого босса.
   const anywhere = !st.specActive;
