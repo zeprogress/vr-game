@@ -159,7 +159,8 @@ namespace Zep
                     if (c && !animation.GetClip(c.name)) animation.AddClip(c, c.name);
             Anim = new Anim(model);
             // Корпус — от Hips (ноги растут от Body): на бегу действия играют только им (Anim.OnceUpper).
-            body = Find(model.transform, "Body");
+            // Кость Body — не меш с тем же именем (в модели есть и узел-меш «Body»): ищем узел без рендера.
+            body = FindBone(model.transform, "Body");
             var hips = Find(model.transform, "Hips");
             if (hips) Anim.SetUpperRoot(hips);
             fistL = Find(model.transform, "Fist.L");
@@ -196,6 +197,17 @@ namespace Zep
             m.SetFloat("_Mode", 4);
             m.SetColor("_BaseColor", Color.white);
             return m;
+        }
+
+        static Transform FindBone(Transform t, string name)
+        {
+            if (t.name == name && !t.GetComponent<Renderer>()) return t;
+            foreach (Transform c in t)
+            {
+                var r = FindBone(c, name);
+                if (r) return r;
+            }
+            return null;
         }
 
         static Transform Find(Transform t, string name)
