@@ -60,9 +60,13 @@ const WORLD_BOSS_NAMES = new Set(
   ["worldElite", "golem", "mushColossus", "ruinMage", RAID.boss].map((k) => ELITE_MOBS[k]?.name).filter(Boolean),
 );
 
-function isBossMob(st: ZoneState, id: string, m: { kind: string; mobName: string; phase: number }): boolean {
+/** От стольких HP моб — босс для плашки (Ледяной гигант, Страж лавы и т.п.). Пугало (у него табло в info) — не босс. */
+const BOSS_HP = 100_000;
+
+function isBossMob(st: ZoneState, id: string, m: { kind: string; mobName: string; phase: number; maxHp: number; info: string }): boolean {
   const name = m.mobName || mobName(m.kind);
-  return m.kind === "boss" || id === st.catBoss || m.phase > 0 || CAT_BOSS_NAMES.includes(name) || WORLD_BOSS_NAMES.has(name);
+  if (m.info) return false; // табло над Пугалом
+  return m.kind === "boss" || id === st.catBoss || m.phase > 0 || CAT_BOSS_NAMES.includes(name) || WORLD_BOSS_NAMES.has(name) || m.maxHp >= BOSS_HP;
 }
 
 export function mobName(kind: string): string {
@@ -151,20 +155,29 @@ export function watchPanels(st: ZoneState | null | undefined, subj: { type: stri
 /**
  * HP живого босса рядом с камерой эфира (state.specX/Z, в пределах `near` м) — для полоски HP босса,
  * когда камера не смотрит на него прямо (Unity-спектатор не сообщает цель в аренах катакомб и общих планах).
- * Босс — как в watchPanels: Багровый, боссы катакомб, одиночные боссы мира (WORLD_BOSS_NAMES). null — рядом нет.
+ * Босс — как в watchPanels: Багровый, боссы катакомб, боссы мира и любой моб от BOSS_HP. null — рядом нет.
  */
+/** Последний босс плашки: держимся за него, пока жив и рядом, — плашка не прыгает между соседями. */
+let lastBossId = "";
+
 export function nearBossHp(st: ZoneState | null | undefined, near = 90): OverlayCtx["targetHp"] {
   if (!st) return null;
   // Камера эфира не прислала положение — ближайшим не выбрать: берём любого живого босса.
   const anywhere = !st.specActive;
   let best: OverlayCtx["targetHp"] = null;
-  let bestD = anywhere ? Infinity : near;
+  let bestId = "";
+  let bestScore = Infinity;
   st.mobs.forEach((m, id) => {
     if (m.dead || !isBossMob(st, id, m)) return;
-    const d = anywhere ? 0 : Math.hypot(m.x - st.specX, m.z - st.specZ);
-    if (d > bestD || (anywhere && best)) return;
-    bestD = d;
+    // Ближе к камере или к точке, куда она смотрит; босс в бою (ранен) — впереди целого.
+    const d = anywhere ? 0 : Math.min(Math.hypot(m.x - st.specX, m.z - st.specZ), Math.hypot(m.x - st.specTX, m.z - st.specTZ));
+    if (d > near && !anywhere) return;
+    const score = d + (m.hp < m.maxHp ? 0 : 1000) - (id === lastBossId ? 500 : 0);
+    if (score >= bestScore) return;
+    bestScore = score;
+    bestId = id;
     best = { frac: m.hp / (m.maxHp || 1), cur: m.hp, max: m.maxHp, name: m.mobName || mobName(m.kind), boss: true };
   });
+  lastBossId = bestId;
   return best;
 }
