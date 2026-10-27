@@ -135,7 +135,7 @@ function tick(): void {
   const bossHp = isBoss ? f.targetHp : nearBossHp(st);
   if (bossOnly) {
     ov.setTicker("", "news");
-    ov.update({ ...EMPTY_FRAME, targetHp: bossHp });
+    ov.update({ ...EMPTY_FRAME, bossHp });
     return;
   }
   // Строка сверху и онлайн — из состояния комнаты: кадр рендерящей страницы для них не нужен
@@ -148,8 +148,8 @@ function tick(): void {
     chatQuest: chatQuestOf(st),
     catacombs: catacombsOf(st),
   };
-  // В полном оверлее босса показывает отдельный источник (part=boss) — здесь его не дублируем.
-  const view = part === "main" && isBoss ? { ...fromRoom, targetHp: null } : fromRoom;
+  // Плашка босса сверху — и в полном оверлее (OBS часто стоит без part); при part=main её рисует отдельный источник.
+  const view = part === "main" ? { ...fromRoom, targetHp: isBoss ? null : f.targetHp, bossHp: null } : { ...fromRoom, bossHp };
   ov.setTicker(view.ticker, view.tickerKind);
   ov.update(view);
 }
