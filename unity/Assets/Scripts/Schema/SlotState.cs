@@ -20,8 +20,8 @@ public SlotState() { }
 		[Type(0, "string")]
 		public string item = default(string);
 
-		[Type(1, "uint16")]
-		public ushort count = default(ushort);
+		[Type(1, "uint32")]
+		public uint count = default(uint);
 
 		/*
 		 * Support for individual property change callbacks below...
@@ -39,12 +39,12 @@ public SlotState() { }
 			};
 		}
 
-		protected event PropertyChangeHandler<ushort> __countChange;
-		public Action OnCountChange(PropertyChangeHandler<ushort> __handler, bool __immediate = true) {
+		protected event PropertyChangeHandler<uint> __countChange;
+		public Action OnCountChange(PropertyChangeHandler<uint> __handler, bool __immediate = true) {
 			if (__callbacks == null) { __callbacks = new SchemaCallbacks(); }
 			__callbacks.AddPropertyCallback(nameof(this.count));
 			__countChange += __handler;
-			if (__immediate && this.count != default(ushort)) { __handler(this.count, default(ushort)); }
+			if (__immediate && this.count != default(uint)) { __handler(this.count, default(uint)); }
 			return () => {
 				__callbacks.RemovePropertyCallback(nameof(count));
 				__countChange -= __handler;
@@ -54,7 +54,7 @@ public SlotState() { }
 		protected override void TriggerFieldChange(DataChange change) {
 			switch (change.Field) {
 				case nameof(item): __itemChange?.Invoke((string) change.Value, (string) change.PreviousValue); break;
-				case nameof(count): __countChange?.Invoke((ushort) change.Value, (ushort) change.PreviousValue); break;
+				case nameof(count): __countChange?.Invoke((uint) change.Value, (uint) change.PreviousValue); break;
 				default: break;
 			}
 		}

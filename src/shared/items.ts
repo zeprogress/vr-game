@@ -257,8 +257,11 @@ export interface ItemDef {
   weapon?: { cls: WeaponClass; tier: WeaponTier };
 }
 
-/** Лом/рыба копятся одной стопкой — предел = uint16 SlotState.count. */
-export const BIG_STACK = 65535;
+/**
+ * Лом/рыба копятся одной стопкой в одной ячейке — без практического предела: потолок = uint32
+ * SlotState.count (≈4,29 млрд). restoreBag сливает старые стопки (по 65 535) в одну.
+ */
+export const BIG_STACK = 4_294_967_295;
 
 export const ITEMS: Record<ItemId, ItemDef> = {
   potion: {

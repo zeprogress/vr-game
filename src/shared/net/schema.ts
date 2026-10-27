@@ -16,7 +16,7 @@ export type PlayerMode = "flat" | "vr";
 /** Ячейка сумки. Пустая — item "" и count 0. */
 export class SlotState extends Schema {
   @type("string") item = "";
-  @type("uint16") count = 0;
+  @type("uint32") count = 0; // лом и рыба — одна бесконечная стопка (BIG_STACK)
 }
 
 /** Прибавка от надетых колец и ожерелья (shared/jewels.ts): атрибуты от камней и умения от ожерелья. */
