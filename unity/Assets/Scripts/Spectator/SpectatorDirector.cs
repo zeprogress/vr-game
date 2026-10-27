@@ -83,6 +83,12 @@ namespace Zep
         void Awake()
         {
             cfg = JsonUtility.FromJson<Config>(configJson.text);
+            // Стрим идёт в 60 к/с: без предела спектатор рисовал сотни кадров, забирал всю видеокарту, и захват
+            // окна в OBS подтормаживал. Другой предел — ключ -fps N.
+            var args = Environment.GetCommandLineArgs();
+            int fi = Array.IndexOf(args, "-fps");
+            Application.targetFrameRate = fi >= 0 && fi + 1 < args.Length && int.TryParse(args[fi + 1], out var fps) && fps > 0 ? fps : 60;
+            QualitySettings.vSyncCount = 0;
             Physics.queriesHitBackfaces = true; // стены локаций односторонние — луч изнутри комнаты должен их видеть
             curBlend = S.blendTime;
             eyeSmooth = S.eyeSmooth;
