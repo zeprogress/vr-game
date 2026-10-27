@@ -583,6 +583,21 @@ public static class SliceSetup
     [MenuItem("Zep/Build Spectator (Windows)")]
     public static void BuildSpectatorWin() => BuildSpectator(BuildTarget.StandaloneWindows64, "Builds/Spectator-win/ZEP Spectator.exe");
 
+    /// Linux x86_64 (Ubuntu): рядом кладём Spectator.sh — запуск с подключением к прод-серверу.
+    [MenuItem("Zep/Build Spectator (Linux)")]
+    public static void BuildSpectatorLinux()
+    {
+        const string dir = "Builds/Spectator-linux";
+        BuildSpectator(BuildTarget.StandaloneLinux64, $"{dir}/ZEP Spectator.x86_64");
+        var sh = $"{dir}/Spectator.sh";
+        System.IO.File.WriteAllText(sh,
+            "#!/bin/sh\n" +
+            "# Спектатор для OBS, подключается к прод-серверу. Другой сервер: ./Spectator.sh ws://localhost:2567\n" +
+            "cd \"$(dirname \"$0\")\"\n" +
+            "chmod +x \"ZEP Spectator.x86_64\"\n" +
+            "exec \"./ZEP Spectator.x86_64\" -server \"${1:-wss://zepgame.duckdns.org}\"\n");
+    }
+
     static void BuildSpectator(BuildTarget target, string path)
     {
         PlayerSettings.fullScreenMode = FullScreenMode.Windowed;

@@ -33,6 +33,8 @@ fi
 chown -R vrgame:vrgame dist.up
 # Кэш озвучки чата живёт в dist/tts — переносим, а не теряем.
 if [ -d dist/tts ]; then mv dist/tts dist.up/tts; fi
+# Сборка Unity-спектатора для Linux (deploy/spectator-linux.sh) — тоже не из git, переносим.
+if [ -d dist/spectator ]; then mv dist/spectator dist.up/spectator; fi
 # Полный SHA — autopull сверяет его с origin/main.
 sudo -u vrgame sh -c "echo $SHA > dist.up/.built"
 rm -rf dist.old
