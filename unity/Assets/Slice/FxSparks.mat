@@ -26,6 +26,7 @@ Material:
     m_Ints: []
     m_Floats:
     - _Count: 20
+    - _Drop: 0
     - _DstB: 1
     - _Grav: 9
     - _Life: 0.6
