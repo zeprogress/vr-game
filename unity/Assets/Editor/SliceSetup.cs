@@ -566,6 +566,7 @@ public static class SliceSetup
         net.spectator = true;
         var director = cam.gameObject.AddComponent<SpectatorDirector>();
         cam.gameObject.AddComponent<VersionWatch>();
+        cam.gameObject.AddComponent<AspectLock>();
         director.cam = cam;
         director.configJson = AssetDatabase.LoadAssetAtPath<TextAsset>("Assets/Terrain/spectator.json");
         EditorSceneManager.SaveScene(scene, SpectatorScene);
@@ -603,9 +604,9 @@ public static class SliceSetup
             "  [ -x \"$HOME/zep-spectator/current/Spectator.sh\" ] && ZEP_UPDATED=1 exec \"$HOME/zep-spectator/current/Spectator.sh\" \"$@\"\n" +
             "fi\n" +
             "chmod +x \"ZEP Spectator.x86_64\"\n" +
-            "# 1920×1080 полноэкранным окном без рамки: обычное окно на экране 1080p сжималось по высоте (панель, заголовок)\n" +
-            "# и картинка выходила «широкой». Unity помнит прошлый размер — задаём явно.\n" +
-            "exec \"./ZEP Spectator.x86_64\" -screen-width 1920 -screen-height 1080 -screen-fullscreen 1 -window-mode borderless -server \"${1:-wss://zepgame.duckdns.org}\"\n");
+            "# Окно 1920×1080 без рамки, не полный экран: полноэкранное окно под Wayland идёт мимо композитора, и захват\n" +
+            "# окна в OBS тормозил и застывал. Сжатое по высоте окно — картинка всё равно 16:9 (AspectLock).\n" +
+            "exec \"./ZEP Spectator.x86_64\" -screen-width 1920 -screen-height 1080 -screen-fullscreen 0 -popupwindow -server \"${1:-wss://zepgame.duckdns.org}\"\n");
     }
 
     static void BuildSpectator(BuildTarget target, string path)
