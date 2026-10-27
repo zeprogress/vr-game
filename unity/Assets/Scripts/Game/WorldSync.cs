@@ -42,12 +42,25 @@ namespace Zep
             var net = ZoneNet.I;
             net.Assets = assets;
             net.Joined += OnJoined;
+            net.Left += ClearWorld;
             net.Act += (kind, id, _) =>
             {
                 if (id != null && Players.TryGetValue(id, out var pv)) pv.OnAct(kind);
                 else if (hero && id == net.Room?.SessionId) hero.OnAct(kind);
             };
             await net.Connect();
+            if (net.Room == null) net.KeepAlive(); // первый вход не удался — пробуем снова
+        }
+
+        /// Связь потеряна: старые объекты убираем. После нового входа они создадутся из состояния комнаты.
+        void ClearWorld()
+        {
+            foreach (var v in Mobs.Values) if (v) Destroy(v.gameObject);
+            Mobs.Clear();
+            foreach (var v in Players.Values) if (v) Destroy(v.gameObject);
+            Players.Clear();
+            foreach (var go in dummies.Values) if (go) Destroy(go);
+            dummies.Clear();
         }
 
         void OnJoined(Colyseus.ColyseusRoom<ZoneState> room)

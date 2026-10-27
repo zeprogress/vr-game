@@ -29,6 +29,8 @@ namespace Zep
         public SliceAssets Assets { get; set; }
         public string Status { get; private set; } = "не подключён";
         public event Action<ColyseusRoom<ZoneState>> Joined;
+        /// Комната потеряна (сервер перезапущен, связь оборвалась): мир надо очистить до повторного входа.
+        public event Action Left;
         /// Команда пульта (MSG.specCmd = "sc", тип SpecCmd в messages.ts): поле "t" и его параметры.
         public event Action<Dictionary<string, object>> SpecCmd;
         /// Мобы «Охотничьей башни» тик в тик (MSG.towerMobs): позиции, HP, замахи — их нет в ZoneState.
@@ -39,6 +41,9 @@ namespace Zep
         public event Action<System.Collections.IEnumerable> DmgHits;
 
         ColyseusClient client;
+        bool leaving;   // выходим сами (выключение) — не переподключаться
+        bool retrying;  // цикл переподключения уже идёт
+        bool wantRetry; // попросили войти снова — запустим из Update (главный поток)
 
         void Awake()
         {
@@ -74,7 +79,13 @@ namespace Zep
                     Act?.Invoke(m.TryGetValue("k", out var k) ? k as string : null, m.TryGetValue("id", out var id) ? id as string : null, m));
                 Room.OnMessage<Dictionary<string, object>>("twmobs", m => TowerMobs?.Invoke(m));
                 MuteOtherMessages();
-                Room.OnLeave += code => Status = $"отключён ({code})";
+                Room.OnLeave += code =>
+                {
+                    Status = $"отключён ({code})";
+                    Room = null;
+                    Left?.Invoke();
+                    KeepAlive();
+                };
                 Room.OnError += (code, msg) => Debug.LogWarning($"[net] {code}: {msg}");
                 Status = $"в комнате {Room.Id}";
                 Joined?.Invoke(Room);
@@ -84,6 +95,45 @@ namespace Zep
                 Status = "ошибка: " + e.Message;
                 Debug.LogWarning("[net] вход не удался: " + e.Message);
                 Room = null;
+            }
+        }
+
+        /// Держит связь: пока комнаты нет (сервер перезапущен, вход не удался), входим снова.
+        /// Паузы растут от 1 до 10 с. Спектатор на стриме не должен застывать до ручного перезапуска.
+        public void KeepAlive()
+        {
+            if (!leaving) wantRetry = true;
+        }
+
+        void Update()
+        {
+            // Колбэк потери комнаты может прийти не с главного потока — цикл стартуем здесь, чтобы
+            // Joined и создание объектов мира шли по главному потоку Unity.
+            if (wantRetry && !retrying && !leaving && Room == null)
+            {
+                wantRetry = false;
+                _ = RetryLoop();
+            }
+        }
+
+        async Task RetryLoop()
+        {
+            retrying = true;
+            float delay = 1f;
+            try
+            {
+                while (!leaving && Room == null)
+                {
+                    Status = $"нет связи, новая попытка через {delay:0} с";
+                    await Task.Delay(TimeSpan.FromSeconds(delay));
+                    if (leaving || Room != null) break;
+                    await Connect();
+                    delay = Mathf.Min(delay * 1.5f, 10f);
+                }
+            }
+            finally
+            {
+                retrying = false;
             }
         }
 
@@ -128,6 +178,7 @@ namespace Zep
 
         async void OnDestroy()
         {
+            leaving = true;
             if (Room != null) await Room.Leave();
         }
     }
