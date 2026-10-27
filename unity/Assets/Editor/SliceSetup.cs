@@ -565,6 +565,7 @@ public static class SliceSetup
         world.hero = null;
         net.spectator = true;
         var director = cam.gameObject.AddComponent<SpectatorDirector>();
+        cam.gameObject.AddComponent<VersionWatch>();
         director.cam = cam;
         director.configJson = AssetDatabase.LoadAssetAtPath<TextAsset>("Assets/Terrain/spectator.json");
         EditorSceneManager.SaveScene(scene, SpectatorScene);
@@ -596,6 +597,11 @@ public static class SliceSetup
             "#!/bin/sh\n" +
             "# Спектатор для OBS, подключается к прод-серверу. Другой сервер: ./Spectator.sh ws://localhost:2567\n" +
             "cd \"$(dirname \"$0\")\"\n" +
+            "# Перед стартом — обновление (спектатор закрывается сам, когда на сервере новая версия).\n" +
+            "if [ -z \"$ZEP_UPDATED\" ] && [ -x \"$HOME/zep-spectator/update.sh\" ]; then\n" +
+            "  ZEP_UPDATED=1 \"$HOME/zep-spectator/update.sh\" --no-restart || true\n" +
+            "  [ -x \"$HOME/zep-spectator/current/Spectator.sh\" ] && ZEP_UPDATED=1 exec \"$HOME/zep-spectator/current/Spectator.sh\" \"$@\"\n" +
+            "fi\n" +
             "chmod +x \"ZEP Spectator.x86_64\"\n" +
             "exec \"./ZEP Spectator.x86_64\" -server \"${1:-wss://zepgame.duckdns.org}\"\n");
     }

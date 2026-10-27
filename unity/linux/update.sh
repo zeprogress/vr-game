@@ -24,8 +24,9 @@ mv "$SRC" "$APP/versions/$NEW"
 chmod +x "$APP/versions/$NEW/Spectator.sh" "$APP/versions/$NEW/ZEP Spectator.x86_64"
 ln -sfn "$APP/versions/$NEW" "$APP/current"
 # Новый скрипт обновления — тоже из архива.
-[ -f "$APP/current/update.sh" ] && cp "$APP/current/update.sh" "$APP/update.sh" && chmod +x "$APP/update.sh"
-systemctl --user restart zep-spectator.service || true
+[ -f "$APP/current/update.sh" ] && cp "$APP/current/update.sh" "$APP/update.sh.new" && chmod +x "$APP/update.sh.new" && mv -f "$APP/update.sh.new" "$APP/update.sh"  # mv — не портить идущий скрипт
+# --no-restart: зовёт сам Spectator.sh перед стартом — перезапускать нечего.
+[ "${1:-}" = "--no-restart" ] || systemctl --user restart zep-spectator.service || true
 # Старые версии: оставляем две последние (на случай отката: ln -sfn versions/<старая> current).
 ls -1dt "$APP/versions"/* | tail -n +3 | xargs -r rm -rf
 echo "стоит $NEW"
