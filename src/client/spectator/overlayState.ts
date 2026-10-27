@@ -132,3 +132,24 @@ export function watchPanels(st: ZoneState | null | undefined, subj: { type: stri
   }
   return out;
 }
+
+/**
+ * HP живого босса рядом с камерой эфира (state.specX/Z, в пределах `near` м) — для полоски HP босса,
+ * когда камера не смотрит на него прямо (Unity-спектатор не сообщает цель в аренах катакомб и общих планах).
+ * Босс — как в watchPanels: вид «boss» или имя босса катакомб. null — рядом нет.
+ */
+export function nearBossHp(st: ZoneState | null | undefined, near = 60): OverlayCtx["targetHp"] {
+  if (!st || !st.specActive) return null;
+  let best: OverlayCtx["targetHp"] = null;
+  let bestD = near;
+  st.mobs.forEach((m) => {
+    if (m.dead) return;
+    const name = m.mobName || mobName(m.kind);
+    if (m.kind !== "boss" && !CAT_BOSS_NAMES.includes(name)) return;
+    const d = Math.hypot(m.x - st.specX, m.z - st.specZ);
+    if (d > bestD) return;
+    bestD = d;
+    best = { frac: m.hp / (m.maxHp || 1), cur: m.hp, max: m.maxHp, name, boss: true };
+  });
+  return best;
+}

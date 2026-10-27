@@ -2,7 +2,7 @@ import { showCatReport } from "../ui/CatReport";
 import { EVENT_BUFF_MINUTES } from "#shared/constants";
 import { NetClient } from "../net/NetClient";
 import { Overlay } from "./Overlay";
-import { catacombsOf, chatQuestOf, onlineOf, shotLabel, tickerOf, watchPanels } from "./overlayState";
+import { catacombsOf, chatQuestOf, nearBossHp, onlineOf, shotLabel, tickerOf, watchPanels } from "./overlayState";
 import type { SpecCmd } from "#shared/net/messages";
 import type { OverlayFrame } from "#shared/net/overlayFrame";
 
@@ -131,9 +131,11 @@ function tick(): void {
       ? { ...EMPTY_FRAME, ...watchPanels(st, subj), shotLabel: shotLabel(subj.shot) }
       : EMPTY_FRAME;
   const isBoss = !!f.targetHp?.boss;
+  // HP босса: цель кадра — босс; иначе живой босс рядом с камерой эфира (без цели кадра у Unity-спектатора).
+  const bossHp = isBoss ? f.targetHp : nearBossHp(st);
   if (bossOnly) {
     ov.setTicker("", "news");
-    ov.update({ ...EMPTY_FRAME, targetHp: isBoss ? f.targetHp : null });
+    ov.update({ ...EMPTY_FRAME, targetHp: bossHp });
     return;
   }
   // Строка сверху и онлайн — из состояния комнаты: кадр рендерящей страницы для них не нужен
