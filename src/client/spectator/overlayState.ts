@@ -1,5 +1,6 @@
 import { CAT_HALLS, CAT_PHASE, catParseRoute } from "#shared/catacombs";
-import { CAT_BOSS_NAMES } from "#shared/mobs";
+import { CAT_BOSS_NAMES, ELITE_MOBS } from "#shared/mobs";
+import { RAID } from "#shared/raid";
 import { heroStatRows, type HeroStatRow } from "#shared/heroStats";
 import { ITEMS, weaponDef, type ItemId, type WeaponClass } from "#shared/items";
 import type { PlayerState, ZoneState } from "#shared/net/schema";
@@ -48,6 +49,15 @@ export function catacombsOf(st: ZoneState | null | undefined): OverlayCtx["catac
   return st && st.catPhase >= CAT_PHASE.gather
     ? { gather: st.catPhase === CAT_PHASE.gather, hall: CAT_HALLS[catParseRoute(st.catRoute)[st.catHi] ?? 0].name, left: st.catLeft, party: st.catParty, final: st.catFinal === 1, lives: st.catLives }
     : null;
+}
+
+/**
+ * Босс для полоски HP: Багровый, текущий босс катакомб (catBoss), дракон «Охоты на элиту» (фаза),
+ * рейд-босс (Лунный аватар) и суперболссы катакомб по имени.
+ */
+function isBossMob(st: ZoneState, id: string, m: { kind: string; mobName: string; phase: number }): boolean {
+  const name = m.mobName || mobName(m.kind);
+  return m.kind === "boss" || id === st.catBoss || m.phase > 0 || CAT_BOSS_NAMES.includes(name) || name === ELITE_MOBS[RAID.boss]?.name;
 }
 
 export function mobName(kind: string): string {
@@ -128,7 +138,7 @@ export function watchPanels(st: ZoneState | null | undefined, subj: { type: stri
     if (!m || m.dead) return out;
     const name = m.mobName || mobName(m.kind);
     out.watching = name;
-    out.targetHp = { frac: m.hp / (m.maxHp || 1), cur: m.hp, max: m.maxHp, name, boss: m.kind === "boss" || CAT_BOSS_NAMES.includes(name) };
+    out.targetHp = { frac: m.hp / (m.maxHp || 1), cur: m.hp, max: m.maxHp, name, boss: isBossMob(st, subj.id, m) };
   }
   return out;
 }
@@ -139,17 +149,17 @@ export function watchPanels(st: ZoneState | null | undefined, subj: { type: stri
  * Босс — как в watchPanels: вид «boss» или имя босса катакомб. null — рядом нет.
  */
 export function nearBossHp(st: ZoneState | null | undefined, near = 60): OverlayCtx["targetHp"] {
-  if (!st || !st.specActive) return null;
+  if (!st) return null;
+  // Камера эфира не прислала положение — ближайшим не выбрать: берём любого живого босса.
+  const anywhere = !st.specActive;
   let best: OverlayCtx["targetHp"] = null;
-  let bestD = near;
-  st.mobs.forEach((m) => {
-    if (m.dead) return;
-    const name = m.mobName || mobName(m.kind);
-    if (m.kind !== "boss" && !CAT_BOSS_NAMES.includes(name)) return;
-    const d = Math.hypot(m.x - st.specX, m.z - st.specZ);
-    if (d > bestD) return;
+  let bestD = anywhere ? Infinity : near;
+  st.mobs.forEach((m, id) => {
+    if (m.dead || !isBossMob(st, id, m)) return;
+    const d = anywhere ? 0 : Math.hypot(m.x - st.specX, m.z - st.specZ);
+    if (d > bestD || (anywhere && best)) return;
     bestD = d;
-    best = { frac: m.hp / (m.maxHp || 1), cur: m.hp, max: m.maxHp, name, boss: true };
+    best = { frac: m.hp / (m.maxHp || 1), cur: m.hp, max: m.maxHp, name: m.mobName || mobName(m.kind), boss: true };
   });
   return best;
 }

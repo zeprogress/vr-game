@@ -156,6 +156,16 @@ namespace Zep
             _ = Room.Send("sc", cmd);
         }
 
+        /// Положение камеры эфира и куда она смотрит (MSG.specCam = "sp2", SpecCamMsg).
+        public void SendSpecCam(Vector3 pos, Vector3 tgt)
+        {
+            if (Room == null) return;
+            _ = Room.Send("sp2", new Dictionary<string, object>
+            {
+                { "x", pos.x }, { "y", pos.y }, { "z", pos.z }, { "tx", tgt.x }, { "ty", tgt.y }, { "tz", tgt.z },
+            });
+        }
+
         static readonly float[] Zero7 = { 0, 0, 0, 0, 0, 0, 1 };
 
         /// Позиция «головы» (глаза над землёй) и поворот — как MoveMsg в плоском режиме.

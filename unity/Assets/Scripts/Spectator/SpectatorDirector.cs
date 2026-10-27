@@ -210,6 +210,7 @@ namespace Zep
             else if (auto && (timedOut || idlePathInterrupted)) SwitchTo(NextShot(fighting));
 
             SendSubject(dt);
+            SendCam(dt);
             frameDt = dt;
             bool jumped = FollowJumped();
             TrackEye(dt, jumped);
@@ -756,6 +757,19 @@ namespace Zep
             sentSubj = key;
             subjClock = 0;
             ZoneNet.I.SendSpecCmd(new Dictionary<string, object> { { "t", "subj" }, { "type", type }, { "id", id }, { "shot", kind } });
+        }
+
+        // Где камера эфира (MSG.specCam): по ней оверлей находит босса рядом, игра рисует метку камеры. Раз в 0,25 с.
+        float camClock;
+
+        void SendCam(float dt)
+        {
+            if ((camClock += dt) < 0.25f || ZoneNet.I.Room == null) return;
+            camClock = 0;
+            var c = Camera.main;
+            if (!c) return;
+            var p = c.transform.position;
+            ZoneNet.I.SendSpecCam(p, curTgt);
         }
 
         void OnGUI()
