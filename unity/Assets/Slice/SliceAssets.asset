@@ -120,7 +120,7 @@ MonoBehaviour:
   - key: charHuman
     prefab: {fileID: 8771091787928289351, guid: 323b5d05450d24486975548d64272eb0, type: 3}
     height: 1.1185336
-    scale: 3.06
+    scale: 5
     keep: 1
   - key: monBee
     prefab: {fileID: 8771091787928289351, guid: 8abad31692fc945d9858a8eaeb689bf8, type: 3}
@@ -527,7 +527,7 @@ MonoBehaviour:
     drop: 0
     attackClip: 
     noSquash: 1
-    scaleMul: 2.2
+    scaleMul: 3.2
     tint:
     - 0.72
     - 0.86
@@ -554,16 +554,6 @@ MonoBehaviour:
     scaleMul: 8
     tint: []
   skins:
-  - charKnight
-  - charKnightGold
-  - charWizard
-  - charNinja
-  - charGoblin
-  - charPirate
-  - charViking
-  - charZombie
-  - charSoldier
-  - charCowboy
   - charHuman
   bodyRadius: 0.55
   gear:

@@ -730,7 +730,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   },
   skeletonReaver: {
     model: "monSkeletonReaver", name: "Костяной жнец", blurb: "быстрый, сильные удары мечом, прикрывается щитом, магия режется на 20%, прыжок-выпад с оглушением", level: 53, kind: "slime",
-    hp: 32000, dmgMul: 26, xp: 10000000, scaleMul: 2.2, tint: [0.72, 0.86, 1.0], // HP ×2 (2026-10-13): было 16000; тон кости — без красно-жёлтого
+    hp: 32000, dmgMul: 26, xp: 10000000, scaleMul: 3.2, tint: [0.72, 0.86, 1.0], // HP ×2 (2026-10-13): было 16000; тон кости — без красно-жёлтого
     speedMul: 1.9, attackCooldown: 0.7, meleeReach: 2.7, critVulnMul: 1.2,
     magicArmor: 0.2, // магия режется на 20% (2026-10-15; было 30%)
     champScaleMul: 1.7, // вожак жнецов заметно крупнее обычного вожака (QUEST.champ — 1.3)

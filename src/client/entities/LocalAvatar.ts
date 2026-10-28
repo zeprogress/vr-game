@@ -236,7 +236,7 @@ export class LocalAvatar {
   private model(): ModelName {
     return this.skin >= 1
       ? BOT_SKIN_MODELS[(this.skin - 1) % BOT_SKIN_MODELS.length]
-      : "charKnight";
+      : "charHuman";
   }
 
   private async reload(): Promise<void> {

@@ -158,7 +158,7 @@ namespace Zep
         /// Запись модели скина (масштаб, свои текстуры); null — модели нет (тогда обычный рыцарь).
         public ModelEntry SkinEntry(int skin)
         {
-            var key = skin >= 1 && skin <= skins.Length ? skins[skin - 1] : "charKnight";
+            var key = skin >= 1 && skin <= skins.Length ? skins[skin - 1] : "charHuman";
             return Model(key);
         }
 
