@@ -43,10 +43,10 @@ namespace Zep
             net.Assets = assets;
             net.Joined += OnJoined;
             net.Left += ClearWorld;
-            net.Act += (kind, id, _) =>
+            net.Act += (kind, id, m) =>
             {
-                if (id != null && Players.TryGetValue(id, out var pv)) pv.OnAct(kind);
-                else if (hero && id == net.Room?.SessionId) hero.OnAct(kind);
+                if (id != null && Players.TryGetValue(id, out var pv)) pv.OnAct(kind, m);
+                else if (hero && id == net.Room?.SessionId) hero.OnAct(kind, m);
             };
             await net.Connect();
             if (net.Room == null) net.KeepAlive(); // первый вход не удался — пробуем снова

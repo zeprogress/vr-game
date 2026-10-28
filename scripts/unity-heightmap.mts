@@ -79,7 +79,17 @@ writeFileSync(
 // Модели: ключ MobState.model → файл (MODELS в client/world/models.ts), посадка элитных мобов, скины героев.
 const modelsSrc =
   readFileSync("src/client/world/models.ts", "utf8") + readFileSync("src/client/items/weaponModels.ts", "utf8");
-const models = [...modelsSrc.matchAll(/^\s+(\w+): "\/models\/([^"]+)"/gm)].map((m) => ({ key: m[1], path: m[2] }));
+// Множитель масштаба (MODEL_SCALE) и «свои текстуры, не перекрашивать» (KEEP_MATERIALS) — из того же models.ts.
+const scaleSrc = /MODEL_SCALE[^=]*=\s*\{([^}]*)\}/.exec(modelsSrc)?.[1] ?? "";
+const modelScale = Object.fromEntries([...scaleSrc.matchAll(/(\w+):\s*([\d.]+)/g)].map((m) => [m[1], Number(m[2])]));
+const keepSrc = /KEEP_MATERIALS[^=]*=\s*new Set<[^>]*>\(\[([^\]]*)\]\)/.exec(modelsSrc)?.[1] ?? "";
+const keep = new Set([...keepSrc.matchAll(/"(\w+)"/g)].map((m) => m[1]));
+const models = [...modelsSrc.matchAll(/^\s+(\w+): "\/models\/([^"]+)"/gm)].map((m) => ({
+  key: m[1],
+  path: m[2],
+  scale: modelScale[m[1]] ?? 1,
+  keep: keep.has(m[1]),
+}));
 const elites = Object.values(ELITE_MOBS).map((d) => ({
   model: d.model ?? "",
   drop: d.modelDrop ?? 0,

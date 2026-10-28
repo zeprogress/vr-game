@@ -16,6 +16,10 @@ namespace Zep
             public GameObject prefab;
             /// Высота модели в файле (по мешам) — для подгонки под рост моба, как nativeHeight в вебе.
             public float height = 1;
+            /// Множитель к масштабу героя (MODEL_SCALE в вебе: Человек крупнее пака в файле).
+            public float scale = 1;
+            /// Свои текстуры — не перекрашивать (KEEP_MATERIALS); у такой модели свои клипы боя и посадка оружия.
+            public bool keep;
         }
 
         [Serializable]
@@ -149,10 +153,20 @@ namespace Zep
             return model != null && eliteByModel.TryGetValue(model, out var x) ? x : null;
         }
 
-        public GameObject Skin(int skin)
+        public GameObject Skin(int skin) => SkinEntry(skin)?.prefab ?? hero;
+
+        /// Запись модели скина (масштаб, свои текстуры); null — модели нет (тогда обычный рыцарь).
+        public ModelEntry SkinEntry(int skin)
         {
             var key = skin >= 1 && skin <= skins.Length ? skins[skin - 1] : "charKnight";
-            return Model(key)?.prefab ?? hero;
+            return Model(key);
+        }
+
+        /// Узел оружия по имени (gear_* из Gear.glb, hgear_* из GearHuman.glb).
+        public GameObject GearNamed(string name)
+        {
+            Gear("", "");
+            return gearByName.TryGetValue(name, out var x) ? x : null;
         }
     }
 }

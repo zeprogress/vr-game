@@ -264,6 +264,60 @@ export async function exportGear(): Promise<{ items: number; mb: number }> {
   return { items: made.length, mb: Math.round((blob.size / 1048576) * 10) / 10 };
 }
 
+/**
+ * Оружие в руках модели со своей посадкой (Человек, botGear.MODEL_SEATS): каждый класс и тир в правом И левом
+ * кулаке — узлы hgear_<R|L>_<класс>_<тир> в GearHuman.glb. Unity (HeroRig) берёт их для скинов с флагом keep.
+ */
+export async function exportHumanGear(model = "charHuman"): Promise<{ items: number; mb: number }> {
+  const scene = sceneOrThrow();
+  const { loadRig } = await import("../world/models");
+  const { makeWeaponMesh } = await import("../world/LootDrops");
+  const { seatFor } = await import("../entities/botGear");
+  const rig = (await loadRig(scene, model as never))();
+  const bone = (n: string): Node | undefined => rig.root.getDescendants(false).find((d) => d.name === n);
+  const fists = { L: bone("Fist.L"), R: bone("Fist.R") };
+  if (!fists.L || !fists.R) throw new Error("нет костей Fist.L/Fist.R");
+  const classes = ["sword", "bow", "shield", "staff", "dagger", "spear", "hammer"] as const;
+  const tiers = ["base", "gold", "legendary", "ruby", "craft"] as const;
+  const made: Mesh[] = [];
+  const add = (cls: (typeof classes)[number], tier: string, side: "R" | "L"): void => {
+    const mesh = makeWeaponMesh(scene, cls, tier as never);
+    mesh.name = `hgear_${side}_${cls}_${tier}`;
+    mesh.rotationQuaternion = null;
+    mesh.parent = fists[side]!;
+    const g = seatFor(cls, fists[side], side);
+    mesh.position.set(g.pos[0], g.pos[1], g.pos[2]);
+    mesh.rotation.set(g.rot[0], g.rot[1], g.rot[2]);
+    mesh.scaling.setAll(g.scale);
+    made.push(mesh);
+  };
+  for (const side of ["R", "L"] as const) {
+    for (const cls of classes) for (const tier of tiers) add(cls, tier, side);
+    add("shield", "aegis", side);
+    add("shield", "rubyAegis", side);
+  }
+  const ready = (m: Mesh): boolean => m.getTotalVertices() > 0 || m.getChildMeshes(false).some((c) => c.getTotalVertices() > 0);
+  for (let i = 0; i < 50 && !made.every(ready); i++) await new Promise((r) => setTimeout(r, 200));
+  const empty = made.filter((m) => !ready(m)).map((m) => m.name);
+  if (empty.length) console.warn("[unity-export] без геометрии:", empty);
+  const keep = new Set<Node>();
+  const walk = (n: Node): void => {
+    keep.add(n);
+    for (const c of n.getChildren()) walk(c);
+  };
+  walk(rig.root);
+  const glb = await GLTF2Export.GLBAsync(scene, "GearHuman", {
+    shouldExportNode: (n: Node) => keep.has(n),
+    shouldExportAnimation: () => false,
+    exportWithoutWaitingForScene: true,
+  });
+  const blob = Object.values(glb.glTFFiles)[0] as Blob;
+  await fetch(`/__unity-export/GearHuman.glb`, { method: "POST", body: blob });
+  for (const m of made) m.dispose();
+  rig.dispose();
+  return { items: made.length, mb: Math.round((blob.size / 1048576) * 10) / 10 };
+}
+
 /** WAV 16 бит моно из отрисованного буфера, хвост тишины обрезан. */
 function wavOf(buf: AudioBuffer): Blob {
   const d = buf.getChannelData(0);

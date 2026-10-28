@@ -22,9 +22,10 @@ namespace Zep
         Vector2 moveOrigin;
 
         /// Свои события с сервера: флинч и новый уровень (свой замах играем сразу, без ожидания сети).
-        public void OnAct(string kind)
+        public void OnAct(string kind, System.Collections.Generic.Dictionary<string, object> m = null)
         {
-            if (kind == "hurt") rig.PlayOneShot("RecieveHit", 1.6f);
+            if (kind == "cast") rig.PlaySkill(HeroRig.CastSkill(m), HeroRig.CastClass(m));
+            else if (kind == "hurt") rig.PlayOneShot("RecieveHit", 1.6f);
             else if (kind == "levelUp") rig.PlayOneShot("Victory");
         }
 

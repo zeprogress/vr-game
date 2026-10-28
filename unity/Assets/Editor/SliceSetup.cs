@@ -210,7 +210,11 @@ public static class SliceSetup
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/" + m.path);
             if (!prefab) { Debug.LogWarning($"[slice] нет модели {m.key}: {m.path}"); continue; }
-            entries.Add(new SliceAssets.ModelEntry { key = m.key, prefab = prefab, height = MeasureHeight(prefab) });
+            entries.Add(new SliceAssets.ModelEntry
+            {
+                key = m.key, prefab = prefab, height = MeasureHeight(prefab),
+                scale = m.scale > 0 ? m.scale : 1, keep = m.keep,
+            });
         }
         a.models = entries.ToArray();
         a.elites = mj.elites;
@@ -250,6 +254,11 @@ public static class SliceSetup
         if (gearPrefab)
             foreach (var t in gearPrefab.GetComponentsInChildren<Transform>(true))
                 if (t.name.StartsWith("gear_")) gear.Add(t.gameObject);
+        // Оружие модели со своей посадкой (Человек): узлы hgear_<R|L>_* в GearHuman.glb (exportHumanGear в вебе).
+        var humanGear = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Locations/GearHuman.glb");
+        if (humanGear)
+            foreach (var t in humanGear.GetComponentsInChildren<Transform>(true))
+                if (t.name.StartsWith("hgear_")) gear.Add(t.gameObject);
         a.gear = gear.ToArray();
         Debug.Log($"[slice] оружия в руках {gear.Count}");
         a.xpNext = mj.xpNext;
@@ -311,7 +320,7 @@ public static class SliceSetup
         return m;
     }
 
-    [Serializable] class ModelPath { public string key, path; }
+    [Serializable] class ModelPath { public string key, path; public float scale; public bool keep; }
     [Serializable] class ModelsJson
     {
         public ModelPath[] models;

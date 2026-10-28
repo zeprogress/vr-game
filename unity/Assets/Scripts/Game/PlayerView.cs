@@ -37,10 +37,11 @@ namespace Zep
             new Quaternion(state.head.qx, state.head.qy, state.head.qz, state.head.qw) * Vector3.forward;
 
         /// Событие героя по сети (Spectator.onAct в вебе): замах, выстрел, флинч, новый уровень.
-        public void OnAct(string kind)
+        public void OnAct(string kind, System.Collections.Generic.Dictionary<string, object> m = null)
         {
             switch (kind)
             {
+                case "cast": rig.PlaySkill(HeroRig.CastSkill(m), HeroRig.CastClass(m)); break;
                 case "swing": case "bow": rig.PlaySwing(state.level); break;
                 case "hurt": rig.PlayOneShot("RecieveHit", 1.6f); break;
                 case "levelUp": rig.PlayOneShot("Victory"); break;

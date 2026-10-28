@@ -13,16 +13,62 @@ namespace Zep
         SliceAssets assets;
         GameObject model;
         int skin = -1;
+        /// Модель со своими текстурами, клипами боя и посадкой оружия (Человек — KEEP_MATERIALS в вебе).
+        bool own;
         string clsL, clsR, tierL, tierR;
         Transform fistL, fistR, gearL, gearR;
 
         public void Init(SliceAssets assets) { this.assets = assets; }
+
+        /// Вид оружия для своих клипов модели (kindOf в world/heroMoves.ts).
+        string MoveKind
+        {
+            get
+            {
+                bool Has(string c) => clsL == c || clsR == c;
+                if (Has("spear")) return "spear";
+                if (Has("hammer")) return "hammer";
+                if (Has("staff")) return "staff";
+                if (Has("bow")) return "bow";
+                if (Has("dagger") && !Has("sword")) return "dagger";
+                if (Has("sword")) return "sword";
+                return null;
+            }
+        }
+
+        /// Варианты удара своей модели: atk<вид>1..4 (у кинжала — atkdaggerr/l по руке).
+        string[] Variants(string prefix)
+        {
+            var list = new System.Collections.Generic.List<string>();
+            for (int i = 1; i <= 4; i++) if (Anim.Has(prefix + i)) list.Add(prefix + i);
+            return list.ToArray();
+        }
+
+        string lastAttack;
+
+        /// Случайный вариант (не тот же, что прошлый) — как pickVariant в вебе.
+        string Pick(string[] list)
+        {
+            if (list.Length == 0) return null;
+            var n = list[UnityEngine.Random.Range(0, list.Length)];
+            if (list.Length > 1 && n == lastAttack) n = list[(Array.IndexOf(list, n) + 1) % list.Length];
+            return lastAttack = n;
+        }
 
         /// Стойка и удар по оружию в руках (classAnimSet в world/classPoses.ts); null — обычные Idle и SwordSlash.
         public (string idle, string attack, string alt)? AnimSet
         {
             get
             {
+                if (own)
+                {
+                    var k = MoveKind;
+                    if (k == null || !Anim.Has("stance" + k)) return null;
+                    bool two = k == "dagger" && clsL == "dagger" && clsR == "dagger";
+                    var a = Variants(k == "dagger" ? "atkdaggerr" : "atk" + k);
+                    var alt = two ? Variants("atkdaggerl") : new string[0];
+                    return a.Length == 0 ? null : ("stance" + k, a[0], alt.Length > 0 ? alt[0] : null);
+                }
                 bool Has(string c) => clsL == c || clsR == c;
                 if (Has("spear")) return ("spearidle", "spearthrust", null);
                 if (Has("hammer")) return ("hammeridle", "hammerslam", null);
@@ -50,8 +96,10 @@ namespace Zep
         Transform body;
 
         /// После анимации: высота Body на шаге и беге — LocoBodyY по весу этих клипов (ключи легаси-клипа во время игры не прочитать).
+        /// У своей модели (Человек) — не трогаем: числа под пак Quaternius; зато сжимаем кулаки.
         void LateUpdate()
         {
+            if (own) { Grip(); return; }
             if (!body || Anim == null) return;
             float wr = Anim.Weight("Run"), ww = Anim.Weight("Walk");
             float w = Mathf.Min(1f, wr + ww);
@@ -78,6 +126,13 @@ namespace Zep
             if (set != null && Anim.Has(set.Value.attack))
             {
                 clip = set.Value.alt != null && stabLeft ? set.Value.alt : set.Value.attack;
+                // Своя модель — случайный вариант удара этого оружия (и руки у двух кинжалов), не тот же, что прошлый.
+                if (own)
+                {
+                    var k = MoveKind;
+                    var pre = k == "dagger" ? (set.Value.alt != null && stabLeft ? "atkdaggerl" : "atkdaggerr") : "atk" + k;
+                    clip = Pick(Variants(pre)) ?? clip;
+                }
                 stabLeft = set.Value.alt != null && !stabLeft;
             }
             float rate = assets.MeleeRate(level);
@@ -95,6 +150,88 @@ namespace Zep
             if (clip == "RecieveHit" || clip == "PickUp") PlayAction(speed, clip);
             else { actionUpper = false; Anim.StopUpper(); Anim.Once(speed, clip); }
             oneShotUntil = Time.time + Anim.Length(clip) / speed;
+        }
+
+        /// Клип умения своей модели (heroSkillClip в вебе) по act «cast»: сначала свой у класса, потом общий.
+        public void PlaySkill(string skill, string cls)
+        {
+            if (!own || string.IsNullOrEmpty(skill)) return;
+            string clip = null;
+            if (cls != null && SkillClips.TryGetValue(skill + ":" + cls, out var c1)) clip = c1;
+            else if (SkillClips.TryGetValue(skill, out var c2)) clip = c2;
+            if (clip == null || !Anim.Has(clip)) return;
+            bool full = clip == "skwhirlwind" || clip == "skcrush" || clip == "sksweep" || clip == "skseal";
+            if (full) { actionUpper = false; Anim.StopUpper(); Anim.Once(1f, clip); } else PlayAction(1f, clip);
+            swingUntil = Time.time + Anim.Length(clip);
+        }
+
+        /// act «cast» с сервера: s — умение, v — индекс класса в CLASS_IDS (shared/classes2.ts).
+        static readonly string[] ClassIds = { "warrior", "archer", "support", "assassin", "spearman", "battlemage" };
+
+        public static string CastSkill(System.Collections.Generic.Dictionary<string, object> m) =>
+            m != null && m.TryGetValue("s", out var s) ? s as string : null;
+
+        public static string CastClass(System.Collections.Generic.Dictionary<string, object> m)
+        {
+            if (m == null || !m.TryGetValue("v", out var v) || v == null) return null;
+            int i = Convert.ToInt32(v);
+            return i >= 0 && i < ClassIds.Length ? ClassIds[i] : null;
+        }
+
+        /// SKILL_CLIP из world/heroMoves.ts — умение (и умение:класс) → клип модели.
+        static readonly System.Collections.Generic.Dictionary<string, string> SkillClips = new()
+        {
+            ["cleave"] = "skcleave", ["whirlwind"] = "skwhirlwind", ["whirlwind:spearman"] = "skflurry",
+            ["whirlwind:battlemage"] = "skwhirlwind", ["stunBash:warrior"] = "skstunbash", ["stunBash:spearman"] = "sksweep",
+            ["warcry"] = "skwarcry", ["warcry:support"] = "skmassheal", ["seal"] = "skseal", ["seal:support"] = "skcaststaff",
+            ["steelAura"] = "skwarcry", ["drawIn"] = "skseal", ["crush"] = "skcrush", ["chain"] = "skchain",
+            ["massHeal"] = "skmassheal", ["arrowRain:archer"] = "skarrowrain", ["arrowRain:support"] = "skcaststaff",
+            ["arrowRain:assassin"] = "skthrow", ["arrowRain:spearman"] = "skspearcall", ["arrowStorm"] = "skarrowrain",
+            ["mark"] = "skaim", ["lifeArrow"] = "skaim", ["blastArrow"] = "skaim", ["ghostArrow"] = "skaim",
+            ["swarmArrow"] = "skaim", ["barrierArrow"] = "skaim", ["webArrow"] = "skaim", ["plague"] = "skcrosscut",
+            ["smoke"] = "skthrow", ["soulSteal"] = "skcrosscut", ["abyss"] = "skcrosscut",
+        };
+
+        // --- кулак (HandGrip в вебе): пальцы между спокойной кистью и кулаком из клипа Fist ---
+        Transform[] fingers = new Transform[0];
+        Quaternion[] fingerRest, fingerFist;
+        bool[] fingerLeft;
+        float gripL, gripR;
+
+        void SetupGrip()
+        {
+            var list = new System.Collections.Generic.List<Transform>();
+            foreach (var t in model.GetComponentsInChildren<Transform>(true))
+                if (System.Text.RegularExpressions.Regex.IsMatch(t.name, @"^(Left|Right)_(Thumb|Index|Middle|Ring|Pinky)\d$")) list.Add(t);
+            fingers = list.ToArray();
+            fingerRest = new Quaternion[fingers.Length];
+            fingerFist = new Quaternion[fingers.Length];
+            fingerLeft = new bool[fingers.Length];
+            var animation = model.GetComponentInChildren<Animation>();
+            AnimationClip fist = null;
+            if (animation) foreach (AnimationState st in animation) if (st.name.EndsWith("Fist", StringComparison.OrdinalIgnoreCase)) fist = st.clip;
+            for (int i = 0; i < fingers.Length; i++) fingerLeft[i] = fingers[i].name.StartsWith("Left");
+            if (fist)
+            {
+                fist.SampleAnimation(animation.gameObject, 0f);
+                for (int i = 0; i < fingers.Length; i++) fingerRest[i] = fingers[i].localRotation;
+                fist.SampleAnimation(animation.gameObject, fist.length);
+                for (int i = 0; i < fingers.Length; i++) fingerFist[i] = fingers[i].localRotation;
+            }
+            else for (int i = 0; i < fingers.Length; i++) fingerRest[i] = fingerFist[i] = fingers[i].localRotation;
+        }
+
+        /// В руке что-то есть (копьё и молот левая держит за древко — handsBusy в вебе) — кулак, плавно ~0.1 с.
+        void Grip()
+        {
+            if (fingers.Length == 0) return;
+            bool wantL = !string.IsNullOrEmpty(clsL) || clsR == "spear" || clsR == "hammer";
+            bool wantR = !string.IsNullOrEmpty(clsR);
+            float k = 1f - Mathf.Exp(-Time.deltaTime * 10f);
+            gripL += ((wantL ? 1f : 0f) - gripL) * k;
+            gripR += ((wantR ? 1f : 0f) - gripR) * k;
+            for (int i = 0; i < fingers.Length; i++)
+                fingers[i].localRotation = Quaternion.Slerp(fingerRest[i], fingerFist[i], fingerLeft[i] ? gripL : gripR);
         }
 
         /// Ходьба/бег/стойка — когда не идёт замах или разовый клип.
@@ -126,7 +263,7 @@ namespace Zep
         }
 
         /// Модель по ключу MODELS без оружия — NPC лагеря (charViking, charCowboy).
-        public void ApplyModel(string key) => Build(assets.Model(key)?.prefab ?? assets.hero);
+        public void ApplyModel(string key) { var e = assets.Model(key); Build(e?.prefab ?? assets.hero, e); }
 
         /// Пересобирает модель и оружие, если что-то поменялось.
         public void Apply(int skin, string leftCls, string leftTier, string rightCls, string rightTier)
@@ -134,7 +271,8 @@ namespace Zep
             if (skin != this.skin)
             {
                 this.skin = skin;
-                Build(assets.Skin(skin));
+                var e = assets.SkinEntry(skin);
+                Build(e?.prefab ?? assets.hero, e);
             }
             if (leftCls != clsL || leftTier != tierL)
             {
@@ -151,14 +289,16 @@ namespace Zep
         /// Оружие из Gear.glb (выгрузка веба: makeWeaponMesh + посадка BOT_GEAR в кулак) — модель и её
         /// положение относительно кулака ровно как в вебе. Пустой тир — в руке ничего (fitGear в RemoteAvatar).
         /// Модель героя: масштаб пака, перекраска кожи, клипы классов из веба (скелет общий у всех скинов).
-        void Build(GameObject src)
+        void Build(GameObject src, SliceAssets.ModelEntry entry = null)
         {
             if (model) Destroy(model);
             model = Instantiate(src, transform);
-            model.transform.localScale = Vector3.one * RigScale;
-            Recolor.Character(model);
+            own = entry != null && entry.keep;
+            model.transform.localScale = Vector3.one * RigScale * (entry != null && entry.scale > 0 ? entry.scale : 1f);
+            // Своя модель — со своими текстурами (не перекрашиваем) и своими клипами боя (клипы классов рыцаря не нужны).
+            if (!own) Recolor.Character(model);
             var animation = model.GetComponentInChildren<Animation>();
-            if (animation && assets.classClips != null)
+            if (!own && animation && assets.classClips != null)
                 foreach (var c in assets.classClips)
                     if (c && !animation.GetClip(c.name)) animation.AddClip(c, c.name);
             Anim = new Anim(model);
@@ -170,18 +310,23 @@ namespace Zep
             fistL = Find(model.transform, "Fist.L");
             fistR = Find(model.transform, "Fist.R");
             clsL = clsR = null;
+            fingers = new Transform[0];
+            if (own) SetupGrip();
         }
 
         Transform Seat(Transform old, Transform fist, string cls, string tier)
         {
             if (old) Destroy(old.gameObject);
             if (!fist || string.IsNullOrEmpty(cls) || string.IsNullOrEmpty(tier)) return null;
-            var src = assets.Gear(cls, tier);
+            // Своя модель — оружие, посаженное в её кулак (GearHuman.glb: своя посадка на каждую руку).
+            string side = fist == fistL ? "L" : "R";
+            var src = own ? (assets.GearNamed($"hgear_{side}_{cls}_{tier}") ?? assets.GearNamed($"hgear_{side}_{cls}_base")) : null;
+            src ??= assets.Gear(cls, tier);
             if (!src) return null;
             // Instantiate с родителем сохраняет локальные позицию, поворот и масштаб — как под кулаком в Gear.glb.
             var g = Instantiate(src, fist).transform;
-            // Кинжалы в кулаке терялись — вдвое крупнее (по просьбе, 2026-10-26).
-            if (cls == "dagger") g.localScale *= 2f;
+            // Кинжалы в кулаке терялись — вдвое крупнее (по просьбе, 2026-10-26); у своей модели — её посадка как есть.
+            if (cls == "dagger" && !own) g.localScale *= 2f;
             // Цвет грейда — в цветах вершин; материал glTF их не рисует (щиты были серые) — свой шейдер.
             if (assets.bossSkin)
             {
