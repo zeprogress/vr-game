@@ -62,6 +62,8 @@ export interface CatHost {
   setThemes(s: string): void;
   /** Святилище в зале (k −1 — убрать). */
   setShrine(x: number, z: number, k: number): void;
+  /** Личные жизни героя в забеге (для оверлея). */
+  setHeroLife(id: string, n: number): void;
   /** Конец забега: рекорды урона, забеги и победы — в сейв героев (таблица у спектатора). */
   saveRecords(ids: string[], win: boolean): void;
   /** Катакомбы не выключены админом (!ивенты катакомбы выкл) — можно открывать сбор сами и по команде. */
@@ -220,6 +222,7 @@ export class CatacombDirector {
       return false;
     }
     this.heroLives.set(id, mine - 1);
+    this.host.setHeroLife(id, mine - 1);
     this.lives = Math.max(0, this.lives - 1);
     this.pushState();
     return true;
@@ -742,7 +745,11 @@ export class CatacombDirector {
     this.route = [0];
     // Личные жизни: у каждого героя свой запас (livesPerHero + extraLivesPerHero).
     this.heroLives.clear();
-    for (const h of heroes) this.heroLives.set(h.id, Math.round(CATACOMBS.livesPerHero + CATACOMBS.extraLivesPerHero));
+    for (const h of heroes) {
+      const n = Math.round(CATACOMBS.livesPerHero + CATACOMBS.extraLivesPerHero);
+      this.heroLives.set(h.id, n);
+      this.host.setHeroLife(h.id, n);
+    }
     this.lives = [...this.heroLives.values()].reduce((a, b) => a + b, 0);
     this.livesMax = this.lives;
 
@@ -1159,6 +1166,7 @@ export class CatacombDirector {
       if (k) this.reserved.add(k);
     }
     this.phase = CAT_PHASE.none;
+    for (const id of this.party) this.host.setHeroLife(id, 0);
     this.party.clear();
     this.partyKey.clear();
     this.lo = 0;

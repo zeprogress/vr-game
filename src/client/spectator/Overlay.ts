@@ -733,7 +733,8 @@ export class Overlay {
     show(this.cat, !!ct);
     if (ct) {
       const mm = `${Math.floor(ct.left / 60)}:${String(ct.left % 60).padStart(2, "0")}`;
-      const sig = `${ct.gather}|${ct.hall}|${mm}|${ct.party}|${ct.final}|${ct.lives}`;
+      const lives = ct.heroLives.map((h) => `${h.nick} ❤${h.life}`).join(" · ");
+      const sig = `${ct.gather}|${ct.hall}|${mm}|${ct.party}|${ct.final}|${lives}`;
       if (sig !== this.lastCatSig) {
         this.lastCatSig = sig;
         this.cat.innerHTML = "";
@@ -742,7 +743,7 @@ export class Overlay {
         const st = div("st");
         st.textContent = ct.gather
           ? `сбор отряда · ${ct.party} героев · спуск через ${mm}`
-          : `${ct.final ? "⚔ " : ""}${ct.hall} · отряд ${ct.party} · жизней ❤${ct.lives} · осталось ${mm}`;
+          : `${ct.final ? "⚔ " : ""}${ct.hall} · отряд ${ct.party} · ${lives || "жизней нет"} · осталось ${mm}`;
         this.cat.append(b, st);
         for (const [cmd, what] of CAT_HELP) {
           if (!ct.gather && cmd === "!катакомбы") continue;

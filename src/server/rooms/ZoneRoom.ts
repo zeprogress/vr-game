@@ -7203,6 +7203,10 @@ export class ZoneRoom extends Room<ZoneState> {
         this.dragonFight = null;
       },
       chest: (id, kind) => this.catChest(id, kind),
+      setHeroLife: (id, n) => {
+        const p = this.state.players.get(id);
+        if (p) p.catLife = Math.max(0, Math.min(255, n));
+      },
       scrap: (ids, n) => {
         for (const id of ids) {
           const sp = this.state.players.get(id);

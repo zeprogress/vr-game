@@ -45,9 +45,18 @@ export function chatQuestOf(st: ZoneState | null | undefined): OverlayCtx["chatQ
 }
 
 /** Катакомбы (сбор и забег) для панели оверлея — из состояния комнаты. */
+/** Личные жизни героев забега: ник и сколько раз ещё может встать (catLife > 0). */
+function heroLivesOf(st: ZoneState): { nick: string; life: number }[] {
+  const out: { nick: string; life: number }[] = [];
+  st.players.forEach((p) => {
+    if (p.catLife > 0) out.push({ nick: p.nick, life: p.catLife });
+  });
+  return out;
+}
+
 export function catacombsOf(st: ZoneState | null | undefined): OverlayCtx["catacombs"] {
   return st && st.catPhase >= CAT_PHASE.gather
-    ? { gather: st.catPhase === CAT_PHASE.gather, hall: CAT_HALLS[catParseRoute(st.catRoute)[st.catHi] ?? 0].name, left: st.catLeft, party: st.catParty, final: st.catFinal === 1, lives: st.catLives }
+    ? { gather: st.catPhase === CAT_PHASE.gather, hall: CAT_HALLS[catParseRoute(st.catRoute)[st.catHi] ?? 0].name, left: st.catLeft, party: st.catParty, final: st.catFinal === 1, heroLives: heroLivesOf(st) }
     : null;
 }
 

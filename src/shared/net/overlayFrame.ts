@@ -29,7 +29,7 @@ export interface OverlayCtx {
   /** Квест чата (все боты вместе) или null. */
   chatQuest?: { title: string; got: number; need: number; secs: number } | null;
   /** Катакомбы: сбор/забег — панель с таймером и командами чата. */
-  catacombs?: { gather: boolean; hall: string; left: number; party: number; final: boolean; lives: number } | null;
+  catacombs?: { gather: boolean; hall: string; left: number; party: number; final: boolean; heroLives: { nick: string; life: number }[] } | null;
   /** Текущий забег «Охотничьей башни» — этаж/мобы/босс, или null если башня не активна. */
   towerStatus: {
     heroNick: string;
