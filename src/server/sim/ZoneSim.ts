@@ -3,7 +3,7 @@ import { QUEST } from "#shared/quests";
 import { AFFIX, BOW, COMBAT, DROP_CHANCE, EVENT, WEAPON_DROP_MUL, UNIQUE_DROP_MUL, goldDropMulForLevel, WORLD, PLAYER } from "#shared/constants";
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { RAID } from "#shared/raid";
-import { HIT_MARK_HEIGHT, BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, WEB, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER, ICE_GIANT, MOB_SWING } from "#shared/mobs";
+import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, WEB, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER, ICE_GIANT, MOB_SWING } from "#shared/mobs";
 import { DUN_MOB_CAMPS, DUN_X, DUN_Z, dunFloorLocal, dunProject, dunWorld, inDunRegion } from "#shared/dungeon";
 import { ARMOR_DROP, ARMOR_PARTS, armorBaseLevelMul, armorGoldDropChance, armorLegendaryDropChance, armorLevelMul, ARMOR_LEVEL_GATE, levelFadeMul, rollArmor, type ArmorInstance } from "#shared/armor";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
@@ -2907,9 +2907,9 @@ export function eliteOpts(d: EliteMobDef): NonNullable<ConstructorParameters<typ
 /** Катакомбы: сколько секунд тело моба лежит в мире после смерти — клиент проигрывает клип смерти, потом убираем. */
 const CAT_CORPSE_LINGER_S = 2;
 
-/** Точка цифр/вспышки попадания по мобу: наземные — HIT_MARK_HEIGHT над землёй, летающие — середина тела. */
-function hitMarkY(m: { y: number; scale: number; flying: boolean }): number {
-  return m.flying ? m.y + MOB.bodyRadius * m.scale * 1.4 : m.y + HIT_MARK_HEIGHT;
+/** Точка цифр/вспышки попадания по мобу — середина тела (у всех, и у летающих, и у наземных). */
+function hitMarkY(m: { y: number; scale: number }): number {
+  return m.y + MOB.bodyRadius * m.scale * 1.4;
 }
 
 export class ZoneSim {

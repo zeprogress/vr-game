@@ -82,7 +82,7 @@ import {
 } from "#shared/net/messages";
 import { isCamTuneKey, type CamTuneKey } from "#shared/camTune";
 import { ADMIN_NICK, NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, huntPhaseFor, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL } from "#shared/constants";
-import { HIT_MARK_HEIGHT, SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, ICE_GIANT, mobArmorBits, type CatDefense } from "#shared/mobs";
+import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, ICE_GIANT, mobArmorBits, type CatDefense } from "#shared/mobs";
 import { DragonFight, type DragonHost } from "./dragonFight";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
 import { hammerPhysStrike, skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
@@ -10938,7 +10938,7 @@ export class ZoneRoom extends Room<ZoneState> {
           // Огонь — магия; тик без кулдауна удара и без вздрагивания (как яд), число урона — своё.
           this.skillHitMob(a.owner, m, a.dmg, 0, 0, false, true, true, false);
           const dealt = Math.round(Math.max(0, hp0 - (m.dead ? 0 : m.hp)));
-          if (dealt > 0) this.sim.dmgHits.push({ x, y: m.flying ? m.y + MOB.bodyRadius * m.scale * 1.6 : m.y + HIT_MARK_HEIGHT, z, dmg: dealt, by: a.owner, mob: m.id, c: "fire" });
+          if (dealt > 0) this.sim.dmgHits.push({ x, y: m.y + MOB.bodyRadius * m.scale * 1.6, z, dmg: dealt, by: a.owner, mob: m.id, c: "fire" });
         }
         if (a.mode === "sword") this.sim.slowMob(m.id, STEEL_AURA.slowSec, STEEL_AURA.slowMul);
       }
