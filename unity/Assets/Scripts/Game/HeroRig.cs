@@ -102,18 +102,20 @@ namespace Zep
         /// У своей модели (Человек) — не трогаем: числа под пак Quaternius; зато сжимаем кулаки.
         Transform head;
         Quaternion headRest = Quaternion.identity;
+        readonly System.Collections.Generic.List<(Transform t, Quaternion rest)> torso = new();
 
-        /// Выстрел из лука: голова остаётся смотреть вперёд, поворачивается только корпус (как в вебе — стрела
-        /// летит туда, куда смотрит стрелок). Ставим голову в покой уже после анимации, в LateUpdate.
-        void HoldHeadForBow()
+        /// Выстрел из лука: корпус и голова стоят ровно, двигаются только руки — стрела летит прямо перед собой.
+        /// Ставим кости корпуса и головы в покой уже после анимации, в LateUpdate.
+        void HoldTorsoForBow()
         {
-            if (!head || !(clsL == "bow" || clsR == "bow") || Time.time >= swingUntil) return;
-            head.localRotation = headRest;
+            if (!(clsL == "bow" || clsR == "bow") || Time.time >= swingUntil) return;
+            foreach (var (t, rest) in torso) t.localRotation = rest;
+            if (head) head.localRotation = headRest;
         }
 
         void LateUpdate()
         {
-            HoldHeadForBow();
+            HoldTorsoForBow();
             if (own) { Grip(); return; }
             if (!body || Anim == null) return;
             float wr = Anim.Weight("Run"), ww = Anim.Weight("Walk");
@@ -333,6 +335,13 @@ namespace Zep
             // Голова — в покое, пока клип выстрела из лука поворачивает корпус: иначе стрелок смотрит вбок.
             head = Find(model.transform, "Head");
             headRest = head ? head.localRotation : Quaternion.identity;
+            // Корпус при выстреле из лука стоит ровно: вращаются только руки (как стрела — прямо перед собой).
+            torso.Clear();
+            foreach (var n in new[] { "Hips", "Abdomen", "Chest", "Spine", "Spine1", "Spine2" })
+            {
+                var t = Find(model.transform, n);
+                if (t) torso.Add((t, t.localRotation));
+            }
             clsL = clsR = null;
             fingers = new Transform[0];
             if (own) SetupGrip();
