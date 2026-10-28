@@ -141,7 +141,8 @@ Shader "Zep/BossSkin"
                     // Оружие в руках: цвет грейда записан в цвета вершин (mergeToVertexColors в вебе).
                     float3 albedo = i.color.rgb * _BaseColor.rgb;
                     col = Shade(albedo, N, V, i.positionWS, i.positionCS, 0.5, 0.1);
-                    col += albedo * 0.12;
+                    // Как в вебе: щит светится своим цветом изнутри (emissive ≈ 0.22 тона), иначе грейд выглядит тусклым.
+                    col += albedo * 0.3;
                 }
                 else if (_Mode > 2.5)
                 {
