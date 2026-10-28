@@ -154,6 +154,7 @@ export class NetClient {
         z2?: number,
         v?: number,
         r?: number,
+        s?: string,
       ) => void)
     | null = null;
   /** Голос соседа через сервер (opus-пакет). */
@@ -370,7 +371,7 @@ export class NetClient {
     room.onMessage(MSG.picked, (m: PickedMsg) => this.onPicked?.(m.item, m.count));
     room.onMessage(MSG.rtc, (m: RtcMsg) => this.onRtc?.(m));
     room.onMessage(MSG.act, (m: ActRelay) =>
-      this.onAct?.(m.k, m.x, m.y, m.z, m.id, m.d, m.mobId, m.x2, m.z2, m.v, m.r),
+      this.onAct?.(m.k, m.x, m.y, m.z, m.id, m.d, m.mobId, m.x2, m.z2, m.v, m.r, m.s),
     );
     room.onMessage(MSG.voice, (m: VoiceRelay) => this.onVoice?.(m.id, m.t, m.d));
     room.onMessage(MSG.setPvp, (m: SetPvpMsg) => this.onPvp?.(m.on, m.wait));

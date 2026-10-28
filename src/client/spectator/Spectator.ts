@@ -21,6 +21,7 @@ import type { Room } from "colyseus.js";
 import { BOT, EVENT, EVENT_BUFF_MINUTES, PLAYER, SKILL, daylightAt } from "#shared/constants";
 import { BLINK, BOSS, MOB, PULL, CHARGE, SPIKES, CHIEF_HEAL, FREEZE, SPORE } from "#shared/mobs";
 import { TOWER, TOWER_HIDE } from "#shared/tower";
+import { CLASS_IDS } from "#shared/classes2";
 import type { ZoneState } from "#shared/net/schema";
 import type { ActKind, SpecCmd } from "#shared/net/messages";
 import { LOADOUT } from "../config/loadout";
@@ -511,7 +512,14 @@ export class Spectator {
   /** Подключиться к миру невидимым наблюдателем и начать рендер. */
   async run(net: NetClient, key: string): Promise<boolean> {
     this.net = net;
-    net.onAct = (k, x, y, z, id, d, mobId, x2, z2, v, r) => this.playRemoteAct(k, x, y, z, id, d, mobId, x2, z2, v, r);
+    net.onAct = (k, x, y, z, id, d, mobId, x2, z2, v, r, s) => {
+      // Умение героя/бота: клип умения у модели со своими клипами (Человек — world/heroMoves). Свой герой сыграл его при касте.
+      if (k === "cast") {
+        if (s) this.avatars.get(id)?.playSkill(s, v !== undefined && v >= 0 ? CLASS_IDS[v] ?? null : null);
+        return;
+      }
+      this.playRemoteAct(k, x, y, z, id, d, mobId, x2, z2, v, r);
+    };
     net.onReconnected = (room) => {
       // Пиры голоса привязаны к старой сессии — пересобираем начисто.
       const wantVoice = this.voiceOn;

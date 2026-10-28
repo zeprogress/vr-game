@@ -3,15 +3,20 @@ import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { BuffOrbitFx } from "../ui/BuffOutlineFx";
-import { CLASS_CLIP_NAMES, CLASS_ONE_SHOT, classAnimSet, classClipsFor, type ClassAnimSet } from "../world/classPoses";
+import { CLASS_CLIP_NAMES, CLASS_ONE_SHOT, classClipsFor, type ClassAnimSet } from "../world/classPoses";
+import { HERO_MOVE_CLIPS, HERO_MOVE_ONE_SHOT, heroAnimSet, heroSkillClip, pickVariant } from "../world/heroMoves";
+import type { ClassId, SkillId } from "../../shared/classes2";
 import { applyLegRate, applySplitWeight, blendSplit, dampRunBounce, legClip, legRate, startSplitWeight } from "./bodySplit";
 import { StunStarsFx } from "../ui/StunStarsFx";
 import { WebCocoonFx } from "./WebCocoonFx";
+import { HandGrip, handsBusy } from "./handGrip";
 
 import {
   loadRig,
   recolorCharacter,
   BOT_SKIN_MODELS,
+  KEEP_MATERIALS,
+  modelScale,
   type ModelName,
   type RigInstance,
 } from "../world/models";
@@ -25,8 +30,8 @@ import {
  * четырёх лупов (idle/walk/run) + разовые swordslash/recievehit. Логику
  * порогов взяли из RemoteAvatar.stepBotLocomotion, только проще.
  */
-const CLIPS: readonly string[] = ["idle", "walk", "run", "swordslash", "recievehit", "pickup", "jump", "roll", "death", ...CLASS_CLIP_NAMES];
-const ONE_SHOT = new Set<string>(["swordslash", "recievehit", "pickup", "jump", "roll", ...CLASS_ONE_SHOT]);
+const CLIPS: readonly string[] = ["idle", "walk", "run", "swordslash", "recievehit", "pickup", "jump", "roll", "death", ...CLASS_CLIP_NAMES, ...HERO_MOVE_CLIPS];
+const ONE_SHOT = new Set<string>(["swordslash", "recievehit", "pickup", "jump", "roll", ...CLASS_ONE_SHOT, ...HERO_MOVE_ONE_SHOT]);
 /** Подбор играем вдвое быстрее, как у RemoteAvatar (видно спектатору так же). */
 const PICKUP_RATE = 2;
 
@@ -44,6 +49,8 @@ export class LocalAvatar {
   private readonly animWUp = new Map<string, number>();
   private fistL: TransformNode | null = null;
   private fistR: TransformNode | null = null;
+  /** Сжатый кулак на руке с оружием (пальцы модели с пальцами). */
+  private grip: HandGrip | null = null;
 
   private skin = 0; // 0 — базовый рыцарь; syncSelf позовёт setSkin() с реальным
   private loading = false;
@@ -56,6 +63,7 @@ export class LocalAvatar {
   /** Клипы класса по оружию в руках (стойка/удар); null — обычные. */
   private animSet: ClassAnimSet | null = null;
   private gearSig = "";
+  private gear: [string, string] = ["", ""];
   private classGroups: AnimationGroup[] = [];
   private hitUntil = 0;
   private pickupUntil = 0;
@@ -132,7 +140,9 @@ export class LocalAvatar {
     const sig = `${left}|${right}`;
     if (sig === this.gearSig) return;
     this.gearSig = sig;
-    this.animSet = classAnimSet(left, right);
+    this.gear = [left, right];
+    this.animSet = heroAnimSet(this.rig?.anims, left, right);
+    this.grip?.setHolding(...handsBusy(left, right));
   }
 
   /**
@@ -142,8 +152,14 @@ export class LocalAvatar {
   swing(speed = 1, kind?: string, hand?: "left" | "right"): void {
     this.swingSpeed = speed > 0.1 ? speed : 1;
     const set = this.animSet;
-    const useClass = !!set && (kind === undefined || kind === "dagger" || kind === "spear" || kind === "hammer" || kind === "bow");
-    const name = useClass && set ? (hand === "left" && set.alt ? set.alt : set.attack) : "swordslash";
+    // Свои клипы модели (heroMoves) — и у меча: случайный вариант удара, не тот же, что прошлый.
+    const useClass = !!set && (!!set.attacks || kind === undefined || kind === "dagger" || kind === "spear" || kind === "hammer" || kind === "bow");
+    const name =
+      useClass && set
+        ? hand === "left" && set.alt
+          ? pickVariant(set.alts, set.alt, this.swingClip)
+          : pickVariant(set.attacks, set.attack, this.swingClip)
+        : "swordslash";
     if (name !== this.swingClip) {
       this.rig?.anims.get(this.swingClip)?.stop();
       this.animW.set(this.swingClip, 0);
@@ -181,6 +197,14 @@ export class LocalAvatar {
     this.extraClip = name;
     this.extraRate = rate;
     this.extraUntil = until;
+  }
+
+  /** Умение: свой клип у модели (heroMoves) — true; нет клипа — false (играет как раньше). */
+  playSkill(skill: SkillId, cls: ClassId | null): boolean {
+    const name = heroSkillClip(this.rig?.anims, skill, cls);
+    if (!name) return false;
+    this.oneShot(name, 1);
+    return true;
   }
 
   /** Прыжок — клип прыжка на время полёта. */
@@ -239,7 +263,9 @@ export class LocalAvatar {
         }
         for (const g of this.classGroups) g.dispose();
         this.classGroups = [];
-        this.rig?.dispose();
+        this.grip?.dispose();
+    this.grip = null;
+    this.rig?.dispose();
         this.holder?.dispose();
         this.fistL = this.fistR = null;
 
@@ -247,12 +273,13 @@ export class LocalAvatar {
         holder.parent = this.root;
         holder.position.set(0, FEET_Y, 0);
         holder.rotationQuaternion = Quaternion.Identity();
-        holder.scaling.setAll(RIG_SCALE);
+        const curModel = this.model();
+        holder.scaling.setAll(RIG_SCALE * modelScale(curModel));
 
         const rig = make();
         rig.root.parent = holder;
         rig.root.position.setAll(0);
-        recolorCharacter(rig.root);
+        if (!KEEP_MATERIALS.has(curModel)) recolorCharacter(rig.root);
         for (const m of rig.meshes) m.isPickable = false;
 
         // Клипы классов (выпад, молот, кинжалы, лук) — на скелете этой модели.
@@ -277,9 +304,12 @@ export class LocalAvatar {
             | undefined) ?? null;
         this.fistL = bone("Fist.L");
         this.fistR = bone("Fist.R");
+        (this.grip as HandGrip | null)?.dispose();
+        this.grip = new HandGrip(this.scene, rig);
 
         this.holder = holder;
         this.rig = rig;
+        this.animSet = heroAnimSet(rig.anims, this.gear[0], this.gear[1]);
         this.applyHidden();
         return;
       }
@@ -407,6 +437,8 @@ export class LocalAvatar {
     this.buffAura.dispose();
     this.stunStars.dispose();
     this.webCocoon.dispose();
+    this.grip?.dispose();
+    this.grip = null;
     this.rig?.dispose();
     this.holder?.dispose();
     this.root.dispose();

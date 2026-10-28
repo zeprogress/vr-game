@@ -6,7 +6,7 @@ import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 
 import { loadRig, type ModelName, type RigInstance } from "./models";
-import { BOT_GEAR } from "../entities/botGear";
+import { BOT_GEAR, seatFor, type GearKind } from "../entities/botGear";
 
 /**
  * Клипы новых классов, собранные ПРЯМО НА СКЕЛЕТЕ персонажа: позу задаём не
@@ -58,6 +58,8 @@ export interface ClipDef {
 export interface Seat {
   pos: readonly number[];
   rot: readonly number[];
+  /** Вид оружия: у модели со своей посадкой (botGear.MODEL_SEATS) берём её, а не эти числа. */
+  kind?: GearKind;
 }
 
 // ---------------------------------------------------------------- клипы
@@ -260,9 +262,15 @@ export function buildClassClips(
     if (Vector3.Dot(pos("Head"), fwd) < before) leanSign = -1;
   }
 
+  /** Посадка в кулаке этой модели (своя у модели или по размеру её скелета — botGear.seatFor). */
+  const seatOn = (side: "R" | "L"): Seat | null => {
+    const s = seat(side, clipName);
+    if (!s?.kind) return s;
+    return seatFor(s.kind, B(`Fist.${side}`), side, { pos: [s.pos[0], s.pos[1], s.pos[2]], rot: [s.rot[0], s.rot[1], s.rot[2]], scale: 1, auto: false });
+  };
   /** Куда смотрит оружие в кулаке (мир) при текущей позе. */
   const bladeLocal = (side: "R" | "L"): Vector3 | null => {
-    const s = seat(side, clipName);
+    const s = seatOn(side);
     if (!s) return null;
     const r = Matrix.RotationYawPitchRoll(s.rot[1], s.rot[0], s.rot[2]);
     return Vector3.TransformNormal(Vector3.Up(), r);
@@ -271,7 +279,7 @@ export function buildClassClips(
   const bladeWorld = (side: "R" | "L", local: Vector3): Vector3 =>
     Vector3.TransformNormal(local, B(`Fist.${side}`).getWorldMatrix()).normalize();
   const gripWorld = (side: "R" | "L"): Vector3 => {
-    const s = seat(side, clipName);
+    const s = seatOn(side);
     const p = s ? new Vector3(s.pos[0], s.pos[1], s.pos[2]) : Vector3.Zero();
     return Vector3.TransformCoordinates(p, B(`Fist.${side}`).getWorldMatrix());
   };
@@ -407,10 +415,10 @@ export function buildClassClips(
 
 /** Посадка оружия в кулаке по клипу (как у моделей в игре — BOT_GEAR). */
 export function gearSeat(clip: string, side: "R" | "L"): Seat | null {
-  if (clip.startsWith("bow")) return side === "L" ? BOT_GEAR.bow : null;
-  if (clip.startsWith("spear")) return side === "R" ? BOT_GEAR.spear : null;
-  if (clip.startsWith("hammer")) return side === "R" ? BOT_GEAR.hammer : null;
-  if (clip.startsWith("dagger")) return BOT_GEAR.dagger;
+  if (clip.startsWith("bow")) return side === "L" ? { ...BOT_GEAR.bow, kind: "bow" } : null;
+  if (clip.startsWith("spear")) return side === "R" ? { ...BOT_GEAR.spear, kind: "spear" } : null;
+  if (clip.startsWith("hammer")) return side === "R" ? { ...BOT_GEAR.hammer, kind: "hammer" } : null;
+  if (clip.startsWith("dagger")) return { ...BOT_GEAR.dagger, kind: "dagger" };
   return null;
 }
 
@@ -470,6 +478,9 @@ export interface ClassAnimSet {
   idle: string;
   attack: string;
   alt?: string;
+  /** Варианты удара (свои клипы модели — heroMoves): берётся случайный. */
+  attacks?: string[];
+  alts?: string[];
 }
 export function classAnimSet(left: string, right: string): ClassAnimSet | null {
   const h = [left, right];

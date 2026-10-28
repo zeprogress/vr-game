@@ -46,7 +46,7 @@ import { createShield } from "../items/Shield";
 import { createBow, tintBow, type BowParts } from "../items/Bow";
 import { createArrowProto, tintArrows, Arrow } from "./Arrow";
 import type { Hittable } from "./Hittable";
-import { BOT_GEAR } from "../entities/botGear";
+import { seatFor, type GearKind } from "../entities/botGear";
 
 const TIP = new Vector3(...COMBAT.swordTipLocal);
 /** Локальная нормаль щита — «наружу» смотрит +Y. */
@@ -2071,12 +2071,10 @@ export class CombatSystem {
       if (this.player.thirdPerson && anchor !== this.player.camera) {
         // Оружие в кости кулака — позы из BOT_GEAR (панель `?gear=1`), как у
         // ботов. Замах не крутит меш: его двигает клип рига.
-        const g =
-          item.kind === "shield" ? BOT_GEAR.shield
-          : item.kind === "bow" ? BOT_GEAR.bow
-          : item.kind === "staff" ? BOT_GEAR.staff
-          : isNewKind(item.kind) ? BOT_GEAR[item.kind]
-          : BOT_GEAR.sword;
+        const kind: GearKind =
+          item.kind === "shield" || item.kind === "bow" || item.kind === "staff" || isNewKind(item.kind) ? item.kind : "sword";
+        const left = item.kind === "bow" || item.hand === "left";
+        const g = seatFor(kind, anchor, left ? "L" : "R");
         item.mesh.position.set(g.pos[0], g.pos[1], g.pos[2]);
         item.mesh.rotation.set(g.rot[0], g.rot[1], g.rot[2]);
         item.mesh.scaling.setAll(g.scale);

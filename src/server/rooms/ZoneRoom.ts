@@ -10004,7 +10004,22 @@ export class ZoneRoom extends Room<ZoneState> {
    * выбор (skill1/skill2) и откат. `tx,tz` — точка умения (NaN — перед героем).
    * true — применено.
    */
+  /**
+   * Умение героя или бота. Удалось — всем act «cast» (s — умение, v — класс): у модели со своими клипами
+   * (Человек, client/world/heroMoves) играет клип этого умения.
+   */
   private castSkill(kind: SkillId, ownerId: string, p: PlayerState, rt: Runtime, tx: number, tz: number): boolean {
+    const ok = this.castSkillCore(kind, ownerId, p, rt, tx, tz);
+    if (ok) {
+      const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
+      this.broadcast(MSG.act, {
+        k: "cast", id: ownerId, x: p.head.x, y: p.head.y, z: p.head.z, s: kind, v: cls ? CLASS_IDS.indexOf(cls) : -1,
+      } satisfies ActRelay);
+    }
+    return ok;
+  }
+
+  private castSkillCore(kind: SkillId, ownerId: string, p: PlayerState, rt: Runtime, tx: number, tz: number): boolean {
     const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
     if (!cls || !CLASSES2[cls].skills.includes(kind)) return false;
     if (p.skill1 !== kind && p.skill2 !== kind) return false;

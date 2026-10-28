@@ -36,11 +36,12 @@ import {
   descNums,
 } from "#shared/classes2";
 import type { WeaponTier } from "#shared/items";
-import { BOT_GEAR, type GearTune } from "../entities/botGear";
+import { HandGrip, handsBusy } from "../entities/handGrip";
+import { BOT_GEAR, MODEL_SEATS, modelSeat, seatFor, type GearTune } from "../entities/botGear";
 import { createClassWeapon, type NewWeapon } from "../items/classWeapons";
 import { makeWeaponMesh } from "../world/LootDrops";
 import { buildClassClips } from "../world/classPoses";
-import { loadRig, recolorCharacter, recolorMonster, type ModelName, type RigInstance } from "../world/models";
+import { loadRig, recolorCharacter, recolorMonster, KEEP_MATERIALS, type ModelName, type RigInstance } from "../world/models";
 import type { LabCtx } from "./main";
 
 /**
@@ -66,6 +67,8 @@ const HERO_MODEL: Record<ClassId, ModelName> = {
   battlemage: "charViking",
 };
 const HERO_H = 1.8;
+/** ?hero=<модель> — показать другую модель героя (проверка новых скинов). */
+const HERO_OVERRIDE = new URLSearchParams(location.search).get("hero") as ModelName | null;
 
 /** Что в руках у класса. */
 function gearOf(c: ClassId, dual: boolean): { R?: Kind; L?: Kind } {
@@ -241,6 +244,8 @@ export async function build(ctx: LabCtx): Promise<void> {
   let extraAnims: AnimationGroup[] = [];
   let fistR: TransformNode | null = null;
   let fistL: TransformNode | null = null;
+  /** Пальцы в кулак, когда в руке оружие (у моделей с пальцами — как в игре). */
+  let grip: HandGrip | null = null;
   const gear: { R: Mesh | null; L: Mesh | null; RK?: Kind; LK?: Kind } = { R: null, L: null };
   let heroHp = 1;
   let heroBornAt = 0;
@@ -271,12 +276,14 @@ export async function build(ctx: LabCtx): Promise<void> {
     gear.R?.dispose();
     gear.L?.dispose();
     gear.R = gear.L = null;
+    grip?.dispose();
+    grip = null;
     heroRig?.dispose();
     heroRig = null;
-    const make = await loadRig(scene, HERO_MODEL[cls], { smoothNormals: true });
+    const make = await loadRig(scene, HERO_OVERRIDE ?? HERO_MODEL[cls], { smoothNormals: true });
     if (my !== heroLoad) return;
     const rig = make();
-    recolorCharacter(rig.root);
+    if (!KEEP_MATERIALS.has(HERO_OVERRIDE ?? HERO_MODEL[cls])) recolorCharacter(rig.root);
     rig.root.parent = heroHolder;
     heroHolder.scaling.setAll(HERO_H / rig.nativeHeight);
     const bone = (n: string): TransformNode | null =>
@@ -284,9 +291,11 @@ export async function build(ctx: LabCtx): Promise<void> {
     fistR = bone("Fist.R");
     fistL = bone("Fist.L");
     heroRig = rig;
+    grip = new HandGrip(scene, rig);
     equip();
     rebuildClips();
     heroIdle();
+    renderSeat(); // кулаки модели уже есть — ползунки её посадки (у Человека своя)
   }
 
   /** Собрать клипы классов на скелете героя (зависят от посадки оружия в кулаке). */
@@ -296,7 +305,7 @@ export async function build(ctx: LabCtx): Promise<void> {
     const t0 = performance.now();
     extraAnims = buildClassClips(scene, heroRig, (side) => {
       const k = gear[`${side}K`];
-      return k ? seatOf(k, side) : null;
+      return k ? { ...seatOf(k, side), kind: k } : null;
     });
     console.log(`[lab] клипы классов собраны за ${(performance.now() - t0).toFixed(0)} мс`);
   }
@@ -321,12 +330,13 @@ export async function build(ctx: LabCtx): Promise<void> {
       gear[side] = mesh;
       seat(side);
     }
+    grip?.setHolding(...handsBusy(gear.LK ?? "", gear.RK ?? ""));
   }
   function seat(side: "R" | "L"): void {
     const m = gear[side];
     const k = gear[`${side}K`];
     if (!m || !k) return;
-    const t = seatOf(k, side);
+    const t = seatFor(k, side === "R" ? fistR : fistL, side, seatOf(k, side));
     m.position.set(t.pos[0], t.pos[1], t.pos[2]);
     m.rotation.set(t.rot[0], t.rot[1], t.rot[2]);
     m.scaling.setAll(t.scale);
@@ -846,31 +856,36 @@ export async function build(ctx: LabCtx): Promise<void> {
     statBox.innerHTML = lines.map(([a, b]) => `<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="opacity:.75">${a}</span><b>${b}</b></div>`).join("");
   }
 
-  // Посадка: ползунки для оружия в правой (и левой) руке.
+  // Посадка: ползунки для оружия в правой (и левой) руке. У модели со своей посадкой (Человек — botGear.MODEL_SEATS)
+  // двигают её (своя на каждую руку и оружие) и сохраняются в код кнопкой; у остальных — общую посадку лаборатории.
   function renderSeat(): void {
     seatBox.innerHTML = "";
+    let anyOwn = false;
     for (const side of ["R", "L"] as const) {
       const k = gear[`${side}K`];
       if (!k) continue;
-      const t = seatOf(k, side);
+      const own = modelSeat(side === "R" ? fistR : fistL, k, side);
+      anyOwn ||= !!own;
+      const t = own ?? seatOf(k, side);
       const h = document.createElement("div");
       h.className = "note";
-      h.textContent = `${side === "R" ? "Правая" : "Левая"} рука — ${k}`;
+      h.textContent = `${side === "R" ? "Правая" : "Левая"} рука — ${k}${own ? " (посадка этой модели)" : ""}`;
       seatBox.appendChild(h);
-      const fields: [string, () => number, (v: number) => void, number, number][] = [
-        ["pos x", () => t.pos[0], (v) => (t.pos[0] = v), -0.5, 0.5],
-        ["pos y", () => t.pos[1], (v) => (t.pos[1] = v), -0.5, 0.8],
-        ["pos z", () => t.pos[2], (v) => (t.pos[2] = v), -0.5, 0.5],
-        ["rot x", () => t.rot[0], (v) => (t.rot[0] = v), -Math.PI, Math.PI],
-        ["rot y", () => t.rot[1], (v) => (t.rot[1] = v), -Math.PI, Math.PI],
-        ["rot z", () => t.rot[2], (v) => (t.rot[2] = v), -Math.PI, Math.PI],
-        ["размер", () => t.scale, (v) => (t.scale = v), 0.3, 4],
+      const P = own ? 0.2 : 0.5;
+      const fields: [string, () => number, (v: number) => void, number, number, number][] = [
+        ["pos x", () => t.pos[0], (v) => (t.pos[0] = v), -P, P, own ? 0.001 : 0.005],
+        ["pos y", () => t.pos[1], (v) => (t.pos[1] = v), -P, own ? 0.3 : 0.8, own ? 0.001 : 0.005],
+        ["pos z", () => t.pos[2], (v) => (t.pos[2] = v), -P, P, own ? 0.001 : 0.005],
+        ["rot x", () => t.rot[0], (v) => (t.rot[0] = v), -Math.PI, Math.PI, 0.005],
+        ["rot y", () => t.rot[1], (v) => (t.rot[1] = v), -Math.PI, Math.PI, 0.005],
+        ["rot z", () => t.rot[2], (v) => (t.rot[2] = v), -Math.PI, Math.PI, 0.005],
+        ["размер", () => t.scale, (v) => (t.scale = v), own ? 0.1 : 0.3, own ? 2 : 4, own ? 0.002 : 0.005],
       ];
-      for (const [label, get, set, min, max] of fields) {
+      for (const [label, get, set, min, max, step] of fields) {
         const r = document.createElement("div");
         r.style.cssText = css;
         const inp = document.createElement("input");
-        Object.assign(inp, { type: "range", min: String(min), max: String(max), step: "0.005", value: String(get()) });
+        Object.assign(inp, { type: "range", min: String(min), max: String(max), step: String(step), value: String(get()) });
         inp.style.width = "130px";
         const out = document.createElement("b");
         out.textContent = get().toFixed(3);
@@ -891,6 +906,23 @@ export async function build(ctx: LabCtx): Promise<void> {
         r.append(l, inp, out);
         seatBox.appendChild(r);
       }
+    }
+    if (anyOwn) {
+      // Посадки модели — прямо в код (botGear.ts, блок MODEL_SEATS) через дев-сервер стенда.
+      const save = document.createElement("button");
+      save.textContent = "Сохранить посадку в код";
+      save.onclick = async () => {
+        save.textContent = "Сохраняю…";
+        try {
+          const r = await fetch("/__model-seats", { method: "POST", body: JSON.stringify(MODEL_SEATS) });
+          const j = (await r.json()) as { ok: boolean; error?: string };
+          save.textContent = j.ok ? "Сохранено в botGear.ts ✓" : `Ошибка: ${j.error ?? r.status}`;
+        } catch (e) {
+          save.textContent = `Ошибка: ${(e as Error).message}`;
+        }
+      };
+      seatBox.appendChild(save);
+      return;
     }
     const b = document.createElement("button");
     b.textContent = "Код посадки → консоль и буфер";

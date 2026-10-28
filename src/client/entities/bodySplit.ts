@@ -2,6 +2,7 @@ import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import type { Animation } from "@babylonjs/core/Animations/animation";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { CLASS_ONE_SHOT } from "../world/classPoses";
+import { HERO_MOVE_FULL_BODY, HERO_MOVE_ONE_SHOT } from "../world/heroMoves";
 
 /**
  * Разделение тела героя на ноги и корпус — один код для своего героя (LocalAvatar) и чужих (RemoteAvatar).
@@ -18,7 +19,13 @@ import { CLASS_ONE_SHOT } from "../world/classPoses";
 const LEG_BONES = new Set(["Bone", "Body", "UpperLeg.L", "UpperLeg.R", "LowerLeg.L", "LowerLeg.R", "Foot.L", "Foot.R", "PoleTarget.L", "PoleTarget.R"]);
 
 /** Разовые клипы, которые на бегу играют только корпусом. Эмоции, кувырок и прыжок — всем телом. */
-const UPPER_ACTION_CLIPS = new Set<string>([...CLASS_ONE_SHOT, "swordslash", "recievehit", "pickup"]);
+const UPPER_ACTION_CLIPS = new Set<string>([
+  ...CLASS_ONE_SHOT,
+  ...[...HERO_MOVE_ONE_SHOT].filter((n) => !HERO_MOVE_FULL_BODY.has(n)),
+  "swordslash",
+  "recievehit",
+  "pickup",
+]);
 
 /** Клип для ног: на бегу при действии корпусом — бег или шаг, иначе тот же, что у корпуса. */
 export function legClip(want: string, move: boolean, run: boolean): string {
@@ -95,11 +102,27 @@ export const LOCO_BODY_Y = 0.93;
 /** Доля исходного подпрыгивания на шаге и беге (вокруг LOCO_BODY_Y): 0 — ровно, 1 — как в клипе. Unity — то же. */
 export const LOCO_BOUNCE = 0.25;
 
+/** Середина высоты Body в Idle у скелета Quaternius (0.965–1.002) — к ней отнесено LOCO_BODY_Y. */
+const QUAT_IDLE_BODY_Y = 0.9835;
+
+/** Середина высоты Body в клипе (null — у клипа нет сдвига Body). */
+function bodyMidY(g: AnimationGroup | undefined): number | null {
+  for (const ta of g?.targetedAnimations ?? []) {
+    if ((ta.target as { name?: string } | null)?.name !== "Body" || ta.animation.targetProperty !== "position") continue;
+    const ys = ta.animation.getKeys().map((k) => (k.value as Vector3).y);
+    return (Math.min(...ys) + Math.max(...ys)) / 2;
+  }
+  return null;
+}
+
 /**
- * Подпрыгивание в клипах шага и бега: высота Body — LOCO_BODY_Y плюс LOCO_BOUNCE исходного размаха. Ключи у клонов
- * модели бывают общими — помечаем анимацию и правим один раз.
+ * Подпрыгивание в клипах шага и бега: высота Body — LOCO_BODY_Y плюс LOCO_BOUNCE исходного размаха. LOCO_BODY_Y —
+ * в долях стойки Quaternius: у скелета другого размера (Человек — таз на 0.56) берём ту же долю от его Idle.
+ * Ключи у клонов модели бывают общими — помечаем анимацию и правим один раз.
  */
 export function dampRunBounce(anims: Map<string, AnimationGroup>): void {
+  const idleY = bodyMidY(anims.get("idle"));
+  const bodyY = idleY === null ? LOCO_BODY_Y : (idleY * LOCO_BODY_Y) / QUAT_IDLE_BODY_Y;
   for (const name of ["run", "walk"]) {
     const g = anims.get(name);
     if (!g) continue;
@@ -113,7 +136,7 @@ export function dampRunBounce(anims: Map<string, AnimationGroup>): void {
       const mid = (Math.min(...ys) + Math.max(...ys)) / 2;
       for (const k of keys) {
         const v = k.value as Vector3;
-        k.value = new Vector3(v.x, LOCO_BODY_Y + (v.y - mid) * LOCO_BOUNCE, v.z);
+        k.value = new Vector3(v.x, bodyY + (v.y - mid) * LOCO_BOUNCE, v.z);
       }
     }
   }

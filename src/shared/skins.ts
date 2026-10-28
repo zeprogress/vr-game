@@ -14,10 +14,11 @@ export const SKIN_MODELS = [
   "charZombie",
   "charSoldier",
   "charCowboy",
+  "charHuman",
 ] as const;
 
 /** Те же облики человеческим именем — для панели выбора модели (C, вкладка «Внешность»). */
-export const SKIN_LABELS: readonly string[] = ["Рыцарь", "Золотой рыцарь", "Маг", "Ниндзя", "Гоблин", "Пират", "Викинг", "Зомби", "Солдат", "Ковбой"];
+export const SKIN_LABELS: readonly string[] = ["Рыцарь", "Золотой рыцарь", "Маг", "Ниндзя", "Гоблин", "Пират", "Викинг", "Зомби", "Солдат", "Ковбой", "Человек"];
 
 export type SkinModel = (typeof SKIN_MODELS)[number];
 

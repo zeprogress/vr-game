@@ -145,6 +145,61 @@ function loadoutWriter(): Plugin {
 }
 
 /**
+ * Дев-эндпоинт лаборатории: POST /__model-seats с посадками оружия под модель (подобраны ползунками в
+ * lab.html?s=classes) — плагин переписывает блок MODEL_SEATS между маркерами в src/client/entities/botGear.ts.
+ * Только у дев-сервера.
+ */
+function modelSeatsWriter(): Plugin {
+  const file = resolve(root, "src/client/entities/botGear.ts");
+  const n = (x: number) => String(Number(Number(x).toFixed(4)));
+  type S = { pos: number[]; rot: number[]; scale: number };
+  return {
+    name: "model-seats-writer",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.method !== "POST" || (req.url ?? "").split("?")[0] !== "/__model-seats") return next();
+        let body = "";
+        req.on("data", (c) => (body += c));
+        req.on("end", () => {
+          const reply = (code: number, obj: unknown) => {
+            res.statusCode = code;
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify(obj));
+          };
+          try {
+            const data = JSON.parse(body) as Record<string, Record<string, { R: S; L: S }>>;
+            const one = (t: S) => `{ pos: [${t.pos.map(n).join(", ")}], rot: [${t.rot.map(n).join(", ")}], scale: ${n(t.scale)} }`;
+            const lines = [
+              "// <model-seats> — блок переписывает лаборатория (кнопка «Сохранить в код», POST /__model-seats)",
+              "export const MODEL_SEATS: Record<string, Partial<Record<GearKind, { R: Seat3; L: Seat3 }>>> = {",
+            ];
+            for (const [model, kinds] of Object.entries(data)) {
+              if (!/^\w+$/.test(model)) return reply(400, { ok: false, error: "модель" });
+              lines.push(`  ${model}: {`);
+              for (const [kind, v] of Object.entries(kinds)) {
+                if (!/^\w+$/.test(kind) || !v?.R || !v?.L) return reply(400, { ok: false, error: "оружие" });
+                lines.push(`    ${kind}: {`, `      R: ${one(v.R)},`, `      L: ${one(v.L)},`, "    },");
+              }
+              lines.push("  },");
+            }
+            lines.push("};", "// </model-seats>");
+            let src = readFileSync(file, "utf8");
+            const re = /\/\/ <model-seats>[\s\S]*?\/\/ <\/model-seats>/;
+            if (!re.test(src)) return reply(500, { ok: false, error: "блок model-seats не найден" });
+            src = src.replace(re, lines.join("\n"));
+            writeFileSync(file, src);
+            server.config.logger.info("[model-seats] посадки записаны в src/client/entities/botGear.ts");
+            reply(200, { ok: true });
+          } catch (e) {
+            reply(400, { ok: false, error: String(e) });
+          }
+        });
+      });
+    },
+  };
+}
+
+/**
  * Короткий адрес веб-инвентаря /inv?ник — как на проде (там это делает nginx).
  * Плюс для пульта стенда (stage.html): GET /__stage/changes — что изменено
  * локально и ещё не ушло на прод (git), чтобы было видно, что проверяем.
@@ -209,8 +264,15 @@ function unityExportWriter(): Plugin {
   };
 }
 
+// Свой кэш зависимостей у каждого дев-сервера: стенд (5173) и второй сервер (5180) с общим node_modules/.vite
+// перезаписывали друг другу пред-сборку, и динамически подгружаемые чанки (шейдеры PBR у модели Человека)
+// отдавались по старым ссылкам с 404 — модель не рисовалась.
+const portArg = process.argv.indexOf("--port");
+const devPort = portArg > 0 ? process.argv[portArg + 1] : "";
+
 export default defineConfig({
-  plugins: [loadoutWriter(), shortInvPath(), unityExportWriter(), ...(vr ? [basicSsl()] : [])],
+  cacheDir: devPort && devPort !== "5173" ? `node_modules/.vite-${devPort}` : "node_modules/.vite",
+  plugins: [loadoutWriter(), modelSeatsWriter(), shortInvPath(), unityExportWriter(), ...(vr ? [basicSsl()] : [])],
   server: {
     host: true, // доступ по локальной сети
     port: 5173,

@@ -813,7 +813,8 @@ export type ActKind =
   | "barrierHit" // 🧪 барьер ударил моба в (x,y,z) и отбросил от центра (x2,z2)
   | "webShot" // 🧪 «Стрела-паук»: стрела из (x,y,z) в землю (x2,z2) на высоте d
   | "webZone" // 🧪 паутина в (x,y,z) радиусом r на d с
-  | "chainHit"; // скачок «Цепной молнии»: из (x,y,z) в (x2,z2) на высоте d; r — номер скачка
+  | "chainHit" // скачок «Цепной молнии»: из (x,y,z) в (x2,z2) на высоте d; r — номер скачка
+  | "cast"; // герой/бот id применил умение s (v — индекс класса в CLASS_IDS): клип умения у модели со своими клипами
 
 const ACT_KINDS: readonly ActKind[] = [
   "swing",
@@ -854,6 +855,8 @@ export interface ActRelay extends ActMsg {
   v?: number;
   /** Радиус области, м. */
   r?: number;
+  /** kind "cast": id умения (SkillId). */
+  s?: string;
 }
 
 /**

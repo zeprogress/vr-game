@@ -43,6 +43,9 @@ export const MODELS = {
   charZombie: "/models/chars/Zombie_Male.glb",
   charSoldier: "/models/chars/Soldier_Male.glb",
   charCowboy: "/models/chars/Cowboy_Male.glb",
+  // Человек (ассет из /ASSETS/3D/human): Mixamo-клипы перенесены на риг, кости — имена скелета героя (Fist.L/R, Abdomen, Torso, Body…);
+  // пальцы Left_*/Right_* — сжимаются в кулак, когда в руке оружие (handGrip.ts). Сборка: Human50k_rig_lowZEP_anim → to_game.py.
+  charHuman: "/models/chars/Human_Male.glb",
   // Усиленные мобы лагерей: Quaternius "Ultimate Monsters" (CC0). .gltf со
   // встроенными буферами/текстурами — грузятся как есть, без конвертации.
   monBee: "/models/monsters/Armabee.gltf",
@@ -95,6 +98,29 @@ export const MODELS = {
 } as const;
 
 export type ModelName = keyof typeof MODELS;
+
+/**
+ * Модели со своими текстурами (PBR из файла): их не перекрашиваем в плоский цвет и не склеиваем в один меш —
+ * иначе текстуры пропадают. Человек (charHuman) — ассет из /ASSETS/3D/human.
+ */
+export const KEEP_MATERIALS: ReadonlySet<ModelName> = new Set<ModelName>(["charHuman"]);
+
+/**
+ * Множитель к общему масштабу персонажа: модели в файле крупнее или мельче пака Quaternius (Knight ≈ 3.2 м в нативе,
+ * Человек ≈ 1.15 м). Человек по просьбе вдвое выше рыцаря (BOT_RIG_SCALE × этот множитель).
+ */
+export const MODEL_SCALE: Partial<Record<ModelName, number>> = { charHuman: 5.54 };
+
+export function modelScale(name: ModelName): number {
+  return MODEL_SCALE[name] ?? 1;
+}
+
+/**
+ * Посадка оружия (BOT_GEAR) подобрана в единицах кулака Quaternius. У модели с другим размером скелета
+ * сдвиг и масштаб оружия в кулаке умножаются на этот коэффициент: рост модели в файле / рост рыцаря (3.2),
+ * чтобы оружие было соразмерно телу. Кости Fist.L/R несут его и имя модели в metadata (botGear.seatFor).
+ */
+const GEAR_FIT: Partial<Record<ModelName, number>> = { charHuman: 0.36 };
 
 /** skin 1..BOT.skins → модель бота. skin 0 — обычный аватар игрока. Список — shared/skins.ts (его же берёт страница !inv). */
 export const BOT_SKIN_MODELS: readonly ModelName[] = SKIN_MODELS;
@@ -271,7 +297,9 @@ export async function loadRig(
     const root = r.rootNodes[0] as TransformNode;
     const meshes = root.getChildMeshes(false);
 
-    if (rigOpts.smoothNormals) {
+    // Модели со своими текстурами (KEEP_MATERIALS) не сглаживаем: forceSharedVertices склеивает вершины по одному
+    // положению и оставляет одну UV на склеенную — на швах развёртки текстура «плывёт». Нормали у них и так гладкие.
+    if (rigOpts.smoothNormals && !KEEP_MATERIALS.has(name)) {
       for (const m of meshes) {
         if (m.getTotalVertices() === 0) continue;
         try {
@@ -325,6 +353,10 @@ export async function loadRig(
         t.scaling?.copyFrom(TINY);
         t.position?.setAll(0);
       }
+    }
+    // Метка на кулаках: чья модель и размер скелета — по ним botGear.seatFor сажает оружие.
+    for (const n of root.getDescendants(false)) {
+      if (n.name === "Fist.L" || n.name === "Fist.R") n.metadata = { ...(n.metadata ?? {}), gearModel: name, gearFit: GEAR_FIT[name] ?? 1 };
     }
     // Габариты: матрицы ВСЕХ узлов иерархии должны быть свежими (у FBX2glTF
     // масштаб сидит на промежуточном узле, а не на меше), потом считаем по

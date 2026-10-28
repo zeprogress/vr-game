@@ -15,7 +15,7 @@ import { BOT_SKIN_MODELS } from "../world/models";
 import "./billboardFix";
 import { vrLights } from "../world/vrLights";
 import { STAT_NAMES } from "#shared/progression";
-import { ABYSS, SMOKE, JUMP_BEHIND, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, ASSASSIN_WHIRL_DASH, BLAST_ARROW, SOUL_STEAL, SWARM_ARROW, WEB_ARROW, WHIRL, classOf2, hopDistance, hopsBack, skillCdMul2, SKILLS2, skillName, WARCRY, MARK_FOCUS, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { CLASS_IDS, ABYSS, SMOKE, JUMP_BEHIND, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, ASSASSIN_WHIRL_DASH, BLAST_ARROW, SOUL_STEAL, SWARM_ARROW, WEB_ARROW, WHIRL, classOf2, hopDistance, hopsBack, skillCdMul2, SKILLS2, skillName, WARCRY, MARK_FOCUS, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
@@ -3542,6 +3542,8 @@ export class Game {
     const aimX = Number.isFinite(msg.x) ? (msg.x as number) : p.x + fx;
     const aimZ = Number.isFinite(msg.z) ? (msg.z as number) : p.z + fz;
     if (Math.hypot(aimX - p.x, aimZ - p.z) > 0.05) this.player.faceInstant(aimX, aimZ);
+    // Свой клип умения у модели (Человек — world/heroMoves): поверх замаха/прыжка, которые выше запустил каст.
+    this.localAvatar?.playSkill(id, cls);
     this.net.sendSkill(msg);
     if (this.player.inVR) this.sfx.bowRelease(1); // отклик жеста, как у массового хила
     this.skillReadyAt.set(id, performance.now() + this.skillCooldown(id) * 1000);
@@ -3951,7 +3953,14 @@ export class Game {
     };
 
     // Звук соседа — играем объёмно от его аватара / точки события.
-    net.onAct = (k, x, y, z, id, d, mobId, x2, z2, v, r) => this.playRemoteAct(k, x, y, z, id, d, mobId, x2, z2, v, r);
+    net.onAct = (k, x, y, z, id, d, mobId, x2, z2, v, r, s) => {
+      // Умение героя/бота: клип умения у модели со своими клипами (Человек — world/heroMoves). Свой герой сыграл его при касте.
+      if (k === "cast") {
+        if (id !== this.net?.sessionId && s) this.avatars.get(id)?.playSkill(s, v !== undefined && v >= 0 ? CLASS_IDS[v] ?? null : null);
+        return;
+      }
+      this.playRemoteAct(k, x, y, z, id, d, mobId, x2, z2, v, r);
+    };
     net.onTtsPlay = (m) => this.playChatTts(m.url, m.nick);
     net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
     net.onEmote = (id, emote) => this.avatars.get(id)?.playEmote(emote);
