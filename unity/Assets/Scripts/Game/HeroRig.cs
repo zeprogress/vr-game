@@ -100,8 +100,20 @@ namespace Zep
 
         /// После анимации: высота Body на шаге и беге — LocoBodyY по весу этих клипов (ключи легаси-клипа во время игры не прочитать).
         /// У своей модели (Человек) — не трогаем: числа под пак Quaternius; зато сжимаем кулаки.
+        Transform head;
+        Quaternion headRest = Quaternion.identity;
+
+        /// Выстрел из лука: голова остаётся смотреть вперёд, поворачивается только корпус (как в вебе — стрела
+        /// летит туда, куда смотрит стрелок). Ставим голову в покой уже после анимации, в LateUpdate.
+        void HoldHeadForBow()
+        {
+            if (!head || !(clsL == "bow" || clsR == "bow") || Time.time >= swingUntil) return;
+            head.localRotation = headRest;
+        }
+
         void LateUpdate()
         {
+            HoldHeadForBow();
             if (own) { Grip(); return; }
             if (!body || Anim == null) return;
             float wr = Anim.Weight("Run"), ww = Anim.Weight("Walk");
@@ -318,6 +330,9 @@ namespace Zep
             ModelHeight = entry != null ? entry.height * model.transform.localScale.y : 0f;
             fistL = Find(model.transform, "Fist.L");
             fistR = Find(model.transform, "Fist.R");
+            // Голова — в покое, пока клип выстрела из лука поворачивает корпус: иначе стрелок смотрит вбок.
+            head = Find(model.transform, "Head");
+            headRest = head ? head.localRotation : Quaternion.identity;
             clsL = clsR = null;
             fingers = new Transform[0];
             if (own) SetupGrip();
