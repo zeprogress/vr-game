@@ -4,7 +4,7 @@
  * из прибавки; на +10 точках — как было. Панель `?sharpglow=1` двигает значения на лету
  * и подменяет прибавку для проверки (testPct), в прод уходят числа из исходника.
  */
-export const SHARP_GLOW_DEFAULT = { strength: 1, radius: 0.5 } as const;
+export const SHARP_GLOW_DEFAULT = { strength: 1, radius: 1 } as const; // радиус линейно от прибавки: +5 мельче, +20 шире
 
 export const sharpGlowTune: { strength: number; radius: number; testPct: number | null } = {
   strength: SHARP_GLOW_DEFAULT.strength,

@@ -104,7 +104,8 @@ namespace Zep
             pct = p;
             rend.enabled = p > 0;
             if (light) light.enabled = p > 0;
-            if (p > 0) transform.localScale = Vector3.one * baseScale * Mathf.Sqrt(p / RefPct);
+            // Радиус линейно от прибавки (как web radius=1): +5 мельче, +20 шире.
+            if (p > 0) transform.localScale = Vector3.one * baseScale * (p / RefPct);
         }
 
         void LateUpdate()
