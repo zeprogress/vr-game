@@ -300,7 +300,7 @@ def BOWL(at, d=(0.05, 1, 0.05)):
     return {"at": at, "dir": d, "kind": "bow"}
 
 
-AIM = dict(yaw=60, twist=5, headBack=0.95, feet=FEET_SIDE)
+AIM = dict(yaw=0, twist=0, headBack=0, feet=FEET_SIDE)  # 28.10: выстрел перед собой — корпус и голова не поворачиваются, двигаются руки
 clip("AtkBow1", [  # обычный выстрел
     (0.00, BOW_ST),
     (0.18, bw(**AIM, L=BOWL((-0.25, 0.05, 1.3)), R={"at": (-0.05, 0.0, 1.05), "hold": True})),

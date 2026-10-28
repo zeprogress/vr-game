@@ -73,7 +73,7 @@ function idleOf(name: string, p: Omit<PoseKey, "f" | "idle">): ClipDef {
 const SPEAR_IDLE: Omit<PoseKey, "f"> = { twist: 25, headBack: 0.8, R: { at: [0.17, -0.3, 0.02], dir: [-0.2, 0.55, 1] }, L: { shaft: 0.3 } };
 const HAMMER_IDLE: Omit<PoseKey, "f"> = { twist: 10, headBack: 0.6, R: { at: [0.16, -0.3, 0.12], dir: [0.15, 1, 0.15] }, L: { shaft: -0.22 } };
 const DAGGER_IDLE: Omit<PoseKey, "f"> = { lean: 6, R: { at: [0.2, -0.2, 0.18], dir: [0, 0.4, 1] }, L: { at: [-0.2, -0.18, 0.16], dir: [0, 0.4, 1] } };
-const BOW_IDLE: Omit<PoseKey, "f"> = { twist: 10, headBack: 0.5, L: { at: [-0.2, -0.3, 0.12], dir: [0.1, 1, 0.4] }, R: { at: [0.2, -0.32, 0.02] } };
+const BOW_IDLE: Omit<PoseKey, "f"> = { twist: 0, headBack: 0, L: { at: [-0.2, -0.3, 0.12], dir: [0.1, 1, 0.4] }, R: { at: [0.2, -0.32, 0.02] } };
 
 export const CLASS_CLIPS: ClipDef[] = [
   idleOf("spearidle", SPEAR_IDLE),
@@ -128,10 +128,10 @@ export const CLASS_CLIPS: ClipDef[] = [
     loop: false,
     keys: [
       { f: 0, ...BOW_IDLE },
-      { f: 10, twist: 55, headBack: 0.9, L: { at: [-0.08, 0.02, 0.36], dir: [0, 1, 0.05] }, R: { at: [-0.02, 0.0, 0.25] } },
-      { f: 22, twist: 60, headBack: 0.95, L: { at: [-0.1, 0.03, 0.36], dir: [0, 1, 0.05] }, R: { at: [0.12, 0.06, -0.02] } },
-      { f: 27, twist: 60, headBack: 0.95, L: { at: [-0.1, 0.03, 0.36], dir: [0, 1, 0.05] }, R: { at: [0.12, 0.06, -0.02] } },
-      { f: 29, twist: 60, headBack: 0.95, L: { at: [-0.1, 0.03, 0.37], dir: [0, 1, 0.05] }, R: { at: [0.22, 0.1, -0.12] } },
+      { f: 10, twist: 0, headBack: 0, L: { at: [-0.08, 0.02, 0.36], dir: [0, 1, 0.05] }, R: { at: [-0.02, 0.0, 0.25] } },
+      { f: 22, twist: 0, headBack: 0, L: { at: [-0.1, 0.03, 0.36], dir: [0, 1, 0.05] }, R: { at: [0.12, 0.06, -0.02] } },
+      { f: 27, twist: 0, headBack: 0, L: { at: [-0.1, 0.03, 0.36], dir: [0, 1, 0.05] }, R: { at: [0.12, 0.06, -0.02] } },
+      { f: 29, twist: 0, headBack: 0, L: { at: [-0.1, 0.03, 0.37], dir: [0, 1, 0.05] }, R: { at: [0.22, 0.1, -0.12] } },
       { f: 46, ...BOW_IDLE },
     ],
   },

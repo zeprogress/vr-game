@@ -65,186 +65,313 @@ MonoBehaviour:
   - key: slime
     prefab: {fileID: 2242888416370347441, guid: 2a6d771e156924bc69d2afce25c8a0bc, type: 3}
     height: 1.2064065
+    scale: 1
+    keep: 0
   - key: charKnight
     prefab: {fileID: 8771091787928289351, guid: c1f8f55d4bd7d4d17a6b9175ed939781, type: 3}
     height: 3.4169977
+    scale: 1
+    keep: 0
   - key: charKnightGold
     prefab: {fileID: 8771091787928289351, guid: a24d4e74dad0249a7b4fb74056157e58, type: 3}
     height: 3.0975366
+    scale: 1
+    keep: 0
   - key: charWizard
     prefab: {fileID: 8771091787928289351, guid: 005a6e1746322452fa5ad04074a7668e, type: 3}
     height: 3.9587586
+    scale: 1
+    keep: 0
   - key: charNinja
     prefab: {fileID: 8771091787928289351, guid: 1b1050b22759049f3b8c1fe5ec3ffc20, type: 3}
     height: 2.9888985
+    scale: 1
+    keep: 0
   - key: charGoblin
     prefab: {fileID: 8771091787928289351, guid: de2013298b0a0468aa6402f1f9088138, type: 3}
     height: 2.978332
+    scale: 1
+    keep: 0
   - key: charPirate
     prefab: {fileID: 8771091787928289351, guid: 501dc2c5c4016430e92d88384bd4b1cd, type: 3}
     height: 3.601891
+    scale: 1
+    keep: 0
   - key: charViking
     prefab: {fileID: 8771091787928289351, guid: eb39dc62d83f94ab8bb21dcd4d465800, type: 3}
     height: 3.462064
+    scale: 1
+    keep: 0
   - key: charZombie
     prefab: {fileID: 8771091787928289351, guid: aa2c2dfdb6cf74a148c0645720b55915, type: 3}
     height: 2.9467156
+    scale: 1
+    keep: 0
   - key: charSoldier
     prefab: {fileID: 8771091787928289351, guid: 5e1f622b0418e4825aca7f69de7b6211, type: 3}
     height: 3.1145809
+    scale: 1
+    keep: 0
   - key: charCowboy
     prefab: {fileID: 8771091787928289351, guid: bcc295c51f6b74d529a2a536c26ee229, type: 3}
     height: 3.3720243
+    scale: 1
+    keep: 0
+  - key: charHuman
+    prefab: {fileID: 8771091787928289351, guid: 323b5d05450d24486975548d64272eb0, type: 3}
+    height: 1.1185336
+    scale: 5.54
+    keep: 1
   - key: monBee
     prefab: {fileID: 8771091787928289351, guid: 8abad31692fc945d9858a8eaeb689bf8, type: 3}
     height: 1.8918737
+    scale: 1
+    keep: 0
   - key: monSpikyBlob
     prefab: {fileID: 8771091787928289351, guid: aca2a7689246a4173a164c900cd91df0, type: 3}
     height: 4.159365
+    scale: 1
+    keep: 0
   - key: monCactoro
     prefab: {fileID: 8771091787928289351, guid: 29eb1870413644115bc5b5d3600fc9a0, type: 3}
     height: 3.7662468
+    scale: 1
+    keep: 0
   - key: monFrog
     prefab: {fileID: 8771091787928289351, guid: 1c4c927078c874c22a2ab5fa6d8147e0, type: 3}
     height: 2.5068793
+    scale: 1
+    keep: 0
   - key: monOrc
     prefab: {fileID: 8771091787928289351, guid: 466a94cf769374f9f804e4727aa99771, type: 3}
     height: 3.0503654
+    scale: 1
+    keep: 0
   - key: monMushKing
     prefab: {fileID: 8771091787928289351, guid: 2998ebf7f057b437a85e723721b5fb26, type: 3}
     height: 3.4154243
+    scale: 1
+    keep: 0
   - key: monWizard
     prefab: {fileID: 8771091787928289351, guid: d5f38e1db8be94c4495a255d8cce1891, type: 3}
     height: 2.586048
+    scale: 1
+    keep: 0
   - key: monAlien
     prefab: {fileID: 8771091787928289351, guid: 36d6cdecf6a7c43bea216293576c8305, type: 3}
     height: 3.1582687
+    scale: 1
+    keep: 0
   - key: monCat
     prefab: {fileID: 8771091787928289351, guid: 0d211d4976c3b4b969bec4733c976968, type: 3}
     height: 1.8553715
+    scale: 1
+    keep: 0
   - key: monChicken
     prefab: {fileID: 8771091787928289351, guid: bc2392bc4f0b848bc8747fc9b3956343, type: 3}
     height: 2.394469
+    scale: 1
+    keep: 0
   - key: monDog
     prefab: {fileID: 8771091787928289351, guid: 89fd9e240a73b407da988a85d3938267, type: 3}
     height: 1.8140197
+    scale: 1
+    keep: 0
   - key: monGreenBlob
     prefab: {fileID: 8771091787928289351, guid: 81a97a781c9c94f6bbd544437ff3f3dc, type: 3}
     height: 1.8689183
+    scale: 1
+    keep: 0
   - key: monMushnub
     prefab: {fileID: 8771091787928289351, guid: 281b2470d39584802baa8624f43148ec, type: 3}
     height: 3.2583284
+    scale: 1
+    keep: 0
   - key: monPinkBlob
     prefab: {fileID: 8771091787928289351, guid: c4c502b24eacf420dae75d1ad5252210, type: 3}
     height: 1.9966245
+    scale: 1
+    keep: 0
   - key: monYeti
     prefab: {fileID: 8771091787928289351, guid: 088c367637732487cafda03aaa57ee6d, type: 3}
     height: 2.4178984
+    scale: 1
+    keep: 0
   - key: monMushColossus
     prefab: {fileID: 8771091787928289351, guid: 2b6c7f9542fac46fb8aa752576e1f023, type: 3}
     height: 4.461088
+    scale: 1
+    keep: 0
   - key: monBoneWraith
     prefab: {fileID: 8771091787928289351, guid: 6032299f4301a443fbf49104458cf16f, type: 3}
     height: 3.0867183
+    scale: 1
+    keep: 0
   - key: monSkySquid
     prefab: {fileID: 8771091787928289351, guid: 4fd7ffbb2da4e48c4915bf760f1b6323, type: 3}
     height: 2.3762195
+    scale: 1
+    keep: 0
   - key: monFireDragon
     prefab: {fileID: 8771091787928289351, guid: 4700b62c7127f48628fda8772e735103, type: 3}
     height: 1.5103185
+    scale: 1
+    keep: 0
   - key: monBirb
     prefab: {fileID: 8771091787928289351, guid: 334a764661a074644af1027e30366303, type: 3}
     height: 3.124535
+    scale: 1
+    keep: 0
   - key: monBlueDemon
     prefab: {fileID: 8771091787928289351, guid: 3b7adaa729cdb4649ad73c42f5e2b0c9, type: 3}
     height: 2.649867
+    scale: 1
+    keep: 0
   - key: monBunny
     prefab: {fileID: 8771091787928289351, guid: 3b6155ec25d204d2984e4f03fff4563e, type: 3}
     height: 3.441974
+    scale: 1
+    keep: 0
   - key: monDemon
     prefab: {fileID: 8771091787928289351, guid: 6837f3db8508e44f297ef726f2c43590, type: 3}
     height: 2.9292912
+    scale: 1
+    keep: 0
   - key: monDino
     prefab: {fileID: 8771091787928289351, guid: 53b6f6086fb094e898b7491c3bfb03d3, type: 3}
     height: 3.033766
+    scale: 1
+    keep: 0
   - key: monFish
     prefab: {fileID: 8771091787928289351, guid: df999e97cee884884b3df09aabe00a85, type: 3}
     height: 3.556059
+    scale: 1
+    keep: 0
   - key: monMonkroose
     prefab: {fileID: 8771091787928289351, guid: 5c38e310f40544b5788102f83b1d5cb0, type: 3}
     height: 2.7925694
+    scale: 1
+    keep: 0
   - key: monOrcSkull
     prefab: {fileID: 8771091787928289351, guid: eb2652ea2bfb94533b2fb3b097f99ed4, type: 3}
     height: 3.123476
+    scale: 1
+    keep: 0
   - key: monTribal
     prefab: {fileID: 8771091787928289351, guid: c7eaa5a65816348b49ee9bf5045ee800, type: 3}
     height: 3.7407298
+    scale: 1
+    keep: 0
   - key: monNinja
     prefab: {fileID: 8771091787928289351, guid: cf3ad09c09ac244a691d1ac91cbac6d9, type: 3}
     height: 2.9867613
+    scale: 1
+    keep: 0
   - key: monAlpaking
     prefab: {fileID: 8771091787928289351, guid: 91d95fd30c95143eb8d2c9af15c63d61, type: 3}
     height: 2.138986
+    scale: 1
+    keep: 0
   - key: monDragonEvolved
     prefab: {fileID: 8771091787928289351, guid: f02b24e040d644c79bd07a883432597e, type: 3}
     height: 2.8343096
+    scale: 1
+    keep: 0
   - key: monBogBrute
     prefab: {fileID: 8771091787928289351, guid: 46a64a61c418b4db191e1b56579b3920, type: 3}
     height: 2.3
+    scale: 1
+    keep: 0
   - key: monStoneTroll
     prefab: {fileID: 8771091787928289351, guid: 0b09d47d75bfa4a4d8421f4b9c35e579, type: 3}
     height: 2.3985198
+    scale: 1
+    keep: 0
   - key: monDragonBest
     prefab: {fileID: 8771091787928289351, guid: 168659fbf67ff4633a46fefea961e56b, type: 3}
     height: 1.9269421
+    scale: 1
+    keep: 0
   - key: monLavaMonster
     prefab: {fileID: 8771091787928289351, guid: d4e643736b0d54d75bb215b6e0b1b562, type: 3}
     height: 2.203601
+    scale: 1
+    keep: 0
   - key: monMoonAvatar
     prefab: {fileID: 8771091787928289351, guid: cf961bce63a0d4100afb471a5f731428, type: 3}
     height: 5.2
+    scale: 1
+    keep: 0
   - key: monSkeletonReaver
     prefab: {fileID: 8771091787928289351, guid: 2b3bcc90708b64b4d8f48221f781a7b8, type: 3}
     height: 2.001091
+    scale: 1
+    keep: 0
   - key: monSpider
     prefab: {fileID: 8771091787928289351, guid: b8c68fb556d644baebc07157409d284b, type: 3}
     height: 0.7173693
+    scale: 1
+    keep: 0
   - key: monIceGiant
     prefab: {fileID: 8771091787928289351, guid: 059af40ddfb884be6a981f4ad5be1b62, type: 3}
     height: 2.0000424
+    scale: 1
+    keep: 0
   - key: sword
     prefab: {fileID: 1321803135129032526, guid: 2de50a22019c34b85a4f3afd9cc0f2b2, type: 3}
     height: 2.302064
+    scale: 1
+    keep: 0
   - key: sword_gold
     prefab: {fileID: -4130861258762526976, guid: 7ed7b8bb0eb47452687db631b7f7258d, type: 3}
     height: 2.302064
+    scale: 1
+    keep: 0
   - key: bow
     prefab: {fileID: -6601612732929180731, guid: f3224ac1960bd47d1a35676a9cc0ed14, type: 3}
     height: 1.973704
+    scale: 1
+    keep: 0
   - key: bow_gold
     prefab: {fileID: -4467395490893022287, guid: 090ee43090af94264885837cb6e45e9a, type: 3}
     height: 2.17427
+    scale: 1
+    keep: 0
   - key: crystal
     prefab: {fileID: 5215805314552665317, guid: ea5927a7065b64625989935a524595f7, type: 3}
     height: 0.756358
+    scale: 1
+    keep: 0
   - key: dagger
     prefab: {fileID: -6801657999692953391, guid: e4dfbb15bfa864fd985fe7c6203d04c2, type: 3}
     height: 1.3891993
+    scale: 1
+    keep: 0
   - key: dagger_gold
     prefab: {fileID: 2347443107274215214, guid: 4d61bbcc629ea4f3fa553ef5aeecc7e1, type: 3}
     height: 1.3891993
+    scale: 1
+    keep: 0
   - key: hammer
     prefab: {fileID: -6590098154070063339, guid: eba33e011cda1498e87c8d588f34bdd7, type: 3}
     height: 2.5270944
+    scale: 1
+    keep: 0
   - key: hammer_gold
     prefab: {fileID: 14684581401517431, guid: 1d529dacae6a14dff9fdf771f69f5852, type: 3}
     height: 2.5270944
+    scale: 1
+    keep: 0
   - key: spear
     prefab: {fileID: -7856556820875146859, guid: 16cf8421548f8430d811394e6ef697d1, type: 3}
     height: 6.1000004
+    scale: 1
+    keep: 0
   - key: spear_gold
     prefab: {fileID: -7856556820875146859, guid: d2aa69434ae394f428a86ffc95df9ed7, type: 3}
     height: 6.1000004
+    scale: 1
+    keep: 0
   elites:
   - model: monBee
     drop: 0
@@ -437,6 +564,7 @@ MonoBehaviour:
   - charZombie
   - charSoldier
   - charCowboy
+  - charHuman
   bodyRadius: 0.55
   gear:
   - {fileID: -2034126641954362324, guid: 8e110329a49214756a427290de37691d, type: 3}
@@ -476,6 +604,80 @@ MonoBehaviour:
   - {fileID: 8524919560643211025, guid: 8e110329a49214756a427290de37691d, type: 3}
   - {fileID: 1457703398149454725, guid: 8e110329a49214756a427290de37691d, type: 3}
   - {fileID: 8452685041003621934, guid: 8e110329a49214756a427290de37691d, type: 3}
+  - {fileID: -8032118286796982152, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 3016620566092250068, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 6218154077653388938, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 2248368376381822962, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 7451325151440429700, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 7157607695491842847, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -7046783984717278817, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 4561955588684265323, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -5056492765292449614, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -2090444057251536621, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -2612611094189861016, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -399990082754810086, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 7764126188422968613, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -4089129366061518759, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -5007049479844244406, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 2177302210055462351, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -4808809131564791437, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 7800288491511727060, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -2817560610665723536, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -6222385299334825629, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -2049950354708713021, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 5400917308096628885, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -2681827505913246078, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -5510134062965979728, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 3990365173418793155, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 4217963122033291921, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 7467162350998141334, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -2712456731572560527, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 2290655797953299316, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 1824874819792445354, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -1998620515090593464, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 3989031358840456289, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 7802283657821912520, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -7119480927184264986, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -885162446822677267, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -2957984717474802434, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -5945887330718224196, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -2859678691646198399, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 2648061874284776701, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -5153719977585391308, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 8931389326524435798, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -5452304909729615036, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 8359211722054005363, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -579025758178276973, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 3191727005099031687, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -3396700662630943853, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 9099032326451321807, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 5215126335110880025, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -3990460910214575020, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 4308466895541553800, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -7784397253266309402, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -1078466236564173931, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 899545661268908774, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 1334517730136379044, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -793227268979268127, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 2583122564774781033, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 5045868460776238817, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 7397022517796012868, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -6669534384824280788, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -5764227941525224122, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 3318958817117382573, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -4590572660160517335, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 6162196695934219529, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 3924496705044414188, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 2853835920605390906, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -6581795253980760342, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -5464670601051721041, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 2295417160353252196, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 4798478907907751931, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 9144823078069284263, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: -2517555321858093406, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 6714549444884309209, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 4908884540995433064, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
+  - {fileID: 8227672928416897357, guid: 905445a6c1b0844d2b0489861b471426, type: 3}
   classClips:
   - {fileID: 4693708947047128002, guid: 7f68661b3cbc441aeac15a27a2b76fe9, type: 3}
   - {fileID: -1719154100771564892, guid: 7f68661b3cbc441aeac15a27a2b76fe9, type: 3}
