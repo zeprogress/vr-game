@@ -109,7 +109,7 @@ export const KEEP_MATERIALS: ReadonlySet<ModelName> = new Set<ModelName>(["charH
  * Множитель к общему масштабу персонажа: модели в файле крупнее или мельче пака Quaternius (Knight ≈ 3.2 м в нативе,
  * Человек ≈ 1.15 м). Человек по просьбе вдвое выше рыцаря (BOT_RIG_SCALE × этот множитель).
  */
-export const MODEL_SCALE: Partial<Record<ModelName, number>> = { charHuman: 5.54 };
+export const MODEL_SCALE: Partial<Record<ModelName, number>> = { charHuman: 3.06 }; // рост ≈ 1.78 м, как рыцарь (было 5.54 → 3.2 м)
 
 export function modelScale(name: ModelName): number {
   return MODEL_SCALE[name] ?? 1;
@@ -120,7 +120,7 @@ export function modelScale(name: ModelName): number {
  * сдвиг и масштаб оружия в кулаке умножаются на этот коэффициент: рост модели в файле / рост рыцаря (3.2),
  * чтобы оружие было соразмерно телу. Кости Fist.L/R несут его и имя модели в metadata (botGear.seatFor).
  */
-const GEAR_FIT: Partial<Record<ModelName, number>> = { charHuman: 0.36 };
+const GEAR_FIT: Partial<Record<ModelName, number>> = {}; // рост «Человека» = рыцарю — оружие на обычном масштабе
 
 /** skin 1..BOT.skins → модель бота. skin 0 — обычный аватар игрока. Список — shared/skins.ts (его же берёт страница !inv). */
 export const BOT_SKIN_MODELS: readonly ModelName[] = SKIN_MODELS;
