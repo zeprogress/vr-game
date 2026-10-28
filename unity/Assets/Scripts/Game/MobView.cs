@@ -60,7 +60,7 @@ namespace Zep
             if (s.model == "monSpider") Matte(body.gameObject, assets.litTemplate, 0.7f, 0.18f);
             if (s.model == "monSkeletonReaver") Matte(body.gameObject, assets.litTemplate, 0.72f, -1);
             if (s.model == "monLavaMonster") lavaLights = LavaLights(s.kind == "spitter");
-            if (s.model == "monIceGiant") chestLight = IceChestLight();
+            if (s.model == "monIceGiant") { chestLight = IceChestLight(); MakeChestGlow(assets.unlitAdd); }
             anim = new Anim(body.gameObject);
             rends = body.GetComponentsInChildren<Renderer>();
             mpb = new MaterialPropertyBlock();
@@ -209,6 +209,26 @@ namespace Zep
         Light chestLight;
 
         /// Ледяной гигант: холодный свет изнутри груди — как кристаллы подземелья (голубой, мягкий, пульсирует).
+        Transform chestGlow;
+        Material chestGlowMat;
+
+        /// Голубой шар внутри груди: виден сквозь полупрозрачный лёд, пульсирует. Аддитивный, без записи глубины.
+        void MakeChestGlow(Material unlitAdd)
+        {
+            if (!unlitAdd) return;
+            var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            go.name = "iceCore";
+            go.transform.SetParent(transform, false);
+            Destroy(go.GetComponent<Collider>());
+            var r = go.GetComponent<MeshRenderer>();
+            chestGlowMat = new Material(unlitAdd) { name = "iceCoreMat" };
+            chestGlowMat.SetColor("_BaseColor", new Color(0.35f, 0.7f, 1f) * 2.6f);
+            r.sharedMaterial = chestGlowMat;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
+            chestGlow = go.transform;
+        }
+
         Light IceChestLight()
         {
             var l = new GameObject("iceChest").AddComponent<Light>();
@@ -228,7 +248,15 @@ namespace Zep
             float h = bodyRadius * 1.75f * (state.scale > 0 ? state.scale : 1f);
             chestLight.transform.position = transform.position + Vector3.up * h * 0.6f;
             chestLight.range = h * 2.2f;
-            chestLight.intensity = 3.5f * h * (0.9f + 0.1f * Mathf.Sin(Time.time * 2.4f + transform.position.x));
+            float pulse = 0.9f + 0.1f * Mathf.Sin(Time.time * 2.4f + transform.position.x);
+            chestLight.intensity = 3.5f * h * pulse;
+            if (chestGlow)
+            {
+                chestGlow.position = transform.position + Vector3.up * h * 0.6f;
+                // Корень моба уже масштабирован state.scale — внутри него размер без этого множителя.
+                chestGlow.localScale = Vector3.one * bodyRadius * 1.75f * 0.5f * pulse;
+                if (chestGlowMat) chestGlowMat.SetColor("_BaseColor", new Color(0.35f, 0.7f, 1f) * (2.2f + 0.8f * pulse));
+            }
         }
 
         /// Лавовые мобы светят сами: огонь у груди (на героях рядом) и низкий у земли (отсвет лавы на полу).
