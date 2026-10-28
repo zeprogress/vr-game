@@ -3578,7 +3578,7 @@ export class ZoneSim {
       const d = segDist(px, py, pz, b.x, b.y, b.z, m.x, m.y + m.liftM, m.z, m.x, m.y + m.liftM + MOB.bodyRadius * m.scale, m.z);
       if (d < r) {
         const vh = Math.hypot(b.vx, b.vz) || 1;
-        if (b.crit) this.critHits.push({ x: m.x, y: m.y, z: m.z, owner: b.owner });
+        if (b.crit) this.critHits.push({ x: m.x, y: hitMarkY(m), z: m.z, owner: b.owner });
         const magic = b.kind === 0; // 0 — огнешар (магия), 1 — стрела (физика)
         this.hitMob(m.id, b.dmg, b.vx / vh, b.vz / vh, b.owner, true, false, magic, b.crit);
         if (b.kind === 1 && m.markT > 0 && m.markBy === b.owner) this.markedArrowHits.push(b.owner);

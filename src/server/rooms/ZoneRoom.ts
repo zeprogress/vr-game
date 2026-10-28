@@ -2557,7 +2557,7 @@ export class ZoneRoom extends Room<ZoneState> {
     rt.lastHitMobAt = this.elapsed;
     // Позиция цели ДО удара: моб может умереть и исчезнуть, а сплэш считаем вокруг места удара.
     const sx = struck.x;
-    const sy = struck.y;
+    const sy = struck.y + MOB.bodyRadius * struck.scale * 1.4; // середина тела — вспышка не в земле
     const sz = struck.z;
     if (critM > 1) this.critFx(sx, sy, sz, heroId);
     // Опыт, счётчик убийств и кил-фид — через общий делёж (sim.mobXpShare / sim.mobKills).
@@ -10123,7 +10123,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (m.dead) return;
       const rc = rolledCrit(p, p.rightCls === "bow" ? "right" : "left", rt);
       const c = rollCritMult("arrow", Math.random, false, rc.chance, rc.mult, BOW.critMult, attrOf(p, "luc"));
-      if (c > 1) this.critFx(m.x, m.y, m.z, ownerId);
+      if (c > 1) this.critFx(m.x, m.y + MOB.bodyRadius * m.scale * 1.4, m.z, ownerId);
       const [dx, dz] = dirTo(m, fromX, fromZ);
       this.skillHitMob(ownerId, m, mul * pow.dmg * c, dx, dz, true, false, false, c > 1, hit);
     };
@@ -10150,7 +10150,7 @@ export class ZoneRoom extends Room<ZoneState> {
             if (m0.dead) return;
             this.skillHitMob(ownerId, m0, L.dmg * pow.dmg * WEAPONS2.dagger.critMult, ax, az, false, false, false, true, hit);
             stun(m0.id, L.stun);
-            this.critFx(m0.x, m0.y, m0.z, ownerId);
+            this.critFx(m0.x, m0.y + MOB.bodyRadius * m0.scale * 1.4, m0.z, ownerId);
           }, L.time * 1000);
           return true;
         }
@@ -11219,7 +11219,7 @@ export class ZoneRoom extends Room<ZoneState> {
           if (d > radius) continue;
           // Крит — на каждую стрелу и цель отдельно.
           const critM = rollCritMult("arrow", Math.random, false, rc.chance, rc.mult, BOW.critMult, attrOf(p, "luc"));
-          if (critM > 1) this.critFx(m.x, m.y, m.z, ownerId);
+          if (critM > 1) this.critFx(m.x, m.y + MOB.bodyRadius * m.scale * 1.4, m.z, ownerId);
           this.skillHitMob(ownerId, m, base * critM, dx / (d || 1), dz / (d || 1), true, false, false, false);
         }
       }, step * (i + 0.5) * 1000);
