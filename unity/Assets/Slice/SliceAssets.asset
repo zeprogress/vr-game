@@ -120,7 +120,7 @@ MonoBehaviour:
   - key: charHuman
     prefab: {fileID: 8771091787928289351, guid: 323b5d05450d24486975548d64272eb0, type: 3}
     height: 1.1185336
-    scale: 5.54
+    scale: 3.06
     keep: 1
   - key: monBee
     prefab: {fileID: 8771091787928289351, guid: 8abad31692fc945d9858a8eaeb689bf8, type: 3}
