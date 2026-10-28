@@ -471,7 +471,7 @@ public static class SliceSetup
             // Пламя рисует DayCycle; пятна света на полу (dunFirePool) оставляем.
             foreach (var r in go.GetComponentsInChildren<Renderer>(true))
                 if (r.name.StartsWith("dunFire") && !r.name.StartsWith("dunFirePool")) r.enabled = false;
-            if (name == "dungeon") PropsBuilder.DunPools(go, assets.unlitAdd);
+            if (name == "dungeon") { PropsBuilder.DunPools(go, assets.unlitAdd); WaterfallFx.Attach(go); }
             // Под землёй камера спектатора идёт по полу и упирается в стены и свод — лучами по этим коллайдерам.
             if (name == "catacombs")
             {

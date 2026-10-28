@@ -60,6 +60,7 @@ namespace Zep
             if (s.model == "monSpider") Matte(body.gameObject, assets.litTemplate, 0.7f, 0.18f);
             if (s.model == "monSkeletonReaver") Matte(body.gameObject, assets.litTemplate, 0.72f, -1);
             if (s.model == "monLavaMonster") lavaLights = LavaLights(s.kind == "spitter");
+            if (s.model == "monIceGiant") chestLight = IceChestLight();
             anim = new Anim(body.gameObject);
             rends = body.GetComponentsInChildren<Renderer>();
             mpb = new MaterialPropertyBlock();
@@ -205,6 +206,30 @@ namespace Zep
         bool Squashes => state.model != "scarecrow" && (elite == null ? string.IsNullOrEmpty(state.model) || state.model == "slime" : !elite.noSquash);
 
         Light[] lavaLights;
+        Light chestLight;
+
+        /// Ледяной гигант: холодный свет изнутри груди — как кристаллы подземелья (голубой, мягкий, пульсирует).
+        Light IceChestLight()
+        {
+            var l = new GameObject("iceChest").AddComponent<Light>();
+            l.transform.SetParent(transform, false);
+            l.type = LightType.Point;
+            l.color = new Color(0.3f, 0.58f, 1f);
+            l.shadows = LightShadows.None;
+            return l;
+        }
+
+        void ChestLightUpdate()
+        {
+            if (!chestLight) return;
+            bool on = state.dead == 0;
+            chestLight.enabled = on;
+            if (!on) return;
+            float h = bodyRadius * 1.75f * (state.scale > 0 ? state.scale : 1f);
+            chestLight.transform.position = transform.position + Vector3.up * h * 0.6f;
+            chestLight.range = h * 2.2f;
+            chestLight.intensity = 3.5f * h * (0.9f + 0.1f * Mathf.Sin(Time.time * 2.4f + transform.position.x));
+        }
 
         /// Лавовые мобы светят сами: огонь у груди (на героях рядом) и низкий у земли (отсвет лавы на полу).
         Light[] LavaLights(bool mage)
@@ -300,6 +325,7 @@ namespace Zep
             if (state == null) return;
             Burn(Time.deltaTime);
             LavaLightUpdate();
+            ChestLightUpdate();
             var target = new Vector3(state.x, state.y, state.z);
             transform.position = Vector3.Lerp(transform.position, target, 1f - Mathf.Exp(-12f * Time.deltaTime));
             transform.rotation = Quaternion.Slerp(transform.rotation,

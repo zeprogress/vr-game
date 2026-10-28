@@ -578,7 +578,7 @@ export function dunDress(): DunPiece[] {
     })),
     // Мелкие кристаллы (друзы у стен, в разломе и колодце) — тот же холодный свет, слабее и ближе, по размеру друзы.
     ...out
-      .filter((pc) => pc.k === "Crystal_0" || pc.k === "Crystal_1")
+      .filter((pc) => pc.k === "Crystal_0" || pc.k === "Crystal_1" || pc.k === "Crystal_2")
       .map((pc) => {
         const sz = (pc.s[0] + pc.s[1] + pc.s[2]) / 3;
         // пятно на полу — только у друз, стоящих на полу (на стенах разлома и колодца — висело бы в воздухе)
@@ -586,7 +586,7 @@ export function dunDress(): DunPiece[] {
         const onFloor = fl !== null && Math.abs(fl - pc.p[1]) < 1.5;
         return {
           zone: pc.zone, p: [pc.p[0], pc.p[1] + 1.1 * pc.s[1], pc.p[2]] as [number, number, number],
-          color: [0.3, 0.58, 1] as [number, number, number], range: 9 * sz, power: 0.6 * Math.min(1.5, sz),
+          color: [0.3, 0.58, 1] as [number, number, number], range: 9 * sz, power: (pc.k === "Crystal_2" ? 0.8 : 0.6) * Math.min(1.5, sz),
           glow: onFloor ? { floor: pc.p[1], size: 5 * sz } : undefined,
         };
       }),
