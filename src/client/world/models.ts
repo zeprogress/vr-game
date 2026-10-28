@@ -299,6 +299,11 @@ export async function loadRig(
 
     // Модели со своими текстурами (KEEP_MATERIALS) не сглаживаем: forceSharedVertices склеивает вершины по одному
     // положению и оставляет одну UV на склеенную — на швах развёртки текстура «плывёт». Нормали у них и так гладкие.
+    // Модель со своими текстурами (PBR): метка на материалах — подземелье светит им своим, более слабым общим
+    // светом (DungeonFx: яркий холодный свет пещеры заливал PBR-текстуру целиком, модель будто светилась).
+    if (KEEP_MATERIALS.has(name)) {
+      for (const m of meshes) if (m.material) m.material.metadata = { ...(m.material.metadata ?? {}), ownTex: true };
+    }
     if (rigOpts.smoothNormals && !KEEP_MATERIALS.has(name)) {
       for (const m of meshes) {
         if (m.getTotalVertices() === 0) continue;

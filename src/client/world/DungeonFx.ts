@@ -62,6 +62,47 @@ const TEX_OF: Record<string, string> = {
   cloth: "cloth", bone: "masonry",
   rock: "rock", metal: "metal",
 };
+/**
+ * Сила общего света пещеры для моделей с PBR-текстурами (Человек), доля от обычной 0.95 не нужна — своя.
+ * Живая подстройка: `?dunpbr=1` (ползунок, значение — в localStorage и готовой строкой для кода).
+ */
+const DUN_PBR_AMB = { k: 0.38 };
+(() => {
+  if (typeof location === "undefined" || new URLSearchParams(location.search).get("dunpbr") !== "1") return;
+  try {
+    const v = Number(localStorage.getItem("zep.dunpbr"));
+    if (v > 0) DUN_PBR_AMB.k = v;
+  } catch {
+    /* без хранилища — по умолчанию */
+  }
+  const box = document.createElement("div");
+  box.style.cssText =
+    "position:fixed;top:8px;right:8px;z-index:9999;background:rgba(16,18,24,.92);color:#e7e9ee;font:12px ui-monospace,monospace;padding:10px;border-radius:8px;border:1px solid #3a4050;width:260px";
+  box.innerHTML =
+    '<div style="color:#9fd3ff;margin-bottom:6px">Свет пещеры для моделей с текстурами</div>' +
+    '<input type="range" min="0" max="1.2" step="0.01" style="width:100%"><div class="v"></div>';
+  const inp = box.querySelector("input") as HTMLInputElement;
+  const out = box.querySelector(".v") as HTMLDivElement;
+  const show = (): void => {
+    out.textContent = `const DUN_PBR_AMB = { k: ${DUN_PBR_AMB.k.toFixed(2)} };`;
+  };
+  inp.value = String(DUN_PBR_AMB.k);
+  inp.oninput = () => {
+    DUN_PBR_AMB.k = Number(inp.value);
+    try {
+      localStorage.setItem("zep.dunpbr", inp.value);
+    } catch {
+      /* не важно */
+    }
+    show();
+  };
+  for (const ev of ["wheel", "pointerdown", "keydown"] as const) box.addEventListener(ev, (e) => e.stopPropagation());
+  show();
+  const add = (): void => void document.body.appendChild(box);
+  if (document.body) add();
+  else addEventListener("DOMContentLoaded", add);
+})();
+
 /** Настоящих источников света в подземелье одновременно (переезжают к ближайшим огням и кристаллам). */
 const LIGHT_SLOTS = 4;
 /** Модули из тёсаного камня (гранит), остальные — скала. */
@@ -132,6 +173,15 @@ export class DungeonFx {
   private kitLoading = false;
   /** Свет пещеры: холодный общий (видны проходы и враги и на телефоне). */
   private amb: HemisphericLight | null = null;
+  /**
+   * Свой общий свет для моделей с PBR-текстурами (Человек, материал с metadata.ownTex): холодный свет пещеры
+   * заливал их текстуру ровно со всех сторон — модель «светилась»; им — тот же цвет, но слабее (dunAmbient их не
+   * освещает). Сила — ?dunpbr=1.
+   */
+  private ambPbr: HemisphericLight | null = null;
+  private ownAt = 0;
+  private ownKey = "";
+  private lastDt = 0;
   /** Солнце и небо мира, погашенные, пока камера в подземелье: свет → исходная яркость. */
   private readonly dimmed = new Map<Light, number>();
   private savedFog: { mode: number; start: number; end: number; color: Color3 } | null = null;
@@ -162,6 +212,7 @@ export class DungeonFx {
 
   update(dt: number, cam: { x: number; y?: number; z: number }): void {
     this.time += dt;
+    this.lastDt = dt;
     const inside = inDunRegion(cam.x, cam.z);
     if (inside && !this.root) this.build();
     if (this.root && this.root.isEnabled() !== inside) this.root.setEnabled(inside);
@@ -188,8 +239,29 @@ export class DungeonFx {
         this.amb.specular = new Color3(0.1, 0.12, 0.16);
       }
       this.amb.intensity = 0.95;
+      if (!this.ambPbr) {
+        this.ambPbr = new HemisphericLight("dunAmbientPbr", new Vector3(0, 1, 0), scene);
+        this.ambPbr.diffuse = this.amb.diffuse.clone();
+        this.ambPbr.groundColor = this.amb.groundColor.clone();
+        this.ambPbr.specular = new Color3(0, 0, 0);
+        this.ambPbr.includedOnlyMeshes = [];
+      }
+      // Пустой includedOnlyMeshes у Babylon — «светить всем»: без моделей с текстурами этот свет гасим.
+      this.ambPbr.intensity = this.ownKey ? DUN_PBR_AMB.k : 0;
+      // Список моделей с текстурами — раз в полсекунды (герои приходят и уходят): им — свой слабый свет.
+      this.ownAt -= this.lastDt;
+      if (this.ownAt <= 0) {
+        this.ownAt = 0.5;
+        const own = scene.meshes.filter((m) => (m.material?.metadata as { ownTex?: boolean } | null)?.ownTex);
+        const key = own.map((m) => m.uniqueId).join(",");
+        if (key !== this.ownKey) {
+          this.ownKey = key;
+          this.amb.excludedMeshes = own;
+          this.ambPbr.includedOnlyMeshes = own.length ? own : [];
+        }
+      }
       for (const l of scene.lights) {
-        if (l === this.amb) continue;
+        if (l === this.amb || l === this.ambPbr) continue;
         const cls = l.getClassName();
         if (cls !== "DirectionalLight" && cls !== "HemisphericLight") continue;
         if (!this.dimmed.has(l)) this.dimmed.set(l, l.intensity);
@@ -203,6 +275,7 @@ export class DungeonFx {
       this.applyFog();
     } else if (this.savedFog || this.dimmed.size) {
       if (this.amb) this.amb.intensity = 0;
+      if (this.ambPbr) this.ambPbr.intensity = 0;
       for (const sl of this.slots) sl.l.intensity = 0;
       for (const sp of this.sprays) if (sp.on) {
         sp.on = false;
@@ -340,6 +413,43 @@ export class DungeonFx {
       if (!m) continue;
       m.name = `dunFirePool_${zone}`;
       m.material = poolMat;
+      m.parent = root;
+      m.isPickable = false;
+      this.chunk(zone).geo.push(m);
+    }
+    // Холодные пятна свечения у каждого кристалла (настоящих источников света — только LIGHT_SLOTS ближайших).
+    const iceMat = new StandardMaterial("dunCrystalPool", scene);
+    const itex = new DynamicTexture("dunCrystalPoolTex", { width: 128, height: 128 }, scene, false);
+    const ig = itex.getContext() as CanvasRenderingContext2D;
+    const igr = ig.createRadialGradient(64, 64, 0, 64, 64, 64);
+    igr.addColorStop(0, "rgba(90,150,255,0.5)");
+    igr.addColorStop(0.45, "rgba(60,110,230,0.17)");
+    igr.addColorStop(1, "rgba(0,0,0,0)");
+    ig.fillStyle = igr;
+    ig.fillRect(0, 0, 128, 128);
+    itex.update();
+    itex.hasAlpha = true;
+    iceMat.diffuseTexture = itex;
+    iceMat.emissiveTexture = itex;
+    iceMat.useAlphaFromDiffuseTexture = true;
+    iceMat.disableLighting = true;
+    iceMat.alphaMode = 1; // ADD
+    iceMat.disableDepthWrite = true;
+    const ice = new Map<string, Mesh[]>();
+    for (const s of dunLights()) {
+      if (!s.glow) continue;
+      const pool = MeshBuilder.CreateGround("dunIcePool", { width: s.glow.size, height: s.glow.size }, scene);
+      pool.position.set(s.p[0], s.glow.floor + 0.07, s.p[2]);
+      pool.bakeCurrentTransformIntoVertices();
+      const list = ice.get(s.zone) ?? [];
+      list.push(pool);
+      ice.set(s.zone, list);
+    }
+    for (const [zone, list] of ice) {
+      const m = Mesh.MergeMeshes(list, true, true);
+      if (!m) continue;
+      m.name = `dunCrystalPool_${zone}`;
+      m.material = iceMat;
       m.parent = root;
       m.isPickable = false;
       this.chunk(zone).geo.push(m);

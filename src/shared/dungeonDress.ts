@@ -42,6 +42,8 @@ export interface DunLight {
   /** Огонь: размер пламени (1 — жаровня) и высота пола для пятна света под ним; нет — без пламени (кристалл). */
   flame?: number;
   floor?: number;
+  /** Кристалл: высота пола под ним и размер холодного пятна свечения (м) — пятно у каждого, свет — у ближайших. */
+  glow?: { floor: number; size: number };
 }
 let dressLights: DunLight[] = [];
 /** Источники света (после dunDress — тот же детерминированный список). */
@@ -570,7 +572,24 @@ export function dunDress(): DunPiece[] {
   dressLights = [
     ...sconces.map(([zone, u, y, v]) => ({ zone, p: [u, y, v] as [number, number, number], color: [1, 0.5, 0.18] as [number, number, number], range: 14, power: 0.8, flame: 0.45 })),
     ...braziers.map(([zone, u, v]) => ({ zone, p: [u, (dunFloorLocal(u, v) ?? 0) + 1.85, v] as [number, number, number], color: [1, 0.55, 0.22] as [number, number, number], range: 20, power: 1, flame: 1, floor: dunFloorLocal(u, v) ?? 0 })),
-    ...DUN_GIANT_CRYSTALS.filter(([, u, v, y]) => !nearFire(u, y, v, 26)).map(([zone, u, v, y, sc]) => ({ zone, p: [u, y + 4 * sc, v] as [number, number, number], color: [0.3, 0.58, 1] as [number, number, number], range: 34 * sc, power: 1.3 })),
+    ...DUN_GIANT_CRYSTALS.filter(([, u, v, y]) => !nearFire(u, y, v, 26)).map(([zone, u, v, y, sc]) => ({
+      zone, p: [u, y + 4 * sc, v] as [number, number, number], color: [0.3, 0.58, 1] as [number, number, number], range: 34 * sc, power: 1.3,
+      glow: { floor: y, size: 14 * sc },
+    })),
+    // Мелкие кристаллы (друзы у стен, в разломе и колодце) — тот же холодный свет, слабее и ближе, по размеру друзы.
+    ...out
+      .filter((pc) => pc.k === "Crystal_0" || pc.k === "Crystal_1")
+      .map((pc) => {
+        const sz = (pc.s[0] + pc.s[1] + pc.s[2]) / 3;
+        // пятно на полу — только у друз, стоящих на полу (на стенах разлома и колодца — висело бы в воздухе)
+        const fl = dunFloorLocal(pc.p[0], pc.p[2]);
+        const onFloor = fl !== null && Math.abs(fl - pc.p[1]) < 1.5;
+        return {
+          zone: pc.zone, p: [pc.p[0], pc.p[1] + 1.1 * pc.s[1], pc.p[2]] as [number, number, number],
+          color: [0.3, 0.58, 1] as [number, number, number], range: 9 * sz, power: 0.6 * Math.min(1.5, sz),
+          glow: onFloor ? { floor: pc.p[1], size: 5 * sz } : undefined,
+        };
+      }),
   ];
 
   // Стены всей пещеры и свод — один меш-купол (dungeonGeo, «DOME»), здесь — ничего.

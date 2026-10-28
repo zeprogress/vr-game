@@ -177,4 +177,33 @@ for o in (arm, body):
     o.select_set(True)
 bpy.context.view_layer.objects.active = arm
 bpy.ops.export_scene.gltf(filepath=f"{OUT}/Human_Male.glb", export_format='GLB', use_selection=True, export_animations=True, export_skins=True)
+
+
+def strip_specular(path):
+    """Убрать KHR_materials_specular: экспортёр пишет specularColorFactor 2 (из Specular Tint), а Babylon и Unity
+    читают его как удвоенное отражение — модель «светилась». Без расширения — обычный PBR metallic/roughness."""
+    import json
+    import struct
+    b = open(path, "rb").read()
+    jlen = struct.unpack("<I", b[12:16])[0]
+    js = json.loads(b[20:20 + jlen])
+    for m in js.get("materials", []):
+        ext = m.get("extensions", {})
+        ext.pop("KHR_materials_specular", None)
+        if not ext:
+            m.pop("extensions", None)
+    for key in ("extensionsUsed", "extensionsRequired"):
+        if key in js:
+            js[key] = [e for e in js[key] if e != "KHR_materials_specular"]
+            if not js[key]:
+                js.pop(key)
+    jb = json.dumps(js, separators=(",", ":")).encode()
+    jb += b" " * ((4 - len(jb) % 4) % 4)
+    rest = b[20 + jlen:]
+    total = 12 + 8 + len(jb) + len(rest)
+    out = b[:8] + struct.pack("<I", total) + struct.pack("<I", len(jb)) + b"JSON" + jb + rest
+    open(path, "wb").write(out)
+
+
+strip_specular(f"{OUT}/Human_Male.glb")
 print("EXPORTED")

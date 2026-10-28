@@ -94,13 +94,29 @@ export function legRate(clip: "walk" | "run", speed: number): number {
   return Math.max(0.5, Math.min(2.5, speed / HERO_STRIDE[clip]));
 }
 
+/** Скелет, где ноги растут из Hips (Человек): там шаг и бег — одним клипом всего тела в темпе ног. */
+const legsOnHips = new WeakMap<AnimationGroup, boolean>();
+function wholeBodyGait(g: AnimationGroup): boolean {
+  let v = legsOnHips.get(g);
+  if (v === undefined) {
+    v = g.targetedAnimations.some((ta) => {
+      const t = ta.target as { name?: string } | null;
+      return t?.name === "Hips" && isLeg(t);
+    });
+    legsOnHips.set(g, v);
+  }
+  return v;
+}
+
 /**
  * Темп шага/бега только ногам (кости LEG_BONES); корпус (руки, голова) — в родном темпе клипа,
  * чтобы на быстром беге руки не мельтешили. Группу держим на 1: её speedRatio перетирал бы кости.
+ * У Человека (ноги из Hips) — всё тело в темпе ног: руки и ноги клипа Mixamo идут в такт друг другу.
  */
 export function applyLegRate(g: AnimationGroup, rate: number): void {
   if (g.speedRatio !== 1) g.speedRatio = 1;
-  for (const a of g.animatables) a.speedRatio = isLeg(a.target) ? rate : 1;
+  const all = wholeBodyGait(g);
+  for (const a of g.animatables) a.speedRatio = all || isLeg(a.target) ? rate : 1;
 }
 
 /**
