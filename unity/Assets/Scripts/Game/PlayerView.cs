@@ -58,6 +58,8 @@ namespace Zep
         {
             if (state == null) return;
             rig.Apply(state.skin, state.leftCls, state.leftTier, state.rightCls, state.rightTier);
+            // Плашка — над головой: у высокой модели (Человек) выше обычной.
+            plate.offset = Mathf.Max(Hero.EyeHeight + 0.42f, rig.ModelHeight + 0.3f);
             rig.SetSharp(WeaponGlow.PctOf(state.leftAffix), WeaponGlow.PctOf(state.rightAffix));
             transform.position = Vector3.Lerp(transform.position, Target(), 1f - Mathf.Exp(-12f * Time.deltaTime));
             var fwd = Forward;

@@ -18,6 +18,17 @@ import { HERO_MOVE_FULL_BODY, HERO_MOVE_ONE_SHOT } from "../world/heroMoves";
  */
 const LEG_BONES = new Set(["Bone", "Body", "UpperLeg.L", "UpperLeg.R", "LowerLeg.L", "LowerLeg.R", "Foot.L", "Foot.R", "PoleTarget.L", "PoleTarget.R"]);
 
+/**
+ * Кость ног? У Человека ноги растут из Hips (у пака — из Body рядом с Hips): там и таз — ноги, иначе действие
+ * корпусом поворачивало таз, а с ним и бегущие ноги.
+ */
+function isLeg(target: unknown): boolean {
+  const t = target as { name?: string; getChildren?: () => { name: string }[] } | null;
+  const name = t?.name ?? "";
+  if (LEG_BONES.has(name)) return true;
+  return name === "Hips" && !!t?.getChildren?.().some((c) => c.name === "UpperLeg.L");
+}
+
 /** Разовые клипы, которые на бегу играют только корпусом. Эмоции, кувырок и прыжок — всем телом. */
 const UPPER_ACTION_CLIPS = new Set<string>([
   ...CLASS_ONE_SHOT,
@@ -38,7 +49,7 @@ export function applySplitWeight(g: AnimationGroup, legs: number, upper: number)
     g.setWeightForAllAnimatables(legs);
     return;
   }
-  for (const a of g.animatables) a.weight = LEG_BONES.has((a.target as { name?: string } | null)?.name ?? "") ? legs : upper;
+  for (const a of g.animatables) a.weight = isLeg(a.target) ? legs : upper;
 }
 
 /**
@@ -89,7 +100,7 @@ export function legRate(clip: "walk" | "run", speed: number): number {
  */
 export function applyLegRate(g: AnimationGroup, rate: number): void {
   if (g.speedRatio !== 1) g.speedRatio = 1;
-  for (const a of g.animatables) a.speedRatio = LEG_BONES.has((a.target as { name?: string } | null)?.name ?? "") ? rate : 1;
+  for (const a of g.animatables) a.speedRatio = isLeg(a.target) ? rate : 1;
 }
 
 /**

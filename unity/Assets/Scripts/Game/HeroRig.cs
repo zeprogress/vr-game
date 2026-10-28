@@ -20,6 +20,9 @@ namespace Zep
 
         public void Init(SliceAssets assets) { this.assets = assets; }
 
+        /// Рост модели в мире (по мешам; 0 — не измерен): по нему плашка над головой.
+        public float ModelHeight { get; private set; }
+
         /// Вид оружия для своих клипов модели (kindOf в world/heroMoves.ts).
         string MoveKind
         {
@@ -306,7 +309,12 @@ namespace Zep
             // Кость Body — не меш с тем же именем (в модели есть и узел-меш «Body»): ищем узел без рендера.
             body = FindBone(model.transform, "Body");
             var hips = Find(model.transform, "Hips");
-            if (hips) Anim.SetUpperRoot(hips);
+            // У Человека ноги растут из Hips (у пака — из Body рядом с Hips): корпус тогда — с позвоночника (Abdomen),
+            // иначе действие корпусом забирало и ноги (на бегу ноги замирали, бег корпуса сбивал их темп).
+            bool legsOnHips = hips && Find(hips, "UpperLeg.L") is Transform ul && ul.parent == hips;
+            var upper = legsOnHips ? Find(hips, "Abdomen") : hips;
+            if (upper) Anim.SetUpperRoot(upper);
+            ModelHeight = entry != null ? entry.height * model.transform.localScale.y : 0f;
             fistL = Find(model.transform, "Fist.L");
             fistR = Find(model.transform, "Fist.R");
             clsL = clsR = null;
