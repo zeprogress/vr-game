@@ -60,7 +60,7 @@ namespace Zep
             if (s.model == "monSpider") Matte(body.gameObject, assets.litTemplate, 0.7f, 0.18f);
             if (s.model == "monSkeletonReaver") Matte(body.gameObject, assets.litTemplate, 0.72f, -1);
             if (s.model == "monLavaMonster") lavaLights = LavaLights(s.kind == "spitter");
-            if (s.model == "monIceGiant") { chestLight = IceChestLight(); MakeChestGlow(assets.unlitAdd); }
+            if (s.model == "monIceGiant") chestLight = IceChestLight();
             anim = new Anim(body.gameObject);
             rends = body.GetComponentsInChildren<Renderer>();
             mpb = new MaterialPropertyBlock();
@@ -164,8 +164,8 @@ namespace Zep
                         if (mage) skin.SetColor("_BaseColor", new Color(0.95f, 0.42f, 0.12f) * 1.6f);
                         skin.SetFloat("_Mode", ice ? 3 : 2); // лава — своя текстура модели, только свечение красного
                         skin.SetFloat("_Scale", (ice ? 3.2f : 4.5f) / Mathf.Max(0.1f, nativeH));
-                        skin.SetColor("_Tint", ice ? new Color(0.7f, 0.88f, 1f) : mage ? new Color(1.1f, 0.8f, 0.5f) : new Color(1.5f, 0.5f, 0.22f)); // страж — красно-оранжевые прожилки
-                        skin.SetFloat("_Glow", ice ? 1f : mage ? 3.2f : 5f);
+                        skin.SetColor("_Tint", ice ? new Color(0.32f, 0.62f, 1f) : mage ? new Color(1.1f, 0.8f, 0.5f) : new Color(1.5f, 0.5f, 0.22f)); // страж — красно-оранжевые прожилки
+                        skin.SetFloat("_Glow", ice ? 1.4f : mage ? 3.2f : 5f);
                         if (ice)
                         {
                             // Гигант чуть прозрачный — лёд просвечивает (по просьбе).

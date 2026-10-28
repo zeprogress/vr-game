@@ -152,8 +152,8 @@ Shader "Zep/BossSkin"
                     float fres = pow(1 - saturate(dot(N, V)), 4);
                     col += tex * fres * 0.6;
                     col += tex * _Tint.rgb * smoothstep(0.5, 0.95, lum) * _Glow * 0.35;
-                    // Голубой свет изнутри просвечивает сквозь лёд: текстура сама светится.
-                    col += tex * _Tint.rgb * _Glow * 0.3;
+                    // Синий свет изнутри — как у кристаллов подземелья: всё тело светится равномерно.
+                    col += _Tint.rgb * _Glow * (0.45 + 0.25 * smoothstep(0.4, 1.0, lum));
                 }
                 else if (_Mode > 1.5)
                 {
