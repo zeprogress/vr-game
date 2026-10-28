@@ -9,7 +9,7 @@ import { ensureIconCss, iconHtml, setIconEl } from "../ui/icons";
 import type { IconKey } from "#shared/icons";
 import { AEGIS_NAME, AFFIX_NAME, craftPow, isCraftRare, weaponName, ATTACK_CLASSES, WEAPON_NOUN, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, qualityStarsShort, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcEnchRow, PcInvActMsg, PcInvArmor, PcInvData, PcInvResult, PcInvWeapon, TradeItemView } from "#shared/net/messages";
-import { SKIN_LABELS, skinPicture } from "#shared/skins";
+import { skinPicture } from "#shared/skins";
 import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringSkillBonusOf, type PcInvJewels, type PcInvNeck, type PcInvRing, type RingTier } from "#shared/jewels";
 import { RING_STATS, ringValueText } from "#shared/ringAffixes";
 import { NECK_TIER_NAME, type NeckTier } from "#shared/necklaces";
@@ -990,26 +990,10 @@ export class PcInventory {
     img.src = skinPicture(this.hero.skin);
     img.alt = "";
     img.draggable = false;
-    st.append(div("pcinv-heroshadow"), img, this.skinPick());
+    st.append(div("pcinv-heroshadow"), img);
     return st;
   }
 
-  /** Выбор облика под куклой (страница !inv): то же, что «Внешность» в игре, — 1..BOT.skins. */
-  private skinPick(): HTMLDivElement {
-    const box = div("pcinv-skinpick");
-    const sel = document.createElement("select");
-    sel.className = "pcinv-skinsel";
-    SKIN_LABELS.forEach((label, i) => {
-      const o = document.createElement("option");
-      o.value = String(i + 1);
-      o.textContent = label;
-      sel.append(o);
-    });
-    sel.value = String(Math.max(1, this.hero.skin));
-    sel.onchange = () => this.hooks.act({ act: "skin", id: sel.value, idx: 0 });
-    box.append(sel);
-    return box;
-  }
 
   /** Сведения о герое: ник, титул, уровень, атрибуты, характеристики, кольца. */
   private charInfo(d: PcInvData): HTMLDivElement {
@@ -3773,8 +3757,8 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-stage { position:absolute; inset:0 0 44px 0; pointer-events:none; }
 .pcinv-skinpick { position:absolute; left:50%; bottom:-40px; transform:translateX(-50%); pointer-events:auto; }
 .pcinv-skinsel { font:inherit; font-size:14px; padding:6px 10px; border-radius:8px; background:#16202e; color:#e8eef8; border:1px solid #2c3e57; max-width:70vw; }
-.pcinv-heroimg { position:absolute; left:50%; bottom:var(--feet,4%); height:96%; transform:translateX(-50%); filter:drop-shadow(0 8px 14px rgba(0,0,0,.5)); }
-.pcinv-heroshadow { position:absolute; left:50%; bottom:calc(var(--feet,4%) - 10px); width:46%; height:22px; transform:translateX(-50%); border-radius:50%;
+.pcinv-heroimg { position:absolute; left:50%; bottom:0; height:100%; transform:translateX(-50%); filter:drop-shadow(0 8px 14px rgba(0,0,0,.5)); }
+.pcinv-heroshadow { position:absolute; left:50%; bottom:-4px; width:46%; height:22px; transform:translateX(-50%); border-radius:50%;
   background:radial-gradient(ellipse at center,rgba(0,0,0,.6),rgba(0,0,0,0) 70%); }
 @media (max-width: 1199px) {
   .pcinv-root.page .pcinv-gear { grid-template-columns:minmax(0,1fr) 410px; grid-template-areas:"hero bag" "char char"; }
