@@ -148,12 +148,14 @@ Shader "Zep/BossSkin"
                     // Своя текстура ледяной модели: гладкий блестящий лёд (острые блики, мягкий свет сквозь
                     // толщу), светлые грани чуть светятся холодным — без своего рисунка поверх.
                     float lum = dot(tex, float3(0.3, 0.55, 0.15));
-                    col = Shade(tex, N, V, i.positionWS, i.positionCS, 1.4, 0.45);
+                    // Тон льда уходит в синий: белизна текстуры смешивается с цветом свечения.
+                    float3 ice = lerp(tex, _Tint.rgb * lum * 1.6, 0.55);
+                    col = Shade(ice, N, V, i.positionWS, i.positionCS, 1.4, 0.45);
                     float fres = pow(1 - saturate(dot(N, V)), 4);
                     col += tex * fres * 0.6;
                     col += tex * _Tint.rgb * smoothstep(0.5, 0.95, lum) * _Glow * 0.35;
                     // Синий свет изнутри — как у кристаллов подземелья: всё тело светится равномерно.
-                    col += _Tint.rgb * _Glow * (0.45 + 0.25 * smoothstep(0.4, 1.0, lum));
+                    col += _Tint.rgb * _Glow * (0.5 + 0.25 * smoothstep(0.4, 1.0, lum));
                 }
                 else if (_Mode > 1.5)
                 {

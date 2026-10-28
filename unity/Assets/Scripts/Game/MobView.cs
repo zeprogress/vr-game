@@ -164,7 +164,7 @@ namespace Zep
                         if (mage) skin.SetColor("_BaseColor", new Color(0.95f, 0.42f, 0.12f) * 1.6f);
                         skin.SetFloat("_Mode", ice ? 3 : 2); // лава — своя текстура модели, только свечение красного
                         skin.SetFloat("_Scale", (ice ? 3.2f : 4.5f) / Mathf.Max(0.1f, nativeH));
-                        skin.SetColor("_Tint", ice ? new Color(0.32f, 0.62f, 1f) : mage ? new Color(1.1f, 0.8f, 0.5f) : new Color(1.5f, 0.5f, 0.22f)); // страж — красно-оранжевые прожилки
+                        skin.SetColor("_Tint", ice ? new Color(0.1f, 0.3f, 1f) : mage ? new Color(1.1f, 0.8f, 0.5f) : new Color(1.5f, 0.5f, 0.22f)); // страж — красно-оранжевые прожилки
                         skin.SetFloat("_Glow", ice ? 1.4f : mage ? 3.2f : 5f);
                         if (ice)
                         {
