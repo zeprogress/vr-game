@@ -47,13 +47,13 @@ export interface BagSortItem {
 export type BagPick =
   | { w: { cls: WeaponClass; tier: WeaponTier; quality: number; scrap?: number; fav?: boolean } }
   | { r: { tier: RingTier; scrap: number; fav?: boolean } }
-  | { a: { part: ArmorPart; tier?: "base" | "gold" | "legendary" | "ruby" | "sapphire"; pts: number; scrap: number; fav?: boolean } }
+  | { a: { part: ArmorPart; tier?: "base" | "gold" | "legendary" | "ruby"; pts: number; scrap: number; fav?: boolean } }
   | { n: { tier: "base" | "gold" | "legendary" | "ruby"; pts: number; scrap: number; fav?: boolean } };
 
 /** Что сортировке знать о предмете: из полей оружия, кольца или брони. */
 export function bagPickItem(e: BagPick): BagSortItem {
   if ("w" in e) return { weapon: e.w.cls, tier: e.w.tier, quality: e.w.quality, scrap: e.w.scrap ?? 0, fav: !!e.w.fav };
-  if ("a" in e) return { armor: true, armorPart: e.a.part, tier: (e.a.tier === "sapphire" ? "legendary" : (e.a.tier ?? "base")), quality: e.a.pts, scrap: e.a.scrap, fav: !!e.a.fav };
+  if ("a" in e) return { armor: true, armorPart: e.a.part, tier: e.a.tier ?? "base", quality: e.a.pts, scrap: e.a.scrap, fav: !!e.a.fav };
   if ("n" in e) return { neck: true, tier: e.n.tier, quality: e.n.pts, scrap: e.n.scrap, fav: !!e.n.fav };
   return { tier: e.r.tier, quality: 0, scrap: e.r.scrap, fav: !!e.r.fav };
 }

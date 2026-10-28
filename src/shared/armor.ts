@@ -89,13 +89,13 @@ export const ARMOR_POINTS_MAX = POINTS_MAX;
 export const ARMOR_DROP = { regular: 0.01, elite: 0.02, boss: 0.2 } as const;
 
 /** Тиры брони: обычный, золотой, уникальный (фиолетовый), рубиновый. Имена — как у оружия (TIER_LOOK). */
-export type ArmorTier = "base" | "gold" | "legendary" | "ruby" | "sapphire";
-export const ARMOR_TIERS: readonly ArmorTier[] = ["base", "gold", "legendary", "ruby", "sapphire"];
+export type ArmorTier = "base" | "gold" | "legendary" | "ruby";
+export const ARMOR_TIERS: readonly ArmorTier[] = ["base", "gold", "legendary", "ruby"];
 
-export const ARMOR_TIER_NAME: Record<ArmorTier, string> = { base: "обычная", gold: "золотая", legendary: "уникальная", ruby: "рубиновая", sapphire: "мифическая" };
+export const ARMOR_TIER_NAME: Record<ArmorTier, string> = { base: "обычная", gold: "золотая", legendary: "уникальная", ruby: "рубиновая" };
 
 /** Множитель значения КАЖДОГО аффикса по тиру. Золото — чуть сильнее обычного, уникальное — ещё чуть сильнее, рубиновое — ещё. */
-export const ARMOR_TIER_MUL: Record<ArmorTier, number> = { base: 1, gold: 1.2, legendary: 1.3, ruby: 1.4, sapphire: 1.6 };
+export const ARMOR_TIER_MUL: Record<ArmorTier, number> = { base: 1, gold: 1.2, legendary: 1.3, ruby: 1.4 };
 
 /**
  * Золото. Аффиксов у нагрудника и поножей — 1 или 2 (два с шансом twoChance); у перчаток и сапог — всегда 1.
@@ -201,7 +201,7 @@ export function armorRollsText(a: ArmorInstance): string {
   return a.rolls.map((r) => `${ARMOR_STAT_NAME[r.stat]} ${valueText(r.stat, armorRollValue(a, r))}`).join(" · ");
 }
 
-const ARMOR_TIER_TAG: Record<ArmorTier, string> = { base: "", gold: " (золото)", legendary: " (уникальное)", ruby: " (рубиновое)", sapphire: " (мифическое)" };
+const ARMOR_TIER_TAG: Record<ArmorTier, string> = { base: "", gold: " (золото)", legendary: " (уникальное)", ruby: " (рубиновое)" };
 
 /** Подпись предмета: «Шлем · Здоровье +2.3%», у золотого — «Нагрудник (золото) · …». */
 export function armorLabel(a: ArmorInstance): string {
@@ -246,7 +246,6 @@ export const ARMOR_SCRAP_RANGE: Record<ArmorTier, readonly [number, number]> = {
   legendary: [4, 16],
   /** Рубиновая: ×50 к прежним [8, 32] (2026-10-23) — ×100 к уникальной. */
   ruby: [400, 1600],
-  sapphire: [800, 3200],
 };
 
 /** Лом за разбор: сумма по аффиксам — каждый даёт ARMOR_SCRAP_RANGE своего тира, по очкам этого аффикса. */
@@ -270,7 +269,7 @@ export function armorEnchant(a: ArmorInstance, idx: number, gain: number): void 
  * Цена заточки по тиру — множитель к общей кривой (items.ts). Обычная броня — в 5 раз дешевле, золотая — в 2 раза
  * дешевле обычной кривой, рубиновая — в 8 раз дороже уникальной (2026-10-23: было ×2, дважды подняли вдвое). Шанс заточки не меняется.
  */
-export const ARMOR_ENCHANT_COST_MUL: Record<ArmorTier, number> = { base: 1 / 5, gold: 1 / 2, legendary: 1, ruby: 8, sapphire: 12 };
+export const ARMOR_ENCHANT_COST_MUL: Record<ArmorTier, number> = { base: 1 / 5, gold: 1 / 2, legendary: 1, ruby: 8 };
 
 /**
  * Строка заточки аффикса idx — как строка ролла у оружия (enchantInfo): шанс по очкам ЭТОГО аффикса,
