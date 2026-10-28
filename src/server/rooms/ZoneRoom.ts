@@ -7653,6 +7653,8 @@ export class ZoneRoom extends Room<ZoneState> {
     const wid = WEAPON_DROP[weaponKey(w.cls, w.tier)];
     if (wid) loot.push({ id: wid, count: 1 });
     if (kind === "final") {
+      // Шансы рубинового из финального сундука ×2 (оружие, щит, броня, ожерелье) — не выше 100%.
+      const rubyMul = (c: number): number => Math.min(1, c * 2);
       const scroll: ItemId = Math.random() < 0.5 ? "scroll_xp" : "scroll_wind";
       const bag = readBag(p);
       if (addToBag(bag, scroll, 1) === 0) {
@@ -7666,7 +7668,7 @@ export class ZoneRoom extends Room<ZoneState> {
       writeBag(p, bagS);
       loot.push({ id: "scrap", count: CATACOMBS.finalScrap });
       // Редкая награда супербосса — рубиновое оружие СЛУЧАЙНОГО класса (сверх уникального).
-      if (Math.random() < RUBY.dropChance) {
+      if (Math.random() < rubyMul(RUBY.dropChance)) {
         const r = rollWeaponInstance(ATTACK_CLASSES[Math.floor(Math.random() * ATTACK_CLASSES.length)], "ruby");
         rt.weapons.push(r);
         store.put(token, { weapons: rt.weapons });
@@ -7676,7 +7678,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.reply(`💎 ${p.nick} получает рубиновое оружие — ${instanceName(r)}: ${instanceLabels(r).join(", ")}!`);
       }
       // Рубиновый щит — свой бросок (как рубиновое оружие), круглый или Эгида поровну.
-      if (Math.random() < RUBY.dropChance) {
+      if (Math.random() < rubyMul(RUBY.dropChance)) {
         const sh = rollWeaponInstance("shield", "ruby", Math.random, Math.random() < 0.5);
         rt.weapons.push(sh);
         store.put(token, { weapons: rt.weapons });
@@ -7686,7 +7688,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.reply(`💎 ${p.nick} получает рубиновый щит — ${instanceName(sh)}: ${instanceLabels(sh).join(", ")}!`);
       }
       // Рубиновая броня — свой бросок (вдвое чаще рубинового оружия), случайная часть — сразу на склад.
-      if (Math.random() < ARMOR_RUBY.dropChance) {
+      if (Math.random() < rubyMul(ARMOR_RUBY.dropChance)) {
         const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
         const a = rollArmor(part, `r${shortId(Math.random)}`, Math.random, "ruby");
         rt.armor.push(a);
@@ -7700,7 +7702,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.reply(`💎 ${p.nick} получает рубиновую броню — ${armorLabel(a)}!`);
       }
       // Рубиновое ожерелье — свой бросок с тем же шансом, что у рубиновой брони; в запись героя (как кольца).
-      if (Math.random() < RUBY.jewelDropChance && store.get(token)) {
+      if (Math.random() < rubyMul(RUBY.jewelDropChance) && store.get(token)) {
         const js = this.jewelsFor(token);
         const n = newNecklace("ruby", `r${shortId(Math.random)}`);
         js.necks.push(n);
