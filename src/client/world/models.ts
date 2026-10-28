@@ -109,7 +109,7 @@ export const KEEP_MATERIALS: ReadonlySet<ModelName> = new Set<ModelName>(["charH
  * Множитель к общему масштабу персонажа: модели в файле крупнее или мельче пака Quaternius (Knight ≈ 3.2 м в нативе,
  * Человек ≈ 1.15 м). Человек по просьбе вдвое выше рыцаря (BOT_RIG_SCALE × этот множитель).
  */
-export const MODEL_SCALE: Partial<Record<ModelName, number>> = { charHuman: 3.06 }; // рост ≈ 1.78 м, как рыцарь (было 5.54 → 3.2 м)
+export const MODEL_SCALE: Partial<Record<ModelName, number>> = { charHuman: 5 }; // рост ≈ 2.9 м (было 3.06 — 1.78 м)
 
 export function modelScale(name: ModelName): number {
   return MODEL_SCALE[name] ?? 1;
