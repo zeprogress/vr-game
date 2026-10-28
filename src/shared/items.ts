@@ -1318,6 +1318,8 @@ export const ATTACK_POINT = {
   /** Шанс первой попытки и множитель на каждую следующую точку. */
   chance0: 0.9,
   chanceDecay: 0.8,
+  /** Минимальный шанс точки атаки — ниже 1% не падает. */
+  chanceMin: 0.01,
   /** Цена первой попытки в ломе (уникальное) и множитель на каждую следующую точку (2026-10-16: было 100, вдвое дешевле). */
   cost0: 50,
   costGrowth: 1.2,
@@ -1420,7 +1422,8 @@ export function attackPointNext(w: { cls: string; tier: string; sharp?: number }
   const n = attackPoints(w);
   return {
     gain: ATTACK_POINT.gain0 * ATTACK_POINT.gainDecay ** n,
-    chance: ATTACK_POINT.chance0 * ATTACK_POINT.chanceDecay ** n,
+    // Шанс падает с каждой точкой, но не ниже 1%: очередная попытка всегда имеет шанс.
+    chance: Math.max(ATTACK_POINT.chanceMin, ATTACK_POINT.chance0 * ATTACK_POINT.chanceDecay ** n),
     // Цена — от уникального; рубиновое и мастерское — × ENCHANT_TIER_MUL (то же правило, что у роллов).
     cost: Math.round(ATTACK_POINT.cost0 * ATTACK_POINT.costGrowth ** n * (w.tier === "ruby" || w.tier === "craft" ? ENCHANT_TIER_MUL[w.tier] : 1)),
     points: n,
