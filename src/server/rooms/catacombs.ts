@@ -197,12 +197,14 @@ export class CatacombDirector {
   /** Имя зала с темой захода: «Зал костей · Огненная яма». */
   /** Жизни отряда (CATACOMBS.livesPerHero): сколько воскрешений осталось; кончились — объявили ли. */
   private lives = 0;
-  /** Жизней отряда осталось (воскрешение павших тратит по одной). */
+  /** Личные жизни героя (CATACOMBS.livesPerHero + extraLivesPerHero): воскрешение тратит жизнь самого павшего. */
+  private heroLives = new Map<string, number>();
+  /** Жизней отряда осталось — сумма личных. */
   get livesLeft(): number {
     return this.lives;
   }
   private livesMax = 0;
-  private livesOutSaid = false;
+
   /** Добыча каждого героя за забег (сундуки стражей и финальный) — для итоговой таблицы. */
   private readonly lootBy = new Map<string, LootItem[]>();
   private runStart = 0;
@@ -212,14 +214,13 @@ export class CatacombDirector {
    */
   takeLife(id: string): boolean {
     if (!this.inRun(id)) return true;
-    if (this.lives <= 0) {
-      if (!this.livesOutSaid) {
-        this.livesOutSaid = true;
-        this.host.announce({ kind: "fail", title: "Жизни отряда кончились", sub: "павшие встанут только в следующем зале — берегите друг друга", secs: 5 });
-      }
+    const mine = this.heroLives.get(id) ?? 0;
+    if (mine <= 0) {
+      this.host.announce({ kind: "fail", title: "Жизни героя кончились", sub: "этот герой встанет только в следующем зале", secs: 4 });
       return false;
     }
-    this.lives--;
+    this.heroLives.set(id, mine - 1);
+    this.lives = Math.max(0, this.lives - 1);
     this.pushState();
     return true;
   }
@@ -678,7 +679,7 @@ export class CatacombDirector {
         this.lo = this.hi;
         // Новый зал — павшие встают у входа (и без жизней отряда).
         if (CATACOMBS.hallRevive) for (const h of heroes) if (this.party.has(h.id) && h.dead) this.host.revive(h.id);
-        this.livesOutSaid = false;
+
         this.wave = 0;
         this.waveAt = 0;
         this.pending = null;
@@ -739,9 +740,12 @@ export class CatacombDirector {
     this.themes = CAT_HALLS.map((_, i) => themes[i % themes.length]);
     this.host.setThemes(this.themes.join(","));
     this.route = [0];
-    this.lives = Math.max(1, Math.round(CATACOMBS.livesPerHero * heroes.length));
+    // Личные жизни: у каждого героя свой запас (livesPerHero + extraLivesPerHero).
+    this.heroLives.clear();
+    for (const h of heroes) this.heroLives.set(h.id, Math.round(CATACOMBS.livesPerHero + CATACOMBS.extraLivesPerHero));
+    this.lives = [...this.heroLives.values()].reduce((a, b) => a + b, 0);
     this.livesMax = this.lives;
-    this.livesOutSaid = false;
+
     this.lootBy.clear();
     this.runStart = now;
     this.plan = CATACOMBS.stages.map((st, i) => this.makePlan(st, i === CATACOMBS.stages.length - 1, heroes.length));
