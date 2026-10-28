@@ -82,7 +82,7 @@ import {
 } from "#shared/net/messages";
 import { isCamTuneKey, type CamTuneKey } from "#shared/camTune";
 import { ADMIN_NICK, NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, huntPhaseFor, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL } from "#shared/constants";
-import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, ICE_GIANT, mobArmorBits, type CatDefense } from "#shared/mobs";
+import { MOB_MID_K, SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, ICE_GIANT, mobArmorBits, type CatDefense } from "#shared/mobs";
 import { DragonFight, type DragonHost } from "./dragonFight";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
 import { hammerPhysStrike, skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
@@ -2557,7 +2557,7 @@ export class ZoneRoom extends Room<ZoneState> {
     rt.lastHitMobAt = this.elapsed;
     // Позиция цели ДО удара: моб может умереть и исчезнуть, а сплэш считаем вокруг места удара.
     const sx = struck.x;
-    const sy = struck.y + MOB.bodyRadius * struck.scale * 1.4; // середина тела — вспышка не в земле
+    const sy = struck.y + MOB.bodyRadius * struck.scale * MOB_MID_K; // середина тела — вспышка не в земле
     const sz = struck.z;
     if (critM > 1) this.critFx(sx, sy, sz, heroId);
     // Опыт, счётчик убийств и кил-фид — через общий делёж (sim.mobXpShare / sim.mobKills).
@@ -10123,7 +10123,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (m.dead) return;
       const rc = rolledCrit(p, p.rightCls === "bow" ? "right" : "left", rt);
       const c = rollCritMult("arrow", Math.random, false, rc.chance, rc.mult, BOW.critMult, attrOf(p, "luc"));
-      if (c > 1) this.critFx(m.x, m.y + MOB.bodyRadius * m.scale * 1.4, m.z, ownerId);
+      if (c > 1) this.critFx(m.x, m.y + MOB.bodyRadius * m.scale * MOB_MID_K, m.z, ownerId);
       const [dx, dz] = dirTo(m, fromX, fromZ);
       this.skillHitMob(ownerId, m, mul * pow.dmg * c, dx, dz, true, false, false, c > 1, hit);
     };
@@ -10150,7 +10150,7 @@ export class ZoneRoom extends Room<ZoneState> {
             if (m0.dead) return;
             this.skillHitMob(ownerId, m0, L.dmg * pow.dmg * WEAPONS2.dagger.critMult, ax, az, false, false, false, true, hit);
             stun(m0.id, L.stun);
-            this.critFx(m0.x, m0.y + MOB.bodyRadius * m0.scale * 1.4, m0.z, ownerId);
+            this.critFx(m0.x, m0.y + MOB.bodyRadius * m0.scale * MOB_MID_K, m0.z, ownerId);
           }, L.time * 1000);
           return true;
         }
@@ -10938,7 +10938,7 @@ export class ZoneRoom extends Room<ZoneState> {
           // Огонь — магия; тик без кулдауна удара и без вздрагивания (как яд), число урона — своё.
           this.skillHitMob(a.owner, m, a.dmg, 0, 0, false, true, true, false);
           const dealt = Math.round(Math.max(0, hp0 - (m.dead ? 0 : m.hp)));
-          if (dealt > 0) this.sim.dmgHits.push({ x, y: m.y + MOB.bodyRadius * m.scale * 1.6, z, dmg: dealt, by: a.owner, mob: m.id, c: "fire" });
+          if (dealt > 0) this.sim.dmgHits.push({ x, y: m.y + MOB.bodyRadius * m.scale * MOB_MID_K, z, dmg: dealt, by: a.owner, mob: m.id, c: "fire" });
         }
         if (a.mode === "sword") this.sim.slowMob(m.id, STEEL_AURA.slowSec, STEEL_AURA.slowMul);
       }
@@ -11219,7 +11219,7 @@ export class ZoneRoom extends Room<ZoneState> {
           if (d > radius) continue;
           // Крит — на каждую стрелу и цель отдельно.
           const critM = rollCritMult("arrow", Math.random, false, rc.chance, rc.mult, BOW.critMult, attrOf(p, "luc"));
-          if (critM > 1) this.critFx(m.x, m.y + MOB.bodyRadius * m.scale * 1.4, m.z, ownerId);
+          if (critM > 1) this.critFx(m.x, m.y + MOB.bodyRadius * m.scale * MOB_MID_K, m.z, ownerId);
           this.skillHitMob(ownerId, m, base * critM, dx / (d || 1), dz / (d || 1), true, false, false, false);
         }
       }, step * (i + 0.5) * 1000);
@@ -11908,7 +11908,7 @@ export class ZoneRoom extends Room<ZoneState> {
         // Тик (dot) в hitMob цифру не показывает — отражение было незаметным: своя цифра и вспышка.
         const back = Math.round(Math.max(0, hp0 - Math.max(0, src.hp)));
         if (back > 0) {
-          const my = src.y + MOB.bodyRadius * src.scale * 1.4;
+          const my = src.y + MOB.bodyRadius * src.scale * MOB_MID_K;
           this.sim.dmgHits.push({ x: src.x, y: my, z: src.z, dmg: back, by: h.target, mob: src.id, c: "reflect" });
           this.broadcast(MSG.act, { k: "reflectHit", id: h.target, x: p.head.x, y: p.head.y - 0.6, z: p.head.z, x2: src.x, z2: src.z, d: my } satisfies ActRelay);
         }

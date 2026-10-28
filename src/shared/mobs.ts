@@ -1374,3 +1374,6 @@ export const CAT_SUPERBOSSES: readonly CatBoss[] = [
 /** Имена супербоссов катакомб — оверлей спектатора ставит их панель HP вверху (у них тип «slime», не «boss»). */
 export const CAT_BOSS_NAMES: readonly string[] = CAT_SUPERBOSSES.map((b) => b.name);
 
+
+/** Середина тела моба в радиусах его тела (масштабированных): высота модели ≈ 1.75 радиуса, середина — 0.9. Все цифры и вспышки попаданий берут её. */
+export const MOB_MID_K = 0.9;
