@@ -7597,7 +7597,9 @@ export class ZoneRoom extends Room<ZoneState> {
       // Калибровка вида под отряд опорного уровня (как моб этого вида против героев levelRef)...
       const k = Math.max(CATACOMBS.levelMin, Math.min(CATACOMBS.levelMax, CATACOMBS.levelRef / def.level));
       // ...и рост вместе с героями: их HP и урон растут ~ как уровень² (CATACOMBS.levelPow).
-      const lv = Math.max(0.3, Math.min(2.5, o.partyLevel / CATACOMBS.levelRef)) ** CATACOMBS.levelPow;
+      const lv =
+        Math.max(0.3, Math.min(2.5, o.partyLevel / CATACOMBS.levelRef)) ** CATACOMBS.levelPow *
+        Math.max(1, o.partyLevel / CATACOMBS.levelKnee) ** CATACOMBS.levelPowHigh;
       const opts = eliteMobOpts(def);
       opts.hp = Math.round(def.hp * o.hpMul * k ** 1.4 * lv * (af?.hpMul ?? 1) * CATACOMBS.hpScale);
       opts.dmgMul = def.dmgMul * o.dmgMul * k ** 1.2 * lv * CATACOMBS.dmgScale;

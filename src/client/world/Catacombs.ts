@@ -11,6 +11,7 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { PointLight } from "@babylonjs/core/Lights/pointLight";
+
 import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
 import { Color4 } from "@babylonjs/core/Maths/math.color";
 import "@babylonjs/core/Particles/particleSystemComponent";
@@ -49,6 +50,48 @@ import { catTune, onCatTuneChanged } from "./catTune";
 import { setCatBossShadowAlpha, setCatShadowAlpha } from "./blobShadow";
 import { makeFireMaterial } from "./FireShader";
 import { LAYER, groundLayer } from "../engine/renderLayers";
+
+
+/**
+ * Яркость всех источников света катакомб (факелы, лампы, люстры, алтарь) — общий множитель. 2026-10-28: ярче
+ * по просьбе (было 1). Живая подстройка: `?catlight=1` (ползунок, значение — в localStorage и строкой для кода).
+ */
+const CAT_LIGHT = { k: 1.4 };
+(() => {
+  if (typeof location === "undefined" || new URLSearchParams(location.search).get("catlight") !== "1") return;
+  try {
+    const v = Number(localStorage.getItem("zep.catlight"));
+    if (v > 0) CAT_LIGHT.k = v;
+  } catch {
+    /* без хранилища — по умолчанию */
+  }
+  const box = document.createElement("div");
+  box.style.cssText =
+    "position:fixed;top:8px;right:8px;z-index:9999;background:rgba(16,18,24,.92);color:#e7e9ee;font:12px ui-monospace,monospace;padding:10px;border-radius:8px;border:1px solid #3a4050;width:260px";
+  box.innerHTML =
+    '<div style="color:#9fd3ff;margin-bottom:6px">Яркость света катакомб</div>' +
+    '<input type="range" min="0.3" max="3" step="0.05" style="width:100%"><div class="v"></div>';
+  const inp = box.querySelector("input") as HTMLInputElement;
+  const out = box.querySelector(".v") as HTMLDivElement;
+  const show = (): void => {
+    out.textContent = `const CAT_LIGHT = { k: ${CAT_LIGHT.k.toFixed(2)} };`;
+  };
+  inp.value = String(CAT_LIGHT.k);
+  inp.oninput = () => {
+    CAT_LIGHT.k = Number(inp.value);
+    try {
+      localStorage.setItem("zep.catlight", inp.value);
+    } catch {
+      /* не важно */
+    }
+    show();
+  };
+  for (const ev of ["wheel", "pointerdown", "keydown"] as const) box.addEventListener(ev, (e) => e.stopPropagation());
+  show();
+  const add = (): void => void document.body.appendChild(box);
+  if (document.body) add();
+  else addEventListener("DOMContentLoaded", add);
+})();
 
 /** Что о катакомбах знает клиент (из RoomState). */
 export interface CatView {
@@ -634,7 +677,7 @@ export class CatacombsFx {
         const l = ls[i];
         if (!lightOn(l)) continue;
         const f = flick(i * 2.3 + h * 5.1);
-        l.intensity = 1.45 + 0.35 * f;
+        l.intensity = (1.45 + 0.35 * f) * CAT_LIGHT.k;
         const tc = CAT_THEMES[this.hallTheme[h]].light;
         l.diffuse.set(tc[0], tc[1] * (1 + 0.18 * f), tc[2] * (1 + 0.3 * f));
         let b = this.lightBase.get(l);
@@ -1850,7 +1893,7 @@ export class CatacombsFx {
     altarLight.diffuse = new Color3(0.9, 0.85, 0.8);
     altarLight.specular = new Color3(0.2, 0.2, 0.2);
     altarLight.range = 6;
-    altarLight.intensity = 0.8;
+    altarLight.intensity = 0.8 * CAT_LIGHT.k;
     altarLight.includedOnlyMeshes = [base, slab];
     const ring = add(MeshBuilder.CreateGround("catShrineRing", { width: 7, height: 7 }, scene), glow("catShrineRingMat", ringTexture(scene), 0.95));
     ring.position.y = 0.09;

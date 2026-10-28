@@ -1388,9 +1388,11 @@ if (ONLY.has("catacombs")) {
     if (st.catPhase === 0 && i > 100) break;
   }
   for (const a of announces) say(`    ${a}`);
+  if (process.env.LAB_CHAT) for (const c of chat) say(`    [чат] ${c}`);
   const home = bots.filter((b) => !CAT.inCatRegion(b.bot.state.head.x, b.bot.state.head.z)).length;
   const got = bots.map((b, i) => b.bot.rt.weapons.length - weapons0[i]);
-  const win = announces.some((a) => a.includes("[win]"));
+  // Победа — карточка [win] или итог в чате («Катакомбы пройдены»): карточка победы приходит не тем сообщением.
+  const win = announces.some((a) => a.includes("[win]")) || chat.some((c) => c.includes("Катакомбы пройдены"));
   say(`  итог: ${win ? "ПОБЕДА" : "провал"} за ${f(r.t(), 0)} с · смертей ${deaths} · мобов одновременно до ${maxMobs} · разброс отряда до ${f(maxSpread, 1)} м`);
   const lvl1 = bots.map((b) => b.bot.state.level + (b.bot.state.xp ?? 0) / Math.max(1, xpToNextLab(b.bot.state.level)));
   say(`  опыт за забег: ${bots.map((b, i) => `${b.bot.state.nick} +${f(lvl1[i] - lvl0[i], 2)} ур.`).join(", ")}`);

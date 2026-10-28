@@ -55,6 +55,8 @@ namespace Zep
         /// каждая свеча и факел катакомб. Тёплые мерцают.
         readonly List<(Light l, float full)> dunAll = new();
         readonly List<(Light l, float full)> catFlameLights = new();
+        /// Яркость всех огней катакомб — как CAT_LIGHT в вебе (world/Catacombs.ts), 2026-10-28: ярче по просьбе.
+        const float CatBright = 1.4f;
         float time;
 
         void Awake() => Load();
@@ -216,7 +218,7 @@ namespace Zep
                     float range = fill ? 11f : c.range;
                     var l = MakePoint(c.name, fill ? new Color(1f, 0.62f, 0.34f) : C(c.color), range);
                     l.transform.position = new Vector3(c.p[0], c.p[1], c.p[2]);
-                    l.intensity = PointI(c.intensity, range) * (fill ? 0.55f : 0.9f);
+                    l.intensity = PointI(c.intensity, range) * (fill ? 0.55f : 0.9f) * CatBright;
                     catLights.Add(l);
                 }
             foreach (var l in catLights) l.enabled = inCat;
@@ -231,7 +233,7 @@ namespace Zep
                     // Группа свечей — сильнее и дальше, но не линейно (как несколько свечей рядом).
                     float k = Mathf.Sqrt(Mathf.Max(1, f.count));
                     l.range = range * Mathf.Min(2f, 0.8f + 0.2f * k);
-                    float full = PointI(webI * k, l.range) * 1.15f;
+                    float full = PointI(webI * k, l.range) * 1.15f * CatBright;
                     l.intensity = full;
                     catFlameLights.Add((l, full));
                 }
