@@ -1373,3 +1373,9 @@ export const CAT_SUPERBOSSES: readonly CatBoss[] = [
 ];
 /** Имена супербоссов катакомб — оверлей спектатора ставит их панель HP вверху (у них тип «slime», не «boss»). */
 export const CAT_BOSS_NAMES: readonly string[] = CAT_SUPERBOSSES.map((b) => b.name);
+
+/**
+ * Высота точки попадания над землёй, м: цифры урона, крит, вспышки и брызги у наземных мобов и героев
+ * (уровень рук модели «Человек»). У летающих мобов — середина тела (см. ZoneSim.hitMarkY).
+ */
+export const HIT_MARK_HEIGHT = 2.45;

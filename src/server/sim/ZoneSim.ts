@@ -3,7 +3,7 @@ import { QUEST } from "#shared/quests";
 import { AFFIX, BOW, COMBAT, DROP_CHANCE, EVENT, WEAPON_DROP_MUL, UNIQUE_DROP_MUL, goldDropMulForLevel, WORLD, PLAYER } from "#shared/constants";
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { RAID } from "#shared/raid";
-import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, WEB, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER, ICE_GIANT, MOB_SWING } from "#shared/mobs";
+import { HIT_MARK_HEIGHT, BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, WEB, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER, ICE_GIANT, MOB_SWING } from "#shared/mobs";
 import { DUN_MOB_CAMPS, DUN_X, DUN_Z, dunFloorLocal, dunProject, dunWorld, inDunRegion } from "#shared/dungeon";
 import { ARMOR_DROP, ARMOR_PARTS, armorBaseLevelMul, armorGoldDropChance, armorLegendaryDropChance, armorLevelMul, ARMOR_LEVEL_GATE, levelFadeMul, rollArmor, type ArmorInstance } from "#shared/armor";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
@@ -2907,6 +2907,11 @@ export function eliteOpts(d: EliteMobDef): NonNullable<ConstructorParameters<typ
 /** Катакомбы: сколько секунд тело моба лежит в мире после смерти — клиент проигрывает клип смерти, потом убираем. */
 const CAT_CORPSE_LINGER_S = 2;
 
+/** Точка цифр/вспышки попадания по мобу: наземные — HIT_MARK_HEIGHT над землёй, летающие — середина тела. */
+function hitMarkY(m: { y: number; scale: number; flying: boolean }): number {
+  return m.flying ? m.y + MOB.bodyRadius * m.scale * 1.4 : m.y + HIT_MARK_HEIGHT;
+}
+
 export class ZoneSim {
   /** Админ-панель пульта: false — мобы замирают на месте (не тикают вовсе). */
   mobsEnabled = true;
@@ -3642,7 +3647,7 @@ export class ZoneSim {
         ch.t -= dt;
         const hp0 = m.hp;
         const x = m.x;
-        const y = m.y + MOB.bodyRadius * m.scale * 1.4;
+        const y = hitMarkY(m);
         const z = m.z;
         // Яд — магический урон: физическая броня моба на него не действует, магическая уязвимость — действует.
         this.hitMob(m.id, ch.dps * ch.stacks * dt, 0, 0, ch.by, false, true, true);
@@ -3661,7 +3666,7 @@ export class ZoneSim {
       m.bleedT -= dt;
       const hp0 = m.hp;
       const x = m.x;
-      const y = m.y + MOB.bodyRadius * m.scale * 1.4;
+      const y = hitMarkY(m);
       const z = m.z;
       this.hitMob(m.id, m.bleedDps * dt, 0, 0, m.bleedBy, false, true);
       m.bleedShown += Math.max(0, hp0 - (m.dead ? 0 : m.hp));
@@ -3799,7 +3804,7 @@ export class ZoneSim {
     if (dealt > 0 && !dot) {
       this.dmgHits.push({
         x: m.x,
-        y: m.y + MOB.bodyRadius * m.scale * 1.4,
+        y: hitMarkY(m),
         z: m.z,
         dmg: Math.round(dealt),
         by: attacker || undefined,
@@ -3949,7 +3954,7 @@ export class ZoneSim {
       const hp0 = o.hp;
       this.hitMob(o.id, dmg, 0, 0, by, false, true, true);
       const dealt = Math.round(Math.max(0, hp0 - (o.dead ? 0 : o.hp)));
-      if (dealt > 0) this.dmgHits.push({ x: o.x, y: o.y + MOB.bodyRadius * o.scale * 1.6, z: o.z, dmg: dealt, by: by || undefined, mob: o.id, c: venom ? "venom" : "poison" });
+      if (dealt > 0) this.dmgHits.push({ x: o.x, y: hitMarkY(o), z: o.z, dmg: dealt, by: by || undefined, mob: o.id, c: venom ? "venom" : "poison" });
     }
     for (const o of near) if (o !== m && !o.dead) this.poisonMob(o.id, ch.dps, dmg, by, PLAGUE.spread, venom);
   }
