@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: Typecheck, тесты, сборка, схема
+    runs-on: ubuntu-latest
+    # Генератор схемы и тесты пишут во временные файлы — им нужен доступ к /tmp,
+    # который на ubuntu-раннере есть по умолчанию.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Установить зависимости
+        run: npm ci
+
+      - name: Typecheck (client + server + tests)
+        run: npm run typecheck
+
+      - name: Тесты (shared + server)
+        run: npm test
+
+      - name: Сборка клиента (vite build)
+        run: npm run build:ci
+
+      - name: Unity-схема не разошлась с schema.ts
+        run: bash unity/tools/check-schema.sh
