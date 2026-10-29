@@ -432,7 +432,12 @@ function build(cls: ClassId): ClassTree {
       }
     }
     if (n.row % 3 === 2 || n.row === 0) {
-      const ru = t.attrs ? t.attrs[n.row % t.attrs.length] : t.attr!;
+      // Маг поддержки (посох): в ветке «Умения» на нижнем ряду атрибутов балансим
+      // мудрость и интеллект — два крайних правых узла подветки «Мудрость» отдаём
+      // «Интеллекту» (урон магией/лечение), итог 7 МДР / 9 ИНТ вместо 9 / 7.
+      // Влияет только на атрибут узла, не на подпись группы и не на ключевые узлы.
+      const sklShIf = cls === "support" && n.part === "skl" && n.row === 11 && ti === 0 && n.i >= 1 ? 1 : 0;
+      const ru = t.attrs ? t.attrs[n.row % t.attrs.length] : themes[Math.min(themes.length - 1, ti + sklShIf)].attr!;
       n.kind = "attr"; n.attr = RU_ATTR[ru]; n.active = true;
       n.name = `+${ATTR_NODE} ${ru}`; n.desc = `${ru}: ${ATTR_INFO[n.attr]}.`;
       continue;
