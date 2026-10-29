@@ -59,6 +59,9 @@ if [ "$build_ok" = 1 ]; then
   # Кэш озвучки чата живёт в dist/tts — переносим в новую сборку.
   if [ -d dist/tts ]; then sudo -u vrgame mv dist/tts dist.new/tts; fi
   # Сборка Unity-спектатора для Linux (deploy/spectator-linux.sh) — тоже не из git.
+  # Страховка: если спектатора выложили от root (старая версия скрипта / вручную),
+  # чинем владельца до переноса, иначе mv упрётся в Permission denied и сорвёт подмену dist.
+  if [ -e dist/spectator ]; then sudo chown -R vrgame:vrgame dist/spectator; fi
   if [ -d dist/spectator ]; then sudo -u vrgame mv dist/spectator dist.new/spectator; fi
   sudo -u vrgame rm -rf dist.old
   [ -d dist ] && sudo -u vrgame mv dist dist.old

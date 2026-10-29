@@ -23,9 +23,11 @@ echo "$VER" > "$B/VERSION"
 OUT="$(mktemp -d)"
 tar -czf "$OUT/ZEP-Spectator-linux.tar.gz" -C unity/Builds --exclude '*_BurstDebugInformation_DoNotShip' -s ',^Spectator-linux,ZEP-Spectator,' Spectator-linux
 echo "$VER" > "$OUT/version.txt"
-ssh vrgame -o BatchMode=yes "mkdir -p /opt/vrgame/dist/spectator"
+# Папка/файлы должны принадлежать vrgame (не root), иначе autopull упрётся в
+# «mv dist/spectator → dist.new/spectator: Permission denied» при деплое (см. autopull.sh).
+ssh vrgame -o BatchMode=yes "sudo -u vrgame mkdir -p /opt/vrgame/dist/spectator"
 # Сначала архив, потом версия: компьютер со стримом не увидит новую версию раньше её архива.
-rsync -t "$OUT/ZEP-Spectator-linux.tar.gz" vrgame:/opt/vrgame/dist/spectator/
-rsync -t "$OUT/version.txt" vrgame:/opt/vrgame/dist/spectator/
+rsync -t --rsync-path='sudo -u vrgame rsync' "$OUT/ZEP-Spectator-linux.tar.gz" vrgame:/opt/vrgame/dist/spectator/
+rsync -t --rsync-path='sudo -u vrgame rsync' "$OUT/version.txt" vrgame:/opt/vrgame/dist/spectator/
 rm -rf "$OUT"
 echo "выложено: $VER — https://zepgame.duckdns.org/spectator/ZEP-Spectator-linux.tar.gz"
