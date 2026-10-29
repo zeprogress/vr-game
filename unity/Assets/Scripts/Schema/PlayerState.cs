@@ -96,105 +96,108 @@ public PlayerState() { }
 		public byte camPrio = default(byte);
 
 		[Type(26, "uint8")]
+		public byte catLife = default(byte);
+
+		[Type(27, "uint8")]
 		public byte fishing = default(byte);
 
-		[Type(27, "string")]
+		[Type(28, "string")]
 		public string leftCls = default(string);
 
-		[Type(28, "string")]
+		[Type(29, "string")]
 		public string leftTier = default(string);
 
-		[Type(29, "string")]
+		[Type(30, "string")]
 		public string rightCls = default(string);
 
-		[Type(30, "string")]
+		[Type(31, "string")]
 		public string rightTier = default(string);
 
-		[Type(31, "string")]
+		[Type(32, "string")]
 		public string leftAffix = default(string);
 
-		[Type(32, "string")]
+		[Type(33, "string")]
 		public string rightAffix = default(string);
 
-		[Type(33, "boolean")]
+		[Type(34, "boolean")]
 		public bool leftRc = default(bool);
 
-		[Type(34, "boolean")]
+		[Type(35, "boolean")]
 		public bool rightRc = default(bool);
 
-		[Type(35, "array", typeof(ArraySchema<SlotState>))]
+		[Type(36, "array", typeof(ArraySchema<SlotState>))]
 		public ArraySchema<SlotState> bag = new ArraySchema<SlotState>();
 
-		[Type(36, "uint8")]
+		[Type(37, "uint8")]
 		public byte towerFloor = default(byte);
 
-		[Type(37, "uint8")]
+		[Type(38, "uint8")]
 		public byte towerMobsLeft = default(byte);
 
-		[Type(38, "uint16")]
+		[Type(39, "uint16")]
 		public ushort towerTimeSec = default(ushort);
 
-		[Type(39, "uint8")]
+		[Type(40, "uint8")]
 		public byte towerMobsTotal = default(byte);
 
-		[Type(40, "uint8")]
+		[Type(41, "uint8")]
 		public byte towerBossActive = default(byte);
 
-		[Type(41, "float32")]
+		[Type(42, "float32")]
 		public float towerBossHpFrac = default(float);
 
-		[Type(42, "uint8")]
+		[Type(43, "uint8")]
 		public byte plat = default(byte);
 
-		[Type(43, "uint16")]
+		[Type(44, "uint16")]
 		public ushort con = default(ushort);
 
-		[Type(44, "uint16")]
+		[Type(45, "uint16")]
 		public ushort luc = default(ushort);
 
-		[Type(45, "uint16")]
+		[Type(46, "uint16")]
 		public ushort wis = default(ushort);
 
-		[Type(46, "string")]
+		[Type(47, "string")]
 		public string skill1 = default(string);
 
-		[Type(47, "string")]
+		[Type(48, "string")]
 		public string skill2 = default(string);
 
-		[Type(48, "uint8")]
+		[Type(49, "uint8")]
 		public byte crySecs = default(byte);
 
-		[Type(49, "uint8")]
+		[Type(50, "uint8")]
 		public byte plagueSecs = default(byte);
 
-		[Type(50, "uint8")]
+		[Type(51, "uint8")]
 		public byte abyssSecs = default(byte);
 
-		[Type(51, "uint8")]
+		[Type(52, "uint8")]
 		public byte smokeSecs = default(byte);
 
-		[Type(52, "uint8")]
+		[Type(53, "uint8")]
 		public byte ghostSecs = default(byte);
 
-		[Type(53, "uint8")]
+		[Type(54, "uint8")]
 		public byte runSecs = default(byte);
 
-		[Type(54, "uint8")]
+		[Type(55, "uint8")]
 		public byte focusStacks = default(byte);
 
-		[Type(55, "uint8")]
+		[Type(56, "uint8")]
 		public byte cryKind = default(byte);
 
-		[Type(56, "ref", typeof(GemBonusSync))]
+		[Type(57, "ref", typeof(GemBonusSync))]
 		public GemBonusSync gb = new GemBonusSync();
 
-		[Type(57, "ref", typeof(ArmorBonusSync))]
+		[Type(58, "ref", typeof(ArmorBonusSync))]
 		public ArmorBonusSync ab = new ArmorBonusSync();
 
-		[Type(58, "ref", typeof(TreeBonusSync))]
+		[Type(59, "ref", typeof(TreeBonusSync))]
 		public TreeBonusSync tb = new TreeBonusSync();
 
-		[Type(59, "uint16")]
+		[Type(60, "uint16")]
 		public ushort kpm = default(ushort);
 
 		/*
@@ -510,6 +513,18 @@ public PlayerState() { }
 			return () => {
 				__callbacks.RemovePropertyCallback(nameof(camPrio));
 				__camPrioChange -= __handler;
+			};
+		}
+
+		protected event PropertyChangeHandler<byte> __catLifeChange;
+		public Action OnCatLifeChange(PropertyChangeHandler<byte> __handler, bool __immediate = true) {
+			if (__callbacks == null) { __callbacks = new SchemaCallbacks(); }
+			__callbacks.AddPropertyCallback(nameof(this.catLife));
+			__catLifeChange += __handler;
+			if (__immediate && this.catLife != default(byte)) { __handler(this.catLife, default(byte)); }
+			return () => {
+				__callbacks.RemovePropertyCallback(nameof(catLife));
+				__catLifeChange -= __handler;
 			};
 		}
 
@@ -949,6 +964,7 @@ public PlayerState() { }
 				case nameof(stunned): __stunnedChange?.Invoke((byte) change.Value, (byte) change.PreviousValue); break;
 				case nameof(rooted): __rootedChange?.Invoke((byte) change.Value, (byte) change.PreviousValue); break;
 				case nameof(camPrio): __camPrioChange?.Invoke((byte) change.Value, (byte) change.PreviousValue); break;
+				case nameof(catLife): __catLifeChange?.Invoke((byte) change.Value, (byte) change.PreviousValue); break;
 				case nameof(fishing): __fishingChange?.Invoke((byte) change.Value, (byte) change.PreviousValue); break;
 				case nameof(leftCls): __leftClsChange?.Invoke((string) change.Value, (string) change.PreviousValue); break;
 				case nameof(leftTier): __leftTierChange?.Invoke((string) change.Value, (string) change.PreviousValue); break;
