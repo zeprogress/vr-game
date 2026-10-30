@@ -81,7 +81,7 @@ import {
   type AutoGoMsg,
 } from "#shared/net/messages";
 import { isCamTuneKey, type CamTuneKey } from "#shared/camTune";
-import { ADMIN_NICK, NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, huntPhaseFor, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL } from "#shared/constants";
+import { ADMIN_NICK, NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, huntPhaseFor, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL, STORM_COUNTER } from "#shared/constants";
 import { MOB_MID_K, SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, ICE_GIANT, mobArmorBits, type CatDefense } from "#shared/mobs";
 import { DragonFight, type DragonHost } from "./dragonFight";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
@@ -11874,6 +11874,30 @@ export class ZoneRoom extends Room<ZoneState> {
       const src = this.sim.mobs.get(h.byMob);
       const strike = this.strikeOfLive(p, rt);
       if (src && !src.dead && strike) this.sim.hitMob(src.id, strike, -ax, -az, h.target, false);
+    }
+    // Дерево боевого мага: «Разряд» и ◆ «Ответная буря» — контрудар МОЛНИЕЙ по ударившему.
+    // Щита у двуручного молота нет, блока тоже, поэтому ветка «Контратака» у этого класса
+    // отвечает не на блок, а на сам факт полученного удара вблизи (снаряды и яд — не считаются).
+    if (h.byMob && !h.dot && !h.projectile && p.hp > 0) {
+      // Потолка нет: восемь узлов «Разряд» дают 27%, ключ добавляет ещё 10% — 37% на полной ветке.
+      const zapChance = (tk?.counterZap ?? 0) + (tk?.stormAoe ? STORM_COUNTER.keyChance : 0);
+      const src = this.sim.mobs.get(h.byMob);
+      if (zapChance > 0 && src && !src.dead && Math.random() < zapChance) {
+        const power = magicPowerFor(p.level, p) * STORM_COUNTER.mul;
+        // ◆ «Ответная буря» — молния бьёт по всем врагам рядом с атакующим, «Разряд» — только по нему.
+        const radius = tk?.stormAoe ?? 0;
+        const targets = radius > 0
+          ? [...this.sim.mobs.values()].filter((m) => !m.dead && Math.hypot(m.x - src.x, m.z - src.z) <= radius)
+          : [src];
+        for (const m of targets) {
+          const mul = m.id === src.id ? 1 : STORM_COUNTER.splash;
+          this.sim.hitMob(m.id, power * mul, m.x - p.head.x, m.z - p.head.z, h.target, false, false, true);
+          this.broadcast(MSG.act, {
+            k: "chainHit", id: h.target, x: p.head.x, y: p.head.y, z: p.head.z,
+            x2: m.x, z2: m.z, d: m.y + 0.6,
+          } satisfies ActRelay);
+        }
+      }
     }
     // Физический снаряд (копьё, шипы 40 ур.) — только броня, без маг. защиты.
     const magicShot = !!h.projectile && !h.phys;
