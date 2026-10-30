@@ -86,6 +86,7 @@ import { MOB_MID_K, SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPIT
 import { DragonFight, type DragonHost } from "./dragonFight";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
 import { hammerPhysStrike, skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
+import { assassinLeapDamage, crushHealFrac, fanKnifeDamage, hammerWhirlHit, sealBoltDamage, spearRainDamage, thunderSpinMul } from "#shared/skillMath";
 import { RaidFight, type RaidHost } from "./raidFight";
 import { heroStatLine, heroStatRows } from "#shared/heroStats";
 import { TwitchChat } from "../TwitchChat";
@@ -10158,7 +10159,7 @@ export class ZoneRoom extends Room<ZoneState> {
             if (!pp || pp.dead) return;
             if (isBot) this.placeBotAt(pp, lx, lz, m0);
             if (m0.dead) return;
-            this.skillHitMob(ownerId, m0, L.dmg * pow.dmg * WEAPONS2.dagger.critMult, ax, az, false, false, false, true, hit);
+            this.skillHitMob(ownerId, m0, assassinLeapDamage(pow.dmg), ax, az, false, false, false, true, hit);
             stun(m0.id, L.stun);
             this.critFx(m0.x, m0.y + MOB.bodyRadius * m0.scale * MOB_MID_K, m0.z, ownerId);
           }, L.time * 1000);
@@ -10218,7 +10219,7 @@ export class ZoneRoom extends Room<ZoneState> {
                 const dz = m.z - pp.head.z;
                 const d = Math.hypot(dx, dz) || 1;
                 if (Math.acos(Math.max(-1, Math.min(1, (dx * fx + dz * fz) / d))) > FAN.halfAngle) continue;
-                this.skillHitMob(ownerId, m, FAN.dmgMult * pow.dmg, dx / d, dz / d, true, false, false, false, hit);
+                this.skillHitMob(ownerId, m, fanKnifeDamage(pow.dmg), dx / d, dz / d, true, false, false, false, hit);
                 // Кровотечение — доля здоровья цели (как поджог мага), у босса и осколков слабее.
                 const big = m.kind === "boss" || m.kind === "shard";
                 this.sim.bleedMob(m.id, ((m.pctHpBase * FAN.bleedHpFrac) / (big ? FAN.bossDiv : 1)) * (1 + (tk.bleedMul ?? 0)), FAN.bleedSec, ownerId);
@@ -10243,7 +10244,7 @@ export class ZoneRoom extends Room<ZoneState> {
                 this.broadcast(MSG.act, { k: "rainTick", id: ownerId, x: cx, y: terrainHeight(cx, cz), z: cz } satisfies ActRelay);
                 for (const m of around(cx, cz, radius)) {
                   const [dx, dz] = dirTo(m, cx, cz);
-                  this.skillHitMob(ownerId, m, 1.6 * pow.dmg, dx, dz, true, false, false, false, hit);
+                  this.skillHitMob(ownerId, m, spearRainDamage(pow.dmg), dx, dz, true, false, false, false, hit);
                   stun(m.id, 1);
                 }
               }, (0.4 + i * 0.8) * 1000);
@@ -10332,7 +10333,7 @@ export class ZoneRoom extends Room<ZoneState> {
             // Отхил бури: сам герой и союзники в круге волны.
             act({ k: "healAura", x: cx, y: cy, z: cz, d: 1.5, r: sk.radius });
             // Лечение растёт с мудростью кастера; союзники — в большом радиусе, тем же числом.
-            const frac = STORM_CRUSH.healBase + Math.max(0, attrOf(pp, "wis") - ATTR2.start) * STORM_CRUSH.healPerWis;
+            const frac = crushHealFrac(attrOf(pp, "wis") - ATTR2.start);
             this.state.players.forEach((ally) => {
               if (ally.dead || Math.hypot(ally.head.x - cx, ally.head.z - cz) > STORM_CRUSH.allyRadius * RAD) return;
               ally.hp = Math.min(ally.maxHp, ally.hp + ally.maxHp * frac);
@@ -10384,7 +10385,7 @@ export class ZoneRoom extends Room<ZoneState> {
         act({ k: "whirl", x: p.head.x, y: feetY, z: p.head.z, d: WHIRL.duration, r: radius });
         const step = WHIRL.duration / hits;
         // Боевой маг: удары молотом — физика от силы (как у воина); молния в конце — магия от интеллекта (pow).
-        const hitDmg = cls === "battlemage" ? hammerPhysStrike(p.level, p, this.strikeHandFor(p, cls, rt)) * THUNDER_SPIN.hitMul * this.buffMult(ownerId, "dmg") : pow.dmg;
+        const hitDmg = cls === "battlemage" ? hammerWhirlHit(1, hammerPhysStrike(p.level, p, this.strikeHandFor(p, cls, rt))) * this.buffMult(ownerId, "dmg") : pow.dmg;
         const hitMagic = cls === "battlemage" ? false : pow.magic;
         // Ассасин — вихрь-рывок: проносится вперёд (бота переносим по шагам; игрок летит сам — Game.castSkill).
         const [wfx, wfz] = fwd();
@@ -10412,7 +10413,7 @@ export class ZoneRoom extends Room<ZoneState> {
               // Последний удар вихря — молния соседу снаружи круга; множитель растёт с интеллектом.
               const out = around(pp.head.x, pp.head.z, THUNDER_SPIN.range * RNG).find((m) => !near.includes(m));
               if (out) {
-                const boltMul = THUNDER_SPIN.minMul + (THUNDER_SPIN.maxMul - THUNDER_SPIN.minMul) * Math.min(1, Math.max(0, attrOf(pp, "int") - ATTR2.start) / THUNDER_SPIN.intFull);
+                const boltMul = thunderSpinMul(attrOf(pp, "int") - ATTR2.start);
                 act({ k: "chainHit", x: pp.head.x, y: pp.head.y, z: pp.head.z, x2: out.x, z2: out.z, d: out.y + MOB.bodyRadius * out.scale, r: 1 });
                 this.skillHitMob(ownerId, out, boltMul * pow.dmg, 0, 0, false, false, true, false, hit);
               }
@@ -10538,7 +10539,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const hammer = cls === "battlemage";
         const dur = (hammer ? HAMMER_FIELD.duration : SEAL.duration) * DUR + tDur;
         const rad = hammer ? HAMMER_FIELD.radius * RAD : sk.radius;
-        const burn = hammer ? HAMMER_FIELD.boltMul * pow.dmg : 0;
+        const burn = hammer ? sealBoltDamage(pow.dmg) : 0;
         const guard = cls === "warrior";
         this.dropOwnerZones(ownerId, "seal");
         this.seals.push({

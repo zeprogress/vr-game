@@ -5,21 +5,18 @@
  */
 import { ATTR2, attrOf } from "./attrs2";
 import {
-  ARROW_STORM, ASSASSIN_LEAP, BARRIER_ARROW, BLAST_ARROW, CHAIN, CHAIN_HAMMER, FAN, HAMMER_FIELD, PLAGUE, SEAL, SKILLS2, SOUL_STEAL, SPEAR_FLURRY,
-  STORM_CRUSH, SWARM_ARROW, THUNDER_SPIN, WEAPONS2, WHIRL, skillAttrMul, warriorWhirlHits, type ClassId, type SkillAttrs, type SkillId,
+  ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, CHAIN, FAN, HAMMER_FIELD, PLAGUE, SEAL, SKILLS2, SOUL_STEAL, SPEAR_FLURRY, SPEAR_RAIN,
+  SWARM_ARROW, skillAttrMul, warriorWhirlHits, type ClassId, type SkillAttrs, type SkillId,
 } from "./classes2";
 import { SKILL } from "./constants";
+import { assassinLeapDamage, chainHopDamage, chainHops, crushHealFrac, fanKnifeDamage, hammerWhirlHit, sealBoltDamage, sealBoltTicks, spearRainDamage, thunderSpinMul, warriorWhirlDamage } from "./skillMath";
 
 const n = (v: number): string => String(Math.round(v));
 
 /** Урон скачков цепи: первый, затем каждый × falloff. */
 function hops(first: number, count: number, falloff: number): string {
   const out: string[] = [];
-  let d = first;
-  for (let i = 0; i < count; i++) {
-    out.push(n(d));
-    d *= falloff;
-  }
+  for (let i = 0; i < count; i++) out.push(n(chainHopDamage(first, i, falloff)));
   return out.join(" → ");
 }
 
@@ -30,40 +27,40 @@ export function skillDamageText(id: SkillId, cls: ClassId, strike: number, a: Sk
   const int = Math.max(0, attrOf(a, "int") - ATTR2.start);
   switch (id) {
     case "stunBash":
-      if (cls === "assassin") return `Урон ${n(ASSASSIN_LEAP.dmg * strike * WEAPONS2.dagger.critMult)} (крит)`;
+      if (cls === "assassin") return `Урон ${n(assassinLeapDamage(strike))} (крит)`;
       if (cls === "battlemage") return `Урон ${n(base)} всем рядом; молнии по 3 мобам подальше — по ${n(base)}`;
       if (cls === "warrior") return `Урон ${n(base)} всем рядом, с шансом крита`;
       return `Урон ${n(base)} всем рядом`;
     case "arrowRain":
       if (cls === "archer") return `Урон ${n(strike)} за залп × ${SKILL.arrowRain.bowHits} залпа`;
-      if (cls === "assassin") return `Урон ${n(FAN.dmgMult * strike)} за нож × ${FAN.volleys} веера + кровотечение`;
-      if (cls === "spearman") return `Урон ${n(1.6 * strike)} за копьё × 3`;
+      if (cls === "assassin") return `Урон ${n(fanKnifeDamage(strike))} за нож × ${FAN.volleys} веера + кровотечение`;
+      if (cls === "spearman") return `Урон ${n(spearRainDamage(strike))} за копьё × ${SPEAR_RAIN.count}`;
       return `Урон ${n(base)} за волну × ${SKILL.arrowRain.hits} + горение`;
     case "crush":
       if (cls === "battlemage") {
-        const heal = STORM_CRUSH.healBase + Math.max(0, attrOf(a, "wis") - ATTR2.start) * STORM_CRUSH.healPerWis;
+        const heal = crushHealFrac(attrOf(a, "wis") - ATTR2.start);
         return `Урон ${n(base)} в круге; лечение ${Math.round(heal * 1000) / 10}% здоровья`;
       }
       return `Урон ${n(base)} в круге`;
     case "seal":
       if (cls === "battlemage") {
-        const bolt = HAMMER_FIELD.boltMul * strike;
-        return `Урон ${n(bolt)} за молнию (каждые 0.5 с), до ${n(bolt * HAMMER_FIELD.duration * 2)} за поле`;
+        const bolt = sealBoltDamage(strike);
+        return `Урон ${n(bolt)} за молнию (каждые 0.5 с), до ${n(bolt * sealBoltTicks(HAMMER_FIELD.duration))} за поле`;
       }
       if (cls === "support") return `Лечение ${Math.round(SEAL.healFracPerSec * 1000) / 10}% здоровья в секунду`;
       return null;
     case "whirlwind":
       if (cls === "spearman") return `Урон ${n(SPEAR_FLURRY.dmg * strike)} за выпад × ${SPEAR_FLURRY.thrusts}`;
       if (cls === "battlemage") {
-        const mul = THUNDER_SPIN.minMul + (THUNDER_SPIN.maxMul - THUNDER_SPIN.minMul) * Math.min(1, int / THUNDER_SPIN.intFull);
-        return `Урон ${n(sk.dmgMult * (phys !== undefined ? phys * THUNDER_SPIN.hitMul : strike))} за удар × ${sk.hits}; молния ${n(mul * strike)} (×${Math.round(mul * 100) / 100})`;
+        const mul = thunderSpinMul(int);
+        const whirl = phys !== undefined ? hammerWhirlHit(sk.dmgMult, phys) : sk.dmgMult * strike;
+        return `Урон ${n(whirl)} за удар × ${sk.hits}; молния ${n(mul * strike)} (×${Math.round(mul * 100) / 100})`;
       }
-      if (cls === "warrior") return `Урон ${n(WHIRL.warriorDmg * strike)} за удар × ${warriorWhirlHits(a)}+ (больше с роллом скорости и кличем), каждый — с шансом крита`;
+      if (cls === "warrior") return `Урон ${n(warriorWhirlDamage(strike))} за удар × ${warriorWhirlHits(a)}+ (больше с роллом скорости и кличем), каждый — с шансом крита`;
       return `Урон ${n(base)} за удар × ${sk.hits}`;
     case "chain":
       if (cls === "support") return `Лечение по цепи: ${hops(strike * 2.2, 4, CHAIN.falloff)}`;
-      if (cls === "battlemage") return `Урон по скачкам: ${hops(base, CHAIN_HAMMER.hops, CHAIN.falloff)}`;
-      return `Урон по скачкам: ${hops(base, sk.hits, CHAIN.falloff)}`;
+      return `Урон по скачкам: ${hops(base, chainHops(cls === "battlemage", sk.hits), CHAIN.falloff)}`;
     case "plague": {
       // База яда — атака кинжала (plagueAtk, сервер шлёт её в phys у ассасина), не сила удара.
       const k = skillAttrMul("plague", a);
