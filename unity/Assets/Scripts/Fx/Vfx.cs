@@ -30,6 +30,8 @@ namespace Zep
             public bool scorch;
             public Follow fk;
             public string fid;
+            /// Слот зарезервирован под зону (mode 1): быстрые волны и вспышки его не занимают.
+            public bool zone;
         }
 
         const int Sparks = 96, BoltSeg = 14;
@@ -39,6 +41,13 @@ namespace Zep
         readonly List<(Light l, float age, float life, float peak)> flashes = new();
         int nF;
         readonly List<Item> decals = new(), scorches = new(), smokes = new(), sparks = new(), bolts = new(), pillars = new();
+        /// Пул декалей РАСТЁТ по требованию: долгие зоны («Печать света» 6 с, «Грозовое поле» 5 с)
+        /// раньше затирались другими пятнами (жёсткая ротация 40 слотов) и пропадали раньше срока.
+        Mesh decalMesh;
+        Material decalTemplate;
+        /// Последняя выданная декаль — нужна Cone() (раньше брали по индексу nD-1, а с растущим пулом это неверно).
+        Item lastDecal;
+        const int DecalMax = 96, ZoneMax = 12;
         int nD, nSc, nSm, nS, nB, nP;
         float time;
 
@@ -74,7 +83,9 @@ namespace Zep
                 triangles = new[] { 0, 2, 1, 0, 3, 2 },
             };
             plane.RecalculateBounds();
-            for (int i = 0; i < 40; i++) decals.Add(Make("decal", plane, a.fxDecal));
+            decalMesh = plane;
+            decalTemplate = a.fxDecal;
+            for (int i = 0; i < 16; i++) decals.Add(NewDecal(false));
             for (int i = 0; i < 10; i++)
             {
                 var sc = Make("scorch", plane, a.fxDecal);
@@ -156,6 +167,39 @@ namespace Zep
             }
         }
 
+        Item NewDecal(bool zone)
+        {
+            var d = Make("decal", decalMesh, decalTemplate);
+            d.zone = zone;
+            return d;
+        }
+
+        /// Слот под декаль: свободный → новый (до DecalMax) → самый старый из своего вида.
+        Item TakeDecal(bool zone)
+        {
+            int n = decals.Count;
+            for (int i = 0; i < n; i++)
+            {
+                int idx = (nD + i) % n;
+                var d = decals[idx];
+                if (d.zone != zone) continue; // зоны и обычные пятна не смешиваем
+                if (d.age >= d.life) { nD = (idx + 1) % n; return d; }
+            }
+            int ofKind = 0;
+            foreach (var d2 in decals) if (d2.zone == zone) ofKind++;
+            int cap = zone ? ZoneMax : DecalMax;
+            if (ofKind < cap)
+            {
+                var fresh = NewDecal(zone);
+                decals.Add(fresh);
+                return fresh;
+            }
+            Item oldest = null;
+            foreach (var d3 in decals)
+                if (d3.zone == zone && (oldest == null || d3.age > oldest.age)) oldest = d3;
+            return oldest ?? NewDecal(zone);
+        }
+
         Item Make(string name, Mesh mesh, Material template, bool world = false)
         {
             var go = new GameObject("vfx_" + name);
@@ -185,7 +229,8 @@ namespace Zep
         {
             Item d;
             if (mode == Scorch) { d = scorches[nSc]; nSc = (nSc + 1) % scorches.Count; }
-            else { d = decals[nD]; nD = (nD + 1) % decals.Count; }
+            else d = TakeDecal(mode == 1);
+            lastDecal = d;
             var sh = shape ?? Shape.Circle;
             var tr = d.go.transform;
             // Пятно лежит по склону: наклон по нормали земли под центром (мишени на мобах — ровно).
@@ -228,7 +273,7 @@ namespace Zep
         {
             float l = Mathf.Max(1e-4f, Mathf.Sqrt(dx * dx + dz * dz));
             Decal(p, radius, color, life, 3, alpha);
-            var d = decals[(nD + decals.Count - 1) % decals.Count];
+            var d = lastDecal;
             // Ось сектора в шейдере — локальная +x (uv.x вправо); поворот вокруг Y, чтобы +x смотрела по (dx,dz).
             d.go.transform.rotation = Tilt(p) * Quaternion.Euler(0, Mathf.Atan2(-dz / l, dx / l) * Mathf.Rad2Deg, 0);
             d.mat.SetFloat(Half, half);
