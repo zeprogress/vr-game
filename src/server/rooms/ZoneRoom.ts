@@ -10318,14 +10318,9 @@ export class ZoneRoom extends Room<ZoneState> {
           // Бот приземляется в центр удара, но не внутрь моба — его выталкивает наружу.
           if (isBot) this.placeBotAt(pp, cx, cz);
           act({ k: "crushHit", x: cx, y: cy, z: cz, r: sk.radius });
-          // Волна боевого мага: магия от интеллекта + удар самим молотом (СИЛ, тир, заточка,
-          // точка атаки). Раньше оружие в руках не влияло на волну вообще.
-          const waveDmg = cls === "battlemage"
-            ? pow.dmg + hammerPhysStrike(pp.level, pp, this.strikeHandFor(pp, cls, rt)) * STORM_CRUSH.physMul
-            : pow.dmg;
           for (const m of around(cx, cz, sk.radius)) {
             const [dx, dz] = dirTo(m, cx, cz);
-            this.skillHitMob(ownerId, m, sk.dmgMult * waveDmg, dx, dz, false, false, pow.magic, false, hit);
+            this.skillHitMob(ownerId, m, sk.dmgMult * pow.dmg, dx, dz, false, false, pow.magic, false, hit);
             if (cls === "battlemage") slow(m.id, STORM_CRUSH.slowSec, STORM_CRUSH.slowMul);
             else stun(m.id, 1);
           }
