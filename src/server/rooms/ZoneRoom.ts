@@ -1784,10 +1784,7 @@ export class ZoneRoom extends Room<ZoneState> {
         rt.lastCast = this.elapsed;
         rt.healNext = Math.max(healDue, this.elapsed - HIT_BUNCH) + healRate;
         const beforeHp = target.hp;
-        target.hp = Math.min(
-          target.maxHp,
-          target.hp + healAmountFor(p.level, p, charge) * rolledDmgMul(p, healHand, rt),
-        );
+        this.skillHeal(client.sessionId, target, healAmountFor(p.level, p, charge) * rolledDmgMul(p, healHand, rt));
         // Лечение союзника в бою с боссом — вклад в общий опыт (гибридный делёж).
         if (target !== p) this.sim.bossHeal(client.sessionId, target.hp - beforeHp);
         return;
@@ -1932,10 +1929,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const used = takeOne(bag, slot);
       if (!used) return;
       writeBag(p, bag);
-      p.hp = Math.min(
-        p.maxHp,
-        p.hp + potionHeal(ITEMS[used], p.hp, p.maxHp) * potionPowerFor(p),
-      );
+      this.skillHeal(client.sessionId, p, potionHeal(ITEMS[used], p.hp, p.maxHp) * potionPowerFor(p));
 
       // Соседям — звук глотка.
       const relay: ActRelay = {
@@ -9191,10 +9185,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (!used) return;
 
     writeBag(p, bag);
-    p.hp = Math.min(
-      p.maxHp,
-      p.hp + potionHeal(ITEMS[used], p.hp, p.maxHp) * potionPowerFor(p),
-    );
+    this.skillHeal(bot.id, p, potionHeal(ITEMS[used], p.hp, p.maxHp) * potionPowerFor(p));
     bot.drinkCd = BOT.drinkCooldown;
     // Соседям — звук глотка, как у игрока.
     const relay: ActRelay = { k: "drink", id: bot.id, x: p.head.x, y: p.head.y, z: p.head.z };

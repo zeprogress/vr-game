@@ -3804,7 +3804,17 @@ export class Game {
       const vr = this.player.inVR;
       for (const h of msg.hits) {
         if (vr && Math.hypot(h.x - pp.x, h.z - pp.z) > VR_FX_RANGE) continue;
-        this.crossFx.damageNumber(h.x, h.y, h.z, h.dmg, dmgNumberColor(h.c));
+        // Цифра про САМОГО героя (лечение себя, урон по себе) стоит у его головы —
+        // в первом лице это ровно над камерой, и её не видно. Рисуем такую цифру
+        // перед глазами: чуть выше и в паре метров по направлению взгляда.
+        const eyeNow = this.player.eyePosition;
+        const mine = Math.hypot(h.x - pp.x, h.z - pp.z) < 0.75 && Math.abs(h.y - eyeNow.y) < 1.1;
+        if (mine) {
+          const fwd = this.player.eyeForward;
+          this.crossFx.damageNumber(eyeNow.x + fwd.x * 1.8, eyeNow.y + 0.32, eyeNow.z + fwd.z * 1.8, h.dmg, dmgNumberColor(h.c));
+        } else {
+          this.crossFx.damageNumber(h.x, h.y, h.z, h.dmg, dmgNumberColor(h.c));
+        }
       }
     };
     net.onPcInvData = (d) => {
