@@ -931,11 +931,11 @@ export class Sfx {
   private eventBuf: AudioBuffer | null = null;
   private eventLoading = false;
 
-  /** Один раз подгрузить сэмпл объявления ивента и квеста (боевой рог). */
+  /** Один раз подгрузить сэмпл объявления ивента и квеста (рог hornAnonce.wav, 3 с). */
   private preloadEventAnnounce(): void {
     if (this.eventLoading || this.eventBuf || !this.ctx) return;
     this.eventLoading = true;
-    fetch("/sfx/event-horn.wav")
+    fetch("/sfx/event-announce.wav")
       .then((r) => r.arrayBuffer())
       .then((a) => new Promise<AudioBuffer>((res, rej) => this.ctx!.decodeAudioData(a, res, rej)))
       .then((b) => (this.eventBuf = b))

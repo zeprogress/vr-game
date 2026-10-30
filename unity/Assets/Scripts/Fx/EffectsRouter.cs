@@ -28,6 +28,31 @@ namespace Zep
             var net = ZoneNet.I;
             net.Act += OnAct;
             net.DmgHits += OnDmg;
+            net.WorldEvent += OnWorldEvent;
+            net.Catacomb += OnCatacomb;
+        }
+
+        /// Анонс ивента — рог hornAnonce.wav (public/sfx/event-announce.wav), как eventAnnounce в вебе.
+        /// Звук «от камеры»: он должен слышаться всем независимо от того, где ивент.
+        static void AnnounceHorn()
+        {
+            var cam = Camera.main;
+            var at = cam ? cam.transform.position : Vector3.zero;
+            SoundBank.At(at, "eventAnnounce", vol: 1.6f, range: 1e6f);
+        }
+
+        /// Событие мира ("we"): start — трубим; win — фанфары веба здесь не нужны (их играет моб-босс).
+        void OnWorldEvent(Dictionary<string, object> m)
+        {
+            if (!m.TryGetValue("phase", out var ph) || ph as string != "start") return;
+            AnnounceHorn();
+        }
+
+        /// Катакомбы ("cat"): сбор/старт/босс — тот же рог (в вебе так же, onCatacomb).
+        void OnCatacomb(Dictionary<string, object> m)
+        {
+            var kind = m.TryGetValue("kind", out var k) ? k as string : null;
+            if (kind == "start" || kind == "gather" || kind == "boss") AnnounceHorn();
         }
 
         /// Число из события; поле может прийти не числом (строка, флаг) — тогда значение по умолчанию.

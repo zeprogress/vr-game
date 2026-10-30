@@ -39,6 +39,10 @@ namespace Zep
         public event Action<string, string, Dictionary<string, object>> Act;
         /// Числа урона за тик (MSG.dmgHits = "dh", DmgHitsMsg): список {x, y, z, dmg, c?}.
         public event Action<System.Collections.IEnumerable> DmgHits;
+        /// Событие мира (MSG.worldEvent = "we", WorldEventMsg): phase/name/x/z — для звука анонса.
+        public event Action<Dictionary<string, object>> WorldEvent;
+        /// Объявление катакомб (MSG.catacomb = "cat"): kind (start/gather/boss/win/chest).
+        public event Action<Dictionary<string, object>> Catacomb;
 
         ColyseusClient client;
         bool leaving;   // выходим сами (выключение) — не переподключаться
@@ -87,6 +91,8 @@ namespace Zep
                 Room.OnMessage<Dictionary<string, object>>("ac", m =>
                     Act?.Invoke(m.TryGetValue("k", out var k) ? k as string : null, m.TryGetValue("id", out var id) ? id as string : null, m));
                 Room.OnMessage<Dictionary<string, object>>("twmobs", m => TowerMobs?.Invoke(m));
+                Room.OnMessage<Dictionary<string, object>>("we", m => WorldEvent?.Invoke(m));
+                Room.OnMessage<Dictionary<string, object>>("cat", m => Catacomb?.Invoke(m));
                 MuteOtherMessages();
                 Room.OnLeave += code =>
                 {
@@ -175,7 +181,7 @@ namespace Zep
             var json = Resources.Load<TextAsset>("msgTypes");
             if (json == null) return;
             foreach (var t in JsonUtility.FromJson<MsgTypes>(json.text).types)
-                if (t != "sc" && t != "ac" && t != "dh" && t != "twmobs") Room.OnMessage<object>(t, _ => { });
+                if (t != "sc" && t != "ac" && t != "dh" && t != "twmobs" && t != "we" && t != "cat") Room.OnMessage<object>(t, _ => { });
         }
 
         /// Команда пульта от спектатора (MSG.specCmd = "sc"): сервер рассылает её остальным спектаторам и странице оверлея.
