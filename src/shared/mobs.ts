@@ -1289,7 +1289,7 @@ export const CAT_GUARDS: readonly (readonly CatBoss[])[] = [
     {
       key: "boneChief", name: "Мор'Каз, Костяной вождь", title: "страж Галереи мёртвых — поднимает мёртвых, костяные шипы",
       hpMul: 3.71, dmgMul: 2.04, scale: 1.6, retinue: [{ type: "boneWraith", count: 3, perHero: 1 }],
-      mech: [{ kind: "slam", name: "Костяные шипы", every: 7, fx: 2, dmg: 0.3, r: 3.6 }, { kind: "ring", name: "Вопль мертвецов", every: 13, fx: 2, dmg: 0.25, r: 7 }],
+      mech: [{ kind: "slam", name: "Костяные шипы", every: 7, fx: 2, dmg: 0.2, r: 3.6 }, { kind: "ring", name: "Вопль мертвецов", every: 13, fx: 2, dmg: 0.16, r: 7 }],
       adds: { types: ["boneWraith", "spikyBlob"], every: 15, count: 2, perHero: 0.6 },
     },
     {
@@ -1372,7 +1372,7 @@ export const CAT_SUPERBOSSES: readonly CatBoss[] = [
     defense: { phys: 0.35, parry: true }, // кости: клинки вязнут, в стойке отбивает удары
     retinue: [{ type: "boneWraith", count: 3, perHero: 1 }],
     seal: { key: "boneWraith", name: "Призрачный страж", fx: 2, sealTitle: "Костяной трон", rageTitle: "Гнев Императора", rageSub: "гейзеры душ кольцами — отбегайте!" },
-    mech: [{ kind: "slam", name: "Длань мертвеца", every: 7, fx: 2, dmg: 0.3, r: 3.8 }],
+    mech: [{ kind: "slam", name: "Длань мертвеца", every: 7, fx: 2, dmg: 0.2, r: 3.8 }],
     adds: { types: ["boneWraith", "boneWraith", "spikyBlob"], every: 20, count: 2, perHero: 0.5 },
   },
   {

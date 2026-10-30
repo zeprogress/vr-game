@@ -7224,7 +7224,8 @@ export class ZoneRoom extends Room<ZoneState> {
           v: H.kinds.indexOf(kind),
           r: o?.r ?? H.radius,
           delay: o?.delay ?? H.delay,
-          dmgFrac: (o?.dmg ?? H.dmgFrac) * CATACOMBS.hazardScale * this.cat.sizeDmg,
+          // Потолок на удар: рост урона от размера отряда иначе снимал 30%+ HP за круг.
+          dmgFrac: Math.min(H.maxHpFrac, (o?.dmg ?? H.dmgFrac) * CATACOMBS.hazardScale * this.cat.sizeDmg),
           stun: o?.stun ?? (kind === "rockfall" ? 0.8 : 0),
           knock: o?.knock ?? (kind === "souls" ? 6 : 0),
           phys: kind === "rockfall",

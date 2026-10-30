@@ -1002,7 +1002,7 @@ export class CatacombDirector {
       this.host.finalTick(this.bossId, 3);
       if (!dragon && now >= this.ringAt) {
         this.ringAt = now + F.ringEvery * 1000;
-        this.host.hazard(CAT_HAZARD.kinds[b.seal?.fx ?? 1], [{ x: info.x, z: info.z }], { r: F.ringR, dmg: 0.3, knock: 7, delay: 1.8 });
+        this.host.hazard(CAT_HAZARD.kinds[b.seal?.fx ?? 1], [{ x: info.x, z: info.z }], { r: F.ringR, dmg: 0.2, knock: 7, delay: 1.8 }); // 0.3 → 0.2: кольца выкашивали отряд
       }
     }
     if (this.finalPhase === 1 && frac < F.rageAt) this.enterRage(now, hall, b);
