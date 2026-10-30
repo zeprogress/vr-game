@@ -215,25 +215,25 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   // руки бьют по очереди (DAGGER.dual), один — свободная рука даёт уворот.
   // dmg 0.86 → 1.15 (2026-10-02: ассасин был слабейшим и по DPS, и по живучести — лаборатория баланса).
   dagger: {
-    name: WEAPON_NOUN.dagger.name, dmg: 1.35, interval: 0.7, tempoSoft: 1, reach: 1.8, pierce: 1, // 1.15 → 1.35 (2026-10-05)
+    name: WEAPON_NOUN.dagger.name, dmg: 1.35 * 1.4, interval: 0.7, tempoSoft: 1, reach: 1.8, pierce: 1, // 1.15 → 1.35 (2026-10-05); ×1.4 (2026-10-30: отставал от меча по ДПС)
     critBase: 0.12, critMult: 3, twoHanded: false, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Копьё: длинный выпад конусом перед собой, обе руки.
   // dmg 2.1 → 1.45 (2026-10-02: удары больше не пропадают в «окне» моба — копьё стало вдвое сильнее медианы).
   spear: {
-    name: WEAPON_NOUN.spear.name, dmg: 1.75, interval: 0.8, tempoSoft: 1, reach: 5, pierce: 3, // было 5 целей (2026-10-02)
+    name: WEAPON_NOUN.spear.name, dmg: 1.75 * 1.2, interval: 0.8, tempoSoft: 1, reach: 5, pierce: 3, // было 5 целей (2026-10-02); ×1.2 (2026-10-30)
     critBase: 0.05, critMult: 1.5, twoHanded: true, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Молот: тяжёлый физический удар + магическая волна вокруг цели (HAMMER). Удар +12% урона (2026-10-15).
   hammer: {
     // Удар −20% (2026-10-18).
-    name: WEAPON_NOUN.hammer.name, dmg: 2.8 * 1.12 * 1.2 * 0.9 * 0.8, interval: 1.1, tempoSoft: 1, reach: 2.6, pierce: 1,
+    name: WEAPON_NOUN.hammer.name, dmg: 2.8 * 1.12 * 1.2 * 0.9 * 0.8 * 1.1, interval: 1.1, tempoSoft: 1, reach: 2.6, pierce: 1, // ×1.1 (2026-10-30)
     critBase: 0.05, critMult: 1.5, twoHanded: true, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Лук: стрела 1.75 (как сейчас), но масштаб — от СИЛ, темп — от ЛОВ.
   bow: {
     // Стрела +10% (2026-10-19): 2 → 2.2.
-    name: WEAPON_NOUN.bow.name, dmg: 2.2, interval: 1.6, tempoSoft: 1.8, reach: 30, pierce: 1, // 1.75 → 2 (2026-10-05)
+    name: WEAPON_NOUN.bow.name, dmg: 2.2 * 1.05, interval: 1.6, tempoSoft: 1.8, reach: 30, pierce: 1, // 1.75 → 2 (2026-10-05); ×1.05 (2026-10-30)
     critBase: BOW.critChance, critMult: BOW.critMult, twoHanded: true, dmgType: "phys", tiers: [1.2, 3.6, 4.1],
   },
   // Посох: огнешар (средний заряд 0.7), темп — от МДР. Тир теперь множит и магию.
