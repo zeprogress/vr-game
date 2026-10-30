@@ -42,7 +42,9 @@ export function skillDamageText(id: SkillId, cls: ClassId, strike: number, a: Sk
     case "crush":
       if (cls === "battlemage") {
         const heal = STORM_CRUSH.healBase + Math.max(0, attrOf(a, "wis") - ATTR2.start) * STORM_CRUSH.healPerWis;
-        return `Урон ${n(base)} в круге; лечение ${Math.round(heal * 1000) / 10}% здоровья`;
+        // Волна: магия от интеллекта (strike) + удар молотом (phys — от СИЛ, с заточкой) — как на сервере.
+        const wave = base + sk.dmgMult * (phys ?? 0) * STORM_CRUSH.physMul;
+        return `Урон ${n(wave)} в круге; лечение ${Math.round(heal * 1000) / 10}% здоровья`;
       }
       return `Урон ${n(base)} в круге`;
     case "seal":
