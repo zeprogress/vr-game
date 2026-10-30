@@ -678,7 +678,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   seal: {
     name: "Печать света", icon: glyph("s.seal"), desc: "Круг на {d:6} с: союзникам лечение и щит −20% урона, врагам замедление 40%",
-    cooldown: 18, castTime: 0.4, radius: 5, dmgMult: 0, hits: 1,
+    cooldown: 18, castTime: 0.4, radius: 7, dmgMult: 0, hits: 1, // 5 → 7 (2026-10-30: печать была тесной)
     variants: {
       warrior: { name: "Печать стража", desc: "Круг на {d:6} с: союзникам −40% урона, мобы в круге бросаются на воина" },
       battlemage: { name: "Грозовое поле", cdMul: 2, desc: `Круг {r:${HAMMER_FIELD.radius}} м на {d:${HAMMER_FIELD.duration}} с: каждые 0.5 с молния бьёт врагов внутри магией и оглушает на {d:${HAMMER_FIELD.stunSec}} с` },

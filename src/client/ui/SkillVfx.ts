@@ -306,7 +306,9 @@ export class SkillVfx {
   follow: FollowFn | null = null;
 
   constructor(scene: Scene) {
-    for (let i = 0; i < 14; i++) {
+    // 24, а не 14: долгие зоны («Печать света» 6 с, «Грозовое поле» 5 с) раньше перезаписывались
+    // другими декалями и пропадали раньше срока — пул по кругу затирал их.
+    for (let i = 0; i < 24; i++) {
       const mesh = MeshBuilder.CreatePlane(`vfxDecal${i}`, { size: 2 }, scene);
       mesh.rotation.x = Math.PI / 2;
       mesh.bakeCurrentTransformIntoVertices();
@@ -387,12 +389,31 @@ export class SkillVfx {
   }
 
   /** Ударная волна по земле (mode 0), зона (1, life — длительность), прицел (2). */
+  /**
+   * Свободный слот декали: берём первый истёкший, и только если все заняты — самый старый
+   * (по кругу). Иначе долгоживущая зона (печать, грозовое поле) исчезала, как только
+   * очередь доходила до её слота.
+   */
+  private takeDecal(): Decal {
+    const n = this.decals.length;
+    for (let i = 0; i < n; i++) {
+      const idx = (this.nD + i) % n;
+      const d = this.decals[idx];
+      if (d.age >= d.life) {
+        this.nD = (idx + 1) % n;
+        return d;
+      }
+    }
+    const d = this.decals[this.nD];
+    this.nD = (this.nD + 1) % n;
+    return d;
+  }
+
   decal(
     x: number, y: number, z: number, radius: number, color: Color3, life: number,
     mode: 0 | 1 | 2 | 3 | 4 | 5 = 0, alpha = 1, follow: { kind: "hero" | "mob"; id: string; dy: number } | null = null,
   ): void {
-    const d = this.decals[this.nD];
-    this.nD = (this.nD + 1) % this.decals.length;
+    const d = this.takeDecal();
     d.mesh.rotation.y = 0;
     d.mesh.position.set(x, y + 0.07 + (mode === 2 ? 0 : (this.nD % 5) * 0.004), z);
     d.mesh.scaling.set(radius, 1, radius);
