@@ -2791,7 +2791,8 @@ export class ZoneRoom extends Room<ZoneState> {
     // Новый уровень: потолок HP вырос — доливаем разницу плюс бонус.
     const beforeHp = p.maxHp;
     p.maxHp = maxHpFor(p.level, p);
-    p.hp = Math.min(p.maxHp, p.hp + Math.max(0, p.maxHp - beforeHp) + LEVEL_UP_HEAL * levels);
+    // Долив за уровень — тоже зелёной цифрой (уровень-то видно, а сколько прибавилось HP — нет).
+    this.skillHeal(this.idOf(p) ?? "", p, Math.max(0, p.maxHp - beforeHp) + LEVEL_UP_HEAL * levels);
     client?.send(MSG.levelUp, { level: p.level });
     // Соседям (и спектатору) — чтобы над телом всплыли оранжевые крестики и
     // прозвучал уровень. У бота клиента нет, так что это единственный сигнал.
@@ -9970,7 +9971,7 @@ export class ZoneRoom extends Room<ZoneState> {
           if (ally.dead || ally.hp >= ally.maxHp) return;
           if (Math.hypot(ally.head.x - cx, ally.head.z - cz) > U.radius) return;
           const before = ally.hp;
-          ally.hp = Math.min(ally.maxHp, ally.hp + ally.maxHp * ULT_HEAL_FRAC);
+          this.skillHeal(ownerId, ally, ally.maxHp * ULT_HEAL_FRAC);
           if (ally !== p) this.sim.bossHeal(ownerId, ally.hp - before);
           act({ k: "ultHeal", x: ally.head.x, y: ally.head.y - PLAYER.eyeHeight, z: ally.head.z });
         });
@@ -10082,12 +10083,12 @@ export class ZoneRoom extends Room<ZoneState> {
       if (rt.treeCasts % tk.flowEvery === 0) rt.skillAt[kind] = this.elapsed;
     }
     // Дерево: «Восстановление», «Кража жизни» — каждое умение лечит самого героя.
-    if (tk.castHeal) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * tk.castHeal);
+    if (tk.castHeal) this.skillHeal(ownerId, p, p.maxHp * tk.castHeal);
     // ◆ «Святой страж»: каждое умение лечит союзников рядом.
     if (tk.allyHealOnCast) {
       this.state.players.forEach((ally) => {
         if (ally.dead || Math.hypot(ally.head.x - p.head.x, ally.head.z - p.head.z) > 8) return;
-        ally.hp = Math.min(ally.maxHp, ally.hp + ally.maxHp * tk.allyHealOnCast!);
+        this.skillHeal(ownerId, ally, ally.maxHp * tk.allyHealOnCast!);
       });
     }
     const v = CLASS_IDS.indexOf(cls);
@@ -10336,7 +10337,7 @@ export class ZoneRoom extends Room<ZoneState> {
             const frac = crushHealFrac(attrOf(pp, "wis") - ATTR2.start);
             this.state.players.forEach((ally) => {
               if (ally.dead || Math.hypot(ally.head.x - cx, ally.head.z - cz) > STORM_CRUSH.allyRadius * RAD) return;
-              ally.hp = Math.min(ally.maxHp, ally.hp + ally.maxHp * frac);
+              this.skillHeal(ownerId, ally, ally.maxHp * frac);
             });
           }
         }, sk.castTime * 1000);
@@ -10583,10 +10584,7 @@ export class ZoneRoom extends Room<ZoneState> {
           const hp0 = m.hp;
           this.skillHitMob(ownerId, m, sk.dmgMult * pow.dmg, dx, dz, true, false, false, false, hit);
           const dealt = Math.max(0, hp0 - Math.max(0, m.hp));
-          const before = p.hp;
-          p.hp = Math.min(p.maxHp, p.hp + (dealt * LIFE_ARROW.healDmg + p.maxHp * LIFE_ARROW.healMax) * tHeal);
-          const healed = Math.round(p.hp - before);
-          if (healed > 0) this.sim.dmgHits.push({ x: p.head.x, y: p.head.y + 0.4, z: p.head.z, dmg: healed, by: ownerId, c: "heal" });
+          this.skillHeal(ownerId, p, (dealt * LIFE_ARROW.healDmg + p.maxHp * LIFE_ARROW.healMax) * tHeal);
           this.broadcast(MSG.act, { k: "healHit", id: ownerId, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay);
         }, skillArrowTime(Math.hypot(m.x - p.head.x, toY - oy, m.z - p.head.z)) * 1000);
         return true;
@@ -10613,10 +10611,7 @@ export class ZoneRoom extends Room<ZoneState> {
             ally = o;
           }
         });
-        const hp0 = ally.hp;
-        ally.hp = Math.min(ally.maxHp, ally.hp + dmg * SOUL_STEAL.transfer * skillAttrMul("soulSteal", p) * tHeal);
-        const healed = Math.round(ally.hp - hp0);
-        if (healed > 0) this.sim.dmgHits.push({ x: ally.head.x, y: ally.head.y + 0.4, z: ally.head.z, dmg: healed, by: ownerId, c: "heal" });
+        this.skillHeal(ownerId, ally, dmg * SOUL_STEAL.transfer * skillAttrMul("soulSteal", p) * tHeal);
         const allyId = this.idOf(ally) ?? ownerId;
         act({ k: "soulSteal", x: m.x, y: m.y + MOB.bodyRadius * m.scale, z: m.z, x2: ally.head.x, z2: ally.head.z, d: ally.head.y - 0.5 });
         this.broadcast(MSG.act, { k: "healHit", id: allyId, x: ally.head.x, y: ally.head.y, z: ally.head.z } satisfies ActRelay);
@@ -10839,7 +10834,7 @@ export class ZoneRoom extends Room<ZoneState> {
         k: "chainHit", id: ownerId, x: from.head.x, y: from.head.y - 0.3, z: from.head.z,
         x2: target.head.x, z2: target.head.z, d: target.head.y - 0.5, r: i, v,
       } satisfies ActRelay);
-      target.hp = Math.min(target.maxHp, target.hp + heal);
+      this.skillHeal(ownerId, target, heal);
       this.broadcast(MSG.act, { k: "healHit", id: this.idOf(target) ?? ownerId, x: target.head.x, y: target.head.y, z: target.head.z } satisfies ActRelay);
       heal *= CHAIN.falloff;
       from = target;
@@ -10866,7 +10861,7 @@ export class ZoneRoom extends Room<ZoneState> {
         if (ally.dead || ally.hp >= ally.maxHp) return;
         if (Math.hypot(ally.head.x - o.head.x, ally.head.z - o.head.z) > a.r) return;
         const before = ally.hp;
-        ally.hp = Math.min(ally.maxHp, ally.hp + a.perTick);
+        this.skillHeal(a.owner, ally, a.perTick);
         if (ally !== o) this.sim.bossHeal(a.owner, ally.hp - before);
       });
     }
@@ -11057,7 +11052,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.state.players.forEach((ally) => {
           if (ally.dead || ally.hp >= ally.maxHp) return;
           if (Math.hypot(ally.head.x - s.x, ally.head.z - s.z) > s.r) return;
-          ally.hp = Math.min(ally.maxHp, ally.hp + ally.maxHp * SEAL.healFracPerSec * 0.5 * (s.healMul ?? 1));
+          this.skillHeal(s.owner, ally, ally.maxHp * SEAL.healFracPerSec * 0.5 * (s.healMul ?? 1));
         });
       }
       for (const m of [...this.sim.mobs.values()]) {
@@ -11951,7 +11946,7 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     // Эгида, «Оплот»: успешный блок УДАРА ВБЛИЗИ лечит (снаряды и выстрелы — нет; 2026-10-05).
     if (shield && !h.projectile && block.by === 1 && block.mult === 0 && isAegis(shield.inst) && p.hp > 0) {
-      p.hp = Math.min(p.maxHp, p.hp + p.maxHp * aegisHealOf(shield.inst));
+      this.skillHeal(h.target, p, p.maxHp * aegisHealOf(shield.inst));
       this.broadcast(MSG.act, { k: "healHit", id: h.target, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay);
     }
     // Круглый рубиновый щит (2026-10-24): успешный блок удара вблизи оглушает атакующего.
