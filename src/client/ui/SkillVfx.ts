@@ -266,6 +266,8 @@ interface Decal {
   /** Сдвиг по высоте и цель слежения. */
   follow: { kind: "hero" | "mob"; id: string; dy: number } | null;
   fadeIn: number;
+  /** Слот зарезервирован под зону (mode 1): чужие эффекты его не занимают. */
+  zone?: boolean;
 }
 interface Sparks {
   mesh: Mesh;
@@ -304,22 +306,19 @@ export class SkillVfx {
   private nP = 0;
   private time = 0;
   follow: FollowFn | null = null;
+  /** Сцена для новых декалей (пул растёт по требованию) и потолок их числа. */
+  private readonly scene: Scene;
+  private static readonly DECAL_MAX = 64;
+  /** Отдельный запас под зоны (mode 1): печать/грозовое поле живут секунды и не должны
+   *  делиться слотами с быстрыми волнами и вспышками. */
+  private static readonly ZONE_MAX = 12;
 
   constructor(scene: Scene) {
-    // 24, а не 14: долгие зоны («Печать света» 6 с, «Грозовое поле» 5 с) раньше перезаписывались
-    // другими декалями и пропадали раньше срока — пул по кругу затирал их.
-    for (let i = 0; i < 24; i++) {
-      const mesh = MeshBuilder.CreatePlane(`vfxDecal${i}`, { size: 2 }, scene);
-      mesh.rotation.x = Math.PI / 2;
-      mesh.bakeCurrentTransformIntoVertices();
-      const mat = shader(scene, `vfxDecalMat${i}`, "fxDecal", ["position", "uv"], ["uColor", "uT", "uMode", "uAlpha", "uSeed", "uHalf", "cameraPosition"]);
-      mesh.material = mat;
-      groundFxThrough(mesh);
-      mesh.isPickable = false;
-      mesh.alwaysSelectAsActiveMesh = true;
-      mesh.setEnabled(false);
-      this.decals.push({ mesh, mat, age: 1, life: 1, mode: 0, follow: null, fadeIn: 0 });
-    }
+    this.scene = scene;
+    // Стартовый запас. Пул РАСТЁТ по требованию (см. takeDecal): долгих зон в бою бывает
+    // больше, чем слотов, и раньше «Печать света» (6 с) и «Грозовое поле» (5 с) затирались
+    // другими декалями и пропадали раньше срока.
+    for (let i = 0; i < 16; i++) this.newDecal();
     // Искры: SPARKS квадов в одном меше.
     const pos: number[] = [];
     const idx: number[] = [];
@@ -389,31 +388,53 @@ export class SkillVfx {
   }
 
   /** Ударная волна по земле (mode 0), зона (1, life — длительность), прицел (2). */
+  /** Новая декаль-квад на земле (сцена одна на всё VFX). */
+  private newDecal(zone = false): Decal {
+    const i = this.decals.length;
+    const mesh = MeshBuilder.CreatePlane(`vfxDecal${i}`, { size: 2 }, this.scene);
+    mesh.rotation.x = Math.PI / 2;
+    mesh.bakeCurrentTransformIntoVertices();
+    const mat = shader(this.scene, `vfxDecalMat${i}`, "fxDecal", ["position", "uv"], ["uColor", "uT", "uMode", "uAlpha", "uSeed", "uHalf", "cameraPosition"]);
+    mesh.material = mat;
+    groundFxThrough(mesh);
+    mesh.isPickable = false;
+    mesh.alwaysSelectAsActiveMesh = true;
+    mesh.setEnabled(false);
+    const d: Decal = { mesh, mat, age: 1, life: 1, mode: 0, follow: null, fadeIn: 0, zone };
+    this.decals.push(d);
+    return d;
+  }
+
   /**
-   * Свободный слот декали: берём первый истёкший, и только если все заняты — самый старый
-   * (по кругу). Иначе долгоживущая зона (печать, грозовое поле) исчезала, как только
-   * очередь доходила до её слота.
+   * Слот под декаль: свободный → новый (пока не упёрлись в DECAL_MAX) → самый старый.
+   * Раньше брался строго следующий по кругу, поэтому долгие зоны (печать, грозовое поле)
+   * затирались чужими эффектами и визуально исчезали раньше срока.
    */
-  private takeDecal(): Decal {
+  private takeDecal(zone = false): Decal {
     const n = this.decals.length;
     for (let i = 0; i < n; i++) {
       const idx = (this.nD + i) % n;
       const d = this.decals[idx];
+      if (!!d.zone !== zone) continue; // слоты зон и прочих эффектов не смешиваем
       if (d.age >= d.life) {
         this.nD = (idx + 1) % n;
         return d;
       }
     }
-    const d = this.decals[this.nD];
-    this.nD = (this.nD + 1) % n;
-    return d;
+    const ofKind = this.decals.filter((d) => !!d.zone === zone).length;
+    const cap = zone ? SkillVfx.ZONE_MAX : SkillVfx.DECAL_MAX;
+    if (ofKind < cap) return this.newDecal(zone);
+    // Все слоты этого вида заняты — забираем самый старый из них.
+    let oldest: Decal | null = null;
+    for (const d of this.decals) if (!!d.zone === zone && (!oldest || d.age > oldest.age)) oldest = d;
+    return oldest ?? this.newDecal(zone);
   }
 
   decal(
     x: number, y: number, z: number, radius: number, color: Color3, life: number,
     mode: 0 | 1 | 2 | 3 | 4 | 5 = 0, alpha = 1, follow: { kind: "hero" | "mob"; id: string; dy: number } | null = null,
   ): void {
-    const d = this.takeDecal();
+    const d = this.takeDecal(mode === 1);
     d.mesh.rotation.y = 0;
     d.mesh.position.set(x, y + 0.07 + (mode === 2 ? 0 : (this.nD % 5) * 0.004), z);
     d.mesh.scaling.set(radius, 1, radius);
