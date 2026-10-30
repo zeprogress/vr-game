@@ -81,7 +81,7 @@ import {
   type AutoGoMsg,
 } from "#shared/net/messages";
 import { isCamTuneKey, type CamTuneKey } from "#shared/camTune";
-import { ADMIN_NICK, NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, huntPhaseFor, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL, STORM_COUNTER } from "#shared/constants";
+import { NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, huntPhaseFor, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL, STORM_COUNTER } from "#shared/constants";
 import { MOB_MID_K, SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, ICE_GIANT, mobArmorBits, type CatDefense } from "#shared/mobs";
 import { DragonFight, type DragonHost } from "./dragonFight";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
@@ -4398,7 +4398,7 @@ export class ZoneRoom extends Room<ZoneState> {
       // !roll и !jump убраны из чата: roll теперь сам иногда играет на
       // бегу, а отдельная команда под него/jump не нужна (см. tickBot).
       this.botEmote(nick, norm, cmd.slice(1) as BotEmote);
-    } else if (["!follow", "!folow", "!следовать", "!следуй", "!за", "!фоллоу"].includes(cmd)) {
+    } else if (["!follow", "!folow", "!следовать", "!следуй", "!за", "!фоллоу", "!come"].includes(cmd)) {
       this.setFollow(nick, norm, normNick(parts[1] ?? ""));
     } else if (cmd === "!title" || cmd === "!титул" || cmd === "!титулы") {
       this.titleCmd(nick, norm, parts.slice(1).join(" ").trim());
@@ -4406,8 +4406,6 @@ export class ZoneRoom extends Room<ZoneState> {
       this.focusCam(nick, norm, parts[1]);
     } else if (cmd === "!unfollow" || cmd === "!stay" || cmd === "!stayhere") {
       this.setFollow(nick, norm, null);
-    } else if (cmd === "!come") {
-      this.setFollow(nick, norm, normNick(ADMIN_NICK));
     } else if (cmd === "!camp" || cmd === "!кемп" || cmd === "!лагерь" || cmd === "!camps") {
       this.setCamp(nick, norm, parts.slice(1).join(" "));
     } else if (["!пугало", "!тест", "!дпс", "!dps", "!demage", "!damage", "!test", "!урон"].includes(cmd)) {
@@ -12200,7 +12198,11 @@ export class ZoneRoom extends Room<ZoneState> {
         if (frac > 0) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * frac * dt);
       }
       if (p.hp > 0 && p.hp < p.maxHp && (inCamp || rt.sinceHurt > regenDelay)) {
-        const rate = inCamp ? Math.max(regenRate * CAMPFIRE.regenMul, p.maxHp * CAMPFIRE.regenFrac) : regenRate;
+        // Вне боя — доля макс. HP в секунду (иначе на больших пулах реген был незаметен),
+        // у костра — своя, гораздо более быстрая доля.
+        const rate = inCamp
+          ? Math.max(regenRate * CAMPFIRE.regenMul, p.maxHp * CAMPFIRE.regenFrac)
+          : Math.max(regenRate, p.maxHp * PLAYER_HP.regenFrac);
         p.hp = Math.min(p.maxHp, p.hp + rate * dt);
         // Лагерь лечит — зелёные крестики на герое (раз в ~0.8 с, пока идёт реген).
         if (inCamp && now - rt.campHealFxAt > 800) {
