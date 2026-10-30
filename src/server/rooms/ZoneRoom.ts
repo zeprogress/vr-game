@@ -2635,13 +2635,14 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private hammerWave(ownerId: string, p: PlayerState, hand: "left" | "right", rt: Runtime, x: number, z: number): number {
     const radius = HAMMER.waveRadius;
-    const dmg =
-      HAMMER.waveMagic *
-      magicPowerFor(p.level, p) *
-      (1 + Math.max(0, attrOf(p, "int") - ATTR2.start) * HAMMER.waveIntPer) *
-      multIn(p, hand) *
-      rolledDmgMul(p, hand, rt) *
-      this.buffMult(ownerId, "dmg");
+    // Волна при обычном ударе = магия от интеллекта + удар самим оружием. Раньше в ней
+    // были только тир и роллы (multIn × rolledDmgMul), а базовая атака молота (сила, уровень)
+    // не входила вовсе — заточка и точка атаки работали лишь как множитель к магии.
+    const mult = multIn(p, hand) * rolledDmgMul(p, hand, rt);
+    const weaponHit = weaponDamage("hammer", p.level, p, mult);
+    const magicHit =
+      HAMMER.waveMagic * magicPowerFor(p.level, p) * (1 + Math.max(0, attrOf(p, "int") - ATTR2.start) * HAMMER.waveIntPer) * mult;
+    const dmg = (magicHit + weaponHit * HAMMER.wavePhys) * this.buffMult(ownerId, "dmg");
     let total = 0;
     for (const m of [...this.sim.mobs.values()]) {
       if (m.dead) continue;
