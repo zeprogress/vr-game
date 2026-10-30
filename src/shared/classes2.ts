@@ -279,6 +279,19 @@ export const HAMMER = {
   wavePhys: 1,
 } as const;
 
+/**
+ * Урон волны молота при обычном ударе — ОДНА формула для сервера (ZoneRoom.hammerWave)
+ * и окна характеристик (heroStats): магия от интеллекта + удар самим оружием, всё × mult.
+ * Множители передаются готовыми, чтобы не тащить сюда PlayerState/Runtime:
+ *   magicPower — сила магии героя (magicPowerFor), intInvested — вложено в ИНТ сверх старта,
+ *   weaponBase — атака молота без множителей (weaponDamage("hammer", level, attrs)),
+ *   mult — тир оружия × роллы «Урон» × точка атаки × мастерство крафта.
+ */
+export function hammerWaveDamage(magicPower: number, intInvested: number, weaponBase: number, mult: number): number {
+  const magic = HAMMER.waveMagic * magicPower * (1 + intInvested * HAMMER.waveIntPer);
+  return (magic + weaponBase * HAMMER.wavePhys) * mult;
+}
+
 /** Огнешар: доля урона по соседям (сплэш) — как в игре. */
 export const STAFF_SPLASH = { frac: MAGIC.firebolt.splashFraction * 0.5, radius: 3 } as const;
 

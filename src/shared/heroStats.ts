@@ -7,7 +7,7 @@ import { fireboltDamage } from "./magic";
 import { armorFrac, dodgeChance, heroAttackInterval, holdsOneItem, hpRegenFrac, maxHpFor, moveSpeedFor, staffCastInterval } from "./progression";
 import { BASE_CRIT } from "./combat";
 import { ATTR2, attrOf, invested } from "./attrs2";
-import { DAGGER, HAMMER, SMOKE, staffMagicTier, WARCRY, WEAPONS2, type AttrsIn } from "./classes2";
+import { DAGGER, hammerWaveDamage, SMOKE, staffMagicTier, WARCRY, WEAPONS2, type AttrsIn } from "./classes2";
 import { magicPowerFor, magicResistFrac } from "./magic";
 import { weaponDamage } from "./combat";
 import { critRollMult, isMeleeClass, powerMulOfText, shieldBlockChance, weaponDef, type WeaponClass, type WeaponTier } from "./items";
@@ -193,7 +193,12 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const hit = weaponHitDamage(cls || "sword", tier, p.level, p, dmgBonus) * bm.dmg * sharpMul;
   rows.push({ label: "Урон", value: hit.toFixed(1) + (bm.dmg > 1 ? UP : "") });
   if (cls === "hammer") {
-    rows.push({ label: "Волна молота (магия)", value: (HAMMER.waveMagic * magicPowerFor(p.level, p) * tierMul * (1 + Math.max(0, attrOf(p, "int") - ATTR2.start) * HAMMER.waveIntPer)).toFixed(1) });
+    // Та же формула, что в бою (classes2.hammerWaveDamage): магия от ИНТ + удар самим
+    // молотом (СИЛА, тир, роллы «Урон» от заточки, точка атаки, мастерство).
+    const waveBase = weaponDamage("hammer", p.level, p, 1);
+    const waveMult = tierMul * (1 + dmgBonus) * sharpMul;
+    const wave = hammerWaveDamage(magicPowerFor(p.level, p), Math.max(0, attrOf(p, "int") - ATTR2.start), waveBase, waveMult) * bm.dmg;
+    rows.push({ label: "Волна молота", value: wave.toFixed(1) + (bm.dmg > 1 ? UP : "") });
   }
   if (cls === "spear") rows.push({ label: "Удар конусом", value: `до ${WEAPONS2.spear.pierce} целей` });
 

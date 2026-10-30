@@ -208,7 +208,7 @@ import { wallSlide } from "../sim/wallSlide";
 import { leashCut } from "../sim/leash";
 import { ATTR2 } from "#shared/attrs2";
 import { DRAW_IN, drawInPlan, drawModeOf, type DrawMode } from "#shared/drawIn";
-import { STEEL_AURA, steelAuraTick, steelModeOf, type SteelMode, ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, plagueAtk, SMOKE, SOUL_STEAL, skillAttrMul, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, warriorWhirlHits, WARCRY, MARK, MARK_FOCUS, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { STEEL_AURA, steelAuraTick, steelModeOf, type SteelMode, ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, plagueAtk, SMOKE, SOUL_STEAL, skillAttrMul, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, hammerWaveDamage, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, warriorWhirlHits, WARCRY, MARK, MARK_FOCUS, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC } from "#shared/ultimates";
 import {
   MAGIC,
@@ -2635,14 +2635,17 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private hammerWave(ownerId: string, p: PlayerState, hand: "left" | "right", rt: Runtime, x: number, z: number): number {
     const radius = HAMMER.waveRadius;
-    // Волна при обычном ударе = магия от интеллекта + удар самим оружием. Раньше в ней
-    // были только тир и роллы (multIn × rolledDmgMul), а базовая атака молота (сила, уровень)
-    // не входила вовсе — заточка и точка атаки работали лишь как множитель к магии.
+    // Волна при обычном ударе = магия от интеллекта + удар самим оружием (сила, тир,
+    // заточка, точка атаки). Формула живёт в classes2.hammerWaveDamage — её же читает
+    // окно характеристик, поэтому цифры там не расходятся с боем.
     const mult = multIn(p, hand) * rolledDmgMul(p, hand, rt);
-    const weaponHit = weaponDamage("hammer", p.level, p, mult);
-    const magicHit =
-      HAMMER.waveMagic * magicPowerFor(p.level, p) * (1 + Math.max(0, attrOf(p, "int") - ATTR2.start) * HAMMER.waveIntPer) * mult;
-    const dmg = (magicHit + weaponHit * HAMMER.wavePhys) * this.buffMult(ownerId, "dmg");
+    const dmg =
+      hammerWaveDamage(
+        magicPowerFor(p.level, p),
+        Math.max(0, attrOf(p, "int") - ATTR2.start),
+        weaponDamage("hammer", p.level, p, 1),
+        mult,
+      ) * this.buffMult(ownerId, "dmg");
     let total = 0;
     for (const m of [...this.sim.mobs.values()]) {
       if (m.dead) continue;
