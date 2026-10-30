@@ -27,7 +27,10 @@ echo "$VER" > "$OUT/version.txt"
 # «mv dist/spectator → dist.new/spectator: Permission denied» при деплое (см. autopull.sh).
 ssh vrgame -o BatchMode=yes "sudo -u vrgame mkdir -p /opt/vrgame/dist/spectator"
 # Сначала архив, потом версия: компьютер со стримом не увидит новую версию раньше её архива.
-rsync -t --rsync-path='sudo -u vrgame rsync' "$OUT/ZEP-Spectator-linux.tar.gz" vrgame:/opt/vrgame/dist/spectator/
+# --inplace: архив 355 МБ, а на VPS мало места — писать поверх старого файла, без временной копии.
+# Прерванная заливка портит старый архив, но version.txt уходит ПОСЛЕ и не сменится — стрим-ПК
+# такой архив не заберёт.
+rsync -t --inplace --rsync-path='sudo -u vrgame rsync' "$OUT/ZEP-Spectator-linux.tar.gz" vrgame:/opt/vrgame/dist/spectator/
 rsync -t --rsync-path='sudo -u vrgame rsync' "$OUT/version.txt" vrgame:/opt/vrgame/dist/spectator/
 rm -rf "$OUT"
 echo "выложено: $VER — https://zepgame.duckdns.org/spectator/ZEP-Spectator-linux.tar.gz"

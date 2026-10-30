@@ -25,6 +25,12 @@ namespace Zep
         MaterialPropertyBlock mpb;
         static readonly int EmissionId = Shader.PropertyToID("_EmissionColor");
 
+        /// Щит отражения (MobState.reflecting) — светящаяся сфера вокруг тела, как reflectShield в вебе
+        /// (client/combat/Mob.ts): аддитивная, слегка пульсирует, живёт в корне моба (движется с ним).
+        Transform reflectShield;
+        Material reflectMat;
+        float reflectT;
+
         static readonly string[] IdleClips = { "Idle", "Flying_Idle", "Hop" };
         static readonly string[] MoveClips = { "Run", "Walk", "Fast_Flying", "Hop" };
         /// Клип вида замаха босса по MobState.attackKind (MOB_SWING, SWING_ANIM в combat/Mob.ts); 0 — укус, обычный удар.
@@ -348,10 +354,71 @@ namespace Zep
             }
         }
 
+        /// Сфера отражения: включается по MobState.reflecting, пульсирует (масштаб ±5%, прозрачность 45–70%),
+        /// как в вебе. Материал аддитивный — сама сфера светится, а не затеняется сценой.
+        void ReflectShield()
+        {
+            bool on = state.reflecting != 0 && state.dead == 0;
+            if (on)
+            {
+                if (!reflectShield) MakeReflectShield();
+                if (!reflectShield) return; // нет аддитивного материала — сферу не рисуем
+                reflectShield.gameObject.SetActive(true);
+                reflectT += Time.deltaTime;
+                float pulse = 1f + 0.05f * Mathf.Sin(reflectT * 10f);
+                reflectShield.localScale = Vector3.one * (REFLECT_DIAMETER * pulse);
+                if (reflectMat)
+                {
+                    float a = 0.45f + 0.25f * Mathf.Abs(Mathf.Sin(reflectT * 7f));
+                    reflectMat.SetColor("_BaseColor", new Color(0.5f, 0.9f, 1f, a));
+                }
+            }
+            else if (reflectShield && reflectShield.gameObject.activeSelf)
+            {
+                reflectShield.gameObject.SetActive(false);
+                reflectT = 0f;
+            }
+        }
+
+        /// Диаметр сферы в локальных единицах корня моба (как diameter 1.3 в Mob.ts).
+        const float REFLECT_DIAMETER = 1.3f;
+
+        void MakeReflectShield()
+        {
+            var assets = ZoneNet.I ? ZoneNet.I.Assets : null;
+            var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            go.name = "reflectShield";
+            Destroy(go.GetComponent<Collider>());
+            go.transform.SetParent(transform, false);
+            // Центр тела — та же точка, что у прицела и попаданий (bodyRadius над подошвой).
+            go.transform.localPosition = new Vector3(0f, bodyRadius, 0f);
+            go.transform.localScale = Vector3.one * REFLECT_DIAMETER;
+            var mr = go.GetComponent<MeshRenderer>();
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+            if (assets && assets.unlitAdd)
+            {
+                reflectMat = new Material(assets.unlitAdd) { name = "reflectShield" };
+                reflectMat.SetColor("_BaseColor", new Color(0.5f, 0.9f, 1f, 0.55f));
+                mr.sharedMaterial = reflectMat;
+                reflectShield = go.transform;
+            }
+            else
+            {
+                Destroy(go);
+            }
+        }
+
+        void OnDestroy()
+        {
+            if (reflectMat) Destroy(reflectMat);
+        }
+
         void Update()
         {
             if (state == null) return;
             Burn(Time.deltaTime);
+            ReflectShield();
             LavaLightUpdate();
             ChestLightUpdate();
             var target = new Vector3(state.x, state.y, state.z);
