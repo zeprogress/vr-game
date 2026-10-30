@@ -36,10 +36,16 @@ namespace Zep
             return go.AddComponent<CatShrine>();
         }
 
+        /// Собран ли алтарь. Строим лениво, при первом появлении святилища: в Awake материалы
+        /// из ZoneNet.Assets ещё не выставлены (WorldSync кладёт их позже), и «светящиеся» части
+        /// получали шейдер, которого нет в сборке — на земле появлялся розовый квадрат.
+        bool built;
+
         void Awake()
         {
             I = this;
-            Build();
+            root = new GameObject("altar").transform;
+            root.SetParent(transform, false);
             root.gameObject.SetActive(false);
         }
 
@@ -54,24 +60,20 @@ namespace Zep
         }
 
         /// Материал-свечение: аддитивный unlit, цвет в HDR (bloom даёт ореол), как «glow» в вебе.
-        Material Glow(Color c, float a)
+        Material Glow(SliceAssets assets, Color c, float a)
         {
-            var assets = ZoneNet.I ? ZoneNet.I.Assets : null;
-            var m = assets && assets.unlitAdd ? new Material(assets.unlitAdd) : new Material(Shader.Find("Unlit/Color"));
+            var m = new Material(assets.unlitAdd);
             m.name = "catShrineGlow";
             m.SetColor("_BaseColor", new Color(c.r * 2.2f, c.g * 2.2f, c.b * 2.2f, a));
             if (m.HasProperty("_Color")) m.SetColor("_Color", new Color(c.r, c.g, c.b, a));
             return m;
         }
 
-        void Build()
+        /// Собрать алтарь. Требует готовых ассетов (litTemplate + unlitAdd): без них материалы
+        /// получились бы «розовым квадратом» — поэтому ждём и пробуем в следующем кадре.
+        void Build(SliceAssets assets)
         {
-            root = new GameObject("altar").transform;
-            root.SetParent(transform, false);
-
-            // Камень алтаря: тёмный, почти без блеска (в вебе — мрамор с картой нормалей).
-            var assets = ZoneNet.I ? ZoneNet.I.Assets : null;
-            stone = assets && assets.litTemplate ? new Material(assets.litTemplate) : new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            stone = new Material(assets.litTemplate);
             stone.name = "catShrineStone";
             if (stone.HasProperty("_BaseColor")) stone.SetColor("_BaseColor", new Color(0.16f, 0.15f, 0.17f, 1f));
             if (stone.HasProperty("_Smoothness")) stone.SetFloat("_Smoothness", 0.35f);
@@ -112,7 +114,7 @@ namespace Zep
             ringGo.transform.localPosition = new Vector3(0, 0.09f, 0);
             ringGo.transform.localRotation = Quaternion.Euler(90f, 0, 0); // плоскость лежит на земле
             ringGo.transform.localScale = new Vector3(7f, 7f, 1f);
-            glowRing = Glow(Color.white, 0.95f);
+            glowRing = Glow(assets, Color.white, 0.95f);
             glowRing.SetTexture("_BaseMap", ringTex);
             if (glowRing.HasProperty("_BaseColor")) glowRing.SetColor("_BaseColor", Color.white * 2.4f);
             ringGo.GetComponent<MeshRenderer>().sharedMaterial = glowRing;
@@ -125,7 +127,7 @@ namespace Zep
             beamGo.transform.SetParent(root, false);
             beamGo.transform.localPosition = new Vector3(0, 6.8f, 0);
             beamGo.transform.localScale = new Vector3(1.5f, 5.5f, 1.5f); // примитив 2 ед → 11 м
-            glowBeam = Glow(Color.white, 0.18f);
+            glowBeam = Glow(assets, Color.white, 0.18f);
             beamGo.GetComponent<MeshRenderer>().sharedMaterial = glowBeam;
             var beamR = beamGo.GetComponent<MeshRenderer>();
             beamR.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -139,7 +141,7 @@ namespace Zep
             orbGo.transform.SetParent(root, false);
             orbGo.transform.localPosition = new Vector3(0, 2.2f, 0);
             orbGo.transform.localScale = Vector3.one * 0.6f;
-            glowOrb = Glow(Color.white, 1f);
+            glowOrb = Glow(assets, Color.white, 1f);
             orbGo.GetComponent<MeshRenderer>().sharedMaterial = glowOrb;
             orb = orbGo.transform;
         }
@@ -182,8 +184,19 @@ namespace Zep
             if (state == null) return;
             int type = state.catShrine;
             bool on = type >= 0;
-            if (on != root.gameObject.activeSelf) root.gameObject.SetActive(on);
-            if (!on) return;
+            if (!on)
+            {
+                if (root && root.gameObject.activeSelf) root.gameObject.SetActive(false);
+                return;
+            }
+            if (!built)
+            {
+                var assets = ZoneNet.I.Assets;
+                if (!assets || !assets.litTemplate || !assets.unlitAdd) return; // ждём материалы
+                Build(assets);
+                built = true;
+            }
+            if (!root.gameObject.activeSelf) root.gameObject.SetActive(true);
 
             if (type != shownType)
             {
