@@ -82,7 +82,7 @@ import {
 } from "#shared/net/messages";
 import { isCamTuneKey, type CamTuneKey } from "#shared/camTune";
 import { NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, huntPhaseFor, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL, STORM_COUNTER } from "#shared/constants";
-import { MOB_MID_K, SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, ICE_GIANT, mobArmorBits, type CatDefense } from "#shared/mobs";
+import { MOB_MID_K, SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, ICE_GIANT, reflectCapped, mobArmorBits, type CatDefense } from "#shared/mobs";
 import { DragonFight, type DragonHost } from "./dragonFight";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
 import { hammerPhysStrike, skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
@@ -11784,6 +11784,9 @@ export class ZoneRoom extends Room<ZoneState> {
     if (p.towerFloor > 0) return;
     // Урон мобов и боссов (не PvP с ником, не тик кровотечения — он уже от усиленного удара) — общий множитель MOB.dmgMul.
     if (!h.byName && !h.dot) h = { ...h, dmg: h.dmg * MOB.dmgMul };
+    // Отражение щитом моба: не больше доли МАКС. HP героя за удар. Урон героев на высоких
+    // уровнях кратно больше их здоровья, и без потолка отражение убивало с одного своего крита.
+    if (h.byReflect) h = { ...h, dmg: reflectCapped(h.dmg, p.maxHp) };
 
     // Направление ОТ игрока К источнику удара.
     let ax = h.fromX - p.head.x;

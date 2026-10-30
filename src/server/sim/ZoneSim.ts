@@ -180,6 +180,8 @@ export interface PlayerHit {
   projectile: boolean;
   /** Ник атакующего игрока (PvP) — для кил-фида; нет — урон от моба/среды. */
   byName?: string;
+  /** Удар — отражение щитом моба (REFLECT): урон режется потолком от макс. HP героя. */
+  byReflect?: boolean;
   /** id моба-источника урона (плевун, слизень) — бот по нему переключается. */
   byMob?: string;
   /** Оглушение цели на N секунд (спец-атака моба). Нет — не оглушает. */
@@ -3791,6 +3793,7 @@ export class ZoneSim {
         fromZ: m.z,
         projectile: false,
         byMob: m.id,
+        byReflect: true,
       });
     }
     if (attacker && dealt > 0 && this.catMobs.has(id)) this.catDamage.set(attacker, (this.catDamage.get(attacker) ?? 0) + dealt);
