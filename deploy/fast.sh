@@ -22,7 +22,7 @@ fi
 
 # Собираем без typecheck: типы уже проверены CI в предыдущем коммите, а здесь важен только
 # свежий dist. Если нужна проверка — npm run build.
-npx vite build --silent
+npx vite build --logLevel warn
 
 # dist.up, а не dist.new: dist.new — рабочая папка autopull.
 rsync -rlc --delete --exclude .DS_Store --link-dest=/opt/vrgame/dist dist/ vrgame:/opt/vrgame/dist.up/
