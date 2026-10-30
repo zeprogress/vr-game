@@ -39,6 +39,7 @@ namespace Zep
         {
             if (hero) hero.Init(assets);
             SpawnNpcs();
+            CatShrine.Ensure(); // алтарь катакомб: стоит всегда, виден по состоянию комнаты
             var net = ZoneNet.I;
             net.Assets = assets;
             net.Joined += OnJoined;
