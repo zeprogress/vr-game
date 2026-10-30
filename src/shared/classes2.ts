@@ -146,8 +146,16 @@ export function physTempo2(level: number, a: AttrsIn, soft: number): number {
  * раньше ЛОВ шла под затухание роста от уровня и почти съедалась —
  * «всё в ЛОВ» давало ~55% урона «всё в СИЛ»). `share` — доля (ближний бой меньше).
  */
+/** Затухание прироста темпа от ЛОВ: линейного роста «1.5% за очко» больше нет —
+ *  на высоких ЛОВ это разгоняло ближний бой в пропеллер (2026-10-30). */
+const AGI_TEMPO_SOFT = 0.8;
+
+/**
+ * Множитель темпа от ЛОВ. Линейная часть (ATTR2.agi.atkSpeed за очко) проходит через
+ * затухание: до ~20 очков почти линейно, дальше каждая точка даёт всё меньше.
+ */
 export function agiTempo2(a: AttrsIn, share = 1): number {
-  return 1 + inv(attrOf(a, "agi")) * ATTR2.agi.atkSpeed * share;
+  return 1 + softGain(inv(attrOf(a, "agi")) * ATTR2.agi.atkSpeed * share, AGI_TEMPO_SOFT);
 }
 
 /** Множитель скорости каста (посох): уровень (рост гаснет) × МДР — линейно, как ЛОВ у физ. темпа. */
@@ -196,7 +204,7 @@ export interface WeaponProfile {
 
 export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   sword: {
-    name: WEAPON_NOUN.sword.name, dmg: 1.8 * 1.2 * 1.2, interval: 0.7, tempoSoft: 1, reach: 2.2, pierce: 1, // 1 → 1.8 (2026-10-05: воин слабейший, темп ПК приведён к общему); ×1.2 (2026-10-15); ×1.2 (2026-10-16)
+    name: WEAPON_NOUN.sword.name, dmg: 1.8 * 1.2 * 1.2, interval: 0.8, tempoSoft: 1, reach: 2.2, pierce: 1, // 0.7 → 0.8 (2026-10-30: воин разгонялся в «пропеллер» — ЛОВ без угасания + дерево) // 1 → 1.8 (2026-10-05: воин слабейший, темп ПК приведён к общему); ×1.2 (2026-10-15); ×1.2 (2026-10-16)
     critBase: 0.05, critMult: 1.5, twoHanded: false, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   shield: {
