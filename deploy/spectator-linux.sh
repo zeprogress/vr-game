@@ -10,8 +10,17 @@ B=unity/Builds/Spectator-linux
 
 if [ "${1:-}" != "--no-build" ]; then
   if pgrep -f "MacOS/Unity -projectPath" >/dev/null; then echo "закройте редактор Unity"; exit 1; fi
+  # Unity пишет GI-кэш в ~/Library/Caches/com.unity3d.UnityEditor/GiCache. Если каталога нет
+  # (или писать туда нельзя), редактор спамит «Failed to create GICache directory» и сборка
+  # залипает на десятки минут, раздувая лог до гигабайт. Заводим каталог заранее.
+  mkdir -p "$HOME/Library/Caches/com.unity3d.UnityEditor/GiCache" 2>/dev/null || true
   "$U" -batchmode -quit -nographics -projectPath "$PWD/unity" -executeMethod SliceSetup.Build -logFile /tmp/zep-slice.log
   "$U" -batchmode -quit -projectPath "$PWD/unity" -buildTarget Linux64 -executeMethod SliceSetup.BuildSpectatorLinux -logFile /tmp/zep-linux.log
+  # Залипание по GI-кэшу видно по гигантскому логу с одной и той же ошибкой — говорим внятно.
+  if [ "$(wc -c < /tmp/zep-linux.log 2>/dev/null || echo 0)" -gt 100000000 ]; then
+    echo "сборка раздула лог (>100 МБ) — вероятно, залипла на GI-кэше; лог: /tmp/zep-linux.log"
+    exit 1
+  fi
   grep -q "спектатор StandaloneLinux64: Succeeded" /tmp/zep-linux.log || { echo "сборка не удалась: /tmp/zep-linux.log"; exit 1; }
 fi
 [ -f "$B/ZEP Spectator.x86_64" ] || { echo "нет сборки в $B"; exit 1; }
