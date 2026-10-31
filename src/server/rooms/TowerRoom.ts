@@ -75,7 +75,7 @@ export interface TowerRolled {
   atkSpeedMul: number;
   critChance: number;
   critMult: number;
-  /** Доля урона в HP: врождённый вампиризм + ролл (только ближний бой). */
+  /** Доля МАКС. HP за удар: ролл вампиризма (только ближний бой). */
   vamp: number;
   /** Шанс блока щитом с учётом тира и роллов (0 — щита нет). */
   blockChance: number;
@@ -691,9 +691,10 @@ export class TowerRoom extends Room<TowerState> {
   /** `dmgMult` — множитель крита (см. rollHeroCrit). */
   private heroAttack(target: LiveMob, dmgMult = 1): void {
     const dmg = this.heroDmg * dmgMult;
-    // Ролл Вампиризм — часть урона возвращается герою как HP.
+    // Ролл Вампиризм — доля МАКС. HP героя за удар (как в основном мире, ZoneRoom.vampHeal):
+    // от здоровья, а не от урона, иначе лечение росло бы вместе с уроном.
     if (this.heroVamp > 0) {
-      this.state.heroHp = Math.min(this.state.heroMaxHp, this.state.heroHp + dmg * this.heroVamp);
+      this.state.heroHp = Math.min(this.state.heroMaxHp, this.state.heroHp + this.state.heroMaxHp * this.heroVamp);
     }
     // Врождённый поджог мага — как в основном мире (ZoneSim.tickBolt): ДпС
     // считается от МАКСИМАЛЬНОГО HP цели и ИНТ героя (burnHpFracFor), а не от урона удара.

@@ -147,7 +147,8 @@ function buffMuls(p: HeroStatInput): { dmg: number; tempo: number; move: number;
 function affixVals(text: string | undefined, name: string): number[] {
   if (!text) return [];
   const out: number[] = [];
-  for (const m of text.matchAll(new RegExp(`${name} \\+([\\d.]+)%`, "g"))) out.push(Number(m[1]) / 100);
+  // «До» 2026-10-31 у вампиризма плюс не писали — допускаем оба вида («+0.4%» и «0.4%»).
+  for (const m of text.matchAll(new RegExp(`${name} \\+?([\\d.]+)%`, "g"))) out.push(Number(m[1]) / 100);
   return out;
 }
 /** Сумма роллов вида `name` (в долях). */
@@ -255,8 +256,19 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
     isMeleeClass(p.rightCls) ? affixNum(p.rightAffix, "Вампиризм") : 0,
     isMeleeClass(p.leftCls) && !(p.leftCls === p.rightCls && (p.leftCls === "spear" || p.leftCls === "hammer")) ? affixNum(p.leftAffix, "Вампиризм") : 0,
   );
-  const vampTree = treeBonus(p, "vamp");
-  if (vamp + vampTree > 0) rows.push({ label: "Вампиризм", value: `${Math.round((vamp + vampTree) * 1000) / 10}% урона в HP` });
+  // Узлы дерева множат ролл (а не прибавляют проценты урона) — как heldVamp на сервере.
+  const vampFrac = vamp * (1 + treeBonus(p, "vamp"));
+  if (vampFrac > 0) {
+    const maxHp = maxHpFor(p.level, p);
+    // За удар возвращается доля МАКС. HP; в секунду — с учётом темпа атак (%HP/с понятнее в скобках).
+    const perHit = vampFrac * maxHp;
+    const perSec = perHit * attacksPerSec(cls || "sword", p.level, p, atkSpeedBonus);
+    const pct = Math.round(vampFrac * 10000) / 100;
+    rows.push({
+      label: "Вампиризм",
+      value: `${pct}% макс. HP за удар (≈${Math.round(perHit)} HP, ${Math.round((perSec / maxHp) * 1000) / 10}% HP/с)`,
+    });
+  }
 
   // Ролл щита гасит урон отдельным множителем сверх брони (см. ZoneRoom.hurtPlayer).
   const arm = 1 - (1 - armorFrac(p)) * (1 - affixNum(shieldAffix, "Физ. защита")) * (1 - bm.def);

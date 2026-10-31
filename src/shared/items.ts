@@ -586,7 +586,7 @@ export interface WeaponInstance {
 // ★ Избранное — без лимита (2026-10-20; было FAV_MAX = 24 на оружие, кольца и броню вместе).
 
 /** Текущая версия формата роллов (WeaponInstance.lv). */
-export const LOOT_VER = 13;
+export const LOOT_VER = 14;
 
 /** Оружие ближнего боя — только на нём выпадает вампиризм. */
 export function isMeleeClass(cls: string): boolean {
@@ -623,6 +623,20 @@ const SUB_KIND: Record<AffixSub, AffixKind> = {
   chill: "chill",
   venom: "venom",
 };
+
+/**
+ * Вампиризм по оружию: доля МАКС. HP за удар (не урона — иначе лечение росло бы вместе с уроном,
+ * обгоняя здоровье). У каждого вида свой диапазон: частое оружие бьёт больше раз, поэтому за удар
+ * ему нужно меньше. Цель — одинаковые ~1.5% макс. HP в секунду у всех.
+ */
+const VAMP_RANGES: Partial<Record<WeaponClass, readonly [number, number]>> = {
+  sword: [0.001, 0.004],
+  dagger: [0.0008, 0.0032],
+  spear: [0.001, 0.0036],
+  hammer: [0.0013, 0.005],
+};
+/** Прежний общий диапазон вампиризма (2–10% урона) — только для пересчёта выпавших роллов (lv 14). */
+const OLD_VAMP_RANGE = [0.02, 0.1] as const;
 
 const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
   dmgFlat: [0.05, 0.15],
@@ -671,9 +685,11 @@ export const STAR_CAP = 1.5;
 const CHANCE_SUBS: ReadonlySet<AffixSub> = new Set<AffixSub>(["pierce", "ignite", "chill", "venom"]);
 
 /** Диапазон ролла вида `sub` на предмете (у Эгиды свой); cap — потолок ролла (крафт): максимум × cap. */
-function rangeFor(sub: AffixSub, form: boolean | ShieldForm, cap = 1): readonly [number, number] {
+function rangeFor(sub: AffixSub, form: boolean | ShieldForm, cap = 1, cls?: WeaponClass): readonly [number, number] {
   const f = typeof form === "boolean" ? (form ? "aegis" : "round") : form;
-  const base = ((f === "aegis" || f === "rubyAegis") && AEGIS_RANGES[sub]) || AFFIX_RANGES[sub];
+  // Вампиризм — свой диапазон под каждое оружие (см. VAMP_RANGES).
+  const vamp = sub === "vamp" && cls ? VAMP_RANGES[cls] : undefined;
+  const base = vamp || ((f === "aegis" || f === "rubyAegis") && AEGIS_RANGES[sub]) || AFFIX_RANGES[sub];
   // Рубиновый щит: все роллы в SHIELD.rubyMul раз сильнее уникального (той же формы).
   const r: readonly [number, number] = f === "ruby" || f === "rubyAegis" ? [base[0] * SHIELD.rubyMul, base[1] * SHIELD.rubyMul] : base;
   if (cap === 1) return r;
@@ -690,8 +706,8 @@ function rollT(sub: AffixSub, value: number, aegis: boolean | ShieldForm = false
   const [lo, hi] = rangeFor(sub, aegis, cap);
   return hi > lo ? Math.max(0, Math.min(1, (value - lo) / (hi - lo))) : 1;
 }
-function atT(sub: AffixSub, t: number, aegis: boolean | ShieldForm = false, cap = 1): number {
-  const [lo, hi] = rangeFor(sub, aegis, cap);
+function atT(sub: AffixSub, t: number, aegis: boolean | ShieldForm = false, cap = 1, cls?: WeaponClass): number {
+  const [lo, hi] = rangeFor(sub, aegis, cap, cls);
   return lo + t * (hi - lo);
 }
 
@@ -755,7 +771,7 @@ export const AFFIX_NAME: Record<AffixSub, string> = {
   venom: "Яд",
 };
 
-/** Текст ролла для тултипа/чата: «Урон +12%», «Крит +9%», «Вампиризм +5%». */
+/** Текст ролла для тултипа/чата: «Урон +12%», «Крит +9%», «Вампиризм 0.34% макс. HP за удар». */
 export function affixLabel(a: RolledAffix): string {
   const c = a.cap ?? 1;
   const mark = c >= STAR_CAP - 1e-6 ? " ★" : c > 1.0005 ? " ▲" : c < 0.9995 ? " ▼" : "";
@@ -778,6 +794,8 @@ function affixLabelBare(a: RolledAffix): string {
   if (a.sub === "critMult") return `Крит, сила +${Math.round(a.value * 100) / 100}`;
   // Регенерация — доля макс. здоровья в секунду (точнее: шаг заточки здесь ~0.02%).
   if (a.sub === "regen") return `Регенерация +${Math.round(a.value * 10000) / 100}% HP/с`;
+  // Вампиризм — доля МАКС. HP за удар (а не урона): понятнее и не растёт с уроном.
+  if (a.sub === "vamp") return `Вампиризм +${Math.round(a.value * 10000) / 100}% макс. HP за удар`;
   if (a.sub === "pierce") return `Пронзание ${Math.round(a.value * 1000) / 10}%`;
   if (a.sub === "ignite") return `Поджог ${Math.round(a.value * 1000) / 10}%`;
   if (a.sub === "chill") return `Холод ${Math.round(a.value * 1000) / 10}%`;
@@ -795,14 +813,14 @@ function rollAffix(rnd: () => number, cls: WeaponClass, used: ReadonlySet<AffixS
   if (subs.length === 0) return null;
   const sub = subs[Math.floor(rnd() * subs.length)];
   // Ролл — ровно на целом очке (1..33): иначе 32.6 очка показывались «32», а значение уже как у максимума.
-  return { kind: SUB_KIND[sub], sub, value: atT(sub, Math.floor(rnd() * POINTS_MAX) / 32, aegis) };
+  return { kind: SUB_KIND[sub], sub, value: atT(sub, Math.floor(rnd() * POINTS_MAX) / 32, aegis, 1, cls) };
 }
 
 /** Ролл вида `sub` ровно на очках `pts` (1..33) с потолком cap — крафт ставит роллы сам (shared/craft.ts). */
-export function affixAtPoints(sub: AffixSub, pts: number, cap = 1): RolledAffix {
+export function affixAtPoints(sub: AffixSub, pts: number, cap = 1, cls?: WeaponClass): RolledAffix {
   const p = Math.max(1, Math.min(POINTS_MAX, Math.round(pts)));
   const c = Math.round(cap * 1000) / 1000;
-  return { kind: SUB_KIND[sub], sub, value: atT(sub, (p - 1) / 32, false, c), ...(c !== 1 ? { cap: c } : {}) };
+  return { kind: SUB_KIND[sub], sub, value: atT(sub, (p - 1) / 32, false, c, cls), ...(c !== 1 ? { cap: c } : {}) };
 }
 
 /** Ролл «сверх предела» (скрытый рецепт крафта): потолок ×mul, сразу на максимуме (33 очка — заточке не поддаётся); шанс — не выше 100%. */
@@ -811,10 +829,10 @@ export function affixOverCap(sub: AffixSub, mul: number): RolledAffix {
 }
 
 /** Привязать ролл к ближайшему целому очку (миграция lv 9 и после заточки). Вне диапазона — не трогаем. */
-function snapToPoint(a: RolledAffix, aegis: boolean): void {
-  const [lo, hi] = rangeFor(a.sub, aegis, a.cap ?? 1);
+function snapToPoint(a: RolledAffix, aegis: boolean, cls?: WeaponClass): void {
+  const [lo, hi] = rangeFor(a.sub, aegis, a.cap ?? 1, cls);
   if (!(hi > lo) || a.value < lo - 1e-9 || a.value > hi + 1e-9) return;
-  a.value = atT(a.sub, Math.round(((a.value - lo) / (hi - lo)) * 32) / 32, aegis, a.cap ?? 1);
+  a.value = atT(a.sub, Math.round(((a.value - lo) / (hi - lo)) * 32) / 32, aegis, a.cap ?? 1, cls);
 }
 
 /** Очки одного ролла: от 1 (самый низкий) до 33 (самый высокий) линейно по диапазону вида. */
@@ -990,7 +1008,7 @@ export function takeFromBag(bag: Slot[], id: ItemId, count: number): boolean {
 
 /** Диапазон ролла [мин, макс] на этом предмете (у Эгиды свой) — и для лаборатории баланса. */
 export function affixRange(sub: AffixSub, w: Pick<WeaponInstance, "cls" | "nm" | "tier">, cap = 1): readonly [number, number] {
-  return rangeFor(sub, shieldForm(w), cap);
+  return rangeFor(sub, shieldForm(w), cap, w.cls);
 }
 
 /**
@@ -1124,7 +1142,8 @@ export function vampFrac(inst: Pick<WeaponInstance, "cls" | "affixes"> | null | 
 /** Поставить ролл вида `sub` на максимум (если такой уже есть — поднять до максимума). */
 function maxRoll(w: WeaponInstance, sub: AffixSub): void {
   // Блок щита здесь — ещё в СТАРОМ диапазоне (до lv 5), его пересчитывает конец migrateLoot.
-  const hiOf = (k: AffixSub): number => (k === "block" ? OLD_BLOCK_RANGE[1] : AFFIX_RANGES[k][1]);
+  // Остальные — по диапазону ЭТОГО оружия: у вампиризма он свой для каждого вида (VAMP_RANGES).
+  const hiOf = (k: AffixSub): number => (k === "block" ? OLD_BLOCK_RANGE[1] : affixRange(k, w)[1]);
   const hi = hiOf(sub);
   const had = w.affixes.find((a) => a.sub === sub || (sub === "dmgFlat" && a.sub === "dmgPct"));
   if (had) had.value = hiOf(had.sub);
@@ -1221,7 +1240,7 @@ export function migrateLoot(w: WeaponInstance): boolean {
   // lv 8: роллы в постоянном порядке (AFFIX_ORDER) — раньше стояли как выпали.
   sortAffixes(w.affixes);
   // lv 9: роллы на целых очках (32.6 → 33) — «32 очка» больше не показывают значение максимума.
-  if (ver < 9) for (const a of w.affixes) snapToPoint(a, isAegis(w));
+  if (ver < 9) for (const a of w.affixes) snapToPoint(a, isAegis(w), w.cls);
   // lv 10: максимум Пронзания 15% → 25% — выпавшие роллы с теми же очками (было 5–15%).
   if (ver < 10) {
     for (const a of w.affixes) {
@@ -1257,6 +1276,15 @@ export function migrateLoot(w: WeaponInstance): boolean {
       const t = hi > lo ? Math.max(0, Math.min(1, (a.value - lo) / (hi - lo))) : 0;
       a.value = atT(a.sub, t, form, 1);
       delete a.cap;
+    }
+  }
+  // lv 14 (2026-10-31): вампиризм стал долей МАКС. HP за удар (было — доля урона), и у каждого
+  // оружия свой диапазон. Старые роллы пересчитываем, сохраняя качество (слабый остаётся слабым).
+  if (ver < 14) {
+    for (const a of w.affixes) {
+      if (a.sub !== "vamp") continue;
+      const t = Math.max(0, Math.min(1, (a.value - OLD_VAMP_RANGE[0]) / (OLD_VAMP_RANGE[1] - OLD_VAMP_RANGE[0])));
+      a.value = atT("vamp", Math.round(t * 32) / 32, isAegis(w), 1, w.cls);
     }
   }
   w.lv = LOOT_VER;
@@ -1489,7 +1517,7 @@ export function enchantApply(w: WeaponInstance, idx: number, gain: number): void
   const a = w.affixes[idx];
   if (!a) return;
   const pts = Math.min(POINTS_MAX, affixPoints(a, w) + gain);
-  a.value = atT(a.sub, (pts - 1) / 32, shieldForm(w), a.cap ?? 1);
+  a.value = atT(a.sub, (pts - 1) / 32, shieldForm(w), a.cap ?? 1, w.cls);
 }
 
 /**
@@ -1505,7 +1533,7 @@ export function swapRubyClass(w: WeaponInstance, cls: WeaponClass, rnd: () => nu
     const a = rollAffix(rnd, cls, used);
     if (!a) break;
     used.add(a.sub);
-    a.value = atT(a.sub, (p - 1) / 32);
+    a.value = atT(a.sub, (p - 1) / 32, false, 1, cls);
     affixes.push(a);
   }
   sortAffixes(affixes);

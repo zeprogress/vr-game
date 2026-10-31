@@ -948,17 +948,19 @@ const BOT_MELEE_FACE = 0.8;
 function heldVamp(p: PlayerState, rt: Runtime): number {
   const l = rolledIn(p, "left", rt);
   const r = rolledIn(p, "right", rt);
-  // + «Вампиризм» из дерева прокачки (PlayerState.tb).
-  return Math.max(vampFrac(r), l && l.id !== r?.id ? vampFrac(l) : 0) + p.tb.vamp;
+  // Ролл на оружии — доля МАКС. HP за удар; узлы дерева (PlayerState.tb.vamp) множат её,
+  // поэтому одинаково полезны с любым оружием (раньше это были проценты урона).
+  return Math.max(vampFrac(r), l && l.id !== r?.id ? vampFrac(l) : 0) * (1 + p.tb.vamp);
 }
 
 /**
- * Вампиризм удара ближнего боя — одно правило для игроков и ботов: от урона
- * по основной цели — полностью, от остальных целей (сплэш меча, выпад копья,
- * волна молота) — доля COMBAT.splashVampFrac.
+ * Вампиризм удара ближнего боя — одно правило для игроков и ботов: за удар возвращается доля
+ * МАКС. HP (vamp), по основной цели — полностью, от сплэша — доля COMBAT.splashVampFrac.
+ * Считается от здоровья, а не от урона: иначе лечение росло бы вместе с уроном и обгоняло HP.
  */
-function vampHeal(p: PlayerState, vamp: number, mainDmg: number, splashDmg: number): void {
-  p.hp = Math.min(p.maxHp, p.hp + (mainDmg + splashDmg * COMBAT.splashVampFrac) * vamp);
+function vampHeal(p: PlayerState, vamp: number, splashDmg: number): void {
+  const share = 1 + (splashDmg > 0 ? COMBAT.splashVampFrac : 0);
+  p.hp = Math.min(p.maxHp, p.hp + p.maxHp * vamp * share);
 }
 
 /** Щит в руках героя: тир и экземпляр (null — щита нет). */
@@ -2579,7 +2581,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (weapon === "sword") {
       splash += this.sim.splashDamage(sx, sy, sz, COMBAT.swordSplashRadius, dmg * COMBAT.swordSplashFraction, struck.id, heroId);
     }
-    if (vamped) vampHeal(p, vamp, dmg, splash);
+    if (vamped) vampHeal(p, vamp, splash);
     return killed;
   }
 

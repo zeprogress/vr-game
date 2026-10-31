@@ -31,9 +31,14 @@ test("крит: узлы дерева дают шанс и силу крита",
   assert.ok(Math.abs(num(valueOf(withNodes, "Сила крита")) - plainMult - 0.1) < 0.005);
 });
 
-test("вампиризм: узлы дерева видны в строке вампиризма", () => {
-  assert.equal(valueOf(base, "Вампиризм"), "", "без роллов и узлов строки нет");
-  assert.match(valueOf({ ...base, tb: { vamp: 0.1 } }, "Вампиризм"), /10%/);
+test("вампиризм: показывается за удар и растёт от узлов-множителей", () => {
+  assert.equal(valueOf(base, "Вампиризм"), "", "без ролла на оружии строки нет");
+  const withRoll: HeroStatInput = { ...base, rightAffix: "Вампиризм +0.4% макс. HP за удар" };
+  const plain = valueOf(withRoll, "Вампиризм");
+  assert.match(plain, /0\.4% макс\. HP за удар/);
+  // Узлы дерева — множители (tb.vamp 0.75 = ×1.75), а не проценты урона.
+  const boosted = valueOf({ ...withRoll, tb: { vamp: 0.75 } }, "Вампиризм");
+  assert.match(boosted, /0\.7% макс\. HP за удар/);
 });
 
 test("без щита нет строки блока даже с узлами", () => {

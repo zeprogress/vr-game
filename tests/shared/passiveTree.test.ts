@@ -66,7 +66,11 @@ test("бонусы: малые узлы с механикой действуют
     const active = small.filter((n) => n.active);
     assert.ok(active.length >= small.length * 0.6, `${c}: действует ${active.length} из ${small.length} малых`);
     for (const n of t.nodes) if (n.kind === "attr") assert.equal(n.active, true);
-    for (const n of active) assert.ok((n.fx && n.fx.value > 0 && n.fx.value < 0.2) || (n.smallSp && n.smallSp.value > 0), `${c}: ${n.name} ${n.desc}`);
+    // Вампиризм — множитель к роллу оружия (может быть 15–30%), остальные бонусы — доли до 20%.
+    for (const n of active) {
+      const lim = n.fx?.key === "vamp" ? 1 : 0.2;
+      assert.ok((n.fx && n.fx.value > 0 && n.fx.value < lim) || (n.smallSp && n.smallSp.value > 0), `${c}: ${n.name} ${n.desc}`);
+    }
   }
   const t = treeOf("warrior");
   const two = t.nodes.filter((n) => n.fx?.key === "hp").slice(0, 2);
