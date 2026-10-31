@@ -2949,6 +2949,9 @@ export class ZoneSim {
   }
   /** Статистика забега катакомб: урон по их мобам и убийства по героям (сбрасывает режиссёр). */
   readonly catDamage = new Map<string, number>();
+  /** Лечение катакомб за забег: своё (себе) и чужое (союзникам) — только умения, без вампиризма. */
+  readonly catHealSelf = new Map<string, number>();
+  readonly catHealOthers = new Map<string, number>();
   readonly catKills = new Map<string, number>();
   /** Открытые залы катакомб (шаги catLo..catHi маршрута) — для удержания мобов в стенах. */
   catOpen: readonly number[] = [0];

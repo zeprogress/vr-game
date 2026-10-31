@@ -488,7 +488,11 @@ export interface WarpMsg {
 /** Таблица забега катакомб. */
 export interface CatStatsMsg {
   /** rev — павший: секунд до воскрешения (0 — встанет вот-вот; -1 — жизни отряда кончились, ждёт следующего зала). */
-  rows: { nick: string; dmg: number; kills: number; deaths: number; dead: boolean; rev?: number }[];
+  rows: {
+    nick: string; dmg: number; kills: number; deaths: number; dead: boolean; rev?: number;
+    /** Вылечено умениями: себе (без вампиризма) и союзникам — за забег. */
+    healSelf?: number; healOthers?: number;
+  }[];
 }
 
 /** Строка итоговой таблицы катакомб: герой, его урон за забег и что ему выпало из сундуков. */

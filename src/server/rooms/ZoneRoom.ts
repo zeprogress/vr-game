@@ -7079,7 +7079,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.awardXp(this.clientOf(id), p, need * catXpFrac(level0) * share);
       },
       rekeyStats: (from, to) => {
-        for (const m of [this.sim.catDamage, this.sim.catKills]) {
+        for (const m of [this.sim.catDamage, this.sim.catKills, this.sim.catHealSelf, this.sim.catHealOthers]) {
           const v = m.get(from);
           m.delete(from);
           if (v !== undefined) m.set(to, (m.get(to) ?? 0) + v);
@@ -7238,6 +7238,8 @@ export class ZoneRoom extends Room<ZoneState> {
         if (reset) {
           this.sim.catDamage.clear();
           this.sim.catKills.clear();
+          this.sim.catHealSelf.clear();
+          this.sim.catHealOthers.clear();
           return;
         }
         const msg: CatStatsMsg = {
@@ -7247,7 +7249,11 @@ export class ZoneRoom extends Room<ZoneState> {
               const rrt = this.rt.get(r.id);
               // Павший: сколько до воскрешения (жизни отряда кончились — -1, встанет в следующем зале).
               const rev = p?.dead ? (this.cat.livesLeft > 0 ? Math.max(0, Math.ceil(rrt?.respawnIn ?? 0)) : -1) : undefined;
-              return { nick: p?.nick ?? "?", dmg: Math.round(this.sim.catDamage.get(r.id) ?? 0), kills: this.sim.catKills.get(r.id) ?? 0, deaths: r.deaths, dead: !!p?.dead, ...(rev !== undefined ? { rev } : {}) };
+              return {
+                nick: p?.nick ?? "?", dmg: Math.round(this.sim.catDamage.get(r.id) ?? 0), kills: this.sim.catKills.get(r.id) ?? 0,
+                deaths: r.deaths, dead: !!p?.dead, ...(rev !== undefined ? { rev } : {}),
+                healSelf: Math.round(this.sim.catHealSelf.get(r.id) ?? 0), healOthers: Math.round(this.sim.catHealOthers.get(r.id) ?? 0),
+              };
             })
             .sort((a, b) => b.dmg - a.dmg),
         };
@@ -11067,7 +11073,14 @@ export class ZoneRoom extends Room<ZoneState> {
     const before = p.hp;
     p.hp = Math.min(p.maxHp, p.hp + amount);
     const healed = Math.round(p.hp - before);
-    if (healed > 0) this.sim.dmgHits.push({ x: p.head.x, y: p.head.y + 0.4, z: p.head.z, dmg: healed, by: heroId, c: "heal" });
+    if (healed <= 0) return;
+    this.sim.dmgHits.push({ x: p.head.x, y: p.head.y + 0.4, z: p.head.z, dmg: healed, by: heroId, c: "heal" });
+    // Таблица катакомб: сколько герой вылечил себе и союзникам (вампиризм сюда не идёт — он в vampHeal).
+    if (this.cat.busy && heroId) {
+      const own = heroId === this.idOf(p);
+      const m = own ? this.sim.catHealSelf : this.sim.catHealOthers;
+      m.set(heroId, (m.get(heroId) ?? 0) + healed);
+    }
   }
 
   /** 🧪 «Стрела-призрак»: пока он действует, попадание стрелой (у бота — выстрел) лечит стрелка. */

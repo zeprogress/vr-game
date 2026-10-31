@@ -185,6 +185,16 @@ const CSS = `
 .ov-cattop b { display:block; font-weight:800; font-size:1.9vh; color:#ffb199; letter-spacing:.03em; margin-bottom:.5vh; }
 .ov-cattop .hd, .ov-cattop .r { display:grid; grid-template-columns:1fr 5vw 3.6vw 2.4vw; gap:.4vw; font-variant-numeric:tabular-nums; }
 .ov-cattop .hd { opacity:.6; font-size:1.3vh; }
+/* Заголовки колонок — как числа: по правому краю той же колонки. */
+.ov-cattop .hd .cell, .ov-catheal .hd .cell { text-align:right; }
+.ov-catheal { left:0.6vw; width:22vw; font-size:1.65vh; border-left:.35vh solid #61d97a; }
+.ov-catheal b { display:block; font-weight:800; font-size:1.9vh; color:#a8f0b8; letter-spacing:.03em; margin-bottom:.5vh; }
+.ov-catheal .hd, .ov-catheal .r { display:grid; grid-template-columns:1fr 5vw 5vw; gap:.4vw; font-variant-numeric:tabular-nums; }
+.ov-catheal .hd { opacity:.6; font-size:1.3vh; }
+.ov-catheal .r span:not(.nm) { text-align:right; }
+.ov-catheal .r .nm { display:flex; min-width:0; white-space:nowrap; }
+.ov-catheal .r .nm .nk { overflow:hidden; text-overflow:ellipsis; min-width:0; text-align:left; }
+.ov-catheal .r.dead { opacity:.6; }
 .ov-cattop .r span:not(.nm) { text-align:right; }
 .ov-cattop .r .nm { display:flex; min-width:0; white-space:nowrap; }
 .ov-cattop .r .nm .nk { overflow:hidden; text-overflow:ellipsis; min-width:0; text-align:left; }
@@ -318,6 +328,7 @@ export class Overlay {
     this.root.append(
       this.cat,
       this.catTop,
+      this.catHeal,
       this.wm,
       this.clock,
       this.online,
@@ -388,12 +399,30 @@ export class Overlay {
 
   /** Топ-5 героев — приходит с сервера раз в 10 с (Ф10). */
   /** Таблица забега катакомб: пока идёт забег — вместо топа героев и башни. */
-  private catTopRows: { nick: string; dmg: number; kills: number; deaths: number; dead: boolean; rev?: number }[] = [];
+  private catTopRows: { nick: string; dmg: number; kills: number; deaths: number; dead: boolean; rev?: number; healSelf?: number; healOthers?: number }[] = [];
   private readonly catTop: HTMLDivElement = div("box ov-cattop");
   private catTopSig = "";
-  setCatTop(rows: { nick: string; dmg: number; kills: number; deaths: number; dead: boolean; rev?: number }[]): void {
+  /** Вторая панель — лечение. Позиция считается по высоте таблицы урона (строк у отряда разное число). */
+  private readonly catHeal: HTMLDivElement = div("box ov-catheal");
+  private catHealSig = "";
+  setCatTop(rows: { nick: string; dmg: number; kills: number; deaths: number; dead: boolean; rev?: number; healSelf?: number; healOthers?: number }[]): void {
     this.catTopRows = rows;
   }
+
+  /**
+   * Поставить панель лечения ровно под таблицей урона: строк у отряда бывает 3–12, фиксированный top
+   * ломался бы (панели наезжали друг на друга или оставался провал).
+   */
+  private placeCatHeal(): void {
+    const box = this.catTop.getBoundingClientRect();
+    if (box.height <= 0) return;
+    const top = box.bottom + window.innerHeight * 0.012;
+    if (this.catHealTop !== top) {
+      this.catHealTop = top;
+      this.catHeal.style.top = `${top}px`;
+    }
+  }
+  private catHealTop = -1;
 
   setLeaderboard(rows: LeaderboardRow[]): void {
     this.topRows = rows;
@@ -547,7 +576,8 @@ export class Overlay {
         this.catTopSig = sig;
         this.catTop.innerHTML = "<b>☠ урон в катакомбах</b>";
         const hd = div("hd");
-        hd.innerHTML = "<span></span><span>урон</span><span>убито</span><span>☠</span>";
+        // Заголовки колонок — в одну линию с числами (по правому краю, как сами значения).
+        hd.innerHTML = "<span></span><span class=\"cell\">урон</span><span class=\"cell\">убито</span><span class=\"cell\">смертей</span>";
         this.catTop.appendChild(hd);
         this.catTopRows.forEach((r, i) => {
           const row = div(r.dead ? "r dead" : "r");
@@ -576,6 +606,38 @@ export class Overlay {
         });
       }
     }
+    // Панель лечения под таблицей урона: сколько герой вылечил себе (без вампиризма) и союзникам.
+    show(this.catHeal, catRun);
+    if (catRun) this.placeCatHeal();
+    if (catRun) {
+      const healSig = this.catTopRows.map((r) => `${r.nick}${r.healSelf ?? 0}${r.healOthers ?? 0}`).join("|");
+      if (healSig !== this.catHealSig) {
+        this.catHealSig = healSig;
+        this.catHeal.innerHTML = "<b>✚ лечение в катакомбах</b>";
+        const hh = div("hd");
+        hh.innerHTML = "<span></span><span class=\"cell\">себе</span><span class=\"cell\">другим</span>";
+        this.catHeal.appendChild(hh);
+        // Порядок — по лечению суммарно: видно, кто держит отряд.
+        const byHeal = [...this.catTopRows].sort((a, b) => (b.healSelf ?? 0) + (b.healOthers ?? 0) - ((a.healSelf ?? 0) + (a.healOthers ?? 0)));
+        for (const r of byHeal) {
+          if (!(r.healSelf ?? 0) && !(r.healOthers ?? 0)) continue; // не лечил — строку не рисуем
+          const row = div(r.dead ? "r dead" : "r");
+          const nm = document.createElement("span");
+          nm.className = "nm";
+          const nk = document.createElement("span");
+          nk.className = "nk";
+          nk.textContent = r.nick;
+          nm.append(nk);
+          const s1 = document.createElement("span");
+          s1.textContent = fmtDmg(r.healSelf ?? 0);
+          const s2 = document.createElement("span");
+          s2.textContent = fmtDmg(r.healOthers ?? 0);
+          row.append(nm, s1, s2);
+          this.catHeal.appendChild(row);
+        }
+      }
+    }
+
     const tickOn = this.cfg.ticker && this.tickerText.length > 0;
     show(this.ticker, tickOn);
     if (tickOn) {
