@@ -10,9 +10,9 @@ namespace Zep
     {
         /// Точка отсчёта: +10 удачных точек заточки (SHARP_GLOW_REF_PCT).
         const float RefPct = 25.41f;
-        /// С +20 до +30 точек свечение выцветает к белому (sharpWhiten в weaponModels.ts):
-        /// +20 точек — 42.8%, +30 — 54.6% прибавки (ATTACK_POINT: 3% × 0.9625^n).
-        const float WhiteFrom = 42.8f, WhiteTo = 54.6f;
+        /// С +20 до +25 точек свечение выцветает к белому (sharpWhiten в shared/items.ts):
+        /// +20 точек — 42.75%, +25 — 49.23% прибавки (ATTACK_POINT: 3% × 0.9625^n).
+        const float WhiteFrom = 42.75f, WhiteTo = 49.23f;
         static readonly Color Legendary = new(0.6f, 0.22f, 1f), Ruby = new(1f, 0.1f, 0.22f), Craft = new(1f, 0.38f, 0.02f);
         static readonly Color Shimmer = new(1f, 0.82f, 0.36f);
         static Material mat;

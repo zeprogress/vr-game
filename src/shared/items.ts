@@ -1391,11 +1391,11 @@ export function sharpPctOfPoints(n: number): number {
 
 /**
  * Насколько свечение заточки выцвело к белому: 0 — цвет тира, 1 — чисто белый.
- * Отрезок — с +20 до +30 удачных точек атаки (42.8%…54.6% прибавки).
+ * Отрезок — с +20 до +25 удачных точек атаки (42.75%…49.23% прибавки).
  */
 export function sharpWhiten(pct: number): number {
   const from = sharpPctOfPoints(20);
-  const to = sharpPctOfPoints(30);
+  const to = sharpPctOfPoints(25);
   return Math.max(0, Math.min(1, (pct - from) / (to - from)));
 }
 
