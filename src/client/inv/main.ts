@@ -179,6 +179,8 @@ function pageInv(): PcInventory {
     touch: matchMedia("(pointer: coarse)").matches,
     request: () => room?.send("refresh"),
     act: (m) => act(m.act, m.id || (m.act === "title" ? "-" : m.id), m.idx, m.fuel),
+    // Облик (1 — Человек, 2 — Эльф): сервер ставит герою сразу, если он в мире, иначе — при входе.
+    setSkin: (skin) => act("skin", String(skin)),
     hands: () => heldHands as ReturnType<PcInventoryHooks["hands"]>,
     // idx 1 — в левую руку (второй меч/кинжал к такому же в правой).
     equip: (w, side) => act("equip", w.id, side === "left" ? 1 : 0),
@@ -251,7 +253,12 @@ function connect(attempt = 0): void {
       room = r;
       r.onMessage("sid", (sid: string) => saveSid(sid));
       // Итог крафта — во вкладку «Крафт» окна (исход крупно), остальное — всплывашкой.
-      r.onMessage("toast", (m: { ok: boolean; text: string; craft?: unknown }) => (m.craft ? pcInv?.onResult(m as never) : m.text && toast(m.text, m.ok)));
+      r.onMessage("toast", (m: { ok: boolean; text: string; craft?: unknown }) => {
+        if (m.craft) return pcInv?.onResult(m as never);
+        if (m.text) toast(m.text, m.ok);
+        // Смена облика — перерисовать героя на камне и обновить данные (картинка облика).
+        if (m.ok && /Облик/i.test(m.text ?? "")) room?.send("refresh");
+      });
       r.onMessage("enchant", (m: unknown) => pcInv?.onResult(m as never));
       r.onMessage("feedback", (m: FeedbackReply) => onFeedback(m));
       r.onMessage("inv", (msg: InvMsg) => {

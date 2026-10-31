@@ -10,6 +10,7 @@ import type { IconKey } from "#shared/icons";
 import { AEGIS_NAME, AFFIX_NAME, craftPow, isCraftRare, weaponName, ATTACK_CLASSES, WEAPON_NOUN, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, qualityStarsShort, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcEnchRow, PcInvActMsg, PcInvArmor, PcInvData, PcInvResult, PcInvWeapon, TradeItemView } from "#shared/net/messages";
 import { skinPicture } from "#shared/skins";
+import { BOT_SKIN_LABELS } from "../world/models";
 import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringSkillBonusOf, type PcInvJewels, type PcInvNeck, type PcInvRing, type RingTier } from "#shared/jewels";
 import { RING_STATS, ringValueText } from "#shared/ringAffixes";
 import { NECK_TIER_NAME, type NeckTier } from "#shared/necklaces";
@@ -78,6 +79,8 @@ export interface PcInventoryHooks {
   act: (m: PcInvActMsg) => void;
   /** Броня в сумке: надеть / снять / разобрать / выбросить. Без хука броня не показывается (страница !inv). */
   armorAct?: (id: string, act: "wear" | "unwear" | "scrap" | "drop" | "fav") => void;
+  /** Сменить облик героя (1 — Человек, 2 — Эльф). Без хука выбор не показывается. */
+  setSkin?: (skin: number) => void;
   /** Что сейчас в руках (включая обычное, которого нет на складе). */
   hands: () => { left: HeldInfo | null; right: HeldInfo | null };
   equip: (w: PcInvWeapon, side: Side) => void;
@@ -992,6 +995,24 @@ export class PcInventory {
     img.alt = "";
     img.draggable = false;
     st.append(div("pcinv-heroshadow"), img);
+    // Выбор облика — под куклой героя (CSS-класс .pcinv-skinpick ждал этого блока).
+    if (this.hooks.setSkin && BOT_SKIN_LABELS.length > 1) {
+      const pick = div("pcinv-skinpick");
+      const sel = document.createElement("select");
+      sel.className = "pcinv-skinsel";
+      sel.title = "Облик героя";
+      BOT_SKIN_LABELS.forEach((label, i) => {
+        const o = document.createElement("option");
+        o.value = String(i + 1);
+        o.textContent = label;
+        sel.append(o);
+      });
+      const cur = Math.max(1, Math.min(BOT_SKIN_LABELS.length, this.hero.skin));
+      sel.value = String(cur);
+      sel.onchange = () => this.hooks.setSkin?.(Number(sel.value));
+      pick.append(sel);
+      st.append(pick);
+    }
     return st;
   }
 
