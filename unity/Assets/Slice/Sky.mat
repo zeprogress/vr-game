@@ -26,14 +26,14 @@ Material:
     m_Ints: []
     m_Floats:
     - _Exposure: 1
-    - _FogMix: 0
+    - _FogMix: 0.85
     - _SunSize: 0.9995
     m_Colors:
     - _Fog: {r: 0.78, g: 0.85, b: 0.92, a: 1}
     - _Ground: {r: 0.78, g: 0.85, b: 0.92, a: 1}
-    - _Horizon: {r: 0.81, g: 0.89, b: 0.94, a: 1}
-    - _SunColor: {r: 1, g: 0.96999997, b: 0.82, a: 1}
-    - _SunDir: {r: 0, g: 1, b: 0, a: 0}
-    - _Zenith: {r: 0.31999996, g: 0.52, b: 0.8, a: 1}
+    - _Horizon: {r: 0.80784315, g: 0.8862745, b: 0.9411765, a: 1}
+    - _SunColor: {r: 1, g: 0.97, b: 0.82, a: 1}
+    - _SunDir: {r: 5.779465e-17, g: 0.9438584, b: -0.33035043, a: 0}
+    - _Zenith: {r: 0.32156864, g: 0.5176471, b: 0.8039216, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

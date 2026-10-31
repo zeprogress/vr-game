@@ -87,7 +87,7 @@ Material:
     - alphaCutoff: 0
     - baseColorTexture_texCoord: 0
     m_Colors:
-    - baseColorFactor: {r: 0.008870876, g: 0.005429558, b: 0.0028833626, a: 1}
+    - baseColorFactor: {r: 0.24528301, g: 0.16936207, b: 0, a: 1}
     - baseColorTexture_Rotation: {r: 0, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
