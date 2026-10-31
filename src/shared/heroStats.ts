@@ -1,4 +1,4 @@
-import type { TreeFx } from "./passiveTree";
+import { treeBonus, type TreeFx } from "./passiveTree";
 import type { ArmorStat } from "./armor";
 import { BOW, CAMPFIRE, EVENT, SHIELD, SWORD_CRIT_MULT, STAFF_CRIT_MULT } from "./constants";
 import { SCROLL } from "./shop";
@@ -234,10 +234,11 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const luckN = invested(attrOf(p, "luc"));
   const newW = cls === "dagger" || cls === "spear" || cls === "hammer" ? WEAPONS2[cls] : null;
   const soloDagger = cls === "dagger" && (p.leftCls === "" || p.rightCls === "");
+  // + узлы дерева (PlayerState.tb.crit): в бою они прибавляются после потолка, как и ролл «Пелена».
   const critChance = Math.min(
     ATTR2.luc.critCap,
     (cls === "bow" ? BOW.critChance : newW ? newW.critBase : BASE_CRIT) + (soloDagger ? DAGGER.soloCrit : 0) + critChanceBonus + luckN * ATTR2.luc.crit,
-  );
+  ) + treeBonus(p, "crit");
   // Базовая сила крита — своя для каждого вида оружия (см. rollCritMult в
   // combat.ts): у лука BOW.critMult, у меча/кулака SWORD_CRIT_MULT, у посоха
   // STAFF_CRIT_MULT.
@@ -246,8 +247,8 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
     (soloDagger ? DAGGER.soloCritDmg : 0);
   // Показываем всегда (в т.ч. 0% у меча/посоха без ролла) — а не только при
   // ненулевом шансе: игроку/зрителю иначе непонятно, есть ли крит вообще.
-  rows.push({ label: "Шанс крита", value: `${Math.round(critChance * 100)}%${critChance >= ATTR2.luc.critCap - 1e-9 ? CAP_MARK : ""}` });
-  rows.push({ label: "Сила крита", value: `×${(baseCritMult + critMultBonus + luckN * ATTR2.luc.critDmg).toFixed(2)}` });
+  rows.push({ label: "Шанс крита", value: `${Math.round(critChance * 100)}%${critChance >= ATTR2.luc.critCap - 1e-9 ? CAP_MARK : ""}${treeBonus(p, "crit") > 0 ? UP : ""}` });
+  rows.push({ label: "Сила крита", value: `×${(baseCritMult + critMultBonus + luckN * ATTR2.luc.critDmg + treeBonus(p, "critDmg")).toFixed(2)}${treeBonus(p, "critDmg") > 0 ? UP : ""}` });
 
   // Вампиризм — только ролл на оружии ближнего боя (см. vampFrac в items.ts).
   // Два меча/кинжала — лучший из двух (как heldVamp на сервере).
@@ -255,7 +256,8 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
     isMeleeClass(p.rightCls) ? affixNum(p.rightAffix, "Вампиризм") : 0,
     isMeleeClass(p.leftCls) && !(p.leftCls === p.rightCls && (p.leftCls === "spear" || p.leftCls === "hammer")) ? affixNum(p.leftAffix, "Вампиризм") : 0,
   );
-  if (vamp > 0) rows.push({ label: "Вампиризм", value: `${Math.round(vamp * 1000) / 10}% урона в HP` });
+  const vampTree = treeBonus(p, "vamp");
+  if (vamp + vampTree > 0) rows.push({ label: "Вампиризм", value: `${Math.round((vamp + vampTree) * 1000) / 10}% урона в HP${vampTree > 0 ? UP : ""}` });
 
   // Ролл щита гасит урон отдельным множителем сверх брони (см. ZoneRoom.hurtPlayer).
   const arm = 1 - (1 - armorFrac(p)) * (1 - affixNum(shieldAffix, "Физ. защита")) * (1 - bm.def);
@@ -268,8 +270,9 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
 
   const shieldTier = p.rightCls === "shield" ? p.rightTier : p.leftCls === "shield" ? p.leftTier : null;
   if (shieldTier) {
-    const chance = shieldBlockChance(shieldTier) + affixNum(shieldAffix, "Блок");
-    rows.push({ label: "Блок щитом", value: `${Math.round(chance * 100)}% шанс` });
+    // Как blockChanceOf на сервере: тир щита + ролл «Блок» + узлы дерева (tb.block).
+    const chance = shieldBlockChance(shieldTier) + affixNum(shieldAffix, "Блок") + treeBonus(p, "block");
+    rows.push({ label: "Блок щитом", value: `${Math.round(chance * 100)}% шанс${treeBonus(p, "block") > 0 ? UP : ""}` });
     const refl = affixNum(shieldAffix, "Отражение");
     if (refl > 0) rows.push({ label: "Отражение щитом", value: `${Math.round(refl * 100)}% удара` });
     if (shieldAffix?.includes("Оплот")) rows.push({ label: "Оплот (Эгида)", value: `блок удара вблизи лечит ${Math.round(SHIELD.aegisHealFrac * 100)}% HP` });

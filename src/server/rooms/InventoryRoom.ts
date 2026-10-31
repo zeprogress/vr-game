@@ -32,6 +32,7 @@ import {
 } from "#shared/items";
 import { hammerPhysStrike, skillStrike, strikeKindOf } from "#shared/strike";
 import { heroStatRows } from "#shared/heroStats";
+import { treeBonusTotals } from "#shared/passiveTree";
 import { armorBonusOf, armorPcView, sanitizeArmorList, wornArmorOf, type ArmorPart } from "#shared/armor";
 import type { PcInvData, PcInvWeapon } from "#shared/net/messages";
 import { FEEDBACK_COOLDOWN_MS, FEEDBACK_TEXT_MAX, isFeedbackKind, isFeedbackMark, type FeedbackKind } from "#shared/feedback";
@@ -246,9 +247,14 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     if (strikeCls === "battlemage") strikePhys = Math.round(hammerPhysStrike(rec.level, attrs, hand) * 10) / 10;
   }
   const armorList = sanitizeArmorList(rec.armor);
+  // Бонусы дерева прокачки (как у живого героя): PlayerState.tb. Без них страница «Характеристики»
+  // показывала блок/крит/вампиризм без узлов, хотя в бою они действуют.
+  const treeCls = classOf2((rec.held?.left?.cls ?? "") as Weapon2 | "", (rec.held?.right?.cls ?? "") as Weapon2 | "");
+  const treeTaken = treeCls ? (rec.tree?.[treeCls] ?? []) : [];
   const stats = heroStatRows({
     ab: armorBonusOf(wornArmorOf(armorList, rec.armorWorn ?? {})),
     gb: jewelBonus(jewels),
+    ...(treeCls ? { tb: treeBonusTotals(treeCls, treeTaken) } : {}),
     level: rec.level,
     str: rec.str,
     agi: rec.agi,
