@@ -59,8 +59,28 @@ check_all() {
 # --------------------------------------------------- 1. БЫСТРЫЙ ДЕПЛОЙ (~15 с)
 # Сборка здесь, на сервер едут только изменённые файлы dist + рестарт.
 # НЕ ждёт CI: пушит и сразу выкладывает. Для мелочей и баланса.
+# Unity при сохранении сцены переписывает десятки .mat/.asset и саму Slice.unity —
+# это производные от правок, в git они не нужны (диф на 40 тыс. строк). Источник правды —
+# src/client/world/locationEdits.json. Возвращаем эти файлы к версии из git.
+clean_unity_artifacts() {
+  local dirty
+  dirty="$(git status --porcelain --untracked-files=no -- unity/Assets/Scenes unity/Assets/Slice | wc -l | tr -d ' ')"
+  [ "$dirty" = "0" ] && return 0
+  c_warn "  Unity переписала служебные файлы ($dirty шт.) — в деплой они не едут:"
+  git status --short --untracked-files=no -- unity/Assets/Scenes unity/Assets/Slice | head -6 | sed 's/^/    /'
+  [ "$dirty" -gt 6 ] && echo "    … и ещё $((dirty - 6))"
+  read -r -p "  вернуть их к версии из git? (Enter — да, n — оставить как есть): " ok
+  if [ "${ok:-}" != "n" ]; then
+    git checkout -- unity/Assets/Scenes unity/Assets/Slice
+    c_ok "  служебные файлы Unity откачены (правки предметов — в locationEdits.json, они целы)"
+  else
+    c_warn "  оставил как есть — они попадут в коммит"
+  fi
+}
+
 fast_deploy() {
   c_hdr "1. Быстрый деплой (deploy/fast.sh, ~15 с)"
+  clean_unity_artifacts
   if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
     c_warn "  есть незакоммиченные правки:"
     git status --short --untracked-files=no | sed 's/^/    /'
@@ -68,6 +88,10 @@ fast_deploy() {
     [ "${msg_ok:-}" = "n" ] && { c_warn "  отменено (закоммить сам)"; return; }
     read -r -p "  сообщение коммита: " msg
     git add -A && git commit -q -m "${msg:-правки}" || { c_err "  коммит не прошёл"; return; }
+    # Проверка: файл правок действительно в коммите (главная прошлая ошибка).
+    if ! git show --stat HEAD | grep -q locationEdits && git log -1 --pretty=%s | grep -qi "локац"; then
+      c_warn "  ВНИМАНИЕ: в коммите нет locationEdits.json — правки не уедут"
+    fi
   fi
   echo "  коммит: $(HEAD_SHA)"
   time deploy/fast.sh
@@ -80,6 +104,7 @@ fast_deploy() {
 push_only() {
   c_hdr "2. Пуш с проверкой CI (автодеплой, ~3–5 мин)"
   check_all || { c_warn "  лучше не пушить: сначала починить"; return; }
+  clean_unity_artifacts
   if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
     read -r -p "  закоммитить и запушить все правки? (y/N): " yn
     [ "$yn" = "y" ] || { c_warn "  отменено"; return; }
