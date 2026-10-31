@@ -54,7 +54,7 @@ import { STAT_LABELS, type Progression, type StatName } from "../player/Progress
 import { BAG, ITEMS, type Inventory } from "../player/Inventory";
 import { VR_SETTINGS, setVrSettings } from "../config/vrSettings";
 import { BOT } from "#shared/constants";
-import { treeOf, type TreeNode, type TreePart } from "#shared/passiveTree";
+import { skillModsFor, treeBonusTotals, treeOf, treeSkillState, type TreeNode, type TreePart } from "#shared/passiveTree";
 import { BOT_SKIN_LABELS } from "../world/models";
 import { weaponStats, type HeroStats, type WornWeapon } from "./itemStats";
 import { LAYER } from "../engine/renderLayers";
@@ -531,15 +531,19 @@ export class WristMenu {
     const compact = def.skills.length > 4;
     // У лучника 10 умений (🧪 стрелы) — строки ужимаются по месту, чтобы последняя не уходила за край панели.
     const rowH = Math.min(compact ? 66 : 92, Math.floor((TEX_H - y - 8) / def.skills.length) - 8);
-    // Откат и бонусы — как у сервера: атрибуты героя + прибавка от колец и камней.
-    const live = { ...this.prog.stats, gb: this.bonus() };
+    // Откат и бонусы — как у сервера: атрибуты героя + прибавка от колец и камней + плоские
+    // бонусы дерева (tb): без них урон/темп в окне не менялись после прокачки узлов.
+    const tb = this.tree && this.tree.cls === cls ? treeBonusTotals(cls, this.tree.taken) : undefined;
+    const live = { ...this.prog.stats, gb: this.bonus(), ...(tb ? { tb } : {}) };
+    const skillMods = this.tree && this.tree.cls === cls ? treeSkillState(cls, this.tree.taken).skills : undefined;
     const { strike, phys } = this.strikeOf() ?? {};
     for (const id of def.skills) {
       const sk = SKILLS2[id];
       const name = skillName(id, cls);
-      const dmgText = strike !== undefined ? skillDamageText(id, cls, strike, live, phys) : null;
+      const mods = skillModsFor(skillMods, id);
+      const dmgText = strike !== undefined ? skillDamageText(id, cls, strike, live, phys, mods) : null;
       const dmg = dmgText ? `. ${dmgText}` : "";
-      const desc = `${skillDesc(id, cls, live)}${dmg}`;
+      const desc = `${skillDesc(id, cls, live, mods)}${dmg}`;
       const on = this.skillChosen.includes(id);
       const wd = this.add({
         id: `skill:${id}`, x: X, y, w: W, h: rowH, kind: "button",

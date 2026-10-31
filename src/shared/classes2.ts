@@ -1,4 +1,4 @@
-import { attrsFromTree, autoTree, treeBonus } from "./passiveTree";
+import { attrsFromTree, autoTree, treeBonus, type SkillMods } from "./passiveTree";
 import { BOW, MELEE, PLAYER, PLAYER_HP, PROGRESSION } from "./constants";
 import { MAGIC, magicPowerFor, magicResistFrac } from "./magic";
 import { levelGain } from "./levelGain";
@@ -893,15 +893,23 @@ export function skillName(id: SkillId, cls: ClassId): string {
  * Числа в описаниях умений, на которые влияют ожерелье и кольца: {r:N} — радиус и дальность (× (1 + skRad)),
  * {d:N} — длительность эффектов (× (1 + skDur)). Без `a` — базовые значения. Тот же множитель, что на сервере (castSkill).
  */
-export function descNums(text: string, a?: SkillAttrs): string {
-  const rad = 1 + (a?.gb?.skRad ?? 0);
-  const dur = 1 + (a?.gb?.skDur ?? 0);
-  return text.replace(/\{([rd]):([\d.]+)\}/g, (_m, k: string, n: string) => String(Math.round(Number(n) * (k === "r" ? rad : dur) * 10) / 10));
+/**
+ * Подставить числа в описание: `{d:6}` — длительность, `{r:5}` — радиус.
+ * Учитывает ожерелье (gb.skDur/skRad) и прибавки дерева прокачки (dur/rad секунды и метры,
+ * durMul/radMul множители) — те же, что берёт сервер в castSkill.
+ */
+export function descNums(text: string, a?: SkillAttrs, mods: SkillMods = {}): string {
+  const rad = (1 + (a?.gb?.skRad ?? 0)) * (mods.radMul ?? 1);
+  const dur = (1 + (a?.gb?.skDur ?? 0)) * (mods.durMul ?? 1);
+  return text.replace(/\{([rd]):([\d.]+)\}/g, (_m, k: string, n: string) => {
+    const v = k === "r" ? Number(n) * rad + (mods.rad ?? 0) : Number(n) * dur + (mods.dur ?? 0);
+    return String(Math.round(v * 10) / 10);
+  });
 }
 
-export function skillDesc(id: SkillId, cls: ClassId, a?: SkillAttrs): string {
+export function skillDesc(id: SkillId, cls: ClassId, a?: SkillAttrs, mods: SkillMods = {}): string {
   const sk = SKILLS2[id];
-  const d = descNums(sk.variants?.[cls]?.desc ?? sk.desc, a);
+  const d = descNums(sk.variants?.[cls]?.desc ?? sk.desc, a, mods);
   if (!sk.attr) return d;
   const name = ATTR_INFO[sk.attr.attr].name;
   const per = sk.attr.pow ? `растёт с затуханием, ×(1 + очки)^${sk.attr.pow}` : `+${Math.round(sk.attr.per * 1000) / 10}% за очко`;

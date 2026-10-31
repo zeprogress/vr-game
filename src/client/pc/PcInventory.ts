@@ -14,6 +14,7 @@ import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringL
 import { RING_STATS, ringValueText } from "#shared/ringAffixes";
 import { NECK_TIER_NAME, type NeckTier } from "#shared/necklaces";
 import { skillDamageText } from "#shared/skillDamage";
+import { skillModsFor, treeSkillState } from "#shared/passiveTree";
 import { BAG_SORTS, bagPickItem, nextBagSort, sortBag, type BagSort } from "#shared/bagSort";
 import { gemHtml, NECK_SLOT_SVG, neckHtml, RING_SLOT_SVG, ringHtml } from "#shared/jewelIcons";
 import {
@@ -1982,6 +1983,9 @@ export class PcInventory {
     const live = { ...d.attrs, gb: d.gb };
     for (const id of def.skills) {
       const on = chosen.has(id);
+      // ★ Улучшения умений из дерева прокачки (урон, удары, длительность, радиус) — иначе числа
+      // в окне не менялись после прокачки узла.
+      const mods = d.tree && d.tree.cls ? skillModsFor(treeSkillState(d.tree.cls as ClassId, d.tree.taken).skills, id) : {};
       const row = div(`pcinv-arow pcinv-skill${on ? " on" : ""}`);
       const ic = div("pcinv-aic");
       ic.innerHTML = iconHtml(skillIcon(id));
@@ -1991,10 +1995,10 @@ export class PcInventory {
       if (on) nm.append(div("pcinv-chip ok", "✓ выбрано"));
       txt.append(
         nm,
-        div("pcinv-small", skillDesc(id, cls, live)),
+        div("pcinv-small", skillDesc(id, cls, live, mods)),
         // Урон умения — уже посчитанный от силы удара героя (те же формулы, что у сервера).
         ...(() => {
-          const t = d.strike !== undefined ? skillDamageText(id, cls, d.strike, live, d.strikePhys) : null;
+          const t = d.strike !== undefined ? skillDamageText(id, cls, d.strike, live, d.strikePhys, mods) : null;
           return t ? [div("pcinv-small dim", t)] : [];
         })(),
       );
