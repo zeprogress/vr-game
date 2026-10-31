@@ -163,10 +163,19 @@ export function castTempo2(level: number, a: AttrsIn): number {
   return (1 + softGain(levelTempo(level) - 1, ATK_SOFT)) * (1 + inv(attrOf(a, "wis")) * ATTR2.wis.cast) * (1 + treeBonus(a, "atk"));
 }
 
-/** Уворот: УДЧ (один предмет в руках — ×dodgeOneItem) + врождённый уворот ассасина с кинжалом (DAGGER.dodge). */
+/** Затухание уворота от УДЧ (2026-10-31): до ~20 очков почти линейно, дальше каждая точка слабее.
+ *  Без него потолок 60% достигался уже на УДЧ ≈ 61, и дальше удача для уворота не работала вовсе. */
+const DODGE_SOFT = 0.4;
+
+/**
+ * Уворот: УДЧ с угасанием (один предмет в руках — ×dodgeOneItem) + врождённый уворот ассасина
+ * с кинжалом (DAGGER.dodge) + броня и дерево — они прибавляются ПОСЛЕ угасания, поэтому их
+ * ценность относительно выросла. Потолок L.dodgeCap остаётся страховкой.
+ */
 export function dodge2(a: AttrsIn, oneItem: boolean, dagger = false): number {
   const L = ATTR2.luc;
-  return Math.min(L.dodgeCap, inv(attrOf(a, "luc")) * L.dodge * (oneItem ? L.dodgeOneItem : 1) + (dagger ? DAGGER.dodge : 0) + armorBonus(a, "dodge") + treeBonus(a, "dodge"));
+  const luck = softGain(inv(attrOf(a, "luc")) * L.dodge * (oneItem ? L.dodgeOneItem : 1), DODGE_SOFT);
+  return Math.min(L.dodgeCap, luck + (dagger ? DAGGER.dodge : 0) + armorBonus(a, "dodge") + treeBonus(a, "dodge"));
 }
 
 export function critChance2(a: AttrsIn, weaponBase: number): number {
