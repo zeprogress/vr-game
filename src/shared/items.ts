@@ -1389,6 +1389,16 @@ export function sharpPctOfPoints(n: number): number {
   return attackPointBonus(n) * 100;
 }
 
+/**
+ * Насколько свечение заточки выцвело к белому: 0 — цвет тира, 1 — чисто белый.
+ * Отрезок — с +20 до +30 удачных точек атаки (42.8%…54.6% прибавки).
+ */
+export function sharpWhiten(pct: number): number {
+  const from = sharpPctOfPoints(20);
+  const to = sharpPctOfPoints(30);
+  return Math.max(0, Math.min(1, (pct - from) / (to - from)));
+}
+
 /** Прибавка в процентах у экземпляра: 0 — щит, не точёное или не уникальное/рубиновое. */
 export function sharpPctOf(w: { cls: string; tier: string; sharp?: number }): number {
   return attackPointEligible(w) ? sharpPctOfPoints(attackPoints(w)) : 0;

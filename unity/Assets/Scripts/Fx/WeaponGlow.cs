@@ -10,6 +10,9 @@ namespace Zep
     {
         /// Точка отсчёта: +10 удачных точек заточки (SHARP_GLOW_REF_PCT).
         const float RefPct = 25.41f;
+        /// С +20 до +30 точек свечение выцветает к белому (sharpWhiten в weaponModels.ts):
+        /// +20 точек — 42.8%, +30 — 54.6% прибавки (ATTACK_POINT: 3% × 0.9625^n).
+        const float WhiteFrom = 42.8f, WhiteTo = 54.6f;
         static readonly Color Legendary = new(0.6f, 0.22f, 1f), Ruby = new(1f, 0.1f, 0.22f), Craft = new(1f, 0.38f, 0.02f);
         static readonly Color Shimmer = new(1f, 0.82f, 0.36f);
         static Material mat;
@@ -115,7 +118,10 @@ namespace Zep
             if (cam) transform.rotation = Quaternion.LookRotation(transform.position - cam.transform.position);
             float t = Time.time;
             float p = 0.5f + 0.5f * Mathf.Sin(t * 3.1f + transform.position.x);
-            var c = shim ? Color.Lerp(col, Shimmer, 0.5f + 0.5f * Mathf.Sin(t * 1.7f)) : col;
+            // +20…+30 точек: сначала выцветаем к белому, и только потом (если осталось) играем переливом.
+            float w = Mathf.Clamp01((pct - WhiteFrom) / (WhiteTo - WhiteFrom));
+            var baseCol = w > 0 ? Color.Lerp(col, Color.white, w) : col;
+            var c = shim && w < 1 ? Color.Lerp(baseCol, Shimmer, (0.5f + 0.5f * Mathf.Sin(t * 1.7f)) * (1f - w)) : baseCol;
             float k = (0.36f + p * 0.36f) * amp * (pct / RefPct);
             // HDR под bloom: ядро ярче единицы — ореол вокруг клинка; прозрачность по силе заточки.
             c = c * (1.6f + 1.4f * p);
