@@ -142,7 +142,6 @@ function buffMuls(p: HeroStatInput): { dmg: number; tempo: number; move: number;
   return { dmg, tempo, move, dodge, def, any: dmg !== 1 || tempo !== 1 || move !== 1 || dodge > 0 || def > 0 };
 }
 /** Пометка у значения, которое сейчас поднято баффом. */
-const UP = " ▲";
 
 /** Все числа «<Название> +N%» в тексте роллов (см. affixLabel в items.ts), в долях. */
 function affixVals(text: string | undefined, name: string): number[] {
@@ -191,14 +190,14 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   // Точка атаки за лом и «Мастерство» крафта: множитель урона предмета — лучший из двух рук (как attackPointBest на сервере).
   const sharpMul = Math.max(powerMulOfText(weaponAffix), otherAffix ? powerMulOfText(otherAffix) : 1);
   const hit = weaponHitDamage(cls || "sword", tier, p.level, p, dmgBonus) * bm.dmg * sharpMul;
-  rows.push({ label: "Урон", value: hit.toFixed(1) + (bm.dmg > 1 ? UP : "") });
+  rows.push({ label: "Урон", value: hit.toFixed(1) });
   if (cls === "hammer") {
     // Та же формула, что в бою (classes2.hammerWaveDamage): магия от ИНТ + удар самим
     // молотом (СИЛА, тир, роллы «Урон» от заточки, точка атаки, мастерство).
     const waveBase = weaponDamage("hammer", p.level, p, 1);
     const waveMult = tierMul * (1 + dmgBonus) * sharpMul;
     const wave = hammerWaveDamage(magicPowerFor(p.level, p), Math.max(0, attrOf(p, "int") - ATTR2.start), waveBase, waveMult) * bm.dmg;
-    rows.push({ label: "Волна молота", value: wave.toFixed(1) + (bm.dmg > 1 ? UP : "") });
+    rows.push({ label: "Волна молота", value: wave.toFixed(1) });
   }
   if (cls === "spear") rows.push({ label: "Удар конусом", value: `до ${WEAPONS2.spear.pierce} целей` });
 
@@ -208,10 +207,10 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const atkSpeedBonus = affixNum2("Скорость атаки");
   rows.push({
     label: attackRateLabel(cls),
-    value: `${(attacksPerSec(cls, p.level, p, atkSpeedBonus) * bm.tempo).toFixed(2)}/с${bm.tempo > 1 ? UP : ""}`,
+    value: `${(attacksPerSec(cls, p.level, p, atkSpeedBonus) * bm.tempo).toFixed(2)}/с`,
   });
 
-  rows.push({ label: "Скорость бега", value: `${(moveSpeedFor(p.level, p) * bm.move).toFixed(1)} м/с${bm.move > 1 ? UP : ""}` });
+  rows.push({ label: "Скорость бега", value: `${(moveSpeedFor(p.level, p) * bm.move).toFixed(1)} м/с` });
 
   // Уворот (см. ZoneRoom.ts hurtPlayer): свободная левая рука (щит/пусто у
   // меча) — обычный шанс; лук/посох занимают обе руки — вдвое подвижнее (×5
@@ -221,7 +220,7 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const dodgeBase = dodgeChance(p, oneHanded, p.leftCls === "dagger" || p.rightCls === "dagger");
   rows.push({
     label: "Шанс уворота",
-    value: `${Math.round((dodgeBase + bm.dodge) * 100)}%${bm.dodge > 0 ? UP : ""}${dodgeBase >= ATTR2.luc.dodgeCap - 1e-9 ? CAP_MARK : ""}`,
+    value: `${Math.round((dodgeBase + bm.dodge) * 100)}%${dodgeBase >= ATTR2.luc.dodgeCap - 1e-9 ? CAP_MARK : ""}`,
   });
 
   // Ролл Крит даёт и шанс, и силу (сила растёт вместе с шансом, см. critRollMult).
@@ -261,9 +260,9 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
 
   // Ролл щита гасит урон отдельным множителем сверх брони (см. ZoneRoom.hurtPlayer).
   const arm = 1 - (1 - armorFrac(p)) * (1 - affixNum(shieldAffix, "Физ. защита")) * (1 - bm.def);
-  rows.push({ label: "Физ. защита", value: `${Math.round(arm * 100)}%${bm.def > 0 ? UP : ""}` });
+  rows.push({ label: "Физ. защита", value: `${Math.round(arm * 100)}%` });
   const mres = 1 - (1 - magicResistFrac(p)) * (1 - affixNum(shieldAffix, "Маг. защита")) * (1 - bm.def);
-  rows.push({ label: "Маг. защита", value: `${Math.round(mres * 100)}%${bm.def > 0 ? UP : ""}` });
+  rows.push({ label: "Маг. защита", value: `${Math.round(mres * 100)}%` });
   // Регенерация: ТЕЛ + ролл щита (доля макс. HP в секунду, и в бою). Базовое PLAYER_HP.regen вне боя в строку не выводим.
   const regen = maxHpFor(p.level, p) * (hpRegenFrac(p) + affixNum(shieldAffix, "Регенерация"));
   rows.push({ label: "Регенерация", value: `${regen.toFixed(1)} HP/с` });
