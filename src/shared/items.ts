@@ -702,8 +702,8 @@ const CRIT_ROLL_MULT = [0.15, 0.5] as const; // 2026-10-02: было +0.3..+1 �
 const OLD_CRIT_MULT_HI = 0.8;
 
 /** Доля ролла от минимума к максимуму своего вида (0..1). */
-function rollT(sub: AffixSub, value: number, aegis: boolean | ShieldForm = false, cap = 1): number {
-  const [lo, hi] = rangeFor(sub, aegis, cap);
+function rollT(sub: AffixSub, value: number, aegis: boolean | ShieldForm = false, cap = 1, cls?: WeaponClass): number {
+  const [lo, hi] = rangeFor(sub, aegis, cap, cls);
   return hi > lo ? Math.max(0, Math.min(1, (value - lo) / (hi - lo))) : 1;
 }
 function atT(sub: AffixSub, t: number, aegis: boolean | ShieldForm = false, cap = 1, cls?: WeaponClass): number {
@@ -838,7 +838,7 @@ function snapToPoint(a: RolledAffix, aegis: boolean, cls?: WeaponClass): void {
 /** Очки одного ролла: от 1 (самый низкий) до 33 (самый высокий) линейно по диапазону вида. */
 export function affixPoints(a: RolledAffix, w: Pick<WeaponInstance, "cls" | "nm" | "tier">): number {
   // Роллы стоят на целых очках (lv 9); округление гасит погрешность чисел с плавающей точкой.
-  return Math.round(1 + 32 * rollT(a.sub, a.value, shieldForm(w), a.cap ?? 1));
+  return Math.round(1 + 32 * rollT(a.sub, a.value, shieldForm(w), a.cap ?? 1, w.cls));
 }
 
 /**
