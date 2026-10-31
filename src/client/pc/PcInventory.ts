@@ -5,7 +5,7 @@ import { armorIconKey, glyph, skillIcon, weaponIcon } from "#shared/icons";
 import { ARMOR_PART_NAME, ARMOR_PARTS, type ArmorPart } from "#shared/armor";
 import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
-import { ensureIconCss, iconHtml, setIconEl } from "../ui/icons";
+import { ensureIconCss, iconHtml, preloadIconImages, setIconEl } from "../ui/icons";
 import type { IconKey } from "#shared/icons";
 import { AEGIS_NAME, AFFIX_NAME, craftPow, isCraftRare, weaponName, ATTACK_CLASSES, WEAPON_NOUN, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, qualityStarsShort, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcEnchRow, PcInvActMsg, PcInvArmor, PcInvData, PcInvResult, PcInvWeapon, TradeItemView } from "#shared/net/messages";
@@ -141,6 +141,8 @@ export class PcInventory {
   private readonly dropCatcher: HTMLDivElement;
   private readonly cursEl: HTMLDivElement;
   private data: PcInvData | null = null;
+  /** Слепок последних данных: одинаковый не вызывает перерисовку. */
+  private dataSig = "";
   private tab: InvTab = "gear";
   /** Открытая карточка предмета (тот же адрес, что у перетаскивания); null — закрыта. */
   private card: DragSrc | null = null;
@@ -163,6 +165,7 @@ export class PcInventory {
   private xpState = { level: 1, xp: 0, need: 0, pct: 0, maxed: false };
 
   constructor(private readonly hooks: PcInventoryHooks) {
+    preloadIconImages();
     injectInvStyle();
     this.root = div("pcinv-root");
     this.dropCatcher = div("pcinv-catch");
@@ -393,13 +396,19 @@ export class PcInventory {
   }
 
   setData(d: PcInvData): void {
+    // Данные часто приходят пачкой (ответ на действие + обновление): одинаковый слепок —
+    // не перерисовываем окно лишний раз (иначе значки успевали мигнуть дважды).
+    const sig = JSON.stringify(d);
+    const same = sig === this.dataSig;
     this.data = d;
+    this.dataSig = sig;
     // Предмета открытой карточки больше нет (разобран, подарен, ушёл в обмен) — карточку закрываем.
     if (this.card && !this.srcExists(d, this.card)) {
       this.card = null;
       this.lastResult = null;
     }
     // Пока печатают ник или открыт выбор игрока — не перерисовываем (сбросило бы фокус); данные уже в this.data.
+    if (same) return; // слепок тот же — окно уже показывает эти данные
     if (this.isOpen && !this.forging && !this.tradeTyping()) this.render();
   }
 
@@ -505,6 +514,11 @@ export class PcInventory {
 
   private render(): void {
     this.syncTradePoll();
+    // Атомарная подмена: строим новое содержимое, не убирая старое, и снимаем старое в конце —
+    // в одном кадре. Раньше innerHTML="" оставлял окно пустым на кадр: при каждом ударе молотом
+    // значки «переподгружались» и всё мигало.
+    const prevTabs = [...this.tabsEl.children] as HTMLElement[];
+    const prevBody = [...this.body.children] as HTMLElement[];
     // Бесконечные анимации (свечение рамки редкого мастерского) — с фазой от часов: перерисовка их не дёргает.
     this.root.style.setProperty("--now", `${-Math.round(performance.now() % 2200)}ms`);
     const top = this.win.scrollTop;
@@ -513,6 +527,9 @@ export class PcInventory {
     // Сумка, ряд ★ и карточка прокручиваются сами — после перерисовки остаются на месте.
     const keep = new Map([...this.root.querySelectorAll<HTMLElement>("[data-keep]")].map((e) => [e.dataset.keep ?? "", [e.scrollLeft, e.scrollTop]] as const));
     this.renderInner();
+    // Старые узлы убираем ПОСЛЕ сборки новых и до возврата — браузер рисует кадр только целиком.
+    for (const c of prevTabs) c.remove();
+    for (const c of prevBody) c.remove();
     this.root.classList.toggle("tab-gear", this.tab === "gear");
     // «Крафт»: фон — кузница на весь экран (в игре — всё окно, на странице !inv — фон страницы).
     this.root.classList.toggle("tab-craft", this.tab === "craft");
@@ -558,6 +575,9 @@ export class PcInventory {
   private renderInner(): void {
     const d = this.data;
     for (const e of this.root.querySelectorAll(":scope > .pcinv-dim, :scope > .pcinv-card")) e.remove();
+    // Вкладки и тело собираются заново КАЖДЫЙ раз (заточка, точка атаки). Чтобы окно не мигало
+    // и значки не перезагружались, новое содержимое дописывается ПОСЛЕ старого, а старое снимается
+    // в конце render() — в том же кадре, поэтому пустого окна не бывает (см. render).
     this.tabsEl.innerHTML = "";
     const tabs: [InvTab, string, number][] = [
       ["gear", "Снаряжение", 0],
@@ -581,7 +601,7 @@ export class PcInventory {
       this.tabsEl.append(t);
     }
     this.renderCurs(d);
-    this.body.innerHTML = "";
+    // тело не чистим — новые узлы допишутся после старых, старые снимет render() (без мигания)
     if (!d) {
       this.body.append(div("pcinv-empty", "Загрузка…"));
       return;

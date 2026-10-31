@@ -14,6 +14,20 @@ import { themeCss } from "#shared/look";
 
 let cssDone = false;
 /** Общие стили значков и переменные вида (тиры, оценка) — один раз на страницу. */
+/**
+ * Прогреть картинки значков: браузер декодирует их один раз, и при перерисовке окна
+ * (заточка, точка атаки) новые <img> не мигают белым.
+ */
+let iconsPreloaded = false;
+export function preloadIconImages(): void {
+  if (iconsPreloaded || typeof document === "undefined") return;
+  iconsPreloaded = true;
+  for (const k of Object.keys(ICONS)) {
+    const d = ICONS[k as IconKey] as { img?: string };
+    if (d.img) new Image().src = `/icons/${d.img}`;
+  }
+}
+
 export function ensureIconCss(): void {
   if (cssDone || typeof document === "undefined") return;
   cssDone = true;
