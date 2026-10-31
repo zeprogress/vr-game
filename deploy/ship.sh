@@ -133,6 +133,29 @@ spectator_deploy() {
   time deploy/spectator-linux.sh
 }
 
+# ------------------------- 5. ВЕБ + СПЕКТАТОР РАЗОМ (правки локаций, модели, звук)
+# Сценарий: поправил предметы в Unity → нужен и веб, и картинка в эфире.
+# Сначала быстрое веб (пункт 1), затем сборка и выкладка спектатора (пункт 3).
+# Перед спектатором git уже чистый: пункт 1 всё закоммитил, артефакты Unity убрал.
+fast_and_spectator() {
+  c_hdr "Веб + спектатор разом"
+  fast_deploy
+  # deploy/fast.sh при отказе (незакоммиченные правки, ошибка сборки) не доходит до конца —
+  # тогда спектатор собирать бессмысленно: в нём не будет нового кода.
+  if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main 2>/dev/null || echo none)" ]; then
+    c_err "  веб не выложен (HEAD ≠ origin/main) — спектатор не собираю"
+    return
+  fi
+  c_warn "  веб выложен. Теперь Unity-спектатор — закрой редактор Unity."
+  read -r -p "  собирать спектатор? (Enter — да, n — пропустить): " ok
+  [ "${ok:-}" = "n" ] && { c_warn "  спектатор пропущен (сделаешь пунктом 3)"; return; }
+  if pgrep -f "MacOS/Unity -projectPath" >/dev/null; then
+    c_err "  редактор Unity открыт — закрой и запусти пункт 3"; return
+  fi
+  time deploy/spectator-linux.sh
+  c_ok "  готово: веб и спектатор обновлены"
+}
+
 # --------------------------------------------- 4. ОТКАТ (вернуть прошлую версию)
 # Откатывает и git, и прод. Безопасно: старый коммит собирается и выкладывается.
 rollback() {
@@ -169,12 +192,13 @@ menu() {
     echo "  2) БЕЗОПАСНО  git push + автодеплой + CI  ~3–5 мин"
     echo "  3) СПЕКТАТОР  Unity для стрима            ~2 мин"
     echo "  4) ОТКАТ      на прошлый коммит           ~20 с"
+    echo "  5) ВЕБ+СТРИМ  пункты 1 и 3 разом         ~2 мин  (правки локаций)"
     echo "  ------------------------------------------------------------"
-    echo "  5) Проверить: типы + тесты"
-    echo "  6) Что сейчас на сервере"
-    echo "  7) Логи игры (live)"
-    echo "  8) Логи автодеплоя (live)"
-    echo "  9) Перезапустить игру"
+    echo "  6) Проверить: типы + тесты"
+    echo "  7) Что сейчас на сервере"
+    echo "  8) Логи игры (live)"
+    echo "  9) Логи автодеплоя (live)"
+    echo "  r) Перезапустить игру"
     echo "  d) Почистить диск на сервере"
     echo "  s) SSH на сервер"
     echo "  o) Открыть игру в браузере"
@@ -186,11 +210,12 @@ menu() {
       2) push_only ;;
       3) spectator_deploy ;;
       4) rollback ;;
-      5) check_all; pause ;;
-      6) c_hdr "Состояние"; server_state; pause ;;
-      7) logs_live ;;
-      8) logs_auto ;;
-      9) restart; pause ;;
+      5) fast_and_spectator ;;
+      6) check_all; pause ;;
+      7) c_hdr "Состояние"; server_state; pause ;;
+      8) logs_live ;;
+      9) logs_auto ;;
+      r|R) restart; pause ;;
       d|D) disk_clean; pause ;;
       s|S) ssh_shell ;;
       o|O) open_site ;;
@@ -204,11 +229,12 @@ menu() {
 # Можно вызывать без меню: bash vrgame-ship.sh fast | push | spectator | rollback | check | state
 case "${1:-}" in
   fast)      fast_deploy ;;
+  all)       fast_and_spectator ;;
   push)      push_only ;;
   spectator) spectator_deploy ;;
   rollback)  rollback ;;
   check)     check_all ;;
   state)     server_state ;;
   ""|menu)   menu ;;
-  *) echo "использование: $0 [fast|push|spectator|rollback|check|state]  (без аргумента — меню)"; exit 1 ;;
+  *) echo "использование: $0 [fast|all|push|spectator|rollback|check|state]  (без аргумента — меню)"; exit 1 ;;
 esac
