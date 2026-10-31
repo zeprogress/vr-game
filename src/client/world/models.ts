@@ -46,6 +46,9 @@ export const MODELS = {
   // Человек (ассет из /ASSETS/3D/human): Mixamo-клипы перенесены на риг, кости — имена скелета героя (Fist.L/R, Abdomen, Torso, Body…);
   // пальцы Left_*/Right_* — сжимаются в кулак, когда в руке оружие (handGrip.ts). Сборка: Human50k_rig_lowZEP_anim → to_game.py.
   charHuman: "/models/chars/Human_Male.glb",
+  // Эльф (art/elf/elf_ZEP_rig.blend → Blender glTF): тот же риг и те же 55 клипов, что у человека,
+  // тело+руки привязаны (tools/blender/bind_body.py). Грузим в лабораторию на посмотреть.
+  charElf: "/models/chars/Elf_Male.glb",
   // Усиленные мобы лагерей: Quaternius "Ultimate Monsters" (CC0). .gltf со
   // встроенными буферами/текстурами — грузятся как есть, без конвертации.
   monBee: "/models/monsters/Armabee.gltf",
@@ -103,13 +106,13 @@ export type ModelName = keyof typeof MODELS;
  * Модели со своими текстурами (PBR из файла): их не перекрашиваем в плоский цвет и не склеиваем в один меш —
  * иначе текстуры пропадают. Человек (charHuman) — ассет из /ASSETS/3D/human.
  */
-export const KEEP_MATERIALS: ReadonlySet<ModelName> = new Set<ModelName>(["charHuman"]);
+export const KEEP_MATERIALS: ReadonlySet<ModelName> = new Set<ModelName>(["charHuman", "charElf"]);
 
 /**
  * Множитель к общему масштабу персонажа: модели в файле крупнее или мельче пака Quaternius (Knight ≈ 3.2 м в нативе,
  * Человек ≈ 1.15 м). Человек по просьбе вдвое выше рыцаря (BOT_RIG_SCALE × этот множитель).
  */
-export const MODEL_SCALE: Partial<Record<ModelName, number>> = { charHuman: 5 }; // рост ≈ 2.9 м (было 3.06 — 1.78 м)
+export const MODEL_SCALE: Partial<Record<ModelName, number>> = { charHuman: 5, charElf: 5 }; // рост ≈ 2.9 м (было 3.06 — 1.78 м)
 
 export function modelScale(name: ModelName): number {
   return MODEL_SCALE[name] ?? 1;
@@ -293,9 +296,18 @@ export async function loadRig(
   const c = await containerFor(scene, MODELS[name]);
   const hide = new Set(rigOpts.hideBones ?? []);
   return () => {
-    const r = c.instantiateModelsToScene((n) => n, false);
-    const root = r.rootNodes[0] as TransformNode;
-    const meshes = root.getChildMeshes(false);
+    // Меш и скелет — ОТДЕЛЬНЫЕ корни (как у Human_Male: HumanRig + node_0). Без doNotInstantiate
+    // Babylon кладёт меш внутрь первого корня (HumanRig) — и тогда skin-матрицы считаются в чужой
+    // системе: модель встаёт в rest-позу и не двигается. Свой корень на каждый узел это чинит.
+    const r = c.instantiateModelsToScene((n) => n, false, { doNotInstantiate: true });
+    // Свои корни у меша и скелета: берём корнем СКЕЛЕТ (реальная работа с костями — метки
+    // кулаков, hideBones, габариты), а меши собираем ВСЕ от этого корня и от корня-меша.
+    // Раньше брался rootNodes[0]: у эльфа это меш, и getDescendants() не видел ни одной кости.
+    const skelRoot = (r.rootNodes.find((n) => n.getChildMeshes(false).length === 0 && n.getDescendants(false).some((d) => d.name === "Hips")) ??
+      r.rootNodes[0]) as TransformNode;
+    const meshRoot = (r.rootNodes.find((n) => n.getChildMeshes(false).length > 0) ?? skelRoot) as TransformNode;
+    const root = skelRoot;
+    const meshes = [...new Set([...root.getChildMeshes(false), ...meshRoot.getChildMeshes(false)])];
 
     // Модели со своими текстурами (KEEP_MATERIALS) не сглаживаем: forceSharedVertices склеивает вершины по одному
     // положению и оставляет одну UV на склеенную — на швах развёртки текстура «плывёт». Нормали у них и так гладкие.
@@ -401,7 +413,7 @@ export async function loadRig(
         // Материалы/текстуры инстансов общие с закэшированным контейнером —
         // рекурсивное удаление текстур чернило и стирало модели всех остальных
         // копий (голем раскололся → пропали модели у всех големов).
-        root.dispose(false, false);
+        for (const rn of new Set([root, meshRoot])) rn.dispose(false, false);
       },
     };
   };
