@@ -10,7 +10,9 @@
  *   rate = (нужно_повторов / повторов_в_клипе) × (длина_клипа / время_умения)
  */
 export const HERO_CLIP_REPS: Readonly<Record<string, number>> = {
-  skwhirlwind: 4, // 1440° по Hips за 2.0 с
+  // SkWhirlwind обрезан до ОДНОГО оборота (tools/glb/trim_spin.py): 0.67 с ≈ 360° по Hips.
+  // Раньше в клипе было 4 оборота за 2 с, и любые «половины» кручения считались от четвёрки.
+  skwhirlwind: 1,
   skflurry: 8, // 8 выпадов копьём за 2.1 с
   sksweep: 1, // один широкий замах
   skthrow: 1,

@@ -228,7 +228,7 @@ namespace Zep
         /// SkWhirlwind — 1440° по Hips за 2 с = 4 оборота; SkFlurry — 8 выпадов за 2.1 с).
         static readonly System.Collections.Generic.Dictionary<string, int> ClipReps = new()
         {
-            ["skwhirlwind"] = 4, ["skflurry"] = 8,
+            ["skwhirlwind"] = 1, ["skflurry"] = 8,
         };
 
         /// SKILL_CLIP из world/heroMoves.ts — умение (и умение:класс) → клип модели.

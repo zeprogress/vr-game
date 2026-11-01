@@ -9,10 +9,10 @@ function spinsInClip(clip: string, clipSec: number, sec: number, needed: number)
   return reps * rate * (sec / clipSec);
 }
 
-test("вихрь: клип уже содержит 4 оборота за 2 с", () => {
-  assert.equal(HERO_CLIP_REPS.skwhirlwind, 4);
-  // 5 ударов за 2 с → ровно 5 оборотов, а не 20
-  const s = spinsInClip("skwhirlwind", 2, 2, 5);
+test("вихрь: клип содержит ОДИН оборот, удары его повторяют", () => {
+  assert.equal(HERO_CLIP_REPS.skwhirlwind, 1);
+  // Клип 0.7 с = один оборот; 5 ударов за 2 с → ровно 5 оборотов
+  const s = spinsInClip("skwhirlwind", 0.7, 2, 5);
   assert.ok(Math.abs(s - 5) < 1e-6, `оборотов ${s}`);
 });
 
