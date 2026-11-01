@@ -227,7 +227,7 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
     // 2026-11-02: боты и игроки стали бить ровно по формуле темпа (раньше быстрые билды теряли
     // до трети ударов на округлении тика). Ассасин от этого вырос на ~45% — режем базу и крит,
     // чтобы на 100 ур. он был сильным, но не вдвое сильнее воина.
-    name: WEAPON_NOUN.dagger.name, dmg: 1.35 * 1.15, interval: 0.7, tempoSoft: 1, reach: 1.8, pierce: 1,
+    name: WEAPON_NOUN.dagger.name, dmg: 1.35 * 1.4, interval: 0.7, tempoSoft: 1, reach: 1.8, pierce: 1,
     critBase: 0.12, critMult: 2.5, twoHanded: false, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Копьё: длинный выпад конусом перед собой, обе руки.
