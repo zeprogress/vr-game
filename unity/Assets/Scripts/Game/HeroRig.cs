@@ -198,8 +198,11 @@ namespace Zep
             float rate = clipSec > 0.01f && sec > 0.05f ? Mathf.Max(0.1f, count * clipSec / (reps * sec)) : count;
             actionUpper = false;
             Anim.StopUpper();
-            Anim.Once(rate, clip);
+            // КРУГОВОЕ умение крутим ПО КРУГУ всё своё время: разовый клип при ускоренном темпе
+            // заканчивался раньше, и герой замирал на последнем кадре остаток вихря.
+            Anim.Loop(rate, clip);
             swingUntil = Time.time + Mathf.Max(sec, clipSec / Mathf.Max(0.2f, rate));
+            oneShotUntil = swingUntil;
         }
 
         /// Вихрь — частный случай повтора: оборотов столько же, сколько ударов вокруг себя.

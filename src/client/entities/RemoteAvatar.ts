@@ -459,11 +459,12 @@ export class RemoteAvatar implements Hittable {
     }
     if (g.isPlaying) g.stop();
     g.reset();
-    const until = this.playOneShot(name, ((g.to - g.from) / 60 / rate) * 1000);
-    if (until) {
-      this.skillClip = name;
-      this.skillUntil = until;
-    }
+    // Клип идёт ПО КРУГУ всё время умения: иначе при быстром темпе он заканчивался раньше
+    // и бот стоял остаток вихря (5 ударов: клип 1.6 с из 2 с).
+    g.start(true, rate, g.from, g.to, false);
+    startSplitWeight(g, name, this.locoMove, this.animW, this.animWUp);
+    this.skillClip = name;
+    this.skillUntil = this.now + Math.max(120, sec * 1000);
   }
 
   /** Вихрь — частный случай повтора: оборотов столько же, сколько ударов. */

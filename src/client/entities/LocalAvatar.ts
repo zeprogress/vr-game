@@ -221,7 +221,9 @@ export class LocalAvatar {
     // Клип может уже содержать несколько движений (вихрь — 4 оборота, град — 8 выпадов).
     const reps = HERO_CLIP_REPS[name] ?? 1;
     const rate = clipSec > 0.01 && sec > 0.05 ? Math.max(0.1, (count * clipSec) / (reps * sec)) : count;
-    this.oneShot(name, rate);
+    // Клип ЗАЦИКЛИВАЕМ на всё время умения: иначе при rate > 1 он заканчивался раньше
+    // и герой просто стоял остаток умения (вихрь 5 ударов: клип 1.6 с из 2 с).
+    this.playLoopedFor(name, rate, sec);
     return true;
   }
 
@@ -235,9 +237,28 @@ export class LocalAvatar {
     this.jumpUntil = this.playOneShot("jump", 1.3, 700);
   }
 
+  /** Таймер остановки зацикленного клипа умения (вихрь и т.п.). */
+  private loopStop: ReturnType<typeof setTimeout> | null = null;
+
   /** Смерть: клип смерти один раз и застыть (раньше модель просто пряталась). */
   setDead(on: boolean): void {
     this.dead = on;
+  }
+
+  /** Клип по кругу на `sec` секунд: круговые умения длятся всё умение, без «доиграл и встал». */
+  private playLoopedFor(name: string, rate: number, sec: number): void {
+    const g = this.rig?.anims.get(name);
+    if (!g) return;
+    if (g.isPlaying) g.stop();
+    g.reset();
+    g.start(true, rate, g.from, g.to, false);
+    startSplitWeight(g, name, this.locoMove, this.animW, this.animWUp);
+    // Останавливаем ровно по концу умения (таймер — не чаще одного на каст).
+    if (this.loopStop) clearTimeout(this.loopStop);
+    this.loopStop = setTimeout(() => {
+      this.loopStop = null;
+      if (g.isPlaying) g.stop();
+    }, Math.max(120, sec * 1000));
   }
 
   /** Запустить разовый клип сначала; вернуть, до какого момента он «хочется». */
