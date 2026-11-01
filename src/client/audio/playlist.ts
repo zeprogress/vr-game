@@ -23,6 +23,7 @@ export const BOSS_MUSIC = "/music/boss.mp3";
 export const DUNGEON_MUSIC = [
   "/music/dungeon-subterranean-silence.mp3",
   "/music/dungeon-deep-temple.mp3",
+  "/music/dungeon-cave-echoes.mp3",   // пещерный эмбиент (Cave Music от автора) — третья в ротации
 ];
 
 /** Катакомбы: прохождение и финальный супер-босс. */

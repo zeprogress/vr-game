@@ -29,7 +29,7 @@ namespace Zep
                 case "swing": SoundBank.At(at, "sword-swing"); break;
                 case "horn": SoundBank.At(at, "bossHorn", range: 120); break;
                 // Приём стража катакомб: свой низкий гул, а не рог ивента (см. Sfx.bossSkill в вебе).
-                case "bossSkill": SoundBank.At(at, "boss-skill", vol: 1.1f, range: 1e6f); break;
+                case "bossSkill": EffectsRouter.PlayBossSkill(at); break;
                 case "volley": SoundBank.At(at, "arrowVolley"); break;
                 case "bow": SoundBank.At(at, "bow-shot-" + Random.Range(1, 6), 0.8f); break;
                 case "fire": SoundBank.At(at, "fireball-hit-" + Random.Range(1, 4), 0.6f); break;

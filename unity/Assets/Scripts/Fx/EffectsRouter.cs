@@ -35,6 +35,18 @@ namespace Zep
             net.Catacomb += OnCatacomb;
         }
 
+        /// Когда последний раз играли звук приёма: его запускают ДВА пути (акт bossSkill и
+        /// объявление «skill»), чтобы звук не пропал, если один канал не дошёл. Играем один раз.
+        static float lastSkillSfxAt = -10f;
+
+        /// Звук приёма стража катакомб — низкий гул вместо рога ивента. Звать можно из обоих путей.
+        public static void PlayBossSkill(Vector3 at)
+        {
+            if (Time.unscaledTime - lastSkillSfxAt < 0.4f) return;
+            lastSkillSfxAt = Time.unscaledTime;
+            SoundBank.At(at, "boss-skill", vol: 1.1f, range: 1e6f);
+        }
+
         /// Анонс ивента — рог hornAnonce.wav (public/sfx/event-announce.wav), как eventAnnounce в вебе.
         /// Звук «от камеры»: он должен слышаться всем независимо от того, где ивент.
         static void AnnounceHorn()
@@ -75,11 +87,19 @@ namespace Zep
                     var title = m.TryGetValue("title", out var ti) ? ti as string : "?";
                     Debug.LogWarning($"[cat] приём босса «{title}» → boss-skill");
                 }
-                // Звук приёма теперь идёт актом bossSkill (ClassActs) — здесь только баннер,
-                // чтобы не играть дважды.
+                // Звук приёма: играем и здесь, и по акту bossSkill — проигрыватель отсекает
+                // двойное срабатывание, зато звук не пропадёт, если один канал не дошёл.
+                PlayBossSkill(at);
                 return;
             }
-            if (kind == "start" || kind == "gather" || kind == "boss") AnnounceHorn();
+            // Рог ИВЕНТА — только сбор и старт забега. Появление босса/чемпиона — боевой рог
+            // (bossHorn), чтобы в катакомбах не звучал звук события мира.
+            if (kind == "start" || kind == "gather") AnnounceHorn();
+            else if (kind == "boss")
+            {
+                var cam = Camera.main;
+                SoundBank.At(cam ? cam.transform.position : Vector3.zero, "bossHorn", vol: 1f, range: 1e6f);
+            }
         }
 
         /// Число из события; поле может прийти не числом (строка, флаг) — тогда значение по умолчанию.

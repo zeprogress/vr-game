@@ -3729,7 +3729,9 @@ export class Game {
       this.notifyBanner(m.title, m.sub, m.kind === "win" || m.kind === "chest" ? "win" : "warn", m.loot);
       // Приём босса катакомб — свой звук; рог ивента остаётся для событий и сбора.
       if (m.kind === "skill" || m.cast) this.sfx.bossSkill();
-      else if (m.kind === "boss" || m.kind === "start" || m.kind === "gather") this.sfx.eventAnnounce();
+      // Рог ивента — только сбор и старт забега; появление босса/чемпиона — боевой рог.
+      else if (m.kind === "boss") this.sfx.bossHorn();
+      else if (m.kind === "start" || m.kind === "gather") this.sfx.eventAnnounce();
       else if (m.kind === "win" || m.kind === "chest") this.sfx.bossFanfare();
     };
     net.onLevelUp = (lvl) => this.levelUpFx(lvl);

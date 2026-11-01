@@ -30,7 +30,7 @@ namespace Zep
             "luminous-swell", "castle-hall-1", "castle-hall-2", "village-waltz-1", "village-waltz-2",
             "village-dawn", "medieval-dawn", "medieval-dawn-2", "moonlit-meadow-path",
         };
-        static readonly string[] DungeonMusic = { "dungeon-subterranean-silence", "dungeon-deep-temple" };
+        static readonly string[] DungeonMusic = { "dungeon-subterranean-silence", "dungeon-deep-temple", "dungeon-cave-echoes" };
         static readonly string[] CatacombsMusic = { "catacombs" };
         /// Тема супербосса: последний зал катакомб (Трон Бездны) и бой с рейд-боссом — как в вебе (catacombs-boss.mp3).
         static readonly string[] SuperBossMusic = { "catacombs-boss" };

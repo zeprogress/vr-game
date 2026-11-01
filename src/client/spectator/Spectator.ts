@@ -591,7 +591,9 @@ export class Spectator {
       this.overlay?.showCard(m.title, m.sub, m.secs ?? 7, m.loot);
       // Приём босса катакомб — свой звук (как в игре), рог — только для событий и сбора.
       if (m.kind === "skill" || m.cast) this.sfx.bossSkill();
-      else if (m.kind === "boss" || m.kind === "start" || m.kind === "gather") this.sfx.eventAnnounce();
+      // Рог ивента — только сбор и старт забега; появление босса/чемпиона — боевой рог.
+      else if (m.kind === "boss") this.sfx.bossHorn();
+      else if (m.kind === "start" || m.kind === "gather") this.sfx.eventAnnounce();
       else if (m.kind === "win" || m.kind === "chest") this.sfx.bossFanfare();
     };
     net.onLeaderboard = (rows) => this.overlay?.setLeaderboard(rows);

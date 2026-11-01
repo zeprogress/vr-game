@@ -978,7 +978,7 @@ export class CatacombDirector {
           this.mobs.add(id);
         }
         this.meteorAt = now + 2500;
-        this.host.announce({ kind: "boss", title: b.seal?.sealTitle ?? "Печать Бездны", sub: `${b.name} под щитом — разбейте ${F.guardians} хранителей!`, secs: 6 });
+        this.host.announce({ kind: "skill", title: b.seal?.sealTitle ?? "Печать Бездны", sub: `${b.name} под щитом — разбейте ${F.guardians} хранителей!`, secs: 6 });
       }
     } else if (this.finalPhase === 2) {
       for (const g of [...this.guardians]) if (!this.host.alive(g)) this.guardians.delete(g);
@@ -1003,7 +1003,7 @@ export class CatacombDirector {
         this.host.setImmune(this.bossId, false);
         this.host.stunMob(this.bossId, F.stunAfterSeal);
         this.finalPhase = 2.5;
-        this.host.announce({ kind: "boss", title: "Печать разбита!", sub: `${b.name} оглушён на ${F.stunAfterSeal} с — бейте!`, secs: 5 });
+        this.host.announce({ kind: "skill", title: "Печать разбита!", sub: `${b.name} оглушён на ${F.stunAfterSeal} с — бейте!`, secs: 5 });
       }
     } else if (this.finalPhase === 2.5) {
       this.host.finalTick(this.bossId, 2.5);
