@@ -30,5 +30,5 @@ test("пугало: пауза не разбавляет текущий темп
   for (let i = 0; i < 4; i++) { sim.scareHit(id, "hero-a"); sim.hitMob(id, 100, 0, 1, "hero-a"); tick(sim, 0.5); }
   const info = sim.scareInfo(id)!;
   assert.ok(info.aps >= 1.6, `после паузы темп должен остаться ~2, получили ${info.aps.toFixed(2)}`);
-  assert.ok(SCARECROW.apsWindow >= 2, "окно темпа задано");
+  assert.equal(SCARECROW.apsWindow, 2, "окно темпа — 2 секунды");
 });

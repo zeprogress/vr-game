@@ -423,7 +423,7 @@ export const SCARECROW = {
   refHp: 5000,
   idleSec: 6,
   /** Окно «удары/с» на табло пугала, с: считаем темп за последние столько секунд, а не за весь бой. */
-  apsWindow: 4,
+  apsWindow: 2,
   botTestSec: 60,
   scale: 1.25,
 } as const;
