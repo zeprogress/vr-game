@@ -159,6 +159,9 @@ export class ClassFx {
   /** Летящие стрелы умений лучника (настоящая модель стрелы, ui/SkillArrows.ts). */
   readonly arrows: SkillArrows;
 
+  /** Кольца вокруг тела героя (вихрь, клич, волна молота): не на земле, а на уровне корпуса. */
+  private readonly bodyRings: { mesh: Mesh; mat: StandardMaterial; age: number; life: number; r: number; spin: number; id: string; y: number }[] = [];
+
   /** Сцена клиента: нужна эффектам, которые живут отдельными системами (огонь, споры). */
   readonly scene: Scene;
   /** Пламя на земле (FireFx): «огонь внутри круга» для огненных опасностей. */
@@ -178,6 +181,15 @@ export class ClassFx {
       const mesh = MeshBuilder.CreateSphere(`cfxDome${i}`, { diameter: 2, segments: 14, slice: 0.5 }, scene);
       const mat = addMat(scene, `cfxDomeMat${i}`, FX_COLORS.gold);
       this.domes.push(this.prep({ mesh, mat, age: 1, life: 1, r0: 0, r1: 1, alpha: 1 }));
+    }
+    // Кольца вокруг тела: 4 штуки, живут на уровне корпуса и летят за героем.
+    for (let i = 0; i < 4; i++) {
+      const ring = MeshBuilder.CreateTorus(`cfxBodyRing${i}`, { diameter: 2, thickness: 0.05, tessellation: 40 }, scene);
+      const mat = addMat(scene, `cfxBodyRingMat${i}`, FX_COLORS.arcane);
+      ring.material = mat;
+      ring.isPickable = false;
+      ring.setEnabled(false);
+      this.bodyRings.push({ mesh: ring, mat, age: 1, life: 1, r: 1, spin: 4, id: "", y: 1.1 });
     }
     for (let i = 0; i < 6; i++) {
       // Плоская полоса длиной 1 вдоль +Z от начала координат — тянем scaling.z.
@@ -232,6 +244,20 @@ export class ClassFx {
     r.mat.emissiveColor.copyFrom(color);
     r.mesh.position.set(x, y + 0.06, z);
     Object.assign(r, { age: 0, life, r0, r1, alpha });
+    r.mesh.setEnabled(true);
+  }
+
+  /**
+   * Кольцо ВОКРУГ ГЕРОЯ (вихрь, клич, волна молота): летит за ним на уровне корпуса,
+   * вращается и гаснет. Для умений, которые герой делает телом — чтобы не рисовать
+   * круг с руной на земле там, где на самом деле кружится сам герой.
+   */
+  bodyRing(id: string, y: number, radius: number, color: Color3, life = 0.9, spin = 6): void {
+    const r = this.bodyRings.find((x) => x.age >= x.life) ?? this.bodyRings[0];
+    if (!r) return;
+    r.mat.emissiveColor.copyFrom(color.scale(1.4));
+    r.mat.diffuseColor = Color3.Black();
+    Object.assign(r, { age: 0, life, r: radius, spin, id, y });
     r.mesh.setEnabled(true);
   }
 
@@ -347,6 +373,17 @@ export class ClassFx {
         this.timers.splice(i, 1);
         tm.fn();
       }
+    }
+    for (const br of this.bodyRings) {
+      if (br.age >= br.life) { if (br.mesh.isEnabled()) br.mesh.setEnabled(false); continue; }
+      br.age += dt;
+      const at = this.vfx?.follow?.("hero", br.id);
+      if (at) br.mesh.position.set(at.x, at.y + br.y, at.z);
+      br.mesh.rotation.y += br.spin * dt;
+      const k = 1 + 0.18 * Math.min(1, br.age / br.life);
+      br.mesh.scaling.set(br.r * k, 1, br.r * k);
+      const f = 1 - Math.min(1, br.age / br.life);
+      br.mat.alpha = f;
     }
     for (const r of this.rings) {
       if (r.age >= r.life) continue;
@@ -990,14 +1027,18 @@ export function playClassAct(
       c.sample(at, "spear-thrust");
       return true;
     case "whirl":
-      vfx.decal(x, y, z, r ?? 3.2, ATK, d ?? 2, 1, 1, { kind: "hero", id, dy: 0 });
+      // Вихрь — герой кружится сам: кольца летят вокруг корпуса (3 шт., разные наклоны по высоте).
+      c.fx.bodyRing(id, 0.8, (r ?? 3.2) * 0.42, ATK, d ?? 2, 7);
+      c.fx.bodyRing(id, 1.25, (r ?? 3.2) * 0.5, ATK, d ?? 2, -9);
+      c.fx.bodyRing(id, 1.7, (r ?? 3.2) * 0.42, ATK, d ?? 2, 11);
       c.fx.spinSparks(id, r ?? 3.2, ATK, d ?? 2);
       c.sound(at, "swing");
       return true;
     case "warcry": {
       // Клич / Клич сплочения / Благословение — атакующие баффы.
       const cc = BUFF;
-      vfx.decal(x, y, z, r ?? 12, cc, 0.9, 0, 0.8);
+      // Клич — волна от тела наружу, а не пятно на земле.
+      c.fx.bodyRing(id, 1.1, Math.min(6, r ?? 12) * 0.5, cc, 0.9, 2);
       vfx.pillar(x, y, z, 0.9, 5, cc, 1.1, { kind: "hero", id });
       vfx.burst(x, y + 1, z, cc, { count: 24, speed: 3, life: 1.1, grav: -3, size: 0.24 });
       c.emote(id, "cheer");

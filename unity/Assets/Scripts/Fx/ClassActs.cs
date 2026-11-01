@@ -54,6 +54,10 @@ namespace Zep
 
         static Vector3 P(float x, float y, float z) => new(x, y, z);
 
+        /// Модель героя по id (для эффектов, которые летят вокруг тела).
+        static Transform HeroOf(string id) =>
+            id != null && WorldSync.Players.TryGetValue(id, out var pv) && pv ? pv.transform : null;
+
         static void Later(float t, System.Action fn) => C.Later(t, fn);
 
         public static bool Play(string k, string id, float x, float y, float z, float? d, float? x2, float? z2, int? v, float? r, string mobId)
@@ -114,9 +118,9 @@ namespace Zep
                     vfx.Burst(P(x, y + 0.2f, z), ATK, count: 24, speed: 7, life: 0.55f, grav: 14, size: 0.2f);
                     return true;
                 case "hammerWave":
-                    
                     Sample(at, "hammer-wave");
-                    vfx.Decal(at, d ?? 4, Lightning, 0.4f, 5, 0.7f);
+                    // Волна молота идёт ОТ героя: кольцо вокруг корпуса, а не пятно на земле.
+                    HeroSpinFx.Wave(HeroOf(id), at, (d ?? 4) * 0.45f, 0.55f, Lightning);
                     vfx.Burst(at, Lightning, count: 10, speed: 4, life: 0.35f, grav: 6, size: 0.16f);
                     return true;
                 case "spearPierce":
@@ -246,12 +250,14 @@ namespace Zep
                     Sample(at, "spear-thrust");
                     return true;
                 case "whirl":
-                    vfx.Decal(at, r ?? 3.2f, ATK, d ?? 2, 1, 1, Vfx.Follow.Hero, id);
+                    // Вихрь — герой кружится САМ: кольца летят вокруг корпуса, а не круг на земле.
+                    HeroSpinFx.Spin(HeroOf(id), at, r ?? 3.2f * 0.55f, d ?? 2f, ATK);
                     C.SpinSparks(id, r ?? 3.2f, ATK, d ?? 2);
                     Sound(at, "swing");
                     return true;
                 case "warcry":
-                    vfx.Decal(at, r ?? 12, Buff, 0.9f, 0, 0.8f);
+                    // Клич — волна идёт от тела героя наружу, а не пятно на земле.
+                    HeroSpinFx.Wave(HeroOf(id), at, Mathf.Min(6f, r ?? 12) * 0.5f, 0.9f, Buff);
                     vfx.Pillar(at, 0.9f, 5, Buff, 1.1f, Vfx.Follow.Hero, id);
                     vfx.Burst(P(x, y + 1, z), Buff, count: 24, speed: 3, life: 1.1f, grav: -3, size: 0.24f);
                     Emote(id, "cheer");
