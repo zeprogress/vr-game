@@ -498,7 +498,8 @@ export class Mob implements Hittable {
   private burnMesh: Mesh | null = null;
   private burnT = 0;
   private barTimer = 0;
-  private hitCd = 0;
+  /** Локальные кулдауны заявок на удар по видам оружия (одно оружие не бьёт дважды за кадр). */
+  private readonly hitCds = new Map<string, number>();
   private lastHurtSeq = 0;
   private lastAtkSeq = 0;
   /** Таймер процедурного замаха: пока > 0, тело играет атаку. */
@@ -1084,10 +1085,18 @@ export class Mob implements Hittable {
     return { x: p.x, y: p.y + (MOB.bodyRadius * 2 + this.lift) * this.scale + 0.2, z: p.z };
   }
 
-  /** Заявка на удар. Урон считает сервер; локальный кулдаун — 1 заявка на замах. */
+  /**
+   * Заявка на удар. Урон считает сервер.
+   *
+   * Кулдаун — ОТДЕЛЬНЫЙ НА КАЖДОЕ ОРУЖИЕ и очень короткий (0.06 с): это защита только от
+   * дублей одного замаха в соседних кадрах. Раньше был один общий на моба 0.2 с — он рубил
+   * быстрые билды: 0.2 с = потолок 5 ударов/с, и ассасин с двумя кинжалами (6 ударов/с)
+   * терял удары на пугале. Темп по-прежнему проверяет сервер (heroAttackInterval + HIT_RATE_SLACK).
+   */
   hit(dir: Vector3, weapon: WeaponKind, _contact?: Vector3): boolean {
-    if (this.dead || this.hitCd > 0) return false;
-    this.hitCd = 0.2;
+    if (this.dead) return false;
+    if ((this.hitCds.get(weapon) ?? 0) > 0) return false;
+    this.hitCds.set(weapon, 0.06);
     this.flash = Math.max(this.flash, 0.6); // мгновенная реакция, рана придёт из состояния
     let d = new Vector3(dir.x, 0, dir.z);
     if (d.lengthSquared() < 1e-6) d = new Vector3(0, 0, 1);
@@ -1121,7 +1130,10 @@ export class Mob implements Hittable {
     uiAllowed = true,
   ): void {
     let sp = secNow();
-    if (this.hitCd > 0) this.hitCd -= dt;
+    for (const [w, t] of this.hitCds) {
+      if (t <= dt) this.hitCds.delete(w);
+      else this.hitCds.set(w, t - dt);
+    }
     if (this.flash > 0) this.flash = Math.max(0, this.flash - dt * 3);
 
     if (s.scale > 0 && s.scale !== this.scale) {
