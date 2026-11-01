@@ -1,4 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
+import { HERO_CLIP_REPS } from "#shared/heroClips";
 import type { Node } from "@babylonjs/core/node";
 import { mergeRigSkinned } from "../items/flatMerge";
 import { Vector3, Quaternion, Matrix } from "@babylonjs/core/Maths/math.vector";
@@ -449,7 +450,9 @@ export class RemoteAvatar implements Hittable {
     const g = name ? this.botRig?.anims.get(name) : undefined;
     if (!name || !g) return;
     const clipSec = (g.to - g.from) / 60;
-    const rate = clipSec > 0.01 && sec > 0.05 ? Math.max(0.2, (count * clipSec) / sec) : count;
+    // Клип может уже содержать несколько движений (вихрь — 4 оборота, град — 8 выпадов).
+    const reps = HERO_CLIP_REPS[name] ?? 1;
+    const rate = clipSec > 0.01 && sec > 0.05 ? Math.max(0.1, (count * clipSec) / (reps * sec)) : count;
     if (this.skillClip && this.skillClip !== name) {
       this.botRig?.anims.get(this.skillClip)?.stop();
       this.animW.set(this.skillClip, 0);

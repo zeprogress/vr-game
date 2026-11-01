@@ -517,7 +517,11 @@ export class Spectator {
     net.onAct = (k, x, y, z, id, d, mobId, x2, z2, v, r, s, n) => {
       // Умение героя/бота: клип умения у модели со своими клипами (Человек — world/heroMoves). Свой герой сыграл его при касте.
       if (k === "cast") {
-        if (s) this.avatars.get(id)?.playSkill(s, v !== undefined && v >= 0 ? CLASS_IDS[v] ?? null : null);
+        const cls = v !== undefined && v >= 0 ? CLASS_IDS[v] ?? null : null;
+        if (s) {
+          if (n && n > 1) this.avatars.get(id)?.playRepeat(s, cls, Math.round(n), Math.max(0.2, d ?? 1));
+          else this.avatars.get(id)?.playSkill(s, cls);
+        }
         return;
       }
       this.playRemoteAct(k, x, y, z, id, d, mobId, x2, z2, v, r, s, n);
@@ -1609,11 +1613,6 @@ export class Spectator {
     if (k === "repeat") {
       const cls = v !== undefined && v >= 0 ? CLASS_IDS[v] ?? null : null;
       if (s) this.avatars.get(id)?.playRepeat(s, cls, Math.max(1, Math.round(n ?? 1)), Math.max(0.15, d ?? 1));
-    }
-    // Круговое умение: оборотов столько же, сколько ударов вокруг себя.
-    if (k === "whirl") {
-      const spins = Math.max(1, Math.round(v ?? 5));
-      this.avatars.get(id)?.playSpin("whirlwind", null, spins, Math.max(0.3, d ?? 2));
     }
     if (playClassAct(this.classCtx, k, x, y, z, id, d, x2in, z2in, v, r, mobId)) return;
     if (playIceGiantAct(this.iceCtx, k, x, y, z, id, d, x2in, z2in, r)) return;

@@ -322,6 +322,10 @@ interface Runtime {
   ultCastUntil?: number;
   /** Ульту сбили уроном — удар в конце замаха не сработает. */
   ultCancelled?: boolean;
+  /** Сколько движений делает умение (ударов/залпов) — для анимации модели, см. HERO_CLIP_REPS. */
+  castReps?: number;
+  /** За сколько секунд умение делает эти движения. */
+  castSec?: number;
   token?: string;
   /** Класс, по дереву которого сейчас посчитаны атрибуты (см. syncTree). */
   treeCls?: ClassId;
@@ -10068,6 +10072,8 @@ export class ZoneRoom extends Room<ZoneState> {
       const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
       this.broadcast(MSG.act, {
         k: "cast", id: ownerId, x: p.head.x, y: p.head.y, z: p.head.z, s: kind, v: cls ? CLASS_IDS.indexOf(cls) : -1,
+        // Сколько движений делает умение и за сколько секунд: клиент крутит/бьёт клип ровно столько раз.
+        ...(rt.castReps ? { n: rt.castReps, d: rt.castSec } : {}),
       } satisfies ActRelay);
     }
     return ok;
@@ -10084,6 +10090,9 @@ export class ZoneRoom extends Room<ZoneState> {
 
     // Каст ульты не перебивается умениями: до конца замаха герой занят только ультой.
     if (this.elapsed < (rt.ultCastUntil ?? 0)) return false;
+    // По умолчанию умение — одно движение; ветки ниже уточняют число и время.
+    rt.castReps = undefined;
+    rt.castSec = undefined;
 
     const sk0 = SKILLS2[kind];
     // 📿 Ожерелье (shared/necklaces.ts): множители радиуса зон, длительности эффектов и дальности умений
@@ -10258,11 +10267,9 @@ export class ZoneRoom extends Room<ZoneState> {
           act({ k: "shadowStep", x: p.head.x, y: feetY, z: p.head.z, x2: hx, z2: hz });
           if (isBot) this.placeBotAt(p, hx, hz);
           act({ k: "fanKnives", x: p.head.x, y: feetY, z: p.head.z, x2: p.head.x + fx * fanR, z2: p.head.z + fz * fanR, d: FAN.volleys });
-          // Веер: сколько залпов — столько бросков делает модель.
-          this.broadcast(MSG.act, {
-            k: "repeat", id: ownerId, s: "arrowRain", n: FAN.volleys, d: 0.15 + (FAN.volleys - 1) * 0.18 + 0.12,
-            v: CLASS_IDS.indexOf(cls), x: p.head.x, y: feetY, z: p.head.z,
-          } satisfies ActRelay);
+          // Веер: сколько залпов — столько бросков делает модель (уедет в акте «cast»).
+          rt.castReps = FAN.volleys;
+          rt.castSec = 0.15 + (FAN.volleys - 1) * 0.18 + 0.12;
           for (let i = 0; i < FAN.volleys; i++) {
             this.clock.setTimeout(() => {
               const pp = this.state.players.get(ownerId);
@@ -10401,11 +10408,9 @@ export class ZoneRoom extends Room<ZoneState> {
         if (cls === "spearman") {
           // Град выпадов: серия быстрых колющих ударов конусом вперёд.
           const F = { ...SPEAR_FLURRY, range: SPEAR_FLURRY.range * RNG, thrusts: SPEAR_FLURRY.thrusts + tCount };
-          // Град выпадов: сколько выпадов — столько повторов движения модели за то же время.
-          this.broadcast(MSG.act, {
-            k: "repeat", id: ownerId, s: "whirlwind", n: F.thrusts, d: F.duration,
-            v: CLASS_IDS.indexOf(cls), x: p.head.x, y: feetY, z: p.head.z,
-          } satisfies ActRelay);
+          // Град выпадов: сколько выпадов — столько повторов движения модели (уедет в акте «cast»).
+          rt.castReps = F.thrusts;
+          rt.castSec = F.duration;
           act({ k: "spearFlurry", x: p.head.x, y: feetY, z: p.head.z, d: F.duration, r: F.range });
           for (let i = 0; i < F.thrusts; i++) {
             this.clock.setTimeout(() => {
@@ -10440,6 +10445,9 @@ export class ZoneRoom extends Room<ZoneState> {
         const swordCrit = cls === "warrior" ? rolledCrit(p, swordHand, rt) : null;
         const mult = spear ? WHIRL.spearDmg : cls === "warrior" ? WHIRL.warriorDmg : sk.dmgMult;
         // Ассасин: неуязвимость — assassinInvulSec (остальное время вихря — анимация); воин — −30% весь вихрь.
+        // Анимация: ровно hits движений за WHIRL.duration (клиент учтёт запечённые 4 оборота в клипе).
+        rt.castReps = hits;
+        rt.castSec = WHIRL.duration;
         rt.whirlUntil = this.elapsed + (cls === "assassin" ? WHIRL.assassinInvulSec : WHIRL.duration);
         rt.whirlKind = cls === "assassin" ? 2 : cls === "warrior" ? 1 : 0;
         // v — сколько УДАРОВ вокруг себя: модель должна крутиться столько же раз (клиет делает v оборотов за d с).
@@ -10731,11 +10739,9 @@ export class ZoneRoom extends Room<ZoneState> {
         const A = { ...ARROW_STORM, radius: ARROW_STORM.radius * RAD, waves: ARROW_STORM.waves + tCount };
         shot(0, 12);
         act({ k: "stormWave", x: p.head.x, y: feetY, z: p.head.z, d: 0, r: A.radius });
-        // Шквал: сколько волн — столько залпов-повторов движения модели.
-        this.broadcast(MSG.act, {
-          k: "repeat", id: ownerId, s: "arrowStorm", n: A.waves, d: A.first + (A.waves - 1) * A.gap + 0.15,
-          v: CLASS_IDS.indexOf(cls), x: p.head.x, y: feetY, z: p.head.z,
-        } satisfies ActRelay);
+        // Шквал: сколько волн — столько залпов-повторов движения модели (уедет в акте «cast»).
+        rt.castReps = A.waves;
+        rt.castSec = A.first + (A.waves - 1) * A.gap + 0.15;
         for (let w = 0; w < A.waves; w++) {
           // Стрелы волны начинают падать за fall с до удара — урон приходит, когда они воткнулись.
           let cx = 0;

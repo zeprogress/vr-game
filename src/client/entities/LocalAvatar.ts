@@ -1,4 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
+import { HERO_CLIP_REPS } from "#shared/heroClips";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
@@ -217,7 +218,9 @@ export class LocalAvatar {
     const g = name ? this.rig?.anims.get(name) : undefined;
     if (!name || !g) return false;
     const clipSec = (g.to - g.from) / 60;
-    const rate = clipSec > 0.01 && sec > 0.05 ? Math.max(0.2, (count * clipSec) / sec) : count;
+    // Клип может уже содержать несколько движений (вихрь — 4 оборота, град — 8 выпадов).
+    const reps = HERO_CLIP_REPS[name] ?? 1;
+    const rate = clipSec > 0.01 && sec > 0.05 ? Math.max(0.1, (count * clipSec) / (reps * sec)) : count;
     this.oneShot(name, rate);
     return true;
   }

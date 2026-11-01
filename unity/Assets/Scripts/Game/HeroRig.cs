@@ -192,7 +192,10 @@ namespace Zep
             else if (SkillClips.TryGetValue(skill, out var c2)) clip = c2;
             if (clip == null || !Anim.Has(clip)) return;
             float clipSec = Anim.Length(clip);
-            float rate = clipSec > 0.01f && sec > 0.05f ? Mathf.Max(0.2f, count * clipSec / sec) : count;
+            // Клип может уже содержать несколько движений (вихрь — 4 оборота, град — 8 выпадов):
+            // считаем нужные повторы относительно запечённых, иначе модель крутится в 4–8 раз чаще боя.
+            int reps = ClipReps.TryGetValue(clip, out var rr) ? rr : 1;
+            float rate = clipSec > 0.01f && sec > 0.05f ? Mathf.Max(0.1f, count * clipSec / (reps * sec)) : count;
             actionUpper = false;
             Anim.StopUpper();
             Anim.Once(rate, clip);
@@ -217,6 +220,13 @@ namespace Zep
             int i = Convert.ToInt32(v);
             return i >= 0 && i < ClassIds.Length ? ClassIds[i] : null;
         }
+
+        /// Сколько повторов движения уже запечено в клипе (замерено по ключам модели:
+        /// SkWhirlwind — 1440° по Hips за 2 с = 4 оборота; SkFlurry — 8 выпадов за 2.1 с).
+        static readonly System.Collections.Generic.Dictionary<string, int> ClipReps = new()
+        {
+            ["skwhirlwind"] = 4, ["skflurry"] = 8,
+        };
 
         /// SKILL_CLIP из world/heroMoves.ts — умение (и умение:класс) → клип модели.
         static readonly System.Collections.Generic.Dictionary<string, string> SkillClips = new()

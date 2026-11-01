@@ -268,9 +268,7 @@ namespace Zep
                     Sample(at, "spear-thrust");
                     return true;
                 case "whirl":
-                    // Кручение: оборотов ровно столько, сколько ударов вокруг себя (v), за d секунд.
-                    if (id != null && WorldSync.Players.TryGetValue(id, out var wv) && wv)
-                        wv.Rig.PlaySpin("whirlwind", null, Mathf.Max(1, v ?? 5), Mathf.Max(0.3f, d ?? 2f));
+                    // Клип вихря играет акт «cast» (с числом ударов) — здесь только визуал.
                     // Вихрь — герой кружится САМ: кольца летят вокруг корпуса, а не круг на земле.
                     HeroSpinFx.Spin(HeroOf(id), at, r ?? 3.2f * 0.55f, d ?? 2f, ATK);
                     C.SpinSparks(id, r ?? 3.2f, ATK, d ?? 2);

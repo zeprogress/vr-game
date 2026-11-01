@@ -43,7 +43,17 @@ namespace Zep
         {
             switch (kind)
             {
-                case "cast": rig.PlaySkill(HeroRig.CastSkill(m), HeroRig.CastClass(m)); break;
+                case "cast":
+                    {
+                        // Если сервер сказал, сколько движений делает умение (n) — крутим/бьём ровно столько.
+                        string sk = HeroRig.CastSkill(m);
+                        string cls = HeroRig.CastClass(m);
+                        float n = m.TryGetValue("n", out var nv) && nv is System.IConvertible ? System.Convert.ToSingle(nv) : 1f;
+                        float dur = m.TryGetValue("d", out var dv) && dv is System.IConvertible ? System.Convert.ToSingle(dv) : 1f;
+                        if (sk != null && n > 1.5f) rig.PlayRepeat(sk, cls, Mathf.RoundToInt(n), Mathf.Max(0.2f, dur));
+                        else rig.PlaySkill(sk, cls);
+                    }
+                    break;
                 case "swing": case "bow": rig.PlaySwing(state.level); break;
                 case "hurt": rig.PlayOneShot("RecieveHit", 1.6f); break;
                 case "levelUp": rig.PlayOneShot("Victory"); break;
