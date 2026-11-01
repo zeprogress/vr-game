@@ -136,6 +136,16 @@ namespace Zep
             float? N(float f) => float.IsNaN(f) ? null : f;
             float vv = F(m, "v");
             string mobId = m.TryGetValue("mobId", out var mo) ? mo as string : null;
+            // Повторяющееся умение (град выпадов, шквал, веер ножей): n повторов клипа за d секунд.
+            if (k == "repeat")
+            {
+                string sk = m.TryGetValue("s", out var so) ? so as string : null;
+                int cnt = Mathf.Max(1, (int)F(m, "n", 1));
+                string cls = float.IsNaN(vv) ? null : HeroRig.ClassName((int)vv);
+                if (sk != null && id != null && WorldSync.Players.TryGetValue(id, out var rv) && rv)
+                    rv.Rig.PlayRepeat(sk, cls, cnt, Mathf.Max(0.15f, Or(d, 1f)));
+                return;
+            }
             if (ClassActs.Play(k, id, p.x, p.y, p.z, N(d), N(x2), N(z2), float.IsNaN(vv) ? null : (int)vv, N(r), mobId)) return;
             if (BossActs.Play(k, id, p.x, p.y, p.z, N(d), N(x2), N(z2), float.IsNaN(vv) ? null : (int)vv, N(r), mobId)) return;
             switch (k)

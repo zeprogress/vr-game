@@ -514,13 +514,13 @@ export class Spectator {
   /** Подключиться к миру невидимым наблюдателем и начать рендер. */
   async run(net: NetClient, key: string): Promise<boolean> {
     this.net = net;
-    net.onAct = (k, x, y, z, id, d, mobId, x2, z2, v, r, s) => {
+    net.onAct = (k, x, y, z, id, d, mobId, x2, z2, v, r, s, n) => {
       // Умение героя/бота: клип умения у модели со своими клипами (Человек — world/heroMoves). Свой герой сыграл его при касте.
       if (k === "cast") {
         if (s) this.avatars.get(id)?.playSkill(s, v !== undefined && v >= 0 ? CLASS_IDS[v] ?? null : null);
         return;
       }
-      this.playRemoteAct(k, x, y, z, id, d, mobId, x2, z2, v, r);
+      this.playRemoteAct(k, x, y, z, id, d, mobId, x2, z2, v, r, s, n);
     };
     net.onReconnected = (room) => {
       // Пиры голоса привязаны к старой сессии — пересобираем начисто.
@@ -1598,11 +1598,23 @@ export class Spectator {
     z2in?: number,
     v?: number,
     r?: number,
+    s?: string,
+    n?: number,
   ): void {
     // Дальше SPEC_RANGE от камеры — ни эффектов, ни звуков.
     const cp = this.cam.cam.position;
     if (Math.hypot(x - cp.x, z - cp.z) > SPEC_RANGE) return;
     const at = { x, y, z };
+    // Повторяющееся умение: n повторов клипа за d секунд (град выпадов, шквал, веер ножей).
+    if (k === "repeat") {
+      const cls = v !== undefined && v >= 0 ? CLASS_IDS[v] ?? null : null;
+      if (s) this.avatars.get(id)?.playRepeat(s, cls, Math.max(1, Math.round(n ?? 1)), Math.max(0.15, d ?? 1));
+    }
+    // Круговое умение: оборотов столько же, сколько ударов вокруг себя.
+    if (k === "whirl") {
+      const spins = Math.max(1, Math.round(v ?? 5));
+      this.avatars.get(id)?.playSpin("whirlwind", null, spins, Math.max(0.3, d ?? 2));
+    }
     if (playClassAct(this.classCtx, k, x, y, z, id, d, x2in, z2in, v, r, mobId)) return;
     if (playIceGiantAct(this.iceCtx, k, x, y, z, id, d, x2in, z2in, r)) return;
     if (playDragonAct(this.iceCtx, k, x, y, z, mobId ?? id, d, x2in, z2in, r)) return;

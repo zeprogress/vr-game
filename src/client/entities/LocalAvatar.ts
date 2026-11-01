@@ -207,6 +207,26 @@ export class LocalAvatar {
     return true;
   }
 
+  /**
+   * Повторяющееся умение: клип проигрывается РОВНО `count` раз за `sec` секунд —
+   * сколько ударов/оборотов/выстрелов делает умение, столько повторов движения модели.
+   * Один клип = одно движение, поэтому скорость подбираем под нужное число повторов.
+   */
+  playRepeat(skill: SkillId, cls: ClassId | null, count: number, sec: number): boolean {
+    const name = heroSkillClip(this.rig?.anims, skill, cls);
+    const g = name ? this.rig?.anims.get(name) : undefined;
+    if (!name || !g) return false;
+    const clipSec = (g.to - g.from) / 60;
+    const rate = clipSec > 0.01 && sec > 0.05 ? Math.max(0.2, (count * clipSec) / sec) : count;
+    this.oneShot(name, rate);
+    return true;
+  }
+
+  /** Вихрь — частный случай повтора: оборотов столько же, сколько ударов вокруг себя. */
+  playSpin(skill: SkillId, cls: ClassId | null, spins: number, sec: number): boolean {
+    return this.playRepeat(skill, cls, spins, sec);
+  }
+
   /** Прыжок — клип прыжка на время полёта. */
   jump(): void {
     this.jumpUntil = this.playOneShot("jump", 1.3, 700);

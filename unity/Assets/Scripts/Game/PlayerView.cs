@@ -9,6 +9,8 @@ namespace Zep
     {
         public PlayerState state;
         HeroRig rig;
+        /// Риг героя (для эффектов, которым нужен его клип — например кручение вихря по числу ударов).
+        public HeroRig Rig => rig;
         Vector3 lastPos;
         Nameplate plate;
         SliceAssets assets;

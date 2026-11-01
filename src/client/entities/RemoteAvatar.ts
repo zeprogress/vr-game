@@ -440,6 +440,34 @@ export class RemoteAvatar implements Hittable {
     }
   }
 
+  /**
+   * Повторяющееся умение: клип ровно `count` раз за `sec` секунд — сколько ударов,
+   * столько повторов движения (вихрь — обороты, серия — выпады).
+   */
+  playRepeat(skill: string, cls: ClassId | null, count: number, sec: number): void {
+    const name = heroSkillClip(this.botRig?.anims, skill, cls);
+    const g = name ? this.botRig?.anims.get(name) : undefined;
+    if (!name || !g) return;
+    const clipSec = (g.to - g.from) / 60;
+    const rate = clipSec > 0.01 && sec > 0.05 ? Math.max(0.2, (count * clipSec) / sec) : count;
+    if (this.skillClip && this.skillClip !== name) {
+      this.botRig?.anims.get(this.skillClip)?.stop();
+      this.animW.set(this.skillClip, 0);
+    }
+    if (g.isPlaying) g.stop();
+    g.reset();
+    const until = this.playOneShot(name, ((g.to - g.from) / 60 / rate) * 1000);
+    if (until) {
+      this.skillClip = name;
+      this.skillUntil = until;
+    }
+  }
+
+  /** Вихрь — частный случай повтора: оборотов столько же, сколько ударов. */
+  playSpin(skill: string, cls: ClassId | null, spins: number, sec: number): void {
+    this.playRepeat(skill, cls, spins, sec);
+  }
+
   /** Эмоция по команде из чата (!cheer/!roll/!jump). Только у модели бота. */
   playEmote(emote: BotEmote): void {
     const clip = BOT_EMOTE_CLIP[emote];

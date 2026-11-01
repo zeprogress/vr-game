@@ -182,11 +182,34 @@ namespace Zep
             swingUntil = Time.time + Anim.Length(clip);
         }
 
+        /// Повторяющееся умение: клип ровно `count` раз за `sec` секунд — сколько ударов/оборотов
+        /// делает умение, столько повторов движения модели (один клип = одно движение).
+        public void PlayRepeat(string skill, string cls, int count, float sec)
+        {
+            if (!own) return;
+            string clip = null;
+            if (cls != null && SkillClips.TryGetValue(skill + ":" + cls, out var c1)) clip = c1;
+            else if (SkillClips.TryGetValue(skill, out var c2)) clip = c2;
+            if (clip == null || !Anim.Has(clip)) return;
+            float clipSec = Anim.Length(clip);
+            float rate = clipSec > 0.01f && sec > 0.05f ? Mathf.Max(0.2f, count * clipSec / sec) : count;
+            actionUpper = false;
+            Anim.StopUpper();
+            Anim.Once(rate, clip);
+            swingUntil = Time.time + Mathf.Max(sec, clipSec / Mathf.Max(0.2f, rate));
+        }
+
+        /// Вихрь — частный случай повтора: оборотов столько же, сколько ударов вокруг себя.
+        public void PlaySpin(string skill, string cls, int spins, float sec) => PlayRepeat(skill, cls, spins, sec);
+
         /// act «cast» с сервера: s — умение, v — индекс класса в CLASS_IDS (shared/classes2.ts).
         static readonly string[] ClassIds = { "warrior", "archer", "support", "assassin", "spearman", "battlemage" };
 
         public static string CastSkill(System.Collections.Generic.Dictionary<string, object> m) =>
             m != null && m.TryGetValue("s", out var s) ? s as string : null;
+
+        /// Имя класса по индексу в CLASS_IDS (для актов, где класс приходит числом).
+        public static string ClassName(int i) => i >= 0 && i < ClassIds.Length ? ClassIds[i] : null;
 
         public static string CastClass(System.Collections.Generic.Dictionary<string, object> m)
         {

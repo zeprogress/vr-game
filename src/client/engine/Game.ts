@@ -3978,7 +3978,7 @@ export class Game {
     };
 
     // Звук соседа — играем объёмно от его аватара / точки события.
-    net.onAct = (k, x, y, z, id, d, mobId, x2, z2, v, r, s) => {
+    net.onAct = (k, x, y, z, id, d, mobId, x2, z2, v, r, s, n) => {
       // Умение героя/бота: клип умения у модели со своими клипами (Человек — world/heroMoves). Свой герой сыграл его при касте.
       if (k === "cast") {
         if (id !== this.net?.sessionId && s) this.avatars.get(id)?.playSkill(s, v !== undefined && v >= 0 ? CLASS_IDS[v] ?? null : null);
@@ -3990,7 +3990,7 @@ export class Game {
         }
         return;
       }
-      this.playRemoteAct(k, x, y, z, id, d, mobId, x2, z2, v, r);
+      this.playRemoteAct(k, x, y, z, id, d, mobId, x2, z2, v, r, s, n);
     };
     net.onTtsPlay = (m) => this.playChatTts(m.url, m.nick);
     net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
@@ -4150,6 +4150,8 @@ export class Game {
     z2in?: number,
     v?: number,
     r?: number,
+    s?: string,
+    n?: number,
   ): void {
     // VR: дальше VR_FX_RANGE боевых эффектов (скиллы, лечение, удары, криты, звуки) не рисуем вовсе — бережём шлем.
     if (this.player.inVR) {
@@ -4181,6 +4183,24 @@ export class Game {
     if (k === "ultCancel" && id === this.net?.sessionId) {
       this.player.applyStun(0);
       this.attackBlockUntil = 0;
+    }
+    // Повторяющееся умение (град выпадов, шквал, веер ножей): n повторов клипа за d секунд.
+    if (k === "repeat") {
+      const skill = (s ?? "") as SkillId;
+      const cls = v !== undefined && v >= 0 ? CLASS_IDS[v] ?? null : null;
+      const count = Math.max(1, Math.round(n ?? 1));
+      const sec = Math.max(0.15, d ?? 1);
+      if (skill) {
+        if (id === this.net?.sessionId) this.localAvatar?.playRepeat(skill, this.heroClass() ?? cls, count, sec);
+        else this.avatars.get(id)?.playRepeat(skill, cls, count, sec);
+      }
+    }
+    // Круговое умение: сколько ударов вокруг себя (v) — столько оборотов модели за d секунд.
+    if (k === "whirl") {
+      const spins = Math.max(1, Math.round(v ?? 5));
+      const sec = Math.max(0.3, d ?? 2);
+      if (id === this.net?.sessionId) this.localAvatar?.playSpin("whirlwind", this.heroClass(), spins, sec);
+      else this.avatars.get(id)?.playSpin("whirlwind", null, spins, sec);
     }
     if (playClassAct(this.classCtx, k, x, y, z, id, d, x2in, z2in, v, r, mobId)) return;
     if (playIceGiantAct(this.iceCtx, k, x, y, z, id, d, x2in, z2in, r)) return;
