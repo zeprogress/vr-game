@@ -697,7 +697,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     },
   },
   whirlwind: {
-    name: "Вихрь", icon: glyph("s.whirlwind"), desc: "2 с вращаешься с мечом: от 5 ударов по всем вокруг — больше со скоростью атаки (ЛОВ, ролл «Скорость атаки», клич), каждый удар может критовать; входящий урон −30%",
+    name: "Вихрь", icon: glyph("s.whirlwind"), desc: "2 с вращаешься с мечом: 5 ударов по всем вокруг (число ударов не зависит от ЛОВ и скорости атаки), каждый удар может критовать; входящий урон −30%",
     cooldown: 14, castTime: 0, radius: 3.2, dmgMult: 0.9, hits: 5, // 0.7 → 0.9 (2026-10-05)
     variants: {
       spearman: { name: "Град выпадов", desc: "Серия из 8 быстрых выпадов копьём вперёд (длинный конус {r:6.5} м): каждый колет всех в секторе" },
@@ -864,16 +864,22 @@ export const SPEAR_PIERCE_DMG = 0.7;
 export const SPEAR_FLURRY = { thrusts: 8, duration: 1.6, range: 6.5, cone: 0.5, dmg: 1 } as const;
 
 /** Числа новых умений. */
-/** warriorDmg — удар вихря воина (вместо SKILLS2.whirlwind.dmgMult 0.9): ослаблен 2026-10-23, когда вихрь стал критовать и бить чаще. */
+/**
+ * warriorDmg — удар вихря воина (вместо SKILLS2.whirlwind.dmgMult 0.9). 2026-11-02: ударов теперь
+ * ФИКСИРОВАННО 5 — урон НЕ компенсируем, вихрь просто стал слабее на быстрых билдах (по просьбе).
+ */
 export const WHIRL = { duration: 2, assassinInvulSec: 1.5, spearRadius: 4, spearHits: 4, spearDmg: 0.9, warriorDef: 0.3, warriorMaxHits: 12, warriorDmg: 0.65 } as const;
 
 /**
  * Вихрь воина (2026-10-23): за те же WHIRL.duration с ударов тем больше, чем выше скорость атаки — база SKILLS2.whirlwind.hits
  * × темп от ЛОВ × `speedMul` (ролл «Скорость атаки», клич, рывок); уровень не учитывается. Не больше warriorMaxHits.
  */
-export function warriorWhirlHits(a: SkillAttrs, speedMul = 1): number {
-  // ЛОВ — с кольцами и камнями (attrOf читает gb).
-  return Math.max(SKILLS2.whirlwind.hits, Math.min(WHIRL.warriorMaxHits, Math.round(SKILLS2.whirlwind.hits * agiTempo2(a as AttrsIn) * speedMul)));
+/**
+ * Ударов в вихре воина. 2026-11-02: всегда SKILLS2.whirlwind.hits (5) — ЛОВ и скорость атаки
+ * больше НЕ добавляют оборотов (раньше доходило до 12, и вихрь не оставлял шансов).
+ */
+export function warriorWhirlHits(_a?: SkillAttrs, _speedMul = 1): number {
+  return SKILLS2.whirlwind.hits;
 }
 export const WARCRY = { duration: 8, blessDuration: 10, blessDef: 0.15, dmg: 0.25, tempo: 0.15, rallyTempo: 0.3, aggroSec: 4 } as const;
 /** Печать стража: союзникам в круге −40% урона. */

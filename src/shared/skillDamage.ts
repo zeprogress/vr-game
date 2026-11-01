@@ -64,7 +64,7 @@ export function skillDamageText(
         const whirl = phys !== undefined ? hammerWhirlHit(sk.dmgMult, phys) : sk.dmgMult * strike;
         return `Урон ${n(whirl * dm)} за удар × ${sk.hits + extra}; молния ${n(mul * strike * dm)} (×${Math.round(mul * 100) / 100})`;
       }
-      if (cls === "warrior") return `Урон ${n(warriorWhirlDamage(strike) * dm)} за удар × ${warriorWhirlHits(a) + extra}+ (больше с роллом скорости и кличем), каждый — с шансом крита`;
+      if (cls === "warrior") return `Урон ${n(warriorWhirlDamage(strike) * dm)} за удар × ${warriorWhirlHits(a) + extra} (число ударов фиксированное), каждый — с шансом крита`;
       return `Урон ${n(base)} за удар × ${sk.hits + extra}`;
     case "chain":
       if (cls === "support") return `Лечение по цепи: ${hops(strike * 2.2 * hm, 4 + extra, CHAIN.falloff)}`;
