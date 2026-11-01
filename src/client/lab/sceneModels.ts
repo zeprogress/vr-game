@@ -25,8 +25,8 @@ import type { LabCtx } from "./main";
 export function build(ctx: LabCtx): void {
   const { scene, ui } = ctx;
   const names = Object.keys(MODELS) as ModelName[];
-  // По умолчанию — эльф (новая модель со своим ригом и 55 клипами): видно сразу при открытии.
-  let name: ModelName = (names.find((n) => n === "charElf") ?? names.find((n) => n === "monMushColossus") ?? names[0]) as ModelName;
+  // По умолчанию — женщина-рыцарь (последняя добавленная: 55 клипов на риге героя), затем эльф.
+  let name: ModelName = (names.find((n) => n === "charWoman") ?? names.find((n) => n === "charElf") ?? names.find((n) => n === "monMushColossus") ?? names[0]) as ModelName;
   let size = 3;
   let spin = true;
   let rig: RigInstance | null = null;

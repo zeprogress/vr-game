@@ -82,7 +82,7 @@ import {
 } from "#shared/net/messages";
 import { isCamTuneKey, type CamTuneKey } from "#shared/camTune";
 import { NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, huntPhaseFor, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL, STORM_COUNTER } from "#shared/constants";
-import { MOB_MID_K, SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, ICE_GIANT, reflectCapped, mobArmorBits, type CatDefense } from "#shared/mobs";
+import { MOB_MID_K, SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, ICE_GIANT, reflectCapped, mobArmorBits, type CatDefense, CAT_SOULS_KNOCK } from "#shared/mobs";
 import { DragonFight, type DragonHost } from "./dragonFight";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
 import { hammerPhysStrike, skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
@@ -7227,9 +7227,11 @@ export class ZoneRoom extends Room<ZoneState> {
           r: o?.r ?? H.radius,
           delay: o?.delay ?? H.delay,
           // Потолок на удар: рост урона от размера отряда иначе снимал 30%+ HP за круг.
-          dmgFrac: Math.min(H.maxHpFrac, (o?.dmg ?? H.dmgFrac) * CATACOMBS.hazardScale * this.cat.sizeDmg),
+          // dmgMul бьёт ПОСЛЕ потолка: у стража с ослабленными приёмами урон реально ниже,
+          // иначе потолок 18% съедал бы любую поправку.
+          dmgFrac: Math.min(H.maxHpFrac, (o?.dmg ?? H.dmgFrac) * CATACOMBS.hazardScale * this.cat.sizeDmg) * (o?.dmgMul ?? 1),
           stun: o?.stun ?? (kind === "rockfall" ? 0.8 : 0),
-          knock: o?.knock ?? (kind === "souls" ? 6 : 0),
+          knock: o?.knock ?? (kind === "souls" ? CAT_SOULS_KNOCK : 0),
           phys: kind === "rockfall",
           who: (pid) => this.cat.inRun(pid),
         });

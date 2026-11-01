@@ -49,6 +49,9 @@ export const MODELS = {
   // Эльф (art/elf/elf_ZEP_rig.blend → Blender glTF): тот же риг и те же 55 клипов, что у человека,
   // тело+руки привязаны (tools/blender/bind_body.py). Грузим в лабораторию на посмотреть.
   charElf: "/models/chars/Elf_Male.glb",
+  // Женщина-рыцарь (/Users/zep/ASSETS/3D/humam woman/model rig.fbx): веса и 55 клипов перенесены
+  // с рига героя (tools/blender/transfer_rig.py). Пока только для лаборатории.
+  charWoman: "/models/chars/Woman_Knight.glb",
   // Усиленные мобы лагерей: Quaternius "Ultimate Monsters" (CC0). .gltf со
   // встроенными буферами/текстурами — грузятся как есть, без конвертации.
   monBee: "/models/monsters/Armabee.gltf",
@@ -106,13 +109,13 @@ export type ModelName = keyof typeof MODELS;
  * Модели со своими текстурами (PBR из файла): их не перекрашиваем в плоский цвет и не склеиваем в один меш —
  * иначе текстуры пропадают. Человек (charHuman) — ассет из /ASSETS/3D/human.
  */
-export const KEEP_MATERIALS: ReadonlySet<ModelName> = new Set<ModelName>(["charHuman", "charElf"]);
+export const KEEP_MATERIALS: ReadonlySet<ModelName> = new Set<ModelName>(["charHuman", "charElf", "charWoman"]);
 
 /**
  * Множитель к общему масштабу персонажа: модели в файле крупнее или мельче пака Quaternius (Knight ≈ 3.2 м в нативе,
  * Человек ≈ 1.15 м). Человек по просьбе вдвое выше рыцаря (BOT_RIG_SCALE × этот множитель).
  */
-export const MODEL_SCALE: Partial<Record<ModelName, number>> = { charHuman: 5, charElf: 5 }; // рост ≈ 2.9 м (было 3.06 — 1.78 м)
+export const MODEL_SCALE: Partial<Record<ModelName, number>> = { charHuman: 5, charElf: 5, charWoman: 5 }; // рост ≈ 2.9 м (было 3.06 — 1.78 м)
 
 export function modelScale(name: ModelName): number {
   return MODEL_SCALE[name] ?? 1;

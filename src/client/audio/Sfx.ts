@@ -1497,6 +1497,62 @@ export class Sfx {
     }
   }
 
+  /**
+   * Босс катакомб применяет приём: низкий рык, подъём «ветра» и удар в конце.
+   * Отдельный звук от рога ивента — приёмы идут каждые несколько секунд, и рог
+   * на них звучал как объявление события, сбивая с толку.
+   * Сэмпл `cat-charge` (если загружен) даёт «каменный» оттенок, синтез — подложку.
+   */
+  bossSkill(at?: SoundAt): void {
+    if (!this.ready()) {
+      this.pendingEventSound = () => this.bossSkill(at);
+      return;
+    }
+    const play = () => {
+      const t0 = this.t;
+      // 1) Подземный гул: две расстроенные пилы через низкий фильтр.
+      for (const f of [55, 57.5]) {
+        const o = this.ctx!.createOscillator();
+        o.type = "sawtooth";
+        o.frequency.setValueAtTime(f, t0);
+        o.frequency.linearRampToValueAtTime(f * 0.82, t0 + 0.9);
+        const lp = this.ctx!.createBiquadFilter();
+        lp.type = "lowpass";
+        lp.frequency.setValueAtTime(260, t0);
+        lp.frequency.linearRampToValueAtTime(140, t0 + 0.9);
+        const g = this.env(0.11, 0.12, 0.95, t0);
+        o.connect(lp).connect(g);
+        o.start(t0);
+        o.stop(t0 + 1.15);
+      }
+      // 2) Суб-бас: провал вниз, «толчок» приёма.
+      const sub = this.ctx!.createOscillator();
+      sub.type = "sine";
+      sub.frequency.setValueAtTime(110, t0);
+      sub.frequency.exponentialRampToValueAtTime(44, t0 + 0.55);
+      const sg = this.env(0.3, 0.02, 0.8, t0);
+      sub.connect(sg);
+      sub.start(t0);
+      sub.stop(t0 + 0.95);
+      // 3) «Ветер» подъёма: шум со срезом, уходящим вниз.
+      const nz = this.noise();
+      const bp = this.ctx!.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.Q.value = 1.1;
+      bp.frequency.setValueAtTime(1100, t0);
+      bp.frequency.exponentialRampToValueAtTime(260, t0 + 0.5);
+      const ng = this.env(0.16, 0.16, 0.42, t0);
+      nz.connect(bp).connect(ng);
+      nz.start(t0);
+      nz.stop(t0 + 0.7);
+      // 4) Каменный оттенок приёма, если сэмпл уже загружен (иначе молчим — не чужой звук).
+      const cat = this.heroBufs.get("cat-charge");
+      if (cat) this.playSample(cat, 0.5, 0.86);
+    };
+    if (at) this.at(at, play);
+    else play();
+  }
+
   /** Босс повержен: короткая триумфальная фанфара (мажорный аккорд + арпеджио). */
   bossFanfare(): void {
     if (!this.ready()) {

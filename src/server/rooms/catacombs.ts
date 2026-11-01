@@ -26,7 +26,7 @@ import {
   type CatWave,
   type CatChampion,
 } from "#shared/catacombs";
-import { CAT_CHAMPIONS, CAT_MECH_POOL, MOB_SWING, type CatDefense } from "#shared/mobs";
+import { CAT_CHAMPIONS, CAT_MECH_POOL, MOB_SWING, type CatDefense, CAT_RING_KNOCK, CAT_SOULS_KNOCK } from "#shared/mobs";
 import type { CatacombMsg, CatReportMsg, LootItem } from "#shared/net/messages";
 
 /**
@@ -94,7 +94,7 @@ export interface CatHost {
   /** Сундук на полу (эффект) и зелья россыпью (lootMul — проклятие «Щедрая гробница»). */
   chestFx(x: number, z: number, final: boolean, lootMul: number): void;
   /** Опасность зала: телеграф-круги в точках, через CAT_HAZARD.delay — удар (и боты от них уворачиваются). */
-  hazard(kind: CatHazardKind, pts: { x: number; z: number }[], o?: { r?: number; dmg?: number; delay?: number; stun?: number; knock?: number }): void;
+  hazard(kind: CatHazardKind, pts: { x: number; z: number }[], o?: { r?: number; dmg?: number; delay?: number; stun?: number; knock?: number; dmgMul?: number }): void;
   /** Где моб и сколько у него HP (null — нет/мёртв). */
   mobInfo(id: string): { x: number; z: number; hp: number; maxHp: number } | null;
   /** Щит стадии: неуязвим (удары — «MISS») + эффект купола. */
@@ -186,6 +186,10 @@ export class CatacombDirector {
   private partyLevel = 1;
   /** Мозг стража: когда следующий приём каждого вида, свита, ярость, стадия Владыки. */
   private mechAt = new Map<string, number>();
+  /** Множитель отброса приёмов текущего стража (0.4 у Костяного Императора, 1 у остальных). */
+  private bossKnockMul = 1;
+  /** Множитель урона приёмов-колец и опасностей текущего стража (0.7 у Императора). */
+  private bossHazardMul = 1;
   private addsAt = 0;
   private bossRage = false;
   /** Стадия Владыки: 1 Пламя, 2 Печать (щит), 2.5 печать разбита, 3 Ярость Бездны. */
@@ -644,6 +648,8 @@ export class CatacombDirector {
           this.finalOn = false;
         }
         this.bossId = "";
+        this.bossKnockMul = 1; // страж пал — общие опасности зала снова толкают как обычно
+        this.bossHazardMul = 1;
         this.stageClear();
         break;
       }
@@ -822,7 +828,8 @@ export class CatacombDirector {
       const r = Math.random() * 2.5;
       pts.push({ x: h.x + Math.cos(a) * r, z: h.z + Math.sin(a) * r });
     }
-    this.host.hazard(plan.hazard, pts);
+    // Гейзеры душ по умолчанию толкают на 6 м/с — у стража с ослабленным отбросом множим.
+    this.host.hazard(plan.hazard, pts, this.knockOpts(plan.hazard));
   }
 
   /** Множители мобов: уровень пати (по уровню моба считает host через partyLevel) и размер пати. */
@@ -867,6 +874,8 @@ export class CatacombDirector {
 
   private spawnBoss(b: CatBoss, hall: number): void {
     this.mechAt.clear();
+    this.bossKnockMul = b.knockMul ?? 1;
+    this.bossHazardMul = b.hazardDmgMul ?? 1;
     this.addsAt = this.host.now() + (b.adds?.every ?? 10) * 1000;
     this.bossRage = false;
     this.finalPhase = 1;
@@ -936,7 +945,7 @@ export class CatacombDirector {
       if (!this.bossRage && frac < 0.3) {
         this.bossRage = true;
         this.host.enrage(this.bossId);
-        this.host.announce({ kind: "boss", title: `${b.name} в ярости!`, sub: "приёмы чаще, свита злее", secs: 4 });
+        this.host.announce({ kind: "boss", cast: true, title: `${b.name} в ярости!`, sub: "приёмы чаще, свита злее", secs: 4 });
       }
       return;
     }
@@ -986,7 +995,7 @@ export class CatacombDirector {
           const r = Math.random() * 4;
           pts.push(h ? { x: h.x + Math.cos(a) * r, z: h.z + Math.sin(a) * r } : { x: H.x + Math.cos(a) * H.r * 0.5, z: H.z + Math.sin(a) * H.r * 0.5 });
         }
-        this.host.hazard(CAT_HAZARD.kinds[b.seal?.fx ?? 1], pts, { r: 3, dmg: 0.22 });
+        this.host.hazard(CAT_HAZARD.kinds[b.seal?.fx ?? 1], pts, { r: 3, dmg: 0.22, ...this.knockOpts(CAT_HAZARD.kinds[b.seal?.fx ?? 1]) });
       }
       if (this.guardians.size === 0) {
         this.host.setImmune(this.bossId, false);
@@ -1002,7 +1011,10 @@ export class CatacombDirector {
       this.host.finalTick(this.bossId, 3);
       if (!dragon && now >= this.ringAt) {
         this.ringAt = now + F.ringEvery * 1000;
-        this.host.hazard(CAT_HAZARD.kinds[b.seal?.fx ?? 1], [{ x: info.x, z: info.z }], { r: F.ringR, dmg: 0.2, knock: 7, delay: 1.8 }); // 0.3 → 0.2: кольца выкашивали отряд
+        this.host.hazard(CAT_HAZARD.kinds[b.seal?.fx ?? 1], [{ x: info.x, z: info.z }], {
+          r: F.ringR, dmg: 0.2, delay: 1.8,
+          knock: CAT_RING_KNOCK * (b.knockMul ?? 1), dmgMul: b.hazardDmgMul ?? 1,
+        }); // 0.3 → 0.2: кольца выкашивали отряд
       }
     }
     if (this.finalPhase === 1 && frac < F.rageAt) this.enterRage(now, hall, b);
@@ -1015,7 +1027,8 @@ export class CatacombDirector {
     this.host.bossFx(at.x, at.z, true);
     this.ringAt = now + 3000;
     this.addsAt = now + 2000;
-    this.host.announce({ kind: "boss", title: b.seal?.rageTitle ?? "Ярость Бездны", sub: b.seal?.rageSub ?? "кольца пламени — отбегайте!", secs: 6 });
+    // Ярость — это включение приёма босса, а не событие мира: звук приёма, не рог.
+    this.host.announce({ kind: "boss", cast: true, title: b.seal?.rageTitle ?? "Ярость Бездны", sub: b.seal?.rageSub ?? "кольца пламени — отбегайте!", secs: 6 });
   }
 
   /** Приём стража: телеграф → удар (через опасности зала, боты уворачиваются). */
@@ -1027,7 +1040,11 @@ export class CatacombDirector {
       this.host.hazard(kind, [{ x: h.x, z: h.z }], { r: m.r, dmg: m.dmg, stun: 1.2, delay: 1.5 });
     } else if (m.kind === "ring") {
       this.host.swing(this.bossId, MOB_SWING.wings);
-      this.host.hazard(kind, [{ x: info.x, z: info.z }], { r: m.r, dmg: m.dmg, knock: 7, delay: 1.7 });
+      this.host.hazard(kind, [{ x: info.x, z: info.z }], {
+        r: m.r, dmg: m.dmg, delay: 1.7,
+        knock: CAT_RING_KNOCK * this.bossKnockMul,
+        ...(this.bossHazardMul !== 1 ? { dmgMul: this.bossHazardMul } : {}),
+      });
     } else if (m.kind === "barrage") {
       const pts: { x: number; z: number }[] = [];
       const n = 3 + Math.min(5, this.party.size);
@@ -1041,7 +1058,19 @@ export class CatacombDirector {
       this.host.swing(this.bossId, m.fx === 1 ? MOB_SWING.breath : MOB_SWING.tail);
       this.host.hazard(kind, pts, { r: m.r, dmg: m.dmg, delay: 1.6 });
     }
-    this.host.announce({ kind: "boss", title: m.name, sub: "", secs: 2 });
+    // cast: true — это приём, а не объявление события: клиент играет звук приёма босса.
+    this.host.announce({ kind: "boss", cast: true, title: m.name, sub: "", secs: 2 });
+  }
+
+  /**
+   * Отброс для общих опасностей зала: у «душ» по умолчанию 6 м/с (см. ZoneRoom.hazard),
+   * умножаем на множитель текущего стража. Остальные виды не толкают — пустой объект.
+   */
+  private knockOpts(kind: Parameters<CatHost["hazard"]>[0]): { knock?: number; dmgMul?: number } {
+    // Множитель урона — всегда (он бьёт после потолка), отброс — только у «душ».
+    const dmgMul = this.bossHazardMul !== 1 ? { dmgMul: this.bossHazardMul } : {};
+    if (kind !== "souls") return dmgMul;
+    return { knock: CAT_SOULS_KNOCK * this.bossKnockMul, ...dmgMul };
   }
 
   /** Нарастание угрозы от зала к залу. */
@@ -1150,6 +1179,8 @@ export class CatacombDirector {
     this.host.clearMobs(this.mobs);
     this.mobs.clear();
     this.bossId = "";
+    this.bossKnockMul = 1;
+    this.bossHazardMul = 1;
     if (wasRun) {
       this.host.saveRecords([...this.party], win);
       for (const id of this.party) this.host.sendHome(id);
