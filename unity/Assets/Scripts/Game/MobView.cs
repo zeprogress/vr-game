@@ -19,6 +19,9 @@ namespace Zep
         Vector3 lastPos;
         Renderer[] rends;
         Nameplate plate;
+        /// Табло пугала (DPS и макс. удар) — как табло над пугалом в вебе.
+        MobPlate dummyBoard;
+        string lastInfo = "";
         float bodyRadius;
         /// Цвет плашки: босс красный, стрелок оранжевый, остальные голубовато-белые (Mob.ts tagColor).
         Color tagColor;
@@ -77,7 +80,25 @@ namespace Zep
             bodyRadius = assets.bodyRadius;
             tagColor = s.kind == "boss" ? new Color(1f, 0.3f, 0.3f) : s.kind == "spitter" ? new Color(1f, 0.6f, 0.25f) : new Color(0.85f, 0.9f, 1f);
             plate = Nameplates.Create(transform);
+            // Пугало лагеря: над ним табло со счётом (MobState.info — сервер шлёт «ник\nDPS · макс. удар»).
+            if (scare || s.model == "scarecrow")
+                dummyBoard = MobPlate.Create(transform, 2.5f); // над соломенной шляпой пугала, как табло в вебе
             transform.rotation = Quaternion.Euler(0, s.yaw * Mathf.Rad2Deg, 0);
+        }
+
+        /// Табло пугала: текст из MobState.info (сервер меняет его на каждый удар) и показ только вблизи —
+        /// как в вебе (paintScareBoard + setEnabled по расстоянию до героя).
+        void Board()
+        {
+            if (!dummyBoard) return;
+            if (lastInfo != state.info)
+            {
+                lastInfo = state.info;
+                dummyBoard.SetText(lastInfo);
+            }
+            var cam = Camera.main;
+            bool near = cam && (cam.transform.position - transform.position).sqrMagnitude < 45f * 45f;
+            dummyBoard.SetVisible(near && state.dead == 0 && !string.IsNullOrEmpty(lastInfo));
         }
 
         bool deathPlayed, wasGrounded = true;
@@ -428,6 +449,7 @@ namespace Zep
             float sc = state.scale > 0 ? state.scale : 1f;
             transform.localScale = Vector3.one * sc;
             anim.Cull(transform.position);
+            Board();
 
             float speed = (transform.position - lastPos).magnitude / Mathf.Max(Time.deltaTime, 1e-4f) / sc;
             lastPos = transform.position;
