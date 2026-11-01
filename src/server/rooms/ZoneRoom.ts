@@ -2413,6 +2413,9 @@ export class ZoneRoom extends Room<ZoneState> {
     if (msg.target !== "mob" && msg.target !== "dummy" && msg.target !== "player") return;
     if (!isWeaponKind(msg.weapon)) return;
 
+    // Диагностика темпа: заявка клиента на удар (до проверок дистанции и темпа).
+    if (msg.target === "mob") this.sim.scareTry(msg.id, client.sessionId);
+
     let hand: "left" | "right" = msg.hand === "left" ? "left" : "right";
     // Оружие «Классов 2.0» — только то, что реально в руках (двуручное — в любой руке).
     if (msg.weapon === "dagger" || msg.weapon === "spear" || msg.weapon === "hammer") {
@@ -9407,8 +9410,9 @@ export class ZoneRoom extends Room<ZoneState> {
     const i = this.sim.scareInfo(mobId);
     if (!i) return "Ударь меня — покажу урон\n!пугало — твой бот проверит билд";
     const nick = this.state.players.get(i.by)?.nick ?? "?";
-    // Три строки: ник · DPS и автоудары в секунду · макс. удар.
-    return `${nick}\nDPS ${Math.round(i.dps)} · удары/с ${i.aps.toFixed(1)}\nмакс. удар ${Math.round(i.max)}`;
+    // Три строки: ник · DPS и удары/с (принято из попыток) · макс. удар.
+    // «4.4/6.0» — сервер принял 4.4 удара/с из 6.0, которые прислал клиент: сразу видно, где темп теряется.
+    return `${nick}\nDPS ${Math.round(i.dps)} · удары/с ${i.aps.toFixed(1)}/${i.tps.toFixed(1)}\nмакс. удар ${Math.round(i.max)}`;
   }
 
   /** `!пугало` / `!dps` — бот минуту бьёт пугало в лагере (над ним — DPS и макс. удар). */

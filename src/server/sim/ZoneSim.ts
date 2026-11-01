@@ -3201,10 +3201,10 @@ export class ZoneSim {
   /** Бьёт ли владелец молотом (для уязвимости «Цепной молнии»). */
   hammerHit: ((owner: string) => boolean) | null = null;
   /** Текущая сессия урона по пугалу: кто бьёт, когда начал/последний удар, сумма, самый сильный удар. */
-  private readonly scares = new Map<string, { by: string; start: number; last: number; total: number; max: number; hits: number[] }>();
+  private readonly scares = new Map<string, { by: string; start: number; last: number; total: number; max: number; hits: number[]; tries: number[] }>();
   /** Табло пугала: кто бьёт, урон в секунду, самый сильный удар (null — давно никто не бил). */
   /** Табло своего пугала (у каждого — своя сессия: главное и напарники). */
-  scareInfo(mobId: string = this.scarecrowId): { by: string; dps: number; max: number; aps: number } | null {
+  scareInfo(mobId: string = this.scarecrowId): { by: string; dps: number; max: number; aps: number; tps: number } | null {
     const s = this.scares.get(mobId);
     if (!s || this.elapsed - s.last > SCARECROW.idleSec) return null;
     // Время — от первого удара до сейчас (минимум 1 с), пока бой идёт.
@@ -3224,7 +3224,35 @@ export class ZoneSim {
     // Темп = интервалы между ударами внутри окна: 4 удара через 0.5 с → (4−1)/1.5 = 2/с.
     // Так паузы внутри окна не «разбавляют» число (раньше делили на всё окно и выходило меньше реального).
     const aps = n >= 2 ? (n - 1) / Math.max(0.5, last - first) : n === 1 ? 1 : 0;
-    return { by: s.by, dps: s.total / t, max: s.max, aps };
+    // Темп ПОПЫТОК (клиент попросил удар) — для отладки: если он 6, а удары/с 4.4, режет сервер.
+    let tn = 0;
+    let tfirst = 0;
+    let tlast = 0;
+    for (const h of s.tries) {
+      if (h < from) continue;
+      if (tn === 0) tfirst = h;
+      tlast = h;
+      tn++;
+    }
+    const tps = tn >= 2 ? (tn - 1) / Math.max(0.5, tlast - tfirst) : tn === 1 ? 1 : 0;
+    return { by: s.by, dps: s.total / t, max: s.max, aps, tps };
+  }
+
+  /**
+   * Попытка автоудара по пугалу: клиент прислал заявку на удар. Копим отдельно от принятых,
+   * чтобы на табло было видно, где теряется темп — клиент бьёт реже или сервер отклоняет.
+   */
+  scareTry(mobId: string, by: string): void {
+    const m = this.mobs.get(mobId);
+    if (!m || !(m.scarecrow || m.practice)) return;
+    let s = this.scares.get(mobId);
+    if (!s || s.by !== by || this.elapsed - s.last > SCARECROW.idleSec) {
+      s = { by, start: this.elapsed, last: this.elapsed, total: 0, max: 0, hits: [], tries: [] };
+      this.scares.set(mobId, s);
+    }
+    s.tries.push(this.elapsed);
+    const keep = this.elapsed - SCARECROW.apsWindow * 2;
+    while (s.tries.length > 0 && s.tries[0] < keep) s.tries.shift();
   }
 
   /** Автоудар оружием по пугалу (из heroStrike): копим отметки времени для «удары/с» на табло. */
@@ -3233,7 +3261,7 @@ export class ZoneSim {
     if (!m || !(m.scarecrow || m.practice)) return;
     const s = this.scares.get(mobId);
     if (!s || s.by !== by || this.elapsed - s.last > SCARECROW.idleSec) {
-      this.scares.set(mobId, { by, start: this.elapsed, last: this.elapsed, total: 0, max: 0, hits: [this.elapsed] });
+      this.scares.set(mobId, { by, start: this.elapsed, last: this.elapsed, total: 0, max: 0, hits: [this.elapsed], tries: [] });
       return;
     }
     s.hits.push(this.elapsed);
@@ -3805,7 +3833,7 @@ export class ZoneSim {
       const s = this.scares.get(m.id);
       if (!s || s.by !== attacker || this.elapsed - s.last > SCARECROW.idleSec) {
         // hits — автоудары оружием (их считает heroStrike), здесь только урон: скилл урон не добавляет ударов.
-        this.scares.set(m.id, { by: attacker, start: this.elapsed, last: this.elapsed, total: dealt, max: dealt, hits: s?.by === attacker ? s.hits : [] });
+        this.scares.set(m.id, { by: attacker, start: this.elapsed, last: this.elapsed, total: dealt, max: dealt, hits: s?.by === attacker ? s.hits : [], tries: s?.by === attacker ? s.tries : [] });
       } else {
         s.total += dealt;
         s.max = Math.max(s.max, dealt);
