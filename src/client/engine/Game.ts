@@ -518,7 +518,9 @@ export class Game {
       // Выстрел умением: чужой герой — клип атаки его класса (лук); свой — первый залп уже сыграл при касте.
       shoot: (id, volley) => {
         if (id !== this.net?.sessionId) this.avatars.get(id)?.playSwing();
-        else if (volley > 0) this.localAvatar?.swing(this.progression.meleeAnimRate * this.combat.atkSpeedAffix, "bow");
+        else if (volley > 0 && performance.now() >= this.attackBlockUntil) {
+          this.localAvatar?.swing(this.progression.meleeAnimRate * this.combat.atkSpeedAffix, "bow");
+        }
       },
     };
     this.specMarker = new SpecCamMarker(this.scene);
@@ -753,6 +755,9 @@ export class Game {
       this.combat.avatarFist = (side) => this.localAvatar?.fistBone(side) ?? null;
       this.combat.onMeleeSwing = (kind, hand) => {
         this.abyssBlink();
+        // Занят своим умением (вихрь, клич) или кастует ульту — замах НЕ играем:
+        // иначе анимация умения обрывалась и герой «начинал махать» посреди вращения.
+        if (performance.now() < this.attackBlockUntil) return;
         this.localAvatar?.swing(this.progression.meleeAnimRate * this.combat.atkSpeedAffix, kind, hand);
       };
     } else if (this.pcThirdPerson) {
@@ -765,6 +770,9 @@ export class Game {
       this.combat.avatarFist = (side) => this.localAvatar?.fistBone(side) ?? null;
       this.combat.onMeleeSwing = (kind, hand) => {
         this.abyssBlink();
+        // Занят своим умением (вихрь, клич) или кастует ульту — замах НЕ играем:
+        // иначе анимация умения обрывалась и герой «начинал махать» посреди вращения.
+        if (performance.now() < this.attackBlockUntil) return;
         this.localAvatar?.swing(this.progression.meleeAnimRate * this.combat.atkSpeedAffix, kind, hand);
       };
       this.combat.pcAuto = true;

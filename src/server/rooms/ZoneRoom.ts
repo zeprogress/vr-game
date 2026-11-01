@@ -9070,6 +9070,7 @@ export class ZoneRoom extends Room<ZoneState> {
       chasingMob &&
       // Пока корпус не довёрнут на цель — не стреляем (никаких выстрелов в спину).
       aimErr <= BOT.aimCone &&
+      !this.busyCasting(bot.rt) &&
       bot.attackCd <= 0 &&
       bot.swingIn <= 0
     ) {
@@ -9155,7 +9156,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // касается моба через BOT.attackImpact — см. resolveBotHit(). За мечом
     // на земле идём молча — chasingMob пуст, пока loot не подобран.
     // Замах — только когда уже довернулись на цель (не бить спиной).
-    if (!ranged && chasingMob && !emoting && aimDist < attackReach && aimErr < BOT_MELEE_FACE && bot.attackCd <= 0 && bot.swingIn <= 0) {
+    if (!ranged && chasingMob && !emoting && !this.busyCasting(bot.rt) && aimDist < attackReach && aimErr < BOT_MELEE_FACE && bot.attackCd <= 0 && bot.swingIn <= 0) {
       // Темп ближнего боя приглушён (meleeSpeedFor) — воины иначе к высоким
       // уровням машут как пропеллер. Анимация на клиенте гонится под тот же
       // множитель (RemoteAvatar тоже зовёт meleeSpeedFor).
@@ -9220,6 +9221,14 @@ export class ZoneRoom extends Room<ZoneState> {
     this.broadcast(MSG.act, relay);
   }
 
+  /**
+   * Герой занят своим умением (вихрь, клич, удар по кругу) или кастует ульту?
+   * Пока занят — ни удары, ни замахи не идут: сначала докатывается умение, потом автоатака.
+   */
+  private busyCasting(rt: Runtime): boolean {
+    return this.elapsed < (rt.skillBusyUntil ?? 0) || this.elapsed < (rt.ultCastUntil ?? 0);
+  }
+
   /** Момент касания клинка: наносим урон, если моб ещё жив и достаём. */
   private resolveBotHit(bot: Bot): void {
     const id = bot.swingTarget;
@@ -9227,6 +9236,8 @@ export class ZoneRoom extends Room<ZoneState> {
     bot.swingIn = 0;
     if (!id) return;
     const p = bot.state;
+    // Идёт своё умение (вихрь и т.п.) — автоатака не проходит: сначала докатывается скилл.
+    if (this.busyCasting(bot.rt)) return;
     const mob = this.sim.mobs.get(id);
     if (!mob || mob.dead) return; // добили, пока шёл замах — бьём воздух
     // Моб мог чуть отойти за время замаха — небольшой допуск, иначе боты
