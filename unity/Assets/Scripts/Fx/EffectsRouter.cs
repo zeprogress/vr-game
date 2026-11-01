@@ -75,7 +75,8 @@ namespace Zep
                     var title = m.TryGetValue("title", out var ti) ? ti as string : "?";
                     Debug.LogWarning($"[cat] приём босса «{title}» → boss-skill");
                 }
-                SoundBank.At(at, "boss-skill", vol: 1.1f, range: 1e6f);
+                // Звук приёма теперь идёт актом bossSkill (ClassActs) — здесь только баннер,
+                // чтобы не играть дважды.
                 return;
             }
             if (kind == "start" || kind == "gather" || kind == "boss") AnnounceHorn();

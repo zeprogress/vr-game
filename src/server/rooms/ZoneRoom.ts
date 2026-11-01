@@ -7296,6 +7296,11 @@ export class ZoneRoom extends Room<ZoneState> {
           m.frenzy(9999);
         }
       },
+      // Приём босса: отдельный акт — канал act проверенно доходит до спектатора
+      // (звук идёт от самого босса, а не «от камеры»).
+      skillFx: (x, z) => {
+        this.broadcast(MSG.act, { k: "bossSkill", id: "", x, y: terrainHeight(x, z), z } satisfies ActRelay);
+      },
       gateFx: (pts) => {
         for (const pt of pts) this.broadcast(MSG.act, { k: "catGate", id: "", x: pt.x, y: terrainHeight(pt.x, pt.z), z: pt.z, d: 1.4 } satisfies ActRelay);
       },

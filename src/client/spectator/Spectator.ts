@@ -337,6 +337,8 @@ export class Spectator {
       fx: this.classFx,
       vfx: this.skillVfx,
       sample: (at, name) => this.sfx.at(at, () => this.sfx.heroSample(name)),
+      // Акт bossSkill: приём босса — свой звук (низкий гул), не рог ивента.
+      bossSkill: () => this.sfx.bossSkill(),
       sound: (at, kind) =>
         this.sfx.at(at, () =>
           kind === "bash" ? this.sfx.groundBash()

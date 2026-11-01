@@ -107,6 +107,8 @@ export interface CatHost {
   swing(id: string, kind: number): void;
   /** Ворота открываются (портал) — через ~1.3 с оттуда полезут мобы. */
   gateFx(pts: { x: number; z: number }[]): void;
+  /** Звук приёма стража от его точки (акт bossSkill) — канал act, доходит и до спектатора. */
+  skillFx(x: number, z: number): void;
   /** Землетрясение/вспышка перед боссом (эффект в точке). */
   bossFx(x: number, z: number, final: boolean): void;
 }
@@ -1058,6 +1060,8 @@ export class CatacombDirector {
       this.host.swing(this.bossId, m.fx === 1 ? MOB_SWING.breath : MOB_SWING.tail);
       this.host.hazard(kind, pts, { r: m.r, dmg: m.dmg, delay: 1.6 });
     }
+    // Звук приёма — отдельным актом от точки босса (канал act доходит до всех, включая спектатор).
+    this.host.skillFx(info.x, info.z);
     // kind "skill" — это приём, а не объявление события: клиент играет звук приёма босса.
     // (cast оставлен для старых клиентов: по нему тоже понятно, что это приём.)
     this.host.announce({ kind: "skill", cast: true, title: m.name, sub: "", secs: 2 });

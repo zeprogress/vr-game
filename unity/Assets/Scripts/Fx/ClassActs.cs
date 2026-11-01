@@ -28,6 +28,8 @@ namespace Zep
                 case "bash": SoundBank.At(at, "groundBash"); break;
                 case "swing": SoundBank.At(at, "sword-swing"); break;
                 case "horn": SoundBank.At(at, "bossHorn", range: 120); break;
+                // Приём стража катакомб: свой низкий гул, а не рог ивента (см. Sfx.bossSkill в вебе).
+                case "bossSkill": SoundBank.At(at, "boss-skill", vol: 1.1f, range: 1e6f); break;
                 case "volley": SoundBank.At(at, "arrowVolley"); break;
                 case "bow": SoundBank.At(at, "bow-shot-" + Random.Range(1, 6), 0.8f); break;
                 case "fire": SoundBank.At(at, "fireball-hit-" + Random.Range(1, 4), 0.6f); break;
@@ -64,6 +66,10 @@ namespace Zep
             var DEF = Defense;
             switch (k)
             {
+                // Приём стража катакомб: свой звук приёма (низкий гул) от точки босса, без эффектов.
+                case "bossSkill":
+                    Sound(at, "bossSkill");
+                    return true;
                 case "ultWarn":
                 {
                     float dd = Mathf.Max(0.4f, d ?? 5), rr = r ?? 10;

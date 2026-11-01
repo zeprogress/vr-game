@@ -445,6 +445,8 @@ export interface ClassActCtx {
   /** Центр щита в руке героя `id` (null — не видно/нет модели): разряд отражения бьёт от щита. */
   shieldPos?: (id: string) => { x: number; y: number; z: number } | null;
   /** Волна «Прилива» на арене рейд-босса (RaidArenaFx.tide). */
+  /** Звук приёма босса (Sfx.bossSkill) — для акта bossSkill. */
+  bossSkill?: () => void;
   raidTide?: () => void;
   /** Вспышка «Последнего вздоха» по всей арене (RaidArenaFx.flash). */
   raidFlash?: () => void;
@@ -991,6 +993,10 @@ export function playClassAct(
       vfx.pillar(x, y, z, 0.5, 2.2, FXC.poison, d ?? 8, { kind: "hero", id });
       vfx.burst(x, y + 1, z, FXC.poison, { count: 14, speed: 2, life: 0.6, grav: -2, size: 0.18 });
       c.sound(at, "swing");
+      return true;
+    case "bossSkill":
+      // Приём стража катакомб: свой звук приёма (не рог ивента).
+      c.bossSkill?.();
       return true;
     case "catBoss": {
       // Катакомбы: страж встаёт — круг-телеграф сходится, тёмный столб, земля «дышит»; финал — крупнее.
