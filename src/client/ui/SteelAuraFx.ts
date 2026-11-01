@@ -225,7 +225,8 @@ export class SteelAuraFx {
   private applyDome(d: Dome, t: number): void {
     const fin = Math.min(1, d.age / 0.5);
     const fout = Math.min(1, (d.dur - d.age) / 0.8);
-    d.mat.setFloat("uAlpha", Math.max(0, Math.min(fin, fout)));
+    // Аура жгучей брони — вдвое прозрачнее (по просьбе: не залепляла героя и врагов).
+    d.mat.setFloat("uAlpha", 0.5 * Math.max(0, Math.min(fin, fout)));
     d.mat.setFloat("uT", t);
     d.mat.setFloat("uR", d.R);
     d.mat.setVector3("uC", d.c);

@@ -37,6 +37,57 @@ namespace Zep
             Flames.Remove(group);
         }
 
+        /// АУРА ЛЕЧЕНИЯ (массовое лечение): мягкое зелёное свечение ВОКРУГ ГЕРОЯ и искры вверх.
+        /// Никакого диска с ободом по земле — лечение видно по свету вокруг тела и по искрам.
+        public static void HealAura(string heroId, Vector3 at, float r, float life)
+        {
+            I.StartCoroutine(I.HealAuraRoutine(heroId, at, Mathf.Max(0.2f, r), Mathf.Max(0.3f, life)));
+        }
+
+        IEnumerator HealAuraRoutine(string heroId, Vector3 at, float r, float life)
+        {
+            var assets = ZoneNet.I ? ZoneNet.I.Assets : null;
+            if (!assets || !assets.unlitAdd) yield break;
+            var col = new Color(0.42f, 1f, 0.55f);
+            var dome = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            Object.Destroy(dome.GetComponent<Collider>());
+            dome.transform.position = at;
+            var mr = dome.GetComponent<MeshRenderer>();
+            var mat = new Material(assets.unlitAdd) { name = "healAuraDome" };
+            mat.SetColor("_BaseColor", col * 0.28f);
+            mr.sharedMaterial = mat;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+            var tr = dome.transform;
+
+            float t0 = Time.time;
+            float nextMote = 0f;
+            while (true)
+            {
+                float t = Time.time - t0;
+                if (t >= life) break;
+                // Следуем за героем, если он ещё в мире.
+                if (heroId != null && WorldSync.Players.TryGetValue(heroId, out var pv) && pv)
+                    at = pv.transform.position;
+                tr.position = at;
+                float k = Mathf.Min(1f, t / 0.35f) * (1f - Mathf.Max(0f, (t - (life - 0.4f)) / 0.4f));
+                float pulse = 0.94f + 0.06f * Mathf.Sin(t * 3f);
+                tr.localScale = new Vector3(r * 1.35f * k, r * 1.05f * k, r * 1.35f * k);
+                mat.SetColor("_BaseColor", col * (0.28f * pulse));
+                // Искры лечения поднимаются от пола внутри ауры.
+                if (t >= nextMote)
+                {
+                    nextMote = t + 0.22f;
+                    float a = Random.value * Mathf.PI * 2f;
+                    float d = Mathf.Sqrt(Random.value) * r * 0.7f;
+                    Vfx.I.Burst(at + new Vector3(Mathf.Cos(a) * d, 0.2f, Mathf.Sin(a) * d), col,
+                        count: 4, speed: 1.2f, life: 0.9f, grav: -1.6f, size: 0.16f);
+                }
+                yield return null;
+            }
+            Object.Destroy(dome);
+        }
+
         /// Облако яда: купол + клубы, поднимающиеся и тающие. Как «ядовитые споры» колосса.
         public static void Poison(Vector3 at, float r, float windup, float duration)
         {

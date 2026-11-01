@@ -98,6 +98,23 @@ namespace Zep
                     vfx.Decal(P(x, y - 0.5f, z), 1.2f, new Color(0.3f, 0.6f, 1), 6, 0, 0.6f);
                     vfx.Burst(P(x, y + 0.2f, z), new Color(0.55f, 0.85f, 1), count: 12, speed: 1.4f, life: 1.0f, grav: -0.6f, size: 0.16f);
                     return true;
+                case "healZone":
+                {
+                    // Лечение ПОСТАВЛЕНО НА ЗЕМЛЮ (отхил бури): зелёная зона-свечение в точке,
+                    // без колец и штрихов — по механике круг стоит здесь, значит и визуал здесь.
+                    float rad = r ?? 4f;
+                    float life = d ?? 1.5f;
+                    Vfx.I.HealZone(at, rad, life, Heal);
+                    return true;
+                }
+                case "ultCancel":
+                {
+                    // Ульту сбили: кольцо гаснет, вспышка «сорвалось» — в эфире видно, что не докастовал.
+                    GroundFx.RingOut(at, 3.2f, new Color(0.75f, 0.75f, 0.8f), 0.5f);
+                    vfx.Burst(P(x, y + 1f, z), new Color(0.8f, 0.8f, 0.85f), count: 14, speed: 3f, life: 0.5f, grav: 3, size: 0.2f);
+                    Sound(at, "thud");
+                    return true;
+                }
                 case "ultHit":
                 {
                     UltBlast(v ?? 0, x, y, z, r ?? 10);
@@ -119,8 +136,9 @@ namespace Zep
                     return true;
                 case "hammerWave":
                     Sample(at, "hammer-wave");
-                    // Волна молота идёт ОТ героя: кольцо вокруг корпуса, а не пятно на земле.
-                    HeroSpinFx.Wave(HeroOf(id), at, (d ?? 4) * 0.45f, 0.55f, Lightning);
+                    // Волна молота — В ТОЧКЕ УДАРА (цель, а не герой): кольцо расходится из точки
+                    // до полного радиуса действия (d = HAMMER.waveRadius с сервера), вдвое прозрачнее.
+                    GroundFx.RingOut(at, d ?? 4f, Lightning, 0.5f, 0.5f);
                     vfx.Burst(at, Lightning, count: 10, speed: 4, life: 0.35f, grav: 6, size: 0.16f);
                     return true;
                 case "spearPierce":

@@ -313,6 +313,15 @@ interface Runtime {
   autoGoKind?: "event" | "raid";
   /** Когда последний раз пил зелье (elapsed) — общий откат POTION_CD. */
   lastDrinkAt?: number;
+  /**
+   * До какого момента (elapsed) герой занят СВОИМ умением: вихрь, клич, удар по кругу.
+   * Пока занят — автоатака не проходит: одно дело кружить с мечом, другое — ещё и бить.
+   */
+  skillBusyUntil?: number;
+  /** До какого момента идёт замах ульты: ни удары, ни умения, ни движение (движение — на клиенте). */
+  ultCastUntil?: number;
+  /** Ульту сбили уроном — удар в конце замаха не сработает. */
+  ultCancelled?: boolean;
   token?: string;
   /** Класс, по дереву которого сейчас посчитаны атрибуты (см. syncTree). */
   treeCls?: ClassId;
@@ -2409,6 +2418,11 @@ export class ZoneRoom extends Room<ZoneState> {
         hand = other;
       }
     }
+
+    // Занят своим умением (вихрь/клич/удар по кругу) или кастует ульту — автоатака не проходит.
+    // Иначе вихрь и удары шли одновременно, а ульта считалась «пока бьёшь».
+    if (this.elapsed < (rt.skillBusyUntil ?? 0)) return;
+    if (this.elapsed < (rt.ultCastUntil ?? 0)) return;
 
     // Темп: чаще, чем позволяет оружие, удары не засчитываются. Скорость
     // атаки (уровень + ловкость + ролл "скорость атаки" на предмете) укорачивает интервал.
@@ -9883,6 +9897,10 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Замах ультимейта: кольцо на земле видно всем в зоне, по окончании — удар. */
   private startUlt(ownerId: string, p: PlayerState, rt: Runtime, cls: ClassId): void {
     const U = ULTS[cls];
+    // Замах ульты: герой не двигается и не бьёт (движение держит клиент по этому же акту),
+    // урон в это время СБИВАЕТ ульту — второй раз за замах её не начнёшь.
+    rt.ultCastUntil = this.elapsed + U.cast;
+    rt.ultCancelled = false;
     const v = CLASS_IDS.indexOf(cls);
     const feetY = p.head.y - PLAYER.eyeHeight;
     this.broadcast(MSG.act, { k: "ultWarn", id: ownerId, x: p.head.x, y: feetY, z: p.head.z, d: U.cast, r: U.radius, v } as ActRelay);
@@ -9898,7 +9916,13 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     this.clock.setTimeout(() => {
       const pp = this.state.players.get(ownerId);
-      if (!pp || pp.dead) return;
+      rt.ultCastUntil = 0;
+      // Сбили уроном или герой умер — ульта не срабатывает, но и откат не «съедается» молча.
+      if (!pp || pp.dead || rt.ultCancelled) {
+        rt.ultCancelled = false;
+        this.broadcast(MSG.act, { k: "ultCancel", id: ownerId, x: pp?.head.x ?? p.head.x, y: (pp?.head.y ?? p.head.y) - PLAYER.eyeHeight, z: pp?.head.z ?? p.head.z } as ActRelay);
+        return;
+      }
       this.applyUlt(ownerId, pp, rt, cls);
     }, U.cast * 1000);
   }
@@ -10047,6 +10071,9 @@ export class ZoneRoom extends Room<ZoneState> {
     // новый удар из тени. Откат при отказе не тратится.
     if (kind === "abyss" && (rt.abyssStrike && rt.abyssUntil > this.elapsed || rt.hasteUntil > this.elapsed)) return false;
 
+    // Каст ульты не перебивается умениями: до конца замаха герой занят только ультой.
+    if (this.elapsed < (rt.ultCastUntil ?? 0)) return false;
+
     const sk0 = SKILLS2[kind];
     // 📿 Ожерелье (shared/necklaces.ts): множители радиуса зон, длительности эффектов и дальности умений
     // (PlayerState.gb — у бота тоже). Урона не прибавляют: яды, кровотечение и длина вихря не растут.
@@ -10082,6 +10109,10 @@ export class ZoneRoom extends Room<ZoneState> {
     rt.skillStartAt[kind] = this.elapsed;
     rt.skillAt[kind] = Math.max(due, this.elapsed - HIT_BUNCH) + cd;
     rt.lastSkillAt = this.elapsed;
+    // Своё умение (вихрь/клич/удар по кругу) занимает героя целиком: автоатака в это время молчит.
+    // Вихрь — на всё вращение, остальные — на время каста.
+    const busySec = kind === "whirlwind" ? WHIRL.duration : sk0.castTime;
+    rt.skillBusyUntil = Math.max(rt.skillBusyUntil ?? 0, this.elapsed + busySec);
     // ◆ «Поток»: каждое N-е умение не тратит откат.
     if (tk.flowEvery) {
       rt.treeCasts = (rt.treeCasts ?? 0) + 1;
@@ -10337,7 +10368,9 @@ export class ZoneRoom extends Room<ZoneState> {
           }
           if (cls === "battlemage") {
             // Отхил бури: сам герой и союзники в круге волны.
-            act({ k: "healAura", x: cx, y: cy, z: cz, d: 1.5, r: sk.radius });
+            // ВАЖНО: это зона НА ЗЕМЛЕ (лечит вокруг точки удара), поэтому и акт отдельный —
+            // healAura (летит за героем) тут был бы обманом: круг остался бы в точке, а свет уехал.
+            act({ k: "healZone", x: cx, y: cy, z: cz, d: 1.5, r: sk.radius });
             // Лечение растёт с мудростью кастера; союзники — в большом радиусе, тем же числом.
             const frac = crushHealFrac(attrOf(pp, "wis") - ATTR2.start);
             this.state.players.forEach((ally) => {
@@ -11805,6 +11838,11 @@ export class ZoneRoom extends Room<ZoneState> {
     // без этой проверки мобы у центра карты могли «доставать» героя башни и
     // рвать ему HP параллельно с боем в башне (скачки HP туда-сюда).
     if (p.towerFloor > 0) return;
+    // Герой кастует ульту? Урон СБИВАЕТ замах: удара в конце не будет (см. startUlt).
+    if (h.dmg > 0 && this.elapsed < (rt.ultCastUntil ?? 0)) {
+      rt.ultCancelled = true;
+      rt.ultCastUntil = 0;
+    }
     // Урон мобов и боссов (не PvP с ником, не тик кровотечения — он уже от усиленного удара) — общий множитель MOB.dmgMul.
     if (!h.byName && !h.dot) h = { ...h, dmg: h.dmg * MOB.dmgMul };
     // Отражение щитом моба: не больше доли МАКС. HP героя за удар. Урон героев на высоких

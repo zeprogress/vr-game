@@ -159,9 +159,8 @@ namespace Zep
                 case "magicHit": Popups.Puff(at + Vector3.down * 0.9f, 1.1f, Popups.Magic, 0.55f); break;
                 case "healHit": Popups.Burst(at + Vector3.down * 0.3f, 6, Popups.CrossGreen); break;
                 case "healAura":
-                    // Лечение — ЗЕЛЁНАЯ зона-свечение без колец и штрихов (Vfx.ModeHeal).
-                    Vfx.I.HealZone(p, D.healRadius, D.healCast, GroundFx.HealC);
-                    GroundFx.RingOut(p, D.healRadius, GroundFx.HealC, 1f);
+                    // Лечение — свечение ВОКРУГ ГЕРОЯ (купол + искры вверх), без диска и обода на земле.
+                    GroundGroupFx.HealAura(id, p, Or(r, D.healRadius), Or(d, D.healCast));
                     SoundBank.At(p, "levelUp");
                     break;
                 case "chiefHeal":

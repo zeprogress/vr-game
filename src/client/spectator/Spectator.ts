@@ -1638,10 +1638,21 @@ export class Spectator {
         this.crossFx.burst(p.x, p.y - 0.3, p.z, 6, CROSS_GREEN);
         break;
       }
-      case "healAura":
-        this.healAura.burst(x, y, z, BOT.healRadius, BOT.healCastTime);
+      case "healZone":
+        // Зона лечения на земле: стоит в точке, за героем не летит.
+        this.healAura.burst(x, y, z, r ?? 4, d ?? 1.5, null);
+        break;
+      case "healAura": {
+        // Аура лечения — свет вокруг героя, идёт за ним (как в игре), без диска по земле.
+        const rad = r ?? BOT.healRadius;
+        const life = d ?? BOT.healCastTime;
+        this.healAura.burst(x, y, z, rad, life, () => {
+          const av = this.avatars.get(id);
+          return av ? av.position : null;
+        });
         this.sfx.at({ x, y, z }, () => this.sfx.levelUp());
         break;
+      }
       case "breathMark":
       case "breathHit":
         this.skillFx.breathCone(x, y, z, x2in ?? x, z2in ?? z, d ?? 1, k === "breathHit");

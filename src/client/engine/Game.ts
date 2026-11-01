@@ -196,6 +196,12 @@ export class Game {
   /** Общий список целей (мобы + куклы) — наполняет NetMobs, читает CombatSystem. */
   private readonly targets: Hittable[] = [];
   private report: HitReporter | null = null;
+  /**
+   * До какого момента (performance.now) герой занят своим умением/ультой — автоатака молчит.
+   * Сервер это тоже проверяет (Runtime.skillBusyUntil / ultCastUntil), здесь — чтобы герой
+   * не махал оружием и не играл удар во время вихря или замаха ульты.
+   */
+  private attackBlockUntil = 0;
   private readonly sfx = new Sfx();
   private readonly hud = new Hud();
 
@@ -450,8 +456,11 @@ export class Game {
     );
     this.combat.sharpOf = (hand) => this.heldSharpPct(hand);
     this.combat.rcOf = (hand) => !!(hand === "left" ? this.net?.self?.leftRc : this.net?.self?.rightRc);
-    const report: HitReporter = (id, target, weapon, dx, dz) =>
+    const report: HitReporter = (id, target, weapon, dx, dz) => {
+      // Занят своим умением или кастует ульту — удары не идут (как и на сервере).
+      if (performance.now() < this.attackBlockUntil) return;
       this.net?.sendHitMob({ id, target, weapon, hand: this.combat.lastHitHand, dx, dz });
+    };
     this.report = report;
     this.netMobs = new NetMobs(
       this.scene,
@@ -3973,6 +3982,12 @@ export class Game {
       // Умение героя/бота: клип умения у модели со своими клипами (Человек — world/heroMoves). Свой герой сыграл его при касте.
       if (k === "cast") {
         if (id !== this.net?.sessionId && s) this.avatars.get(id)?.playSkill(s, v !== undefined && v >= 0 ? CLASS_IDS[v] ?? null : null);
+        // Свой каст: пока идёт умение, автоатака молчит (вихрь — всё вращение, иначе время каста).
+        if (id === this.net?.sessionId && s) {
+          const sk = SKILLS2[s as keyof typeof SKILLS2];
+          const sec = s === "whirlwind" ? WHIRL.duration : (sk?.castTime ?? 0);
+          this.attackBlockUntil = Math.max(this.attackBlockUntil, performance.now() + sec * 1000);
+        }
         return;
       }
       this.playRemoteAct(k, x, y, z, id, d, mobId, x2, z2, v, r);
@@ -4157,7 +4172,16 @@ export class Game {
       return;
     }
     // Свой герой (человек) во время замаха ульты стоит на месте.
-    if (k === "ultWarn" && id === this.net?.sessionId) this.player.applyStun(d ?? 0);
+    if (k === "ultWarn" && id === this.net?.sessionId) {
+      // Ульта: герой не двигается (стан на замах) и НЕ БЬЁТ до конца каста.
+      this.player.applyStun(d ?? 0);
+      this.attackBlockUntil = Math.max(this.attackBlockUntil, performance.now() + (d ?? 0) * 1000);
+    }
+    // Ульту сбили уроном — снимаем стан и разрешаем бить сразу.
+    if (k === "ultCancel" && id === this.net?.sessionId) {
+      this.player.applyStun(0);
+      this.attackBlockUntil = 0;
+    }
     if (playClassAct(this.classCtx, k, x, y, z, id, d, x2in, z2in, v, r, mobId)) return;
     if (playIceGiantAct(this.iceCtx, k, x, y, z, id, d, x2in, z2in, r)) return;
     if (playDragonAct(this.iceCtx, k, x, y, z, mobId ?? id, d, x2in, z2in, r)) return;
@@ -4194,11 +4218,21 @@ export class Game {
         this.crossFx.burst(p.x, p.y - 0.3, p.z, 6, W_GREEN);
         break;
       }
-      case "healAura":
-        // Бот-лекарь начал каст: круг по земле + купол на всё время каста.
-        this.healAura.burst(x, y, z, BOT.healRadius, BOT.healCastTime);
+      case "healZone":
+        // Лечение ПОСТАВЛЕНО НА ЗЕМЛЮ: круг стоит в точке (follow нет) — как и механике.
+        this.healAura.burst(x, y, z, r ?? 4, d ?? 1.5, null);
+        break;
+      case "healAura": {
+        // Аура лечения — свет ВОКРУГ героя: идёт за ним, без диска по земле.
+        const rad = r ?? BOT.healRadius;
+        const life = d ?? BOT.healCastTime;
+        this.healAura.burst(x, y, z, rad, life, () => {
+          const av = this.avatars.get(id);
+          return av ? av.position : null;
+        });
         this.sfx.at(at, () => this.sfx.levelUp());
         break;
+      }
       case "breathMark":
       case "breathHit":
         this.skillFx.breathCone(x, y, z, x2in ?? x, z2in ?? z, d ?? 1, k === "breathHit");

@@ -341,7 +341,8 @@ namespace Zep
                 float grow = Mathf.SmoothStep(0.2f, 1f, Mathf.Min(1, h.age / 0.35f));
                 h.sphere.position = p;
                 h.sphere.localScale = Vector3.one * h.r * 2 * grow * (1 + 0.015f * Mathf.Sin(h.age * 6));
-                h.mat.SetFloat(HAlpha, 0.1f * fade); // едва заметное сияние, не навязчиво
+                // Вдвое прозрачнее (было 0.1): аура жгучей брони не должна залеплять героя.
+                h.mat.SetFloat(HAlpha, 0.05f * fade);
                 h.mat.SetFloat(HTime, Clock);
                 // Волны жара: три оболочки по очереди расходятся от героя к краю и гаснут.
                 for (int i = 0; i < h.shells.Length; i++)
@@ -349,7 +350,7 @@ namespace Zep
                     float u = Mathf.Repeat(h.age * 0.8f + i / 3f, 1f);
                     h.shells[i].position = p;
                     h.shells[i].localScale = Vector3.one * h.r * 2 * Mathf.Lerp(0.15f, 1f, u) * grow;
-                    h.shellMats[i].SetFloat(HAlpha, 0.06f * fade * Mathf.Sin(u * Mathf.PI));
+                    h.shellMats[i].SetFloat(HAlpha, 0.03f * fade * Mathf.Sin(u * Mathf.PI));
                     h.shellMats[i].SetFloat(HTime, Clock + i * 3.1f);
                 }
             }

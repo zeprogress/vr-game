@@ -859,6 +859,13 @@ export function playClassAct(
       vfx.decal(x, y - 0.5, z, 1.2, new Color3(0.3, 0.6, 1), 6, 0, 0.6);
       vfx.burst(x, y + 0.2, z, new Color3(0.55, 0.85, 1), { count: 12, speed: 1.4, life: 1.0, grav: -0.6, size: 0.16 });
       return true;
+    case "ultCancel": {
+      // Ульту сбили уроном: кольцо гаснет, «дым» срыва — видно, что замах прерван.
+      vfx.decal(x, y, z, 3.2, FXC.moon, 0.5, 0, 0.7);
+      vfx.burst(x, y + 1, z, FXC.moon, { count: 16, speed: 3, life: 0.5, grav: 3, size: 0.2 });
+      c.sound(at, "thud");
+      return true;
+    }
     case "ultHit": {
       // Удар: кольцо, взрыв частиц и звук, свой у каждого класса (порядок CLASS_IDS).
       ultBlast(c, v ?? 0, x, y, z, r ?? 10);
@@ -881,8 +888,12 @@ export function playClassAct(
       return true;
     case "hammerWave":
       
-      c.sample(at, "hammer-wave");// Синяя волна на середине роста героя (y — сервер): без трещин, из малого радиуса растёт до полного, прозрачность 0.7.
-      vfx.decal(x, y, z, d ?? 4, FXC.lightning, 0.4, 5, 0.7);
+      c.sample(at, "hammer-wave");
+      // Волна молота — В ТОЧКЕ УДАРА (цель, а не герой): расходится из центра до полного радиуса
+      // действия (d = радиус с сервера). Прозрачность вдвое ниже — не залепляет бой.
+      const waveR = d ?? 4;
+      vfx.decal(x, y, z, waveR, FXC.lightning, 0.45, 5, 0.35);
+      vfx.decal(x, y, z, waveR * 0.55, FXC.lightning, 0.3, 5, 0.18);
       vfx.burst(x, y, z, FXC.lightning, { count: 10, speed: 4, life: 0.35, grav: 6, size: 0.16 });
       return true;
     case "spearPierce":

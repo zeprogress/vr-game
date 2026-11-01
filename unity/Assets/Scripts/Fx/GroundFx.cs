@@ -29,6 +29,8 @@ namespace Zep
             public Transform tr, inner;
             public Renderer rend, innerRend;
             public float born, windup, life, r;
+            /// Общая прозрачность эффекта (1 — как есть; 0.5 — вдвое прозрачнее).
+            public float alpha = 1f;
             public Color color;
             public Vector3 vel;
         }
@@ -117,7 +119,12 @@ namespace Zep
             I.New(Kind.Telegraph, at, r, Mathf.Max(0.05f, windup), Mathf.Max(0.05f, windup) + 0.35f, c, I.annulus, I.disc);
 
         /// Расходящееся кольцо (ultHit, лечение, удар о землю).
-        public static void RingOut(Vector3 at, float r, Color c, float life = 0.6f) => I.New(Kind.Ring, at, r, 0, life, c, I.annulus, null);
+        /// Расходящееся кольцо. `alpha` — общая прозрачность (0.5 вдвое прозрачнее).
+        public static void RingOut(Vector3 at, float r, Color c, float life = 0.6f, float alpha = 1f)
+        {
+            var fx = I.New(Kind.Ring, at, r, 0, life, c, I.annulus, null);
+            if (fx != null) fx.alpha = Mathf.Clamp01(alpha);
+        }
 
         /// Зона на время (споры, область града стрел, аура лечения): мягко пульсирует.
         public static void Zone(Vector3 at, float r, float windup, float duration, Color c) =>
@@ -198,8 +205,9 @@ namespace Zep
                     case Kind.Ring:
                         {
                             float t = age / f.life;
-                            Drape(f.outerMesh, f.outerBase, f.at, f.r * (0.2f + 0.8f * (1 - (1 - t) * (1 - t))), 0.08f);
-                            Tint(f.rend, c, 1f - t);
+                            // Из точки: стартуем почти с нуля и доходим до РЕАЛЬНОГО радиуса действия волны.
+                            Drape(f.outerMesh, f.outerBase, f.at, f.r * (0.05f + 0.95f * (1 - (1 - t) * (1 - t))), 0.08f);
+                            Tint(f.rend, c, (1f - t) * f.alpha);
                             break;
                         }
                     case Kind.Zone:
