@@ -4433,6 +4433,8 @@ export class ZoneRoom extends Room<ZoneState> {
       this.setFollow(nick, norm, null);
     } else if (cmd === "!camp" || cmd === "!кемп" || cmd === "!лагерь" || cmd === "!camps") {
       this.setCamp(nick, norm, parts.slice(1).join(" "));
+    } else if (cmd === "!темп" || cmd === "!speed" || cmd === "!tempo") {
+      this.reply(`@${nick} ${this.tempoReport(norm)}`);
     } else if (["!пугало", "!тест", "!дпс", "!dps", "!demage", "!damage", "!test", "!урон"].includes(cmd)) {
       this.botScarecrowTest(nick, norm);
     } else if (cmd === "!fish" || cmd === "!рыбачить" || cmd === "!рыбалка") {
@@ -9172,7 +9174,11 @@ export class ZoneRoom extends Room<ZoneState> {
       const atk = meleeSpeedFor(p.level, p);
       const kindB = p.rightCls === "dagger" || p.rightCls === "spear" || p.rightCls === "hammer" ? p.rightCls : "sword";
       bot.attackCd = heroAttackInterval(kindB, p.level, p, rolledAtkSpeedMul(p, "right", bot.rt) * this.cryTempo(bot.rt));
-      bot.swingIn = BOT.attackImpact / atk;
+      // Замах не может быть дольше паузы между ударами: иначе он сам становится лимитом темпа
+      // (0.33 с замаха рубили быстрый билд до 3 ударов/с, хотя пауза короче).
+      bot.swingIn = Math.min(BOT.attackImpact / atk, bot.attackCd);
+      // Диагностика темпа: ИИ тоже «просит» удар — иначе на табло пугала вторая цифра всегда 0.
+      this.sim.scareTry(chasingMob.id, bot.id);
       bot.swingTarget = chasingMob.id;
       bot.swingDx = aimDx;
       bot.swingDz = aimDz;
@@ -9403,6 +9409,27 @@ export class ZoneRoom extends Room<ZoneState> {
       out.push({ id: m.id, x: m.x, z: m.z });
     }
     return out;
+  }
+
+  /**
+   * `!темп` — что сервер считает герою: ударов в секунду, пауза, скорость, режим и замах.
+   * Нужно, чтобы сверить табло пугала с реальным темпом: если тут 6/с, а табло 4 — режет что-то ниже.
+   */
+  private tempoReport(norm: string): string {
+    const t = this.findWeaponsTarget(norm);
+    if (!t || t.p.dead) return "героя нет в мире — сначала !play.";
+    const p = t.p;
+    const rt = t.rt;
+    const kind = p.rightCls === "dagger" || p.rightCls === "spear" || p.rightCls === "hammer" || p.rightCls === "bow"
+      ? (p.rightCls as "dagger" | "spear" | "hammer" | "bow")
+      : "sword";
+    const mul = rolledAtkSpeedMul(p, "right", rt) * this.cryTempo(rt);
+    const iv = heroAttackInterval(kind, p.level, p, mul);
+    const swing = Math.min(BOT.attackImpact / meleeSpeedFor(p.level, p), iv);
+    const bot = this.bots.get(norm);
+    return `${kind} ${p.level} ур · ${(1 / iv).toFixed(1)} уд/с (пауза ${iv.toFixed(3)} с) · ` +
+      `замах ${swing.toFixed(3)} с · ролл×${(1 + (mul / Math.max(0.001, this.cryTempo(rt)) - 1)).toFixed(2)} · ` +
+      `режим ${bot ? "бот" : "игрок"}`;
   }
 
   /** Табло пугала: «ник» / «DPS 1234 · макс. удар 567»; никто не бьёт — подсказка. */
