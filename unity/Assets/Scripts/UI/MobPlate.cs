@@ -1,22 +1,26 @@
+using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace Zep
 {
-    /// Мирная плашка над мобом в мировых координатах: тёмный прямоугольник и две строки текста,
-    /// всегда лицом к камере. Повторяет табло пугала из веба (client/combat/Mob.ts buildScarecrow:
-    /// плоскость 2.6×0.75 м, BILLBOARDMODE_ALL, первая строка — ник, вторая — DPS и макс. удар).
+    /// Мирная плашка над мобом в мировых координатах: тёмная подложка и две строки,
+    /// всегда лицом к камере. Повторяет табло пугала из веба (client/combat/Mob.ts buildScarecrow),
+    /// но крупнее: в эфире важны цифры, а не подписи.
     public class MobPlate : MonoBehaviour
     {
-        /// Размер холста плашки в «пикселях веба» (как динамическая текстура 768×220 в Mob.ts).
-        const float PxW = 768f, PxH = 220f;
+        /// Размер холста плашки в «пикселях веба» (было 768×220 в Mob.ts).
+        const float PxW = 900f, PxH = 260f;
 
         Text line1, line2;
+        Image bg;
         string last;
         Camera cam;
+        /// Есть ли что показывать (подсказку без цифр не показываем — это и есть «лишние буквы»).
+        public bool HasText { get; private set; }
 
-        /// Плашка на 2.6×0.75 м над точкой `y` в родителе `parent`.
-        public static MobPlate Create(Transform parent, float y, float widthM = 2.6f)
+        /// Плашка над точкой `y` в родителе `parent`, шириной widthM метров.
+        public static MobPlate Create(Transform parent, float y, float widthM = 3f)
         {
             // RectTransform сразу: Canvas требует его, иначе transform подменится при AddComponent.
             var go = new GameObject("plate", typeof(RectTransform));
@@ -33,27 +37,30 @@ namespace Zep
             canvas.renderMode = RenderMode.WorldSpace;
             var cr = (RectTransform)transform;
             cr.sizeDelta = new Vector2(PxW, PxH);
-            // Плашка живёт в мировых метрах: холст 768 px → widthM метров.
+            // Плашка живёт в мировых метрах: холст PxW px → widthM метров.
             float k = widthM / PxW;
             transform.localScale = new Vector3(k, k, k);
 
-            var bg = new GameObject("bg").AddComponent<Image>();
+            // Подложка на всю плашку (в вебе было с отступом 8 px — цифры вылезали за неё).
+            bg = new GameObject("bg").AddComponent<Image>();
             bg.transform.SetParent(transform, false);
             bg.sprite = Nameplates.White;
-            bg.color = new Color(0.04f, 0.035f, 0.055f, 0.72f);
+            bg.color = new Color(0.03f, 0.03f, 0.045f, 0.78f);
             bg.raycastTarget = false;
             var br = (RectTransform)bg.transform;
             br.anchorMin = Vector2.zero;
             br.anchorMax = Vector2.one;
-            br.offsetMin = new Vector2(8, 8);
-            br.offsetMax = new Vector2(-8, -8);
+            br.offsetMin = new Vector2(2, 2);
+            br.offsetMax = new Vector2(-2, -2);
 
-            line1 = MakeText("line1", 52, new Color(0.90f, 0.88f, 0.82f), 66);
-            line2 = MakeText("line2", 62, new Color(1f, 0.81f, 0.35f), 150);
+            line1 = MakeText("line1", 64, new Color(0.92f, 0.90f, 0.84f), 0.5f);
+            // Цифры — крупно и золотом: их читают в эфире.
+            line2 = MakeText("line2", 124, new Color(1f, 0.82f, 0.32f), 0.78f);
             cam = Camera.main;
         }
 
-        Text MakeText(string name, int size, Color color, float centerY)
+        /// Текст-строка плашки: `y01` — доля высоты холста от верхнего края до центра строки.
+        Text MakeText(string name, int size, Color color, float y01)
         {
             var t = new GameObject(name).AddComponent<Text>();
             t.transform.SetParent(transform, false);
@@ -66,34 +73,59 @@ namespace Zep
             t.horizontalOverflow = HorizontalWrapMode.Overflow;
             t.verticalOverflow = VerticalWrapMode.Overflow;
             var rt = (RectTransform)t.transform;
-            rt.sizeDelta = new Vector2(PxW - 40, 90);
-            // В холсте Y растёт вверх, а текст веба рисовался от верхнего края — считаем от центра.
-            rt.anchoredPosition = new Vector2(0, PxH * 0.5f - centerY);
-            return t;
+            rt.sizeDelta = new Vector2(PxW - 8, PxH);
+            rt.anchoredPosition = new Vector2(0, PxH * (0.5f - y01));
+            return rt.GetComponent<Text>();
         }
 
-        /// Текст как у веба: «ник\nDPS 1234 · макс. удар 567» (две строки).
+        /// Текст с сервера: «ник\nDPS 1234 · макс. удар 567».
+        /// Показываем ник и ТОЛЬКО цифры (1234 · 567) — слова «DPS», «макс. удар» в эфире лишние.
+        /// Подсказку «Ударь меня…» (никто не бьёт) не показываем вовсе.
         public void SetText(string s)
         {
             if (s == last) return;
             last = s;
-            if (string.IsNullOrEmpty(s))
+
+            string who = "", nums = "";
+            if (!string.IsNullOrEmpty(s))
             {
-                line1.text = "";
-                line2.text = "";
-                return;
+                int nl = s.IndexOf('\n');
+                who = nl < 0 ? s : s.Substring(0, nl);
+                var rest = nl < 0 ? "" : s.Substring(nl + 1);
+                if (who.Contains("Ударь")) { who = ""; rest = ""; }   // подсказка, а не счёт
+                nums = CompactNumbers(rest);
             }
-            int nl = s.IndexOf('\n');
-            if (nl < 0)
+            HasText = !string.IsNullOrEmpty(nums) || !string.IsNullOrEmpty(who);
+            line1.text = who;
+            line2.text = nums;
+        }
+
+        /// «DPS 1234 · макс. удар 567» → «1234 · 567»: оставляем только числа.
+        static string CompactNumbers(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            var parts = new StringBuilder();
+            var num = new StringBuilder();
+            foreach (char c in s)
             {
-                line1.text = s;
-                line2.text = "";
+                if (c >= '0' && c <= '9')
+                {
+                    num.Append(c);
+                    continue;
+                }
+                if (num.Length > 0)
+                {
+                    if (parts.Length > 0) parts.Append(" · ");
+                    parts.Append(num);
+                    num.Clear();
+                }
             }
-            else
+            if (num.Length > 0)
             {
-                line1.text = s.Substring(0, nl);
-                line2.text = s.Substring(nl + 1);
+                if (parts.Length > 0) parts.Append(" · ");
+                parts.Append(num);
             }
+            return parts.ToString();
         }
 
         /// Показывать или нет (в вебе табло включается, только когда герой рядом).

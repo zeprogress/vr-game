@@ -98,7 +98,8 @@ namespace Zep
             }
             var cam = Camera.main;
             bool near = cam && (cam.transform.position - transform.position).sqrMagnitude < 45f * 45f;
-            dummyBoard.SetVisible(near && state.dead == 0 && !string.IsNullOrEmpty(lastInfo));
+            // Пустая плашка (подсказка без цифр) не показывается — «лишние буквы» убраны.
+            dummyBoard.SetVisible(near && state.dead == 0 && dummyBoard.HasText);
         }
 
         bool deathPlayed, wasGrounded = true;
