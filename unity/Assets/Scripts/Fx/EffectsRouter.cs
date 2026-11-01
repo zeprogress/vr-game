@@ -48,10 +48,19 @@ namespace Zep
             AnnounceHorn();
         }
 
-        /// Катакомбы ("cat"): сбор/старт/босс — тот же рог (в вебе так же, onCatacomb).
+        /// Катакомбы ("cat"): сбор/старт/появление босса — рог; ПРИЁМ босса ("cast") — свой звук
+        /// приёма (public/sfx/boss-skill.wav → Resources/Sfx), как Sfx.bossSkill в вебе.
         void OnCatacomb(Dictionary<string, object> m)
         {
             var kind = m.TryGetValue("kind", out var k) ? k as string : null;
+            bool cast = m.TryGetValue("cast", out var c) && c is bool b && b;
+            if (cast)
+            {
+                var cam = Camera.main;
+                var at = cam ? cam.transform.position : Vector3.zero;
+                SoundBank.At(at, "boss-skill", vol: 1.1f, range: 1e6f);
+                return;
+            }
             if (kind == "start" || kind == "gather" || kind == "boss") AnnounceHorn();
         }
 

@@ -930,6 +930,8 @@ export class Sfx {
 
   private eventBuf: AudioBuffer | null = null;
   private eventLoading = false;
+  private bossSkillBuf: AudioBuffer | null = null;
+  private bossSkillLoading = false;
 
   /** Один раз подгрузить сэмпл объявления ивента и квеста (рог hornAnonce.wav, 3 с). */
   private preloadEventAnnounce(): void {
@@ -939,6 +941,17 @@ export class Sfx {
       .then((r) => r.arrayBuffer())
       .then((a) => new Promise<AudioBuffer>((res, rej) => this.ctx!.decodeAudioData(a, res, rej)))
       .then((b) => (this.eventBuf = b))
+      .catch(() => {});
+  }
+
+  /** Один раз подгрузить сэмпл приёма босса катакомб. */
+  private preloadBossSkill(): void {
+    if (this.bossSkillLoading || this.bossSkillBuf || !this.ctx) return;
+    this.bossSkillLoading = true;
+    fetch("/sfx/boss-skill.wav")
+      .then((r) => r.arrayBuffer())
+      .then((a) => new Promise<AudioBuffer>((res, rej) => this.ctx!.decodeAudioData(a, res, rej)))
+      .then((b) => (this.bossSkillBuf = b))
       .catch(() => {});
   }
 
@@ -1508,6 +1521,16 @@ export class Sfx {
       this.pendingEventSound = () => this.bossSkill(at);
       return;
     }
+    // Сэмпл приёма (public/sfx/boss-skill.wav, tools/sfx/boss_skill_sfx.py) — тот же, что
+    // играет Unity-спектатор, чтобы в игре и в эфире звучало одинаково. Пока не загружен — синтез.
+    if (this.bossSkillBuf) {
+      const buf = this.bossSkillBuf;
+      const play = () => this.playSample(buf, 1.1);
+      if (at) this.at(at, play);
+      else play();
+      return;
+    }
+    this.preloadBossSkill();
     const play = () => {
       const t0 = this.t;
       // 1) Подземный гул: две расстроенные пилы через низкий фильтр.
