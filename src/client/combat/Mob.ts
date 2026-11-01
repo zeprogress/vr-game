@@ -792,7 +792,8 @@ export class Mob implements Hittable {
     part(MeshBuilder.CreateCylinder("scareBrim", { diameter: 0.6, height: 0.03, tessellation: 12 }, sc), hatM, 0, 1.58, 0);
     part(MeshBuilder.CreateCylinder("scareCrown", { diameterTop: 0.08, diameterBottom: 0.3, height: 0.24, tessellation: 10 }, sc), hatM, 0, 1.7, 0);
     // Табло — над табличкой с именем, всегда лицом к камере.
-    const tex = new DynamicTexture("scareTex", { width: 768, height: 220 }, sc, false);
+    // Выше прежнего (220 → 300): три строки — ник, DPS с ударами в секунду, макс. удар.
+    const tex = new DynamicTexture("scareTex", { width: 768, height: 300 }, sc, false);
     tex.hasAlpha = true;
     const bm = new StandardMaterial("scareBoardMat", sc);
     bm.diffuseTexture = tex;
@@ -800,7 +801,7 @@ export class Mob implements Hittable {
     bm.opacityTexture = tex;
     bm.disableLighting = true;
     bm.backFaceCulling = false;
-    const board = MeshBuilder.CreatePlane("scareBoard", { width: 2.6, height: 0.75 }, sc);
+    const board = MeshBuilder.CreatePlane("scareBoard", { width: 2.6, height: 1.02 }, sc);
     board.material = bm;
     board.parent = this.root;
     board.position.y = 2.55;
@@ -817,19 +818,23 @@ export class Mob implements Hittable {
     this.scareText = text;
     const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
     const W = 768;
-    const H = 220;
+    const H = 300;
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = "rgba(10,9,14,0.72)";
     ctx.fillRect(8, 8, W - 16, H - 16);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    const [l1 = "", l2 = ""] = text.split("\n");
+    // Три строки: ник · DPS и удары/с · макс. удар.
+    const [l1 = "", l2 = "", l3 = ""] = text.split("\n");
     ctx.fillStyle = "#e6e0d0";
-    ctx.font = "600 52px system-ui, sans-serif";
-    ctx.fillText(l1, W / 2, 66, W - 40);
+    ctx.font = "600 44px system-ui, sans-serif";
+    ctx.fillText(l1, W / 2, 56, W - 40);
     ctx.fillStyle = "#ffcf5a";
-    ctx.font = "800 62px system-ui, sans-serif";
+    ctx.font = "800 58px system-ui, sans-serif";
     ctx.fillText(l2, W / 2, 150, W - 40);
+    ctx.fillStyle = "#b9b2a2";
+    ctx.font = "600 34px system-ui, sans-serif";
+    ctx.fillText(l3, W / 2, 232, W - 40);
     tex.update(true);
   }
 

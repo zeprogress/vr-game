@@ -3201,15 +3201,28 @@ export class ZoneSim {
   /** Бьёт ли владелец молотом (для уязвимости «Цепной молнии»). */
   hammerHit: ((owner: string) => boolean) | null = null;
   /** Текущая сессия урона по пугалу: кто бьёт, когда начал/последний удар, сумма, самый сильный удар. */
-  private readonly scares = new Map<string, { by: string; start: number; last: number; total: number; max: number }>();
+  private readonly scares = new Map<string, { by: string; start: number; last: number; total: number; max: number; hits: number }>();
   /** Табло пугала: кто бьёт, урон в секунду, самый сильный удар (null — давно никто не бил). */
   /** Табло своего пугала (у каждого — своя сессия: главное и напарники). */
-  scareInfo(mobId: string = this.scarecrowId): { by: string; dps: number; max: number } | null {
+  scareInfo(mobId: string = this.scarecrowId): { by: string; dps: number; max: number; aps: number } | null {
     const s = this.scares.get(mobId);
     if (!s || this.elapsed - s.last > SCARECROW.idleSec) return null;
     // Время — от первого удара до сейчас (минимум 1 с), пока бой идёт.
     const t = Math.max(1, Math.min(this.elapsed, s.last + 1) - s.start);
-    return { by: s.by, dps: s.total / t, max: s.max };
+    // aps — автоударов в секунду: сколько раз ударили оружием за это же время (умения не считаем).
+    return { by: s.by, dps: s.total / t, max: s.max, aps: s.hits / t };
+  }
+
+  /** Автоудар оружием по пугалу (из heroStrike): копим число ударов для «удары/с» на табло. */
+  scareHit(mobId: string, by: string): void {
+    const m = this.mobs.get(mobId);
+    if (!m || !(m.scarecrow || m.practice)) return;
+    const s = this.scares.get(mobId);
+    if (!s || s.by !== by || this.elapsed - s.last > SCARECROW.idleSec) {
+      this.scares.set(mobId, { by, start: this.elapsed, last: this.elapsed, total: 0, max: 0, hits: 1 });
+      return;
+    }
+    s.hits++;
   }
 
   /** Эффекты не от конкретного моба (колючки на земле и т.п.) — ZoneRoom разошлёт и очистит. */
@@ -3774,7 +3787,8 @@ export class ZoneSim {
     if ((m.scarecrow || m.practice) && attacker && dealt > 0) {
       const s = this.scares.get(m.id);
       if (!s || s.by !== attacker || this.elapsed - s.last > SCARECROW.idleSec) {
-        this.scares.set(m.id, { by: attacker, start: this.elapsed, last: this.elapsed, total: dealt, max: dealt });
+        // hits — автоудары оружием (их считает heroStrike), здесь только урон: скилл урон не добавляет ударов.
+        this.scares.set(m.id, { by: attacker, start: this.elapsed, last: this.elapsed, total: dealt, max: dealt, hits: s?.by === attacker ? s.hits : 0 });
       } else {
         s.total += dealt;
         s.max = Math.max(s.max, dealt);

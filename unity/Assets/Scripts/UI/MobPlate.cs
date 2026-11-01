@@ -100,31 +100,28 @@ namespace Zep
             line2.text = nums;
         }
 
-        /// «DPS 1234 · макс. удар 567» → «1234 · 567»: оставляем только числа.
+        /// «DPS 1234 · удары/с 1.8 · макс. удар 567» → «1234 · 1.8 · 567»: только числа,
+        /// у дробных (удары/с) запятая часть сохраняется — иначе «1.8» превращалось в «1 · 8».
         static string CompactNumbers(string s)
         {
             if (string.IsNullOrEmpty(s)) return "";
             var parts = new StringBuilder();
             var num = new StringBuilder();
-            foreach (char c in s)
+            void Flush()
             {
-                if (c >= '0' && c <= '9')
-                {
-                    num.Append(c);
-                    continue;
-                }
-                if (num.Length > 0)
-                {
-                    if (parts.Length > 0) parts.Append(" · ");
-                    parts.Append(num);
-                    num.Clear();
-                }
-            }
-            if (num.Length > 0)
-            {
+                if (num.Length == 0) return;
                 if (parts.Length > 0) parts.Append(" · ");
                 parts.Append(num);
+                num.Clear();
             }
+            foreach (char c in s)
+            {
+                if (c >= '0' && c <= '9') { num.Append(c); continue; }
+                // Точка/запятая внутри числа — дробная часть (1.8), а не разделитель.
+                if ((c == '.' || c == ',') && num.Length > 0) { num.Append(','); continue; }
+                Flush();
+            }
+            Flush();
             return parts.ToString();
         }
 

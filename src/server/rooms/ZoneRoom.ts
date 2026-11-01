@@ -2564,6 +2564,8 @@ export class ZoneRoom extends Room<ZoneState> {
     heroId: string, p: PlayerState, rt: Runtime, hand: "left" | "right", weapon: WeaponKind,
     struck: Mob, dx: number, dz: number, except?: Client,
   ): boolean {
+    // Пугало: считаем автоудары (умения идут другим путём) — на табло «удары/с».
+    if (struck.scarecrow || struck.practice) this.sim.scareHit(struck.id, heroId);
     const { dmg, critM } = this.heroHitRoll(heroId, p, rt, hand, weapon, struck);
     // 🧪 «Метка охотника»: стрела лука по СВОЕЙ метке копит темп.
     if (weapon === "arrow" && struck.markT > 0 && struck.markBy === heroId) this.markFocusHit(heroId);
@@ -9405,7 +9407,8 @@ export class ZoneRoom extends Room<ZoneState> {
     const i = this.sim.scareInfo(mobId);
     if (!i) return "Ударь меня — покажу урон\n!пугало — твой бот проверит билд";
     const nick = this.state.players.get(i.by)?.nick ?? "?";
-    return `${nick}\nDPS ${Math.round(i.dps)} · макс. удар ${Math.round(i.max)}`;
+    // Три строки: ник · DPS и автоудары в секунду · макс. удар.
+    return `${nick}\nDPS ${Math.round(i.dps)} · удары/с ${i.aps.toFixed(1)}\nмакс. удар ${Math.round(i.max)}`;
   }
 
   /** `!пугало` / `!dps` — бот минуту бьёт пугало в лагере (над ним — DPS и макс. удар). */
