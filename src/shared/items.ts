@@ -586,7 +586,7 @@ export interface WeaponInstance {
 // ★ Избранное — без лимита (2026-10-20; было FAV_MAX = 24 на оружие, кольца и броню вместе).
 
 /** Текущая версия формата роллов (WeaponInstance.lv). */
-export const LOOT_VER = 14;
+export const LOOT_VER = 15;
 
 /** Оружие ближнего боя — только на нём выпадает вампиризм. */
 export function isMeleeClass(cls: string): boolean {
@@ -824,8 +824,8 @@ export function affixAtPoints(sub: AffixSub, pts: number, cap = 1, cls?: WeaponC
 }
 
 /** Ролл «сверх предела» (скрытый рецепт крафта): потолок ×mul, сразу на максимуме (33 очка — заточке не поддаётся); шанс — не выше 100%. */
-export function affixOverCap(sub: AffixSub, mul: number): RolledAffix {
-  return affixAtPoints(sub, POINTS_MAX, mul);
+export function affixOverCap(sub: AffixSub, mul: number, cls?: WeaponClass): RolledAffix {
+  return affixAtPoints(sub, POINTS_MAX, mul, cls);
 }
 
 /** Привязать ролл к ближайшему целому очку (миграция lv 9 и после заточки). Вне диапазона — не трогаем. */
@@ -1285,6 +1285,19 @@ export function migrateLoot(w: WeaponInstance): boolean {
       if (a.sub !== "vamp") continue;
       const t = Math.max(0, Math.min(1, (a.value - OLD_VAMP_RANGE[0]) / (OLD_VAMP_RANGE[1] - OLD_VAMP_RANGE[0])));
       a.value = atT("vamp", Math.round(t * 32) / 32, isAegis(w), 1, w.cls);
+    }
+  }
+  // lv 15 (2026-11-01): крафт не передавал класс оружия и ставил вампиризм по СТАРОМУ общему
+  // диапазону 2–10% — на новом оружии «Вампиризм +5% макс. HP за удар» вместо 0.1–0.5%.
+  // Такие роллы пересчитываем по качеству (старый диапазон → новый диапазон класса).
+  if (ver < 15) {
+    for (const a of w.affixes) {
+      if (a.sub !== "vamp") continue;
+      const cap = a.cap ?? 1;
+      const hi = rangeFor("vamp", isAegis(w), cap, w.cls)[1];
+      if (a.value <= hi + 1e-9) continue; // уже в новых пределах — не трогаем
+      const t = Math.max(0, Math.min(1, (a.value - OLD_VAMP_RANGE[0]) / (OLD_VAMP_RANGE[1] - OLD_VAMP_RANGE[0])));
+      a.value = atT("vamp", Math.round(t * 32) / 32, isAegis(w), cap, w.cls);
     }
   }
   w.lv = LOOT_VER;

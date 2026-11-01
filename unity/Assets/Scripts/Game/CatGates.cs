@@ -24,15 +24,21 @@ namespace Zep
         readonly Transform[] gates = new Transform[Links.Length];
         readonly float[] baseY = new float[Links.Length];
         readonly bool[] ready = new bool[Links.Length];
+        readonly bool[] opened = new bool[Links.Length];
         float scanT;
-        int foundAll;
+        int foundAll, lastLogged = -1;
 
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-        static void Boot()
+        /// Создать менеджер, если его ещё нет. Зовётся из ZoneNet.Awake — так компонент точно
+        /// живёт в сборке (RuntimeInitializeOnLoadMethod в собранном игроке может не сработать).
+        public static void Ensure()
         {
+            if (Object.FindAnyObjectByType<CatGates>()) return;
             var go = new GameObject("CatGates");
             go.AddComponent<CatGates>();
         }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        static void Boot() { Ensure(); }
 
         void Update()
         {
@@ -44,23 +50,19 @@ namespace Zep
             }
             var st = ZoneNet.I != null && ZoneNet.I.Room != null ? ZoneNet.I.Room.State : null;
             if (st == null) return;
-            // Открытые залы — как catOpen(route, lo, hi) в вебе.
             int lo = st.catLo, hi = st.catHi;
-            var route = ParseRoute(st.catRoute);
-            bool[] openHall = new bool[CatHalls];
-            bool any = false;
-            for (int i = Mathf.Max(0, lo); i <= hi && i < route.Count; i++)
-            {
-                int h = route[i];
-                if (h >= 0 && h < CatHalls) { openHall[h] = true; any = true; }
-            }
-            if (!any && route.Count > 0 && route[0] >= 0 && route[0] < CatHalls) openHall[route[0]] = true;
+            bool[] openLink = OpenCorridors(st.catRoute, lo, hi);
 
             float dt = Time.deltaTime;
             for (int i = 0; i < gates.Length; i++)
             {
                 if (!ready[i] || !gates[i]) continue;
-                bool open = openHall[Links[i].a] && openHall[Links[i].b];
+                bool open = openLink[i];
+                if (open != opened[i])
+                {
+                    opened[i] = open;
+                    Debug.LogWarning($"[catgates] решётка {i} (залы {Links[i].a}-{Links[i].b}): {(open ? "поднимаю" : "опускаю")}, lo={lo} hi={hi} маршрут='{st.catRoute}'");
+                }
                 float want = baseY[i] + (open ? Ceil * LiftK : 0f);
                 var p = gates[i].position;
                 float y = p.y + (want - p.y) * Mathf.Min(1f, dt * (open ? 0.9f : 3f));
@@ -70,6 +72,26 @@ namespace Zep
 
         /// Число залов в графе катакомб (CAT_HALLS).
         const int CatHalls = 7;
+
+        /// Открытые коридоры: какой коридор поднять. Как catOpen(route, lo, hi) в вебе —
+        /// открыты залы маршрута с шага lo по hi; коридор открыт, если открыты оба его зала.
+        public static bool[] OpenCorridors(string catRoute, int lo, int hi)
+        {
+            var route = ParseRoute(catRoute);
+            var openHall = new bool[CatHalls];
+            bool any = false;
+            for (int i = Mathf.Max(0, lo); i <= hi && i < route.Count; i++)
+            {
+                int h = route[i];
+                if (h >= 0 && h < CatHalls) { openHall[h] = true; any = true; }
+            }
+            if (!any && route.Count > 0 && route[0] >= 0 && route[0] < CatHalls) openHall[route[0]] = true;
+
+            var openLink = new bool[Links.Length];
+            for (int i = 0; i < Links.Length; i++)
+                openLink[i] = openHall[Links[i].a] && openHall[Links[i].b];
+            return openLink;
+        }
 
         static readonly System.Collections.Generic.List<int> Scratch = new();
 
@@ -109,6 +131,11 @@ namespace Zep
             }
             for (int i = 0; i < ready.Length; i++) if (ready[i]) found++;
             foundAll = found;
+            if (found > 0 && found != lastLogged)
+            {
+                lastLogged = found;
+                Debug.LogWarning($"[catgates] найдено решёток: {found}");
+            }
             if (found == 0) scanT = 0.5f; // ещё не загрузилось — попробуем скоро
         }
     }

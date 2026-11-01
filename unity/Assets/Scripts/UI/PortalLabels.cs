@@ -11,12 +11,17 @@ namespace Zep
         float scanT;
         int rounds, found;
 
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-        static void Boot()
+        /// Создать менеджер, если его ещё нет (зовётся из ZoneNet.Awake — надёжнее, чем
+        /// RuntimeInitializeOnLoadMethod в собранной игре).
+        public static void Ensure()
         {
+            if (FindAnyObjectByType<PortalLabels>()) return;
             var go = new GameObject("PortalLabels");
             go.AddComponent<PortalLabels>();
         }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        static void Boot() { Ensure(); }
 
         void Update()
         {
@@ -32,6 +37,7 @@ namespace Zep
                 if (!t.GetComponent<BillboardY>()) t.gameObject.AddComponent<BillboardY>();
                 found++;
             }
+            if (found > 0) Debug.LogWarning($"[portallabels] табличек с билбордом: {found}");
         }
     }
 }

@@ -56,6 +56,10 @@ namespace Zep
         void Awake()
         {
             I = this;
+            // Мировые билборды и решётки катакомб: создаём здесь, а не только атрибутом
+            // RuntimeInitializeOnLoadMethod — в собранном спектаторе он может не сработать.
+            Zep.CatGates.Ensure();
+            Zep.PortalLabels.Ensure();
             // SDK пишет Debug.Log на каждого моба и игрока («InvokeOnAdd») — в сборке оставляем только предупреждения.
             if (!Application.isEditor) Debug.unityLogger.filterLogType = LogType.Warning;
             // Собранная программа: «ZEP Spectator -server wss://zepgame.duckdns.org».

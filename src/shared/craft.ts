@@ -467,11 +467,13 @@ export function craftWeapon(
   // Очки — от исхода; потолки — от копий материалов (craftCaps).
   // Скрытый рецепт — без штрафа: у каждого ролла потолок только от своих копий (craftCaps делит прибавку между всеми).
   const caps = recipe ? rolls.map((r) => 1 + CRAFT.capStep * Math.max(0, r.copies - 1)) : craftCaps(rolls.map((r) => r.copies));
-  const affixes: RolledAffix[] = rolls.map((r, k) => affixAtPoints(r.sub, pts(floor), caps[k]));
+  // Класс оружия обязателен: у вампиризма свой диапазон на каждое оружие (VAMP_RANGES),
+  // без него крафт ставил старые 2–10% «урона» вместо 0.1–0.5% макс. HP за удар.
+  const affixes: RolledAffix[] = rolls.map((r, k) => affixAtPoints(r.sub, pts(floor), caps[k], i.cls));
   // Скрытый рецепт: ролл-звезда — потолок ×starMul, сразу на максимуме (если такого вида нет — встаёт вместо последнего).
   if (recipe) {
     const at = affixes.findIndex((a) => a.sub === recipe.star);
-    const star = affixOverCap(recipe.star, Math.max(CRAFT.starMul, at >= 0 ? caps[at] : 1));
+    const star = affixOverCap(recipe.star, Math.max(CRAFT.starMul, at >= 0 ? caps[at] : 1), i.cls);
     if (at >= 0) affixes[at] = star;
     else affixes[affixes.length - 1] = star;
   }
