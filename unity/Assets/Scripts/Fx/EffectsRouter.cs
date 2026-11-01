@@ -23,6 +23,9 @@ namespace Zep
         /// Дальше этого от камеры числа урона не показываем (SPEC_RANGE у спектатора).
         const float Range = 45f;
 
+        /// Сколько раз уже писали в лог про приём (не спамим на каждом ударе).
+        int castLogged;
+
         void Start()
         {
             var net = ZoneNet.I;
@@ -53,11 +56,25 @@ namespace Zep
         void OnCatacomb(Dictionary<string, object> m)
         {
             var kind = m.TryGetValue("kind", out var k) ? k as string : null;
-            bool cast = m.TryGetValue("cast", out var c) && c is bool b && b;
+            // Приём босса: явный вид "skill" (надёжнее флага) или старый флаг cast.
+            bool cast = kind == "skill" || (m.TryGetValue("cast", out var c) && c is bool b && b);
             if (cast)
             {
                 var cam = Camera.main;
                 var at = cam ? cam.transform.position : Vector3.zero;
+                if (!Resources.Load<AudioClip>("Sfx/boss-skill"))
+                {
+                    // Сэмпла нет в сборке — не молчим на приёмах, играем рог (и пишем в лог).
+                    Debug.LogWarning("[cat] нет Resources/Sfx/boss-skill — играю рог");
+                    AnnounceHorn();
+                    return;
+                }
+                if (castLogged < 3)
+                {
+                    castLogged++;
+                    var title = m.TryGetValue("title", out var ti) ? ti as string : "?";
+                    Debug.LogWarning($"[cat] приём босса «{title}» → boss-skill");
+                }
                 SoundBank.At(at, "boss-skill", vol: 1.1f, range: 1e6f);
                 return;
             }

@@ -289,6 +289,12 @@ public static class SliceSetup
 
     /// Статика для батчинга и отсечения, но БЕЗ «участвует в GI»: такие объекты ждут запечённых карт освещения
     /// и без них не получают заливку — подземелье и катакомбы выходили чёрными.
+    /// Объекты локаций, которые двигаются/вращаются В ИГРЕ: их нельзя помечать статикой.
+    /// Статический батч запёк геометрию при сборке — трансформ перестаёт влиять на картинку
+    /// (решётки катакомб не поднимались, таблички порталов не поворачивались к камере).
+    static bool AnimatedInGame(string name) =>
+        name.StartsWith("catGate") || (name.Contains("Portal") && name.Contains("Label"));
+
     static void SetStatic(GameObject go) =>
         GameObjectUtility.SetStaticEditorFlags(go, StaticEditorFlags.BatchingStatic | StaticEditorFlags.OccluderStatic | StaticEditorFlags.OccludeeStatic);
 
@@ -465,7 +471,8 @@ public static class SliceSetup
             if (!prefab) { Debug.LogWarning($"[slice] нет локации {name}.glb"); continue; }
             var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab, locRoot);
             go.name = name;
-            foreach (var t in go.GetComponentsInChildren<Transform>()) SetStatic(t.gameObject);
+            foreach (var t in go.GetComponentsInChildren<Transform>())
+                if (!AnimatedInGame(t.name)) SetStatic(t.gameObject);
             FixUnlit(go);
             // Плоскости огня жаровен веба (dunFire) — на своём шейдере, в glTF без материала, рисовались розовыми.
             // Пламя рисует DayCycle; пятна света на полу (dunFirePool) оставляем.

@@ -945,7 +945,7 @@ export class CatacombDirector {
       if (!this.bossRage && frac < 0.3) {
         this.bossRage = true;
         this.host.enrage(this.bossId);
-        this.host.announce({ kind: "boss", cast: true, title: `${b.name} в ярости!`, sub: "приёмы чаще, свита злее", secs: 4 });
+        this.host.announce({ kind: "skill", cast: true, title: `${b.name} в ярости!`, sub: "приёмы чаще, свита злее", secs: 4 });
       }
       return;
     }
@@ -1028,7 +1028,7 @@ export class CatacombDirector {
     this.ringAt = now + 3000;
     this.addsAt = now + 2000;
     // Ярость — это включение приёма босса, а не событие мира: звук приёма, не рог.
-    this.host.announce({ kind: "boss", cast: true, title: b.seal?.rageTitle ?? "Ярость Бездны", sub: b.seal?.rageSub ?? "кольца пламени — отбегайте!", secs: 6 });
+    this.host.announce({ kind: "skill", cast: true, title: b.seal?.rageTitle ?? "Ярость Бездны", sub: b.seal?.rageSub ?? "кольца пламени — отбегайте!", secs: 6 });
   }
 
   /** Приём стража: телеграф → удар (через опасности зала, боты уворачиваются). */
@@ -1058,8 +1058,9 @@ export class CatacombDirector {
       this.host.swing(this.bossId, m.fx === 1 ? MOB_SWING.breath : MOB_SWING.tail);
       this.host.hazard(kind, pts, { r: m.r, dmg: m.dmg, delay: 1.6 });
     }
-    // cast: true — это приём, а не объявление события: клиент играет звук приёма босса.
-    this.host.announce({ kind: "boss", cast: true, title: m.name, sub: "", secs: 2 });
+    // kind "skill" — это приём, а не объявление события: клиент играет звук приёма босса.
+    // (cast оставлен для старых клиентов: по нему тоже понятно, что это приём.)
+    this.host.announce({ kind: "skill", cast: true, title: m.name, sub: "", secs: 2 });
   }
 
   /**

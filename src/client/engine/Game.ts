@@ -3726,7 +3726,7 @@ export class Game {
     net.onCatacomb = (m) => {
       this.notifyBanner(m.title, m.sub, m.kind === "win" || m.kind === "chest" ? "win" : "warn", m.loot);
       // Приём босса катакомб — свой звук; рог ивента остаётся для событий и сбора.
-      if (m.cast) this.sfx.bossSkill();
+      if (m.kind === "skill" || m.cast) this.sfx.bossSkill();
       else if (m.kind === "boss" || m.kind === "start" || m.kind === "gather") this.sfx.eventAnnounce();
       else if (m.kind === "win" || m.kind === "chest") this.sfx.bossFanfare();
     };

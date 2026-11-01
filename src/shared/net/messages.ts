@@ -523,7 +523,7 @@ export interface CatReportMsg {
 
 /** Катакомбы: титры для игроков (баннер) и зрителей (карточка). */
 export interface CatacombMsg {
-  kind: "gather" | "start" | "wave" | "boss" | "chest" | "door" | "win" | "fail";
+  kind: "gather" | "start" | "wave" | "boss" | "skill" | "chest" | "door" | "win" | "fail";
   /** Объявление ПРИЁМА босса (не появление): звук — свой, боссов, а не рог ивента. */
   cast?: boolean;
   title: string;
