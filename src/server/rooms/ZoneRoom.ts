@@ -514,6 +514,12 @@ interface Bot {
   /** ms — до этого момента бот стоит на месте, играет эмоцию. */
   emoteFreezeUntil: number;
   attackCd: number;
+  /**
+   * С какого момента (elapsed) боту разрешён следующий ближний удар. Считаем НАКОПИТЕЛЬНО:
+   * кулдаун 0.168 с при тике 50 мс округлялся вверх до 0.2-0.25 с, и быстрый билд терял
+   * четверть ударов (табло пугала: 4.0 вместо 5.9). Так средний темп держится ровно.
+   */
+  meleeAt: number;
   wanderCd: number;
   wanderX: number;
   wanderZ: number;
@@ -7001,6 +7007,7 @@ export class ZoneRoom extends Room<ZoneState> {
       sayAt: 0,
       statsAt: 0,
       swingIn: 0,
+      meleeAt: 0,
       swingTarget: null,
       swingDx: 0,
       swingDz: 1,
@@ -9167,13 +9174,17 @@ export class ZoneRoom extends Room<ZoneState> {
     // касается моба через BOT.attackImpact — см. resolveBotHit(). За мечом
     // на земле идём молча — chasingMob пуст, пока loot не подобран.
     // Замах — только когда уже довернулись на цель (не бить спиной).
-    if (!ranged && chasingMob && !emoting && !this.busyCasting(bot.rt) && aimDist < attackReach && aimErr < BOT_MELEE_FACE && bot.attackCd <= 0 && bot.swingIn <= 0) {
+    if (!ranged && chasingMob && !emoting && !this.busyCasting(bot.rt) && aimDist < attackReach && aimErr < BOT_MELEE_FACE && this.elapsed >= bot.meleeAt && bot.swingIn <= 0) {
       // Темп ближнего боя приглушён (meleeSpeedFor) — воины иначе к высоким
       // уровням машут как пропеллер. Анимация на клиенте гонится под тот же
       // множитель (RemoteAvatar тоже зовёт meleeSpeedFor).
       const atk = meleeSpeedFor(p.level, p);
       const kindB = p.rightCls === "dagger" || p.rightCls === "spear" || p.rightCls === "hammer" ? p.rightCls : "sword";
-      bot.attackCd = heroAttackInterval(kindB, p.level, p, rolledAtkSpeedMul(p, "right", bot.rt) * this.cryTempo(bot.rt));
+      const swingIv = heroAttackInterval(kindB, p.level, p, rolledAtkSpeedMul(p, "right", bot.rt) * this.cryTempo(bot.rt));
+      bot.attackCd = swingIv;
+      // Накопительно: следующий удар — через интервал от ПРЕДЫДУЩЕГО плана, а не от тика.
+      // Если бот долго не бил (стоял, оглушён, шёл) — план не копим, начинаем с сейчас.
+      bot.meleeAt = bot.meleeAt < this.elapsed - 1 ? this.elapsed + swingIv : bot.meleeAt + swingIv;
       // Замах не может быть дольше паузы между ударами: иначе он сам становится лимитом темпа
       // (0.33 с замаха рубили быстрый билд до 3 ударов/с, хотя пауза короче).
       bot.swingIn = Math.min(BOT.attackImpact / atk, bot.attackCd);
