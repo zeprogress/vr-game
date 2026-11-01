@@ -37,6 +37,8 @@ export const HERO_SFX = [
   "spear-thrust", "spear-rain",
   "storm-zap", "storm-jump",
   "cat-charge", "cat-slam", "cat-rockfall", "cat-crystal", "cat-soul", "cat-gate", "cat-shield", "cat-chest",
+  // Новые умения героев (tools/sfx/hero_extra_sfx.py): ульты поддержки, молот мага, исцеляющая стрела.
+  "ult-heal", "ult-slow", "hammer-wave", "life-arrow",
 ] as const;
 export type HeroSfx = (typeof HERO_SFX)[number];
 

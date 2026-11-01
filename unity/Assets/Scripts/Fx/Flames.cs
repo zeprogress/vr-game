@@ -77,6 +77,14 @@ namespace Zep
             g.items.Add((go.transform, width, height, Random.value * 100f));
         }
 
+        /// Убрать группу целиком (временное пламя на земле: пятно огня живёт до конца эффекта).
+        public static void Remove(string group)
+        {
+            if (!inst || !inst.groups.TryGetValue(group, out var g)) return;
+            if (g.root) Object.Destroy(g.root);
+            inst.groups.Remove(group);
+        }
+
         public static void SetActive(string group, bool on)
         {
             if (inst && inst.groups.TryGetValue(group, out var g) && g.root.activeSelf != on) g.root.SetActive(on);

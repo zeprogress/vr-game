@@ -1,5 +1,6 @@
 import { FXC } from "./fxColors";
 import { GROUND_LIFT_GLSL } from "./groundLift";
+import { GROUND } from "#shared/groundMarks";
 import { groundFxThrough } from "./groundFx";
 import type { Scene } from "@babylonjs/core/scene";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
@@ -87,14 +88,17 @@ void main() {
     float fill = step(r, front) * 0.18 * (1.0 - r);
     al = (band * 1.2 + crack * 0.9 + fill) * (1.0 - uT * uT);
   } else if (uMode < 1.5) {
-    // Зона: светящийся край, кольцо рун (бегущие штрихи), мягкая заливка.
-    float edge = exp(-pow((r - 0.965) / 0.03, 2.0));
-    float runeBand = smoothstep(0.78, 0.8, r) * smoothstep(0.9, 0.88, r);
-    float runes = step(0.55, fract((a + 3.14159) / 6.28318 * 18.0 + uT * 0.12)) * runeBand;
-    float inner = exp(-pow((r - 0.6) / 0.015, 2.0)) * 0.6;
-    float fill = 0.14 * smoothstep(1.0, 0.2, r);
-    float pulse = 0.75 + 0.25 * sin(uT * 3.0);
-    al = (edge * 1.1 + runes * 0.8 + inner + fill) * pulse;
+    // ТЕЛЕГРАФ ОПАСНОСТИ (группа «урон по площади»): один язык — обод + заливка,
+    // растущая к моменту удара, и 4 клина-засечки. Никаких рун и двойных колец:
+    // на экране одновременно бывает 5-8 таких кругов, и украшения превращались в кашу.
+    float edge = exp(-pow((r - 0.965) / 0.028, 2.0));
+    // Заливка «пирогом» по прогрессу: видно, сколько осталось до удара.
+    float pie = step(uT, atan2(p.y, p.x) / 6.28318 + 0.5);
+    float fill = step(r, 0.96) * (0.10 + 0.16 * uT) * pie;
+    // Четыре клина по краю — «опасно», читается даже в куче.
+    float ticks = smoothstep(0.90, 0.96, r) * smoothstep(1.0, 0.96, r) *
+                  smoothstep(0.86, 0.94, abs(cos(a * 2.0 + 0.7854)));
+    al = edge * 1.15 + fill + ticks * 0.7;
   } else if (uMode > 2.5) {
     // Волна сектором (удар копья): тонкая дуга катится вперёд и гаснет,
     // края сектора мягкие — малозаметно, без заливки.
@@ -104,6 +108,25 @@ void main() {
     float band = exp(-pow((r - front) / 0.05, 2.0));
     float trail = step(r, front) * 0.1 * smoothstep(0.15, front, r);
     al = (band + trail) * side * (1.0 - uT) * smoothstep(0.05, 0.2, r);
+  } else if (uMode > 5.5 && uMode < 6.5) {
+    // ЗОНА ЛЕЧЕНИЯ: мягкое свечение из центра, без обода, без рун и без штрихов —
+    // по одному виду понятно «здесь лечат». Пульсирует медленно, чтобы не мигала под ногами.
+    float glow = pow(1.0 - r, 2.2);
+    float pulse = 0.85 + 0.15 * sin(uT * 2.2);
+    al = glow * pulse * 0.9 + 0.06;
+  } else if (uMode > 6.5 && uMode < 7.5) {
+    // ПАДЕНИЕ СНАРЯДА: перекрестие в центре и тонкий обод. Заливки нет — важно «куда», а не «сколько».
+    float c1 = exp(-pow(p.x / 0.02, 2.0)) * smoothstep(0.42, 0.30, abs(p.y));
+    float c2 = exp(-pow(p.y / 0.02, 2.0)) * smoothstep(0.42, 0.30, abs(p.x));
+    float ring = exp(-pow((r - 0.8) / 0.018, 2.0));
+    al = (c1 + c2) * 0.9 + ring * 0.7 + exp(-pow(r / 0.05, 2.0)) * 1.2;
+  } else if (uMode > 7.5) {
+    // УЛЬТА БОССА: двойной обод и медленно ползущие руны между ними.
+    float outer = exp(-pow((r - 0.97) / 0.025, 2.0));
+    float inner = exp(-pow((r - 0.74) / 0.018, 2.0));
+    float runeBand = smoothstep(0.78, 0.80, r) * smoothstep(0.92, 0.90, r);
+    float runes = step(0.62, fract((a + 3.14159) / 6.28318 * 24.0 + uT * 0.35)) * runeBand;
+    al = outer * 1.25 + inner * 0.85 + runes * 0.75 + 0.10 * smoothstep(1.0, 0.25, r);
   } else {
     // Прицел: кольцо и четыре засечки, крутится.
     float ring = exp(-pow((r - 0.78) / 0.05, 2.0));
@@ -115,6 +138,17 @@ void main() {
 }`;
 
 // ---------------------------------------------------------------- sparks
+
+/**
+ * Сколько меток такого вида держим одновременно — из общей спеки групп
+ * (shared/groundMarks.ts): опасное и полезное живёт с большим лимитом, слабое — с малым.
+ */
+function groundCap(mode: number): number {
+  if (mode === 1) return GROUND.danger.maxLive;   // телеграф опасности
+  if (mode === 6) return GROUND.safe.maxLive;     // зона лечения
+  if (mode === 2) return GROUND.aim.maxLive;      // прицел героя
+  return 24; // общий потолок прочих эффектов
+}
 
 const SPARKS = 28;
 Effect.ShadersStore["fxSparksVertexShader"] = `
@@ -410,6 +444,21 @@ export class SkillVfx {
    * Раньше брался строго следующий по кругу, поэтому долгие зоны (печать, грозовое поле)
    * затирались чужими эффектами и визуально исчезали раньше срока.
    */
+  /**
+   * Слот с лимитом ПО ГРУППЕ: опасных и полезных меток держим больше, слабых — меньше
+   * (см. shared/groundMarks.ts, maxLive). Перебор — забираем самую старую метку этой группы,
+   * чтобы на земле не копились десятки наложенных кругов.
+   */
+  private takeDecalCapped(mode: number, cap: number, zone: boolean): Decal {
+    const same = this.decals.filter((d) => d.mode === mode && d.age < d.life);
+    if (same.length >= cap) {
+      let oldest = same[0];
+      for (const d of same) if (d.age > oldest.age) oldest = d;
+      return oldest;
+    }
+    return this.takeDecal(zone);
+  }
+
   private takeDecal(zone = false): Decal {
     const n = this.decals.length;
     for (let i = 0; i < n; i++) {
@@ -432,9 +481,10 @@ export class SkillVfx {
 
   decal(
     x: number, y: number, z: number, radius: number, color: Color3, life: number,
-    mode: 0 | 1 | 2 | 3 | 4 | 5 = 0, alpha = 1, follow: { kind: "hero" | "mob"; id: string; dy: number } | null = null,
+    // 0 волна · 1 телеграф опасности · 2 прицел · 3 сектор · 4/5 волны · 6 зона лечения
+    mode: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 = 0, alpha = 1, follow: { kind: "hero" | "mob"; id: string; dy: number } | null = null,
   ): void {
-    const d = this.takeDecal(mode === 1);
+    const d = this.takeDecalCapped(mode, groundCap(mode), mode === 1);
     d.mesh.rotation.y = 0;
     d.mesh.position.set(x, y + 0.07 + (mode === 2 ? 0 : (this.nD % 5) * 0.004), z);
     d.mesh.scaling.set(radius, 1, radius);

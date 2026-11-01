@@ -175,6 +175,35 @@ namespace Zep
         }
 
         /// Слот под декаль: свободный → новый (до DecalMax) → самый старый из своего вида.
+        /// Потолок одновременных меток ПО ГРУППЕ (shared/groundMarks.ts): опасного и полезного
+        /// держим больше, слабого — меньше. Иначе в пиковые моменты земля превращается в кашу.
+        static int CapOf(int mode) => mode switch
+        {
+            ModeUlt => 2,
+            ModeIncoming => 5,
+            ModeAim => 3,
+            ModeHeal => 6,
+            1 => 10,   // зоны (в т.ч. постоянные опасности)
+            6 => 8,    // телеграфы удара
+            _ => 12,
+        };
+
+        /// Слот с учётом лимита группы: перебор — забираем самую старую метку этой группы.
+        Item TakeDecalFor(int mode, bool zone)
+        {
+            int cap = CapOf(mode);
+            Item oldest = null;
+            int live = 0;
+            foreach (var d in decals)
+            {
+                if (d.mode != mode || d.age >= d.life) continue;
+                live++;
+                if (oldest == null || d.age > oldest.age) oldest = d;
+            }
+            if (oldest != null && live >= cap) return oldest;
+            return TakeDecal(zone);
+        }
+
         Item TakeDecal(bool zone)
         {
             int n = decals.Count;
@@ -225,11 +254,31 @@ namespace Zep
         }
 
         /// Ударная волна по земле (mode 0), зона (1, life — длительность), прицел (2), сектор (3), волны без трещин (4, 5).
+        // ---- Группы меток на земле (shared/groundMarks.ts): каждая — свой вид ----
+        /// Режимы шейдера FxDecal для смысловых групп.
+        public const int ModeHeal = 10, ModeAim = 11, ModeIncoming = 12, ModeUlt = 13;
+
+        /// Зона лечения: только свечение, без колец и штрихов (всё лечение — зелёное).
+        public void HealZone(Vector3 p, float radius, float life, Color color, Follow fk = Follow.None, string fid = null, float dy = 0) =>
+            Decal(p, radius, color, life, ModeHeal, 1f, fk, fid, dy);
+
+        /// Прицел героя: тонкий пунктирный круг и засечки, без заливки.
+        public void Aim(Vector3 p, float radius, float life, Color color) =>
+            Decal(p, radius, color, life, ModeAim, 1f);
+
+        /// Падение снаряда/глыбы: перекрестие и тонкий обод, без заливки.
+        public void Incoming(Vector3 p, float radius, float windup, Color color) =>
+            Decal(p, radius, color, Mathf.Max(0.15f, windup), ModeIncoming, 1f);
+
+        /// Ульта босса: двойной обод и медленные руны — самая крупная метка на земле.
+        public void UltMark(Vector3 p, float radius, float life, Color color) =>
+            Decal(p, radius, color, life, ModeUlt, 1f);
+
         public void Decal(Vector3 p, float radius, Color color, float life, int mode = 0, float alpha = 1, Follow fk = Follow.None, string fid = null, float dy = 0, Shape? shape = null)
         {
             Item d;
             if (mode == Scorch) { d = scorches[nSc]; nSc = (nSc + 1) % scorches.Count; }
-            else d = TakeDecal(mode == 1);
+            else d = TakeDecalFor(mode, mode == 1);
             lastDecal = d;
             var sh = shape ?? Shape.Circle;
             var tr = d.go.transform;

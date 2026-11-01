@@ -15,6 +15,7 @@ import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import type { SkillVfx } from "./SkillVfx";
 import type { HeroSfx } from "../audio/Sfx";
 import { SkillArrows } from "./SkillArrows";
+import { FireFx, FLAME } from "./FireFx";
 import { CAT_SHRINES } from "#shared/catacombs";
 import { ARROW_STORM } from "#shared/classes2";
 
@@ -158,7 +159,14 @@ export class ClassFx {
   /** Летящие стрелы умений лучника (настоящая модель стрелы, ui/SkillArrows.ts). */
   readonly arrows: SkillArrows;
 
+  /** Сцена клиента: нужна эффектам, которые живут отдельными системами (огонь, споры). */
+  readonly scene: Scene;
+  /** Пламя на земле (FireFx): «огонь внутри круга» для огненных опасностей. */
+  readonly fire: FireFx;
+
   constructor(scene: Scene) {
+    this.scene = scene;
+    this.fire = FireFx.of(scene);
     this.arrows = SkillArrows.of(scene);
     for (let i = 0; i < 10; i++) {
       const mesh = MeshBuilder.CreateTorus(`cfxRing${i}`, { diameter: 2, thickness: 0.05, tessellation: 40 }, scene);
@@ -801,14 +809,16 @@ export function playClassAct(
       c.sound(at, v === 2 ? "holy" : "horn");
       return true;
     case "ultHeal":
-      // Союзник вылечен ультой: столб света, светлое кольцо у ног и искры, всплывающие вверх.
+      
+      c.sample(at, "ult-heal");// Союзник вылечен ультой: столб света, светлое кольцо у ног и искры, всплывающие вверх.
       vfx.pillar(x, y, z, 0.6, 4.5, FXC.heal, 1.4);
       vfx.decal(x, y + 0.05, z, 1.6, FXC.heal, 1.0, 0, 0.8);
       vfx.burst(x, y + 0.5, z, FXC.heal, { count: 22, speed: 1.8, life: 1.1, grav: -1.6, size: 0.22 });
       vfx.burst(x, y + 1, z, new Color3(1, 1, 0.85), { count: 10, speed: 2.5, life: 0.7, grav: -1, size: 0.14 });
       return true;
     case "ultSlow":
-      // Моб замедлен ультой: синий след под ним и ледяная пыль, медленно всплывающая.
+      
+      c.sample(at, "ult-slow");// Моб замедлен ультой: синий след под ним и ледяная пыль, медленно всплывающая.
       vfx.decal(x, y - 0.5, z, 1.2, new Color3(0.3, 0.6, 1), 6, 0, 0.6);
       vfx.burst(x, y + 0.2, z, new Color3(0.55, 0.85, 1), { count: 12, speed: 1.4, life: 1.0, grav: -0.6, size: 0.16 });
       return true;
@@ -828,16 +838,19 @@ export function playClassAct(
       c.fx.later(Math.max(0, d ?? 0.5), () => c.sample(at, "sword-impact"));
       return true;
     case "stunHit":
-      vfx.decal(x, y, z, r ?? 5, ATK, 0.55, 0, 1);
+      
+      c.sample(at, "sword-impact");vfx.decal(x, y, z, r ?? 5, ATK, 0.55, 0, 1);
       vfx.burst(x, y + 0.2, z, ATK, { count: 24, speed: 7, life: 0.55, grav: 14, size: 0.2 });
       return true;
     case "hammerWave":
-      // Синяя волна на середине роста героя (y — сервер): без трещин, из малого радиуса растёт до полного, прозрачность 0.7.
+      
+      c.sample(at, "hammer-wave");// Синяя волна на середине роста героя (y — сервер): без трещин, из малого радиуса растёт до полного, прозрачность 0.7.
       vfx.decal(x, y, z, d ?? 4, FXC.lightning, 0.4, 5, 0.7);
       vfx.burst(x, y, z, FXC.lightning, { count: 10, speed: 4, life: 0.35, grav: 6, size: 0.16 });
       return true;
     case "spearPierce":
-      if (x2 !== undefined && z2 !== undefined) {
+      
+      c.sample(at, "spear-thrust");if (x2 !== undefined && z2 !== undefined) {
         // Обычный удар копья — малозаметная волна сектором вперёд на длину
         // и угол удара (сервер шлёт конец оси x2/z2 и полуугол r).
         const ddx = x2 - x;
@@ -867,12 +880,14 @@ export function playClassAct(
       c.sound(at, "swing");
       return true;
     case "crushMark":
-      vfx.decal(x, y, z, (r ?? 5) * 0.55, ATK, d ?? 0.6, 2, 0.9);
+      
+      c.sample(at, "ground-slam");vfx.decal(x, y, z, (r ?? 5) * 0.55, ATK, d ?? 0.6, 2, 0.9);
       c.emote(id, "jump");
       return true;
     // ---- мобы 40 ур. (в игре и у спектатора — одним кодом) ----
     case "leapMark":
-      // Скалолом целится: круг-предупреждение под героем до самого приземления.
+      
+      c.sample(at, "storm-jump");// Скалолом целится: круг-предупреждение под героем до самого приземления.
       vfx.decal(x, y, z, r ?? 3.2, ATK, d ?? 1.6, 2, 0.95);
       return true;
     case "leapHit":
@@ -905,7 +920,8 @@ export function playClassAct(
       c.sound(at, "bash");
       return true;
     case "stormMark":
-      // Грозовой дух метит героя: синий круг — выйди из него, не стой рядом с другими.
+      
+      c.sample(at, "storm-zap");// Грозовой дух метит героя: синий круг — выйди из него, не стой рядом с другими.
       vfx.decal(x, y, z, r ?? 2.4, FXC.lightning, d ?? 1.4, 2, 0.95);
       return true;
     case "stormHit":
@@ -920,7 +936,8 @@ export function playClassAct(
       if (x2 !== undefined && z2 !== undefined) vfx.lightning(x, y + 1.1, z, x2, y + 1.1, z2, null, 0.38);
       return true;
     case "pierceShot":
-      // Пронзание: стрела прошла насквозь и летит ко второму мобу — светлый след и искры у него.
+      
+      c.sample(at, "arrow-whistle");// Пронзание: стрела прошла насквозь и летит ко второму мобу — светлый след и искры у него.
       if (x2 !== undefined && z2 !== undefined) {
         c.fx.streak(x, y + 1.1, z, x2, z2, FXC.gold, 0.25, 0.3);
         vfx.burst(x2, y + 1.1, z2, FXC.gold, { count: 10, speed: 4, life: 0.35, grav: 6, size: 0.15 });
@@ -1002,7 +1019,7 @@ export function playClassAct(
       // Катакомбы: страж встаёт — круг-телеграф сходится, тёмный столб, земля «дышит»; финал — крупнее.
       const fin = r === 1;
       const dur = d ?? 4;
-      vfx.decal(x, y, z, fin ? 7 : 4.5, FXC.arcane, dur, 0, 0.9);
+      vfx.decal(x, y, z, fin ? 7 : 4.5, FXC.arcane, dur, 8, 0.95);
       vfx.decal(x, y, z, fin ? 9 : 6, FXC.shadowDark, dur + 1, 2, 1);
       vfx.pillar(x, y, z, fin ? 2.4 : 1.4, fin ? 14 : 9, FXC.shadowDark, dur + 0.6);
       for (let i = 0; i < Math.ceil(dur * 2); i++) {
@@ -1020,8 +1037,16 @@ export function playClassAct(
       // Опасность зала — телеграф: кольцо сходится к центру за d с (обвал — пыль со свода, пламя — угли, души — фиолет).
       const col = v === 1 ? FXC.fire : v === 2 ? FXC.arcane : v === 3 ? FXC.moon : FXC.gold;
       const life = d ?? 1.7;
-      vfx.decal(x, y, z, r ?? 2.8, col, life, 2, 1);
-      vfx.decal(x, y, z, r ?? 2.8, col, life, 1, 0.35);
+      // ОДИН круг на опасность: раньше рисовали два (прицел + зона) в одной точке —
+      // от этого и росла «каша» на земле. Вид круга сам показывает, сколько осталось.
+      vfx.decal(x, y, z, r ?? 2.8, col, life, 1, 1);
+      // ОГОНЬ: внутри круга — настоящие языки пламени, а не просто красный диск.
+      if (v === 1) {
+        c.fx.fire.flame(FLAME.disc, { x, y, z }, {
+          r: (r ?? 2.8) * 0.92, inner: 0, dur: life, life: Math.min(0.8, life * 0.5),
+          size: 0.75, rise: 1.6, count: 34, heat: 0.9,
+        });
+      }
       if (v === 0) {
         // Сыплется пыль и мелкие камешки сверху.
         for (let i = 0; i < 3; i++) c.fx.later(i * 0.45, () => vfx.burst(x, y + 9, z, SHADOW_GRAY, { count: 10, speed: 1, life: 1.2, grav: 9, size: 0.18 }));
@@ -1197,7 +1222,8 @@ export function playClassAct(
       c.sound(at, "swing");
       return true;
     case "markOn":
-      if (mobId) {
+      
+      c.sample(at, "holy-seal");if (mobId) {
         vfx.endMobMarks(mobId);
         vfx.decal(x, y, z, 1.1, ATK, d ?? 8, 2, 1, { kind: "mob", id: mobId, dy: 0.4 });
         vfx.pillar(x, y, z, 0.5, 9, ATK, 0.5, { kind: "mob", id: mobId });
@@ -1291,7 +1317,8 @@ export function playClassAct(
       c.sound(at, "swing");
       return true;
     case "swarmArrow":
-      // Стрела роя: летит настоящей стрелой; попала (r > 0) — маленький взрыв радиусом r. Звук — на залп (skillShot).
+      
+      c.sample(at, "arrow-whistle");// Стрела роя: летит настоящей стрелой; попала (r > 0) — маленький взрыв радиусом r. Звук — на залп (skillShot).
       if (x2 !== undefined && z2 !== undefined) {
         const toY = d ?? y;
         const hit = (r ?? 0) > 0;
@@ -1306,6 +1333,7 @@ export function playClassAct(
       }
       return true;
     case "arrowBarrier": {
+      c.sample(at, "holy-seal");
       // Стрела-барьер: стрелы падают по краю кольца и стоят частоколом всё время; под ними — печать-кольцо.
       const R = r ?? 4;
       const dur = d ?? 4;
@@ -1358,7 +1386,8 @@ export function playClassAct(
       return true;
     }
     case "lifeArrow":
-      // Стрела жизни: стрела летит в цель; в момент попадания — обратно к стрелку зелёная нить жизни и всплеск лечения.
+      
+      c.sample(at, "life-arrow");// Стрела жизни: стрела летит в цель; в момент попадания — обратно к стрелку зелёная нить жизни и всплеск лечения.
       if (x2 !== undefined && z2 !== undefined) {
         const toY = d ?? y;
         c.fx.arrows.fly({ x, y, z }, { x: x2, y: toY, z: z2 }, {
@@ -1372,7 +1401,8 @@ export function playClassAct(
       }
       return true;
     case "chainHit":
-      if (x2 !== undefined && z2 !== undefined) {
+      
+      c.sample(at, "storm-zap");if (x2 !== undefined && z2 !== undefined) {
         const cc = v === V_SUPPORT ? HEALC : ATK;
         const toY = d ?? y;
         const delay = (r ?? 0) * 0.09;
@@ -1412,9 +1442,10 @@ export function playClassAct(
       return false;
     case "healAura": {
       c.sample(at, "heal-chime");
-      // Аура исцеления: зона с рунами и столб света ходят за героем, искры всплывают.
+      // Аура исцеления: ЗЕЛЁНАЯ зона-свечение (режим 6 — без колец и штрихов) и столб света.
+      // Всё лечение в игре — зелёное и без «украшений»: на земле и так много фигур.
       const dur = d ?? 6;
-      vfx.decal(x, y, z, r ?? 8, HEALC, dur, 1, 0.9, { kind: "hero", id, dy: 0 });
+      vfx.decal(x, y, z, r ?? 8, HEALC, dur, 6, 1, { kind: "hero", id, dy: 0 });
       vfx.pillar(x, y, z, 0.8, 3.2, HEALC, dur, { kind: "hero", id });
       c.fx.healSparkles(id, r ?? 8, dur);
       // У боевого мага это отхил «Сокрушения бури» (Ауры исцеления у него нет) — без эмоции.
@@ -1422,7 +1453,8 @@ export function playClassAct(
       return true;
     }
     case "healHit":
-      vfx.burst(x, y - 0.8, z, HEALC, { count: 12, speed: 1.6, life: 0.9, grav: -2.5, size: 0.2 });
+      
+      c.sample(at, "heal-chime");vfx.burst(x, y - 0.8, z, HEALC, { count: 12, speed: 1.6, life: 0.9, grav: -2.5, size: 0.2 });
       return false;
     default:
       return false;

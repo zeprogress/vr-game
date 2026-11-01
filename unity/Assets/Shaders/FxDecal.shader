@@ -92,6 +92,53 @@ Shader "Zep/FxDecal"
                 float outline = max(Gauss((r - 0.975) / 0.022), (1 - full) * edgeA * step(_R0, r));
                 outline = max(outline, step(0.01, _R0) * Gauss((r - _R0) / 0.02) * mA);
                 float al = 0.0;
+                // ---- ГРУППЫ МЕТОК (10+) ----
+                // Новые режимы идут ОТДЕЛЬНОЙ веткой и повторяют смысловые группы веба
+                // (shared/groundMarks.ts): прицел, падение снаряда, ульта босса, лечение.
+                if (_Mode > 9.5)
+                {
+                    if (_Mode < 10.5)
+                    {
+                        // 10 · ЛЕЧЕНИЕ: только мягкое свечение из центра. Ни колец, ни штрихов —
+                        // «здесь лечат» читается самим пятном света.
+                        float glow = pow(1.0 - r, 2.2);
+                        float pulse = 0.85 + 0.15 * sin(_T * 2.2);
+                        al = (glow * pulse * 0.9 + 0.06) * mask;
+                    }
+                    else if (_Mode < 11.5)
+                    {
+                        // 11 · ПРИЦЕЛ ГЕРОЯ: тонкая пунктирная окружность и 4 коротких засечки.
+                        // Без заливки: это подсказка «сюда бей», а не опасность.
+                        float ring = Gauss((r - 0.86) / 0.02);
+                        float dash = step(0.45, frac((a + 3.14159) / 6.28318 * 16.0));
+                        float ticks = smoothstep(0.9, 1.0, abs(cos(a * 2.0))) * smoothstep(0.6, 0.68, r) * smoothstep(0.94, 0.86, r);
+                        al = (ring * dash * 1.1 + ticks * 0.9) * mask;
+                    }
+                    else if (_Mode < 12.5)
+                    {
+                        // 12 · ПАДЕНИЕ СНАРЯДА: перекрестие в центре и тонкий обод.
+                        // Никакой заливки — важно видеть, КУДА падает, а не «сколько осталось».
+                        float cross1 = Gauss((abs(p.x) - 0.0) / 0.02) * smoothstep(0.42, 0.30, abs(p.y));
+                        float cross2 = Gauss((abs(p.y) - 0.0) / 0.02) * smoothstep(0.42, 0.30, abs(p.x));
+                        float ring = Gauss((r - 0.8) / 0.018);
+                        float dot0 = Gauss(r / 0.05);
+                        al = (cross1 + cross2) * 0.9 + ring * 0.7 + dot0 * 1.2;
+                        al *= mask;
+                    }
+                    else
+                    {
+                        // 13 · УЛЬТА БОССА: двойной обод и медленно ползущие руны между ними.
+                        // Самая крупная и самая «торжественная» метка на земле.
+                        float outer = Gauss((r - 0.97) / 0.025);
+                        float inner = Gauss((r - 0.74) / 0.018);
+                        float runeBand = smoothstep(0.78, 0.80, r) * smoothstep(0.92, 0.90, r);
+                        float runes = step(0.62, frac((a + 3.14159) / 6.28318 * 24.0 + _T * 0.35)) * runeBand;
+                        float fill = 0.10 * smoothstep(1.0, 0.25, r);
+                        al = outer * 1.25 + inner * 0.85 + runes * 0.75 + fill;
+                        al *= mask;
+                    }
+                    return float4(_Color.rgb * al * _Alpha, 1);
+                }
                 if (_Mode > 5.5)
                 {
                     if (_Mode < 6.5)

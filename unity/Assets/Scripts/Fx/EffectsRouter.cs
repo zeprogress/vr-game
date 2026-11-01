@@ -159,7 +159,8 @@ namespace Zep
                 case "magicHit": Popups.Puff(at + Vector3.down * 0.9f, 1.1f, Popups.Magic, 0.55f); break;
                 case "healHit": Popups.Burst(at + Vector3.down * 0.3f, 6, Popups.CrossGreen); break;
                 case "healAura":
-                    GroundFx.Zone(p, D.healRadius, 0.3f, D.healCast, GroundFx.HealC);
+                    // Лечение — ЗЕЛЁНАЯ зона-свечение без колец и штрихов (Vfx.ModeHeal).
+                    Vfx.I.HealZone(p, D.healRadius, D.healCast, GroundFx.HealC);
                     GroundFx.RingOut(p, D.healRadius, GroundFx.HealC, 1f);
                     SoundBank.At(p, "levelUp");
                     break;
@@ -176,7 +177,8 @@ namespace Zep
                 case "spikeMark": GroundFx.Telegraph(p, D.spikesRadius, Or(d, D.spikesWindup), GroundFx.Stun); break;
                 case "spikeHit": SoundBank.At(p, "groundBash"); break;
                 case "sporeMark":
-                    GroundFx.Zone(p, D.sporeRadius, Or(d, D.sporeWindup), D.sporeDuration, GroundFx.Spore);
+                    // Яд — облако клубов под куполом (как «ядовитые споры» Грибного колосса в вебе).
+                    GroundGroupFx.Poison(p, D.sporeRadius, Or(d, D.sporeWindup), D.sporeDuration);
                     StartCoroutine(Later(Or(d, D.sporeWindup), () => SoundBank.At(p, "groundBash")));
                     break;
                 case "breathMark": case "breathHit":
@@ -194,11 +196,13 @@ namespace Zep
                 case "blinkOut": Popups.Puff(p, 1.4f, new Color(0.62f, 0.62f, 0.66f), Or(d, D.blinkFade)); break;
                 case "blinkIn": Popups.Puff(p, 1.4f, new Color(0.62f, 0.62f, 0.66f), 0.6f); SoundBank.At(p, "sword-hit"); break;
                 case "arrowRain":
+                    // Прицел героя: тонкий пунктир «сюда бей» + сама зона дождя.
+                    Vfx.I.Aim(p, Or(r, D.rainRadius), Or(d, D.rainCast), new Color(0.5f, 0.95f, 0.65f));
                     GroundFx.ArrowRain(p, Or(r, D.rainRadius), Or(d, D.rainCast), D.rainDuration);
                     SoundBank.At(p, "arrowVolley");
                     break;
                 case "rainTick": SoundBank.At(p, "arrowVolley"); break;
-                case "ultWarn": GroundFx.Telegraph(p, Or(r, 6f), Or(d, 1f), GroundFx.Gold); break;
+                case "ultWarn": Vfx.I.UltMark(p, Or(r, 6f), Or(d, 1f), GroundFx.Gold); break;
                 case "ultHit": GroundFx.RingOut(p, Or(r, 6f), GroundFx.Gold, 0.7f); SoundBank.At(p, "ultWarrior"); break;
                 case "ultHeal": Popups.Burst(p, 6, Popups.CrossGreen); break;
                 case "ultSlow": Popups.Puff(p, 1.6f, GroundFx.Ice, 0.8f); break;

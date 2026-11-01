@@ -81,12 +81,16 @@ namespace Zep
                     return true;
                 }
                 case "ultHeal":
+                    
+                    Sample(at, "ult-heal");
                     vfx.Pillar(at, 0.6f, 4.5f, Heal, 1.4f);
                     vfx.Decal(P(x, y + 0.05f, z), 1.6f, Heal, 1.0f, 0, 0.8f);
                     vfx.Burst(P(x, y + 0.5f, z), Heal, count: 22, speed: 1.8f, life: 1.1f, grav: -1.6f, size: 0.22f);
                     vfx.Burst(P(x, y + 1, z), Crit, count: 10, speed: 2.5f, life: 0.7f, grav: -1, size: 0.14f);
                     return true;
                 case "ultSlow":
+                    
+                    Sample(at, "ult-slow");
                     vfx.Decal(P(x, y - 0.5f, z), 1.2f, new Color(0.3f, 0.6f, 1), 6, 0, 0.6f);
                     vfx.Burst(P(x, y + 0.2f, z), new Color(0.55f, 0.85f, 1), count: 12, speed: 1.4f, life: 1.0f, grav: -0.6f, size: 0.16f);
                     return true;
@@ -104,14 +108,20 @@ namespace Zep
                     Later(Mathf.Max(0, d ?? 0.5f), () => Sample(at, "sword-impact"));
                     return true;
                 case "stunHit":
+                    
+                    Sample(at, "sword-impact");
                     vfx.Decal(at, r ?? 5, ATK, 0.55f, 0, 1);
                     vfx.Burst(P(x, y + 0.2f, z), ATK, count: 24, speed: 7, life: 0.55f, grav: 14, size: 0.2f);
                     return true;
                 case "hammerWave":
+                    
+                    Sample(at, "hammer-wave");
                     vfx.Decal(at, d ?? 4, Lightning, 0.4f, 5, 0.7f);
                     vfx.Burst(at, Lightning, count: 10, speed: 4, life: 0.35f, grav: 6, size: 0.16f);
                     return true;
                 case "spearPierce":
+                    
+                    Sample(at, "spear-thrust");
                     if (x2.HasValue && z2.HasValue)
                     {
                         float ddx = x2.Value - x, ddz = z2.Value - z;
@@ -140,10 +150,14 @@ namespace Zep
                     Sound(at, "swing");
                     return true;
                 case "crushMark":
+                    
+                    Sample(at, "ground-slam");
                     vfx.Decal(at, (r ?? 5) * 0.55f, ATK, d ?? 0.6f, 2, 0.9f);
                     Emote(id, "jump");
                     return true;
                 case "leapMark":
+                    
+                    Sample(at, "storm-jump");
                     vfx.Decal(at, r ?? 3.2f, ATK, d ?? 1.6f, 2, 0.95f);
                     return true;
                 case "leapHit":
@@ -170,6 +184,8 @@ namespace Zep
                     Sound(at, "bash");
                     return true;
                 case "stormMark":
+                    
+                    Sample(at, "storm-zap");
                     vfx.Decal(at, r ?? 2.4f, Lightning, d ?? 1.4f, 2, 0.95f);
                     return true;
                 case "stormHit":
@@ -182,6 +198,8 @@ namespace Zep
                     if (x2.HasValue && z2.HasValue) vfx.Lightning(P(x, y + 1.1f, z), P(x2.Value, y + 1.1f, z2.Value), null, 0.38f);
                     return true;
                 case "pierceShot":
+                    
+                    Sample(at, "arrow-whistle");
                     if (x2.HasValue && z2.HasValue)
                     {
                         C.Streak(x, y + 1.1f, z, x2.Value, z2.Value, Gold, 0.25f, 0.3f);
@@ -248,7 +266,8 @@ namespace Zep
                 {
                     bool fin = r == 1;
                     float dur = d ?? 4;
-                    vfx.Decal(at, fin ? 7 : 4.5f, Arcane, dur, 0, 0.9f);
+                    // Появление стража — «ульта»: двойной обод; финальный — крупнее.
+                    vfx.UltMark(at, fin ? 7 : 4.5f, dur, Arcane);
                     vfx.Decal(at, fin ? 9 : 6, ShadowDark, dur + 1, 2, 1);
                     vfx.Pillar(at, fin ? 2.4f : 1.4f, fin ? 14 : 9, ShadowDark, dur + 0.6f);
                     for (int i = 0; i < Mathf.CeilToInt(dur * 2); i++)
@@ -266,8 +285,12 @@ namespace Zep
                 {
                     var col = v == 1 ? Fire : v == 2 ? Arcane : v == 3 ? Moon : Gold;
                     float life = d ?? 1.7f;
-                    vfx.Decal(at, r ?? 2.8f, col, life, 2, 1);
-                    vfx.Decal(at, r ?? 2.8f, col, life, 1, 0.35f);
+                    // ОДИН круг на опасность (раньше было два в одной точке — «каша» на земле).
+                    // Обвал (v=0) — падает с свода: перекрестие падения вместо кольца.
+                    if (v == 0) vfx.Incoming(at, r ?? 2.8f, life, col);
+                    else vfx.Decal(at, r ?? 2.8f, col, life, 1, 1);
+                    // ОГОНЬ (v=1): внутри круга — настоящие языки пламени, а не красный диск.
+                    if (v == 1) GroundGroupFx.Fire(at, r ?? 2.8f, life);
                     for (int i = 0; i < 3; i++)
                     {
                         if (v == 0) Later(i * 0.45f, () => vfx.Burst(P(x, y + 9, z), Shadow, count: 10, speed: 1, life: 1.2f, grav: 9, size: 0.18f));
@@ -428,6 +451,8 @@ namespace Zep
                     Sound(at, "swing");
                     return true;
                 case "markOn":
+                    
+                    Sample(at, "holy-seal");
                     if (mobId != null)
                     {
                         vfx.EndMobMarks(mobId);
@@ -518,6 +543,8 @@ namespace Zep
                     Sound(at, "swing");
                     return true;
                 case "swarmArrow":
+                    
+                    Sample(at, "arrow-whistle");
                     if (x2.HasValue && z2.HasValue)
                     {
                         var to = P(x2.Value, d ?? y, z2.Value);
@@ -531,6 +558,7 @@ namespace Zep
                     return true;
                 case "arrowBarrier":
                 {
+                    Sample(at, "holy-seal");
                     float R = r ?? 4, dur = d ?? 4;
                     C.Seal(at, R, DEF, dur);
                     vfx.Decal(at, R, DEF, dur, 1, 0.7f);
@@ -572,6 +600,8 @@ namespace Zep
                     return true;
                 }
                 case "lifeArrow":
+                    
+                    Sample(at, "life-arrow");
                     if (x2.HasValue && z2.HasValue)
                     {
                         var to = P(x2.Value, d ?? y, z2.Value);
@@ -585,6 +615,8 @@ namespace Zep
                     }
                     return true;
                 case "chainHit":
+                    
+                    Sample(at, "storm-zap");
                     if (x2.HasValue && z2.HasValue)
                     {
                         var to = P(x2.Value, d ?? y, z2.Value);
@@ -637,6 +669,8 @@ namespace Zep
                     return true;
                 }
                 case "healHit":
+                    
+                    Sample(at, "heal-chime");
                     vfx.Burst(P(x, y - 0.8f, z), HEALC, count: 12, speed: 1.6f, life: 0.9f, grav: -2.5f, size: 0.2f);
                     return false;
                 default:

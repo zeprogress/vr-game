@@ -154,7 +154,9 @@ namespace Zep
                 }
                 case "giantThrowMark":
                 {
-                    vfx.Decal(at, r ?? ThrowR, Frost, d ?? ThrowWind + ThrowFlight, Vfx.Tele, 0.9f);
+                    // Падает глыба: перекрестие «сюда» и тонкий луч в точку падения.
+                    vfx.Incoming(at, r ?? ThrowR, d ?? ThrowWind + ThrowFlight, Frost);
+                    vfx.Pillar(at, (r ?? ThrowR) * 0.10f, 12, Frost, Mathf.Max(0.3f, d ?? ThrowWind + ThrowFlight));
                     var mob = Mob(id);
                     if (mob.HasValue) Later(0.62f, () => Snd(mob.Value, "giant-throw"));
                     Later(0.62f, () =>
@@ -236,7 +238,7 @@ namespace Zep
                     break;
                 }
                 case "giantFury":
-                    vfx.Decal(at, 16, IceRim, 0.9f, 5, 1);
+                    vfx.UltMark(at, 16, 1.1f, IceRim);
                     vfx.Decal(at, 9, Frost, 6, Vfx.Frost, 0.7f);
                     vfx.Pillar(at, 3, 16, Frost, 1.4f);
                     Later(0.4f, () =>
@@ -410,7 +412,9 @@ namespace Zep
                 case "dragonMeteorMark":
                 {
                     float T = d ?? ChargeHit + MeteorFall;
-                    vfx.Decal(at, r ?? MeteorR, Fire, T, Vfx.Tele, 0.95f);
+                    // Метеор: перекрестие и луч сверху — видно, куда именно упадёт.
+                    vfx.Incoming(at, r ?? MeteorR, T, Fire);
+                    vfx.Pillar(at, (r ?? MeteorR) * 0.10f, 14, Fire, Mathf.Max(0.3f, T));
                     if (batch.TryGetValue(id, out var bt) && fx.Clock - bt.t < 0.25f) break;
                     batch[id] = (fx.Clock, 0, 0);
                     var boss = Mob(id);
@@ -593,7 +597,8 @@ namespace Zep
                     }
                     break;
                 case "lavaFury":
-                    vfx.Decal(at, R, FireRed, d ?? 1.5f, Vfx.Tele, 0.9f);
+                    // Ульта босса: двойной обод и руны — самое крупное событие на земле.
+                    vfx.UltMark(at, R, d ?? 1.5f, FireRed);
                     for (float t = 0; t < (d ?? 1.5f); t += 0.1f)
                         Later(t, () => vfx.Burst(P(x, y + 1.5f, z), Fire, count: 4, speed: 2, life: 0.6f, grav: -3, size: 0.5f));
                     Snd(at, "lava-roar");
@@ -605,7 +610,8 @@ namespace Zep
                     vfx.Pillar(at, 1.5f, 8, Fire, 0.6f);
                     break;
                 case "lavaMark":
-                    vfx.Decal(at, R, FireRed, d ?? 3, Vfx.Tele, 0.95f);
+                    // Метка падения лавы: перекрестие (не путать с зоной «не стой»).
+                    vfx.Incoming(at, R, d ?? 3, FireRed);
                     Snd(at, "lava-mark");
                     break;
                 case "lavaMarkHit":
