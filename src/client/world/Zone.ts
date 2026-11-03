@@ -6,6 +6,8 @@ import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
+import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
 // props.ts больше не тянет DynamicTexture статически — регистрируем расширение
 // движка явно (skyGrad/terrain создают DynamicTexture в buildZone).
 import "@babylonjs/core/Engines/Extensions/engine.dynamicTexture";
@@ -117,6 +119,10 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   let lastNetHour = Number.NaN;
 
   const sun = new DirectionalLight("sun", day.sunDir, scene);
+  // Заливка неба: направлена вверх (светит на всё сверху), цвет и яркость — из палитры дня/ночи.
+  const ambient = new HemisphericLight("ambient", new Vector3(0, 1, 0), scene);
+  ambient.specular = Color3.Black();
+  ambient.intensity = day.ambient;
   // Сразу за базовыми: материалы берут первые maxSimultaneousLights из
   // scene.lights по порядку создания. Раньше факелы создавались после зоны,
   // за пятью светлячками, и в шейдер мобов/персонажей/деревьев (потолок 3)
@@ -134,6 +140,11 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
     sun.position = day.sunDir.scale(-60);
     sun.intensity = day.sunIntensity;
     sun.diffuse.copyFrom(day.sunColor);
+    // Ночная заливка неба (луна + небо): без неё в глубокую ночь оставались только луна
+    // и тусклые факелы — «ничего не видно». Днём яркость 0, источник почти бесплатен.
+    ambient.diffuse.copyFrom(day.ambientColor);
+    ambient.groundColor.copyFrom(day.ambientColor).scaleInPlace(0.55);
+    ambient.intensity = day.ambient;
     // Источник НЕ гасим по setEnabled: смена набора источников заставляет
     // пересобирать шейдеры всех материалов (на Quest — заметный стоп-кадр,
     // а замороженные материалы деревьев вообще ломались). Днём заливка = 0,

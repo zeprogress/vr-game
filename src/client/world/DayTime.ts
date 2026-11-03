@@ -24,6 +24,10 @@ export interface DayState {
   cloud: Color3;
   /** 1 — день, 0 — ночь. По нему живут трава и светлячки. */
   daylight: number;
+  /** Яркость ночной заливки неба (0 днём) — освещение читает её из состояния. */
+  ambient: number;
+  /** Цвет ночной заливки неба. */
+  ambientColor: Color3;
 }
 
 interface Palette {
@@ -82,17 +86,19 @@ const DUSK: Palette = {
 };
 
 const NIGHT: Palette = {
-  sun: [0.5, 0.6, 0.9],
-  sunI: 0.2,
-  amb: [0.38, 0.45, 0.66],
-  ambI: 0.17,
-  zenith: [2, 3, 9], // ночное небо густое, почти чёрное
-  horizon: [8, 11, 24],
+  // Луна: сине-белая и заметно светлее прежнего — ночь должна читаться, а не быть чёрным экраном.
+  sun: [0.62, 0.72, 1],
+  sunI: 0.55,
+  // Ночная заливка неба: слабее луны (~1:1.6), но достаточная, чтобы силуэты и земля были различимы.
+  amb: [0.52, 0.6, 0.86],
+  ambI: 0.34,
+  zenith: [9, 15, 38], // ночное небо тёмно-синее, а не чёрное
+  horizon: [26, 34, 62],
   fog: [0.07, 0.09, 0.16], // цвет НЕ используется — берётся из FOG_TUNE (?fog=1)
   fogNear: 12, // fogNear/fogFar тоже из FOG_TUNE — тут для полноты палитры
   fogFar: 55,
-  disc: [0.85, 0.9, 1],
-  cloud: [0.16, 0.18, 0.28],
+  disc: [0.9, 0.94, 1],
+  cloud: [0.24, 0.27, 0.4],
 };
 
 function clamp01(v: number): number {
@@ -202,6 +208,11 @@ export function dayState(hour: number): DayState {
     disc: new Color3(disc[0], disc[1], disc[2]),
     cloud: new Color3(cloud[0], cloud[1], cloud[2]),
     daylight: clamp01((elev + 0.06) / 0.18),
+    ambient: (DAY.ambI * wd + NIGHT.ambI * L.night * wn + DUSK.ambI * wk) * L.sun,
+    ambientColor: (() => {
+      const [r, g, b] = mix3(DAY.amb, NIGHT.amb, DUSK.amb, wd, wn, wk);
+      return new Color3(r, g, b);
+    })(),
   };
 }
 
