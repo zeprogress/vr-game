@@ -2,6 +2,7 @@
 # Один терминал: сервер реворка (свои сейвы) + Vite-клиент.
 # Ctrl+C останавливает оба процесса.
 cd "$(dirname "$0")/.." || exit 1
+export ADMIN_PASS="${ADMIN_PASS:-1234}"
 
 kill_tree() {
   local pid="$1"

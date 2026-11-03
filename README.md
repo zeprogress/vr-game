@@ -4,6 +4,7 @@ VR MMORPG (пет-проект). Общий мир: VR (Quest 2/3), браузе
 Полный план разработки — в [PLAN.md](PLAN.md).
 Реворк ядра и мира (черновик) — в [docs/rework-core.md](docs/rework-core.md).
 Как поднять сервер ветки `rework` — в [docs/rework-run.md](docs/rework-run.md).
+Один файл для запуска реворка: `rework.command` (пароль админа по умолчанию `1234`).
 
 ## Текущий этап: 9 — голосовой чат
 
