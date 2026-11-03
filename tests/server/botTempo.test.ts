@@ -21,7 +21,7 @@ function simulate(interval: number, dt: number, sec: number): number {
   return swings / sec;
 }
 
-test("бот-ассасин: накопительный план держит темп ~5.9 удара/с", () => {
+test("бот-ассасин: накопительный план держит темп ~5 ударов/с (потолок)", () => {
   const iv = 0.168; // из !темп: 5.9 уд/с
   const aps = simulate(iv, 0.05, 60);
   assert.ok(Math.abs(aps - 1 / iv) < 0.25, `вышло ${aps.toFixed(2)}, ждали ${(1 / iv).toFixed(2)}`);

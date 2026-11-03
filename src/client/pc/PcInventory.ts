@@ -2007,7 +2007,7 @@ export class PcInventory {
     const wrap = div("pcinv-attrs");
     const cls = (d.skills?.cls ?? "") as ClassId | "";
     if (!cls) {
-      wrap.append(div("pcinv-tabtop", "Возьми оружие — умения зависят от класса"));
+      wrap.append(div("pcinv-tabtop", "Возьми оружие своего класса — умения работают только с ним"));
       this.body.append(tabPanel("Умения", wrap));
       return;
     }

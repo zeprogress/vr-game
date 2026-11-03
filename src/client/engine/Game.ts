@@ -15,7 +15,7 @@ import { BOT_SKIN_MODELS } from "../world/models";
 import "./billboardFix";
 import { vrLights } from "../world/vrLights";
 import { STAT_NAMES } from "#shared/progression";
-import { CLASS_IDS, ABYSS, SMOKE, JUMP_BEHIND, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, ASSASSIN_WHIRL_DASH, BLAST_ARROW, SOUL_STEAL, SWARM_ARROW, WEB_ARROW, WHIRL, classOf2, hopDistance, hopsBack, skillCdMul2, SKILLS2, skillName, WARCRY, MARK_FOCUS, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { CLASSES2, CLASS_IDS, ABYSS, SMOKE, JUMP_BEHIND, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, ASSASSIN_WHIRL_DASH, BLAST_ARROW, SOUL_STEAL, SWARM_ARROW, WEB_ARROW, WHIRL, classOf2, hasClassWeapon, isClassId, hopDistance, hopsBack, skillCdMul2, SKILLS2, skillName, WARCRY, MARK_FOCUS, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
@@ -3090,8 +3090,10 @@ export class Game {
     return [ok(me?.skill1), ok(me?.skill2)];
   }
 
-  /** Класс по оружию в руках. */
+  /** Класс героя — выбранный при создании; у старых сессий без поля — по оружию. */
   private heroClass(): ClassId | null {
+    const me = this.net?.self;
+    if (me && isClassId(me.cls)) return me.cls;
     return classOf2(this.combat.heldKindOf("left") as Weapon2 | "", this.combat.heldKindOf("right") as Weapon2 | "");
   }
 
@@ -3422,6 +3424,12 @@ export class Game {
    */
   private castSkill(id: SkillId, x?: number, z?: number): void {
     if (this.player.dead || !this.net?.online) return;
+    const clsNow = this.heroClass();
+    const meNow = this.net.self;
+    if (clsNow && meNow && !hasClassWeapon(clsNow, meNow.leftCls, meNow.rightCls)) {
+      this.notifyToast(`Умения класса — только с оружием: ${CLASSES2[clsNow].weapons}`);
+      return;
+    }
     const name = SKILLS2[id].variants?.[this.heroClass() ?? "warrior"]?.name ?? SKILLS2[id].name;
     const left = this.skillLeft(id);
     if (left > 0) {
@@ -3668,7 +3676,10 @@ export class Game {
       if (inp.ability && ids[0]) this.castSkill(ids[0]);
       if (inp.ability2 && ids[1]) this.castSkill(ids[1]);
     }
-    this.wristPanel?.setSkills(this.heroClass() ?? "", ids.filter((x): x is SkillId => !!x));
+    const clsForMenu = this.heroClass();
+    const meForMenu = this.net?.self;
+    const armed = !!clsForMenu && !!meForMenu && hasClassWeapon(clsForMenu, meForMenu.leftCls, meForMenu.rightCls);
+    this.wristPanel?.setSkills(armed ? clsForMenu! : "", ids.filter((x): x is SkillId => !!x));
     // Откат зелья — на кнопке зелья (телефон) и в ячейке 4 (ПК), как у умений.
     {
       const left = Math.max(0, POTION_CD - (performance.now() - this.lastDrinkAt) / 1000);

@@ -100,6 +100,10 @@ export interface PlayerRecord extends SaveMsg, Progress {
   xpVer?: number;
   /** Хозяин сам распределяет очки атрибутов (вложил вручную или сбросил) — бот больше не раскидывает их сам. */
   manualAttrs?: boolean;
+  /** Выбранный при создании класс героя (один раз). Нет у старых записей — выводим из оружия. */
+  classId?: ClassId;
+  /** Версия формы дерева прокачки: при смене раскладки старые номера узлов недействительны. */
+  treeVer?: number;
   /** Дерево прокачки: взятые узлы по классам (shared/passiveTree.ts). Атрибуты str…wis считаются из него. */
   tree?: Partial<Record<ClassId, number[]>>;
   /** Выбранные умения (2 из пула класса), по классу: { warrior: ["stunBash","crush"], … }. */
@@ -127,8 +131,11 @@ export interface PlayerRecord extends SaveMsg, Progress {
 /** 3 — дерево прокачки (2026-10-27): атрибуты — узлы дерева, очко за уровень. */
 export const ATTR_VER = 3;
 
-/** Текущая версия кривой опыта (2 — XP_CURVE от 2026-10-16). */
-export const XP_VER = 2;
+/** Версия формы дерева. 2 — большое дерево реворка (2026-11-03, ~220 узлов). */
+export const TREE_VER = 2;
+
+/** Текущая версия кривой опыта (3 — XP_CURVE реворка от 2026-11-03, мобы до 75). */
+export const XP_VER = 3;
 
 /**
  * Переход на новую кривую опыта: в старой записи опыт — в единицах удвоения (до следующего уровня
@@ -137,9 +144,13 @@ export const XP_VER = 2;
  */
 export function migrateXp(r: PlayerRecord): boolean {
   if (r.xpVer === XP_VER) return false;
-  const oldNeed = Math.pow(2, Math.max(0, (r.level ?? 1) - 1));
-  const need = xpToNext(r.level ?? 1);
-  const frac = Math.max(0, Math.min(0.999, (r.xp ?? 0) / oldNeed));
+  const level = r.level ?? 1;
+  const ver = r.xpVer ?? 1;
+  // Старые кривые: v1 — 2^(L−1), v2 — XP_CURVE 2026-10-16. Долю уровня сохраняем,
+  // абсолютный опыт не переносим — иначе старые миллиарды подняли бы героя на десятки уровней.
+  const oldNeed = ver >= 2 ? 100 * 1.23 ** Math.max(0, level - 1) : Math.pow(2, Math.max(0, level - 1));
+  const need = xpToNext(level);
+  const frac = oldNeed > 0 ? Math.max(0, Math.min(0.999, (r.xp ?? 0) / oldNeed)) : 0;
   r.xp = Number.isFinite(need) ? Math.round(frac * need) : 0;
   r.xpVer = XP_VER;
   return true;
@@ -157,6 +168,18 @@ export function migrateAttrs(r: PlayerRecord): boolean {
   r.respecCount = 0;
   // Дерево прокачки: старт с пустого дерева, бот сам раскладывает очки по своему классу.
   r.tree = {};
+  r.manualAttrs = false;
+  return true;
+}
+
+/**
+ * Дерево перерисовано (другие номера узлов) — старые взятые узлы недействительны.
+ * Сбрасываем только дерево: уровень, опыт и атрибуты не трогаем, очки вернутся сами.
+ */
+export function migrateTree(r: PlayerRecord): boolean {
+  if (r.treeVer === TREE_VER) return false;
+  r.tree = {};
+  r.treeVer = TREE_VER;
   r.manualAttrs = false;
   return true;
 }
@@ -204,16 +227,18 @@ export class PlayerStore {
         const raw = JSON.parse(readFileSync(FILE, "utf8")) as PlayerRecord[];
         let migrated = 0;
         let xpMigrated = 0;
+        let treeMigrated = 0;
         for (const r of raw) {
           if (!r?.token) continue;
           if (migrateAttrs(r)) migrated++;
           if (migrateXp(r)) xpMigrated++;
+          if (migrateTree(r)) treeMigrated++;
           this.records.set(r.token, r);
         }
         console.log(
-          `[store] загружено персонажей: ${this.records.size}${migrated ? `, переведено на «Классы 2.0»: ${migrated}` : ""}${xpMigrated ? `, опыт переведён на новую кривую: ${xpMigrated}` : ""}`,
+          `[store] загружено персонажей: ${this.records.size}${migrated ? `, переведено на «Классы 2.0»: ${migrated}` : ""}${xpMigrated ? `, опыт переведён на новую кривую: ${xpMigrated}` : ""}${treeMigrated ? `, дерево пересобрано: ${treeMigrated}` : ""}`,
         );
-        if (migrated || xpMigrated) this.dirty = true;
+        if (migrated || xpMigrated || treeMigrated) this.dirty = true;
       }
     } catch (e) {
       console.warn("[store] players.json не прочитан:", (e as Error).message);

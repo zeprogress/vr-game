@@ -4,13 +4,35 @@ import { armorFrac, CLASS_IDS, CLASSES2, critChance2, maxHpFor, moveSpeedFor, sk
 import { magicPowerFor } from "../../src/shared/magic";
 import { ATTR_NODE, attrsFromTree, autoTree, canTake, cleanTaken, dropNode, skillModsFor, takeAttr, treeBonusTotals, treeOf, treePointsAt, treeSkillState } from "../../src/shared/passiveTree";
 
-test("дерево: у каждого класса 168 узлов, форма одинаковая, в каждом направлении есть ключевые", () => {
+test("дерево: у каждого класса 222 узла, форма одинаковая, в каждом направлении есть ключевые", () => {
   const shape = treeOf("warrior").edges.map((e) => `${e.a}-${e.b}`).join(",");
   for (const c of CLASS_IDS) {
     const t = treeOf(c);
-    assert.equal(t.nodes.length - 1, 168, c);
+    assert.equal(t.nodes.length, 222, c);
     assert.equal(t.edges.map((e) => `${e.a}-${e.b}`).join(","), shape, `${c}: форма как у воина`);
     assert.equal(t.nodes.filter((n) => n.kind === "key").length, 10, c);
+  }
+});
+
+test("дерево: атрибуты распределены сбалансированно и с классовым уклоном", () => {
+  for (const c of CLASS_IDS) {
+    const t = treeOf(c);
+    const count: Record<string, number> = { str: 0, agi: 0, int: 0, con: 0, luc: 0, wis: 0 };
+    for (const n of t.nodes) if (n.attr) count[n.attr]++;
+    const total = Object.values(count).reduce((n, v) => n + v, 0);
+    assert.equal(total, 76, `${c}: узлов-атрибутов ${total}`);
+    for (const [a, v] of Object.entries(count)) assert.ok(v >= 4 && v <= 26, `${c}: ${a} ${v}`);
+  }
+});
+
+test("дерево: у каждого класса свой ключевой узел-подпись", () => {
+  const want: Record<string, string> = {
+    warrior: "Несокрушимый", archer: "Охотничий азарт", support: "Светоч",
+    assassin: "Тень и яд", spearman: "Строй копий", battlemage: "Громовой резонанс",
+  };
+  for (const c of CLASS_IDS) {
+    const keys = treeOf(c).nodes.filter((n) => n.kind === "key").map((n) => n.name);
+    assert.ok(keys.includes(want[c]), `${c}: нет подписи ${want[c]} (${keys.join(", ")})`);
   }
 });
 

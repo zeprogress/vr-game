@@ -1,7 +1,9 @@
 import type { NetClient } from "../net/NetClient";
 import { isAdminNick, NICK_MAX } from "#shared/constants";
+import { CLASSES2, CLASS_IDS } from "#shared/classes2";
 
 const NICK_KEY = "lastNick";
+const CLASS_KEY = "lastClass";
 /** Та же сессия браузера, что у веб-инвентаря: один раз подтверждённый код работает и там, и тут. */
 const SID_KEY = "zepInvSid";
 const GATE_POLL_MS = 3000;
@@ -88,6 +90,11 @@ export function runLogin(
         stream ? "Твой ник в Twitch" : "Твой ник"
       }" autocomplete="off" spellcheck="false" />
       <input id="login-pass" type="password" placeholder="Пароль администратора" autocomplete="off" style="display:none" />
+      <label class="login-class">
+        <span>Класс героя</span>
+        <select id="login-class">${CLASS_IDS.map((c) => `<option value="${c}">${CLASSES2[c].name} — ${CLASSES2[c].role}</option>`).join("")}</select>
+      </label>
+      <div class="login-hint">Класс выбирается один раз — для нового героя. Умения работают только с оружием класса.</div>
       <button id="login-play">${stream ? "Забрать персонажа" : "Играть"}</button>
       <div id="login-status"></div>
     </div>`;
@@ -96,14 +103,18 @@ export function runLogin(
   const box = overlay.querySelector<HTMLDivElement>(".login-box")!;
   const nickInput = overlay.querySelector<HTMLInputElement>("#login-nick")!;
   const passInput = overlay.querySelector<HTMLInputElement>("#login-pass")!;
+  const classSel = overlay.querySelector<HTMLSelectElement>("#login-class")!;
   const playBtn = overlay.querySelector<HTMLButtonElement>("#login-play")!;
   const status = overlay.querySelector<HTMLDivElement>("#login-status")!;
 
   try {
     nickInput.value = localStorage.getItem(NICK_KEY) ?? "";
+    const savedCls = localStorage.getItem(CLASS_KEY) ?? "";
+    if (CLASS_IDS.includes(savedCls as (typeof CLASS_IDS)[number])) classSel.value = savedCls;
   } catch {
     /* хранилище запрещено (Safari) — поле пустое */
   }
+  const pickedClass = (): string => classSel.value;
   setTimeout(() => nickInput.focus(), 50);
 
   // Поле пароля — только когда ник совпадает с ADMIN_NICKS (см. shared/constants).
@@ -122,8 +133,9 @@ export function runLogin(
     const finish = (vr: boolean): void => {
       try {
         localStorage.setItem(NICK_KEY, nick());
+        localStorage.setItem(CLASS_KEY, pickedClass());
       } catch {
-        /* не запомним ник — не беда */
+        /* не запомним — не беда */
       }
       overlay.remove();
       resolve({ nick: nick(), vr });
@@ -171,7 +183,7 @@ export function runLogin(
         playBtn.disabled = false;
         return;
       }
-      const ok = await net.connect(nick(), token, stream, passInput.value);
+      const ok = await net.connect(nick(), token, stream, passInput.value, pickedClass());
       if (ok) {
         void proceed();
       } else if (net.lastJoinError.includes("пароль администратора")) {
@@ -256,6 +268,13 @@ function styleEl(): HTMLStyleElement {
       border: 1px solid #4a5474; background: #10141e; color: #f2f4fb; outline: none;
     }
     #login input:focus { border-color: #7aa2ff; }
+    #login .login-class { display:flex; flex-direction:column; gap:5px; font-size:12px; color:#8b93a8; }
+    #login .login-class select {
+      padding:10px 12px; font-size:15px; border-radius:8px; border:1px solid #4a5474;
+      background:#10141e; color:#f2f4fb; outline:none;
+    }
+    #login .login-class select:focus { border-color:#7aa2ff; }
+    #login .login-hint { font-size:11px; line-height:1.35; color:#6f7890; }
     #login button {
       padding: 11px; font-size: 15px; font-weight: 600; border-radius: 8px;
       border: none; cursor: pointer; color: #fff; background: #2f7a35;

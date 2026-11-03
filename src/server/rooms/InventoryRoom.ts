@@ -2,7 +2,7 @@ import { JEWEL_ACTS, jewelBonus, jewelsOf, pcInvJewels } from "#shared/jewels";
 import { CRAFT, pcInvCraft, pcInvCraftFor } from "#shared/craft";
 import { TRADE_ACTS, tradeViewOf } from "../trade";
 // colyseus 0.15 — CJS-пакет без ESM-exports, поэтому default-импорт (как в index.ts/ZoneRoom.ts).
-import { CLASSES2, classOf2, type SkillId, type Weapon2 } from "#shared/classes2";
+import { CLASSES2, classOf2, isClassId, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { atMaxLevel, xpToNext } from "#shared/progression";
 import colyseus from "colyseus";
 import type { Client } from "colyseus";
@@ -227,10 +227,14 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
   const leftInst = instIn("left");
   const rightInst = instIn("right");
   const jewels = jewelsOf(rec);
+  const recClass = (): ClassId | null => {
+    if (isClassId(rec.classId)) return rec.classId;
+    return classOf2((rec.held?.left?.cls ?? "") as Weapon2 | "", (rec.held?.right?.cls ?? "") as Weapon2 | "");
+  };
   // Сила удара умений — как у сервера (ZoneRoom.strikeOfLive): рука класса, её тир и роллы урона (лучший из двух рук).
   let strike: number | undefined;
   let strikePhys: number | undefined;
-  const strikeCls = classOf2((rec.held?.left?.cls ?? "") as Weapon2 | "", (rec.held?.right?.cls ?? "") as Weapon2 | "");
+  const strikeCls = recClass();
   if (strikeCls) {
     const side: "left" | "right" = rec.held?.right?.cls === strikeKindOf(strikeCls) ? "right" : "left";
     const other = side === "left" ? "right" : "left";
@@ -249,7 +253,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
   const armorList = sanitizeArmorList(rec.armor);
   // Бонусы дерева прокачки (как у живого героя): PlayerState.tb. Без них страница «Характеристики»
   // показывала блок/крит/вампиризм без узлов, хотя в бою они действуют.
-  const treeCls = classOf2((rec.held?.left?.cls ?? "") as Weapon2 | "", (rec.held?.right?.cls ?? "") as Weapon2 | "");
+  const treeCls = recClass();
   const treeTaken = treeCls ? (rec.tree?.[treeCls] ?? []) : [];
   const stats = heroStatRows({
     ab: armorBonusOf(wornArmorOf(armorList, rec.armorWorn ?? {})),
@@ -336,8 +340,10 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
 }
 
 /** Умения героя по сохранённому снаряжению: класс и выбранные (или по умолчанию). */
-function skillsOf(rec: { held?: { left?: { cls: string } | null; right?: { cls: string } | null }; skills?: Record<string, string[]> }): { cls: string; chosen: string[] } {
-  const cls = classOf2((rec.held?.left?.cls ?? "") as Weapon2 | "", (rec.held?.right?.cls ?? "") as Weapon2 | "");
+function skillsOf(rec: { classId?: string; held?: { left?: { cls: string } | null; right?: { cls: string } | null }; skills?: Record<string, string[]> }): { cls: string; chosen: string[] } {
+  const cls = isClassId(rec.classId)
+    ? rec.classId
+    : classOf2((rec.held?.left?.cls ?? "") as Weapon2 | "", (rec.held?.right?.cls ?? "") as Weapon2 | "");
   if (!cls) return { cls: "", chosen: [] };
   const def = CLASSES2[cls];
   const saved = (rec.skills?.[cls] ?? []).filter((k: string) => def.skills.includes(k as SkillId));

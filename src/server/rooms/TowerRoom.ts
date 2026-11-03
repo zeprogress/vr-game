@@ -1,5 +1,6 @@
 // colyseus 0.15 — CJS-пакет без ESM-exports, поэтому default-импорт (как в index.ts/ZoneRoom.ts).
 import { DAGGER, staffMagicTier, WEAPONS2 } from "#shared/classes2";
+import { COMBAT } from "#shared/constants";
 import colyseus from "colyseus";
 import { Schema, type } from "@colyseus/schema";
 
@@ -471,8 +472,10 @@ export class TowerRoom extends Room<TowerState> {
           if (this.heroRanged) {
             // Дальний бой без замаха-виндапа — как боты-стрелки/маги в основном
             // мире (ZoneRoom.tickBot): урон применяется сразу, а не через паузу.
-            this.heroAtkCd =
-              this.heroWeaponKind === "bow" ? WEAPONS2.bow.interval / this.heroAtkSpeed : this.heroStaffInterval;
+            this.heroAtkCd = Math.max(
+              1 / COMBAT.attackSpeedMax,
+              this.heroWeaponKind === "bow" ? WEAPONS2.bow.interval / this.heroAtkSpeed : this.heroStaffInterval,
+            );
             this.heroRangedPulse = true;
             this.heroRangedTargetX = target.x;
             this.heroRangedTargetZ = target.z;
@@ -483,7 +486,7 @@ export class TowerRoom extends Room<TowerState> {
             const speed = this.heroWeaponKind === "bow" ? BOT.arrowSpeed : BOT.boltSpeed;
             this.shots.push({ target, t: d / speed, critM });
           } else {
-            this.heroAtkCd = WEAPONS2.sword.interval / this.heroMeleeSpeed;
+            this.heroAtkCd = Math.max(1 / COMBAT.attackSpeedMax, WEAPONS2.sword.interval / this.heroMeleeSpeed);
             this.heroSwingIn = BOT.attackImpact / this.heroMeleeSpeed;
             this.heroSwingTarget = target;
             this.heroAtkPulse = true;

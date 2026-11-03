@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { ATTR2 } from "../../src/shared/attrs2";
 import {
   armorFrac,
+  maxHp2,
   blankAttrs,
   castTempo2,
   classOf2,
@@ -10,6 +11,8 @@ import {
   dodge2,
   heroAttackInterval,
   holdsOneItem,
+  hasClassWeapon,
+  classWeapon,
   isDualPair,
   moveSpeed2,
   physPower2,
@@ -44,6 +47,15 @@ test("очки: по одному узлу дерева за уровень — 
   assert.equal(pointsAt(2), 2);
   assert.equal(pointsAt(100), 100);
   assert.equal(spentOn(blankAttrs()), 0);
+});
+
+test("умения класса работают только с оружием класса", () => {
+  assert.equal(classWeapon("warrior"), "sword");
+  assert.equal(classWeapon("archer"), "bow");
+  assert.equal(hasClassWeapon("warrior", "sword", "shield"), true);
+  assert.equal(hasClassWeapon("warrior", "bow", ""), false);
+  assert.equal(hasClassWeapon("assassin", "dagger", "dagger"), true);
+  assert.equal(hasClassWeapon("support", "", "staff"), true);
 });
 
 test("класс — по оружию в руках", () => {
@@ -134,6 +146,22 @@ test("уворот и крит ограничены потолками; один
 test("СИЛ и уровень повышают физ. урон", () => {
   assert.ok(physPower2(10, { ...blankAttrs(), str: 20 }) > physPower2(10, blankAttrs()));
   assert.ok(physPower2(20, blankAttrs()) > physPower2(10, blankAttrs()));
+});
+
+test("потолок темпа: на 100 уровне не больше 5 ударов/с даже с огромной ЛОВ и роллом", () => {
+  const a = { ...blankAttrs(), agi: 1000 };
+  for (const w of WEAPONS) {
+    if (w === "fist") continue;
+    assert.ok(heroAttackInterval(w, 100, a, 2) >= 0.2 - 1e-9, `${w}: ${heroAttackInterval(w, 100, a, 2)}`);
+  }
+  assert.ok(staffCastInterval(100, { ...a, wis: 1000 }, 2) >= 0.2 - 1e-9);
+});
+
+test("уровень больше не даёт герою почти всё: к 100 ур. рост умеренный", () => {
+  const a = blankAttrs();
+  assert.ok(physPower2(100, a) / physPower2(1, a) < 30);
+  assert.ok(maxHp2(100, a) < 4000);
+  assert.ok(moveSpeed2(100, a) < 8);
 });
 
 test("рост от уровня: прирост копится и ускоряется", () => {

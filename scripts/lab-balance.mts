@@ -339,6 +339,7 @@ function addBot(room: Room, name: string, b: Build, campPref?: string): { id: st
     equippedWeaponId: { right: wR.id, left: wL?.id ?? null },
     held: { right: { cls: h.rightCls, tier: h.rightTier }, left: h.leftCls ? { cls: h.leftCls, tier: h.leftTier } : null },
     botClass: h.rightCls,
+    classId: cls,
     skills: { [cls]: [...skills] },
     campPref: campPref ?? undefined,
     botActive: true,

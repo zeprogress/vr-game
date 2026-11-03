@@ -50,154 +50,157 @@ public PlayerState() { }
 		[Type(10, "uint16")]
 		public ushort level = default(ushort);
 
-		[Type(11, "float64")]
+		[Type(11, "string")]
+		public string cls = default(string);
+
+		[Type(12, "float64")]
 		public double xp = default(double);
 
-		[Type(12, "uint16")]
+		[Type(13, "uint16")]
 		public ushort unspent = default(ushort);
 
-		[Type(13, "uint16")]
+		[Type(14, "uint16")]
 		public ushort str = default(ushort);
 
-		[Type(14, "uint16")]
+		[Type(15, "uint16")]
 		public ushort agi = default(ushort);
 
-		[Type(15, "uint16")]
+		[Type(16, "uint16")]
 		public ushort @int = default(ushort);
 
-		[Type(16, "float32")]
+		[Type(17, "float32")]
 		public float mana = default(float);
 
-		[Type(17, "float32")]
+		[Type(18, "float32")]
 		public float maxMana = default(float);
 
-		[Type(18, "uint16")]
+		[Type(19, "uint16")]
 		public ushort buffSecs = default(ushort);
 
-		[Type(19, "uint16")]
+		[Type(20, "uint16")]
 		public ushort campBuffSecs = default(ushort);
 
-		[Type(20, "uint16")]
+		[Type(21, "uint16")]
 		public ushort scrollXpSecs = default(ushort);
 
-		[Type(21, "string")]
+		[Type(22, "string")]
 		public string title = default(string);
 
-		[Type(22, "uint16")]
+		[Type(23, "uint16")]
 		public ushort scrollWindSecs = default(ushort);
 
-		[Type(23, "uint8")]
+		[Type(24, "uint8")]
 		public byte stunned = default(byte);
 
-		[Type(24, "uint8")]
+		[Type(25, "uint8")]
 		public byte rooted = default(byte);
 
-		[Type(25, "uint8")]
+		[Type(26, "uint8")]
 		public byte camPrio = default(byte);
 
-		[Type(26, "uint8")]
+		[Type(27, "uint8")]
 		public byte catLife = default(byte);
 
-		[Type(27, "uint8")]
+		[Type(28, "uint8")]
 		public byte fishing = default(byte);
 
-		[Type(28, "string")]
+		[Type(29, "string")]
 		public string leftCls = default(string);
 
-		[Type(29, "string")]
+		[Type(30, "string")]
 		public string leftTier = default(string);
 
-		[Type(30, "string")]
+		[Type(31, "string")]
 		public string rightCls = default(string);
 
-		[Type(31, "string")]
+		[Type(32, "string")]
 		public string rightTier = default(string);
 
-		[Type(32, "string")]
+		[Type(33, "string")]
 		public string leftAffix = default(string);
 
-		[Type(33, "string")]
+		[Type(34, "string")]
 		public string rightAffix = default(string);
 
-		[Type(34, "boolean")]
+		[Type(35, "boolean")]
 		public bool leftRc = default(bool);
 
-		[Type(35, "boolean")]
+		[Type(36, "boolean")]
 		public bool rightRc = default(bool);
 
-		[Type(36, "array", typeof(ArraySchema<SlotState>))]
+		[Type(37, "array", typeof(ArraySchema<SlotState>))]
 		public ArraySchema<SlotState> bag = new ArraySchema<SlotState>();
 
-		[Type(37, "uint8")]
+		[Type(38, "uint8")]
 		public byte towerFloor = default(byte);
 
-		[Type(38, "uint8")]
+		[Type(39, "uint8")]
 		public byte towerMobsLeft = default(byte);
 
-		[Type(39, "uint16")]
+		[Type(40, "uint16")]
 		public ushort towerTimeSec = default(ushort);
 
-		[Type(40, "uint8")]
+		[Type(41, "uint8")]
 		public byte towerMobsTotal = default(byte);
 
-		[Type(41, "uint8")]
+		[Type(42, "uint8")]
 		public byte towerBossActive = default(byte);
 
-		[Type(42, "float32")]
+		[Type(43, "float32")]
 		public float towerBossHpFrac = default(float);
 
-		[Type(43, "uint8")]
+		[Type(44, "uint8")]
 		public byte plat = default(byte);
 
-		[Type(44, "uint16")]
+		[Type(45, "uint16")]
 		public ushort con = default(ushort);
 
-		[Type(45, "uint16")]
+		[Type(46, "uint16")]
 		public ushort luc = default(ushort);
 
-		[Type(46, "uint16")]
+		[Type(47, "uint16")]
 		public ushort wis = default(ushort);
 
-		[Type(47, "string")]
+		[Type(48, "string")]
 		public string skill1 = default(string);
 
-		[Type(48, "string")]
+		[Type(49, "string")]
 		public string skill2 = default(string);
 
-		[Type(49, "uint8")]
+		[Type(50, "uint8")]
 		public byte crySecs = default(byte);
 
-		[Type(50, "uint8")]
+		[Type(51, "uint8")]
 		public byte plagueSecs = default(byte);
 
-		[Type(51, "uint8")]
+		[Type(52, "uint8")]
 		public byte abyssSecs = default(byte);
 
-		[Type(52, "uint8")]
+		[Type(53, "uint8")]
 		public byte smokeSecs = default(byte);
 
-		[Type(53, "uint8")]
+		[Type(54, "uint8")]
 		public byte ghostSecs = default(byte);
 
-		[Type(54, "uint8")]
+		[Type(55, "uint8")]
 		public byte runSecs = default(byte);
 
-		[Type(55, "uint8")]
+		[Type(56, "uint8")]
 		public byte focusStacks = default(byte);
 
-		[Type(56, "uint8")]
+		[Type(57, "uint8")]
 		public byte cryKind = default(byte);
 
-		[Type(57, "ref", typeof(GemBonusSync))]
+		[Type(58, "ref", typeof(GemBonusSync))]
 		public GemBonusSync gb = new GemBonusSync();
 
-		[Type(58, "ref", typeof(ArmorBonusSync))]
+		[Type(59, "ref", typeof(ArmorBonusSync))]
 		public ArmorBonusSync ab = new ArmorBonusSync();
 
-		[Type(59, "ref", typeof(TreeBonusSync))]
+		[Type(60, "ref", typeof(TreeBonusSync))]
 		public TreeBonusSync tb = new TreeBonusSync();
 
-		[Type(60, "uint16")]
+		[Type(61, "uint16")]
 		public ushort kpm = default(ushort);
 
 		/*
@@ -333,6 +336,18 @@ public PlayerState() { }
 			return () => {
 				__callbacks.RemovePropertyCallback(nameof(level));
 				__levelChange -= __handler;
+			};
+		}
+
+		protected event PropertyChangeHandler<string> __clsChange;
+		public Action OnClsChange(PropertyChangeHandler<string> __handler, bool __immediate = true) {
+			if (__callbacks == null) { __callbacks = new SchemaCallbacks(); }
+			__callbacks.AddPropertyCallback(nameof(this.cls));
+			__clsChange += __handler;
+			if (__immediate && this.cls != default(string)) { __handler(this.cls, default(string)); }
+			return () => {
+				__callbacks.RemovePropertyCallback(nameof(cls));
+				__clsChange -= __handler;
 			};
 		}
 
@@ -949,6 +964,7 @@ public PlayerState() { }
 				case nameof(dead): __deadChange?.Invoke((byte) change.Value, (byte) change.PreviousValue); break;
 				case nameof(pvp): __pvpChange?.Invoke((byte) change.Value, (byte) change.PreviousValue); break;
 				case nameof(level): __levelChange?.Invoke((ushort) change.Value, (ushort) change.PreviousValue); break;
+				case nameof(cls): __clsChange?.Invoke((string) change.Value, (string) change.PreviousValue); break;
 				case nameof(xp): __xpChange?.Invoke((double) change.Value, (double) change.PreviousValue); break;
 				case nameof(unspent): __unspentChange?.Invoke((ushort) change.Value, (ushort) change.PreviousValue); break;
 				case nameof(str): __strChange?.Invoke((ushort) change.Value, (ushort) change.PreviousValue); break;

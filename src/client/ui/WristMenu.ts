@@ -315,7 +315,7 @@ export class WristMenu {
     ctx.font = "bold 26px system-ui, sans-serif";
     ctx.fillStyle = "#f1ead6";
     if (!d || !d.cls) {
-      ctx.fillText("Дерево загружается… (нужно оружие класса в руках)", 22, top + 8);
+      ctx.fillText("Дерево загружается…", 22, top + 8);
       return;
     }
     const t = treeOf(d.cls as ClassId);
@@ -515,7 +515,7 @@ export class WristMenu {
     if (!cls) {
       ctx.font = "28px system-ui, sans-serif";
       ctx.fillStyle = "#8f8a7e";
-      ctx.fillText("Возьми оружие — умения зависят от класса", X + 8, y);
+      ctx.fillText("Возьми оружие своего класса — умения только с ним", X + 8, y);
       return;
     }
     const def = CLASSES2[cls];

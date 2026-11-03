@@ -1,5 +1,5 @@
 import { attrsFromTree, autoTree, treeBonus, type SkillMods } from "./passiveTree";
-import { BOW, MELEE, PLAYER, PLAYER_HP, PROGRESSION } from "./constants";
+import { BOW, COMBAT, MELEE, PLAYER, PLAYER_HP, PROGRESSION } from "./constants";
 import { MAGIC, magicPowerFor, magicResistFrac } from "./magic";
 import { levelGain } from "./levelGain";
 import { ATTR2, attrOf, invested, physArmorBase } from "./attrs2";
@@ -319,11 +319,10 @@ export const STAFF_SPLASH = { frac: MAGIC.firebolt.splashFraction * 0.5, radius:
 
 /** Затухание темпа дальнего боя (лук, посох): сильнее — меньше прироста от уровня. */
 const ATK_SOFT = 1.8;
-/** Затухание темпа мечника — сильнее общего: на высоких уровнях не «пропеллер». */
+/** Затухание темпа ближнего боя (меч/кинжал/копьё/молот) — сильнее дальнего. */
 const MELEE_SOFT = 1.0;
-/** Доля прироста темпа ближнего боя: от уровня — половина, от ЛОВ — полностью (2026-10-02: было тоже половина и под затуханием). */
-const MELEE_LEVEL_SHARE = 0.5;
-const MELEE_AGI_SHARE = 1;
+/** Минимальная пауза между ударами: 5 ударов в секунду — потолок на 100 уровне. */
+const ATTACK_INTERVAL_MIN = 1 / COMBAT.attackSpeedMax;
 
 const START: AttrsIn = { str: 1, agi: 1, int: 1, con: 1, luc: 1, wis: 1 };
 
@@ -369,13 +368,12 @@ export function attackSpeedFor(level: number, a: AttrsIn = START): number {
 }
 
 /**
- * Темп атаки БЛИЖНЕГО боя (меч/кинжал/копьё/молот/кулак) — приглушённый:
- * от прироста за уровень — MELEE_LEVEL_SHARE со своим, более сильным
- * затуханием; от ЛОВ — MELEE_AGI_SHARE (линейно, см. agiTempo2).
+ * Темп атаки БЛИЖНЕГО боя (меч/кинжал/копьё/молот/кулак) — тот же общий
+ * множитель, что у дальнего боя, но с более сильным затуханием от уровня.
+ * Класс на темп больше не влияет: только уровень, ЛОВ, дерево и оружие.
  */
 export function meleeSpeedFor(level: number, a: AttrsIn = START): number {
-  const lvl = attackSpeedFor(level, START);
-  return (1 + softGain((lvl - 1) * MELEE_LEVEL_SHARE, MELEE_SOFT)) * agiTempo2(a, MELEE_AGI_SHARE) * (1 + treeBonus(a, "atk"));
+  return physTempo2(level, a, MELEE_SOFT);
 }
 
 /** Оружие с паузой между атаками (посох — своя формула staffCastInterval). */
@@ -388,10 +386,13 @@ export type AttackWeapon = "sword" | "dagger" | "spear" | "hammer" | "bow" | "fi
  * «скорость атаки» × клич × рывок; два клинка бьют по очереди с тем же темпом.
  */
 export function heroAttackInterval(weapon: AttackWeapon, level: number, a: AttrsIn, mul = 1): number {
-  if (weapon === "bow") return WEAPONS2.bow.interval / (attackSpeedFor(level, a) * mul);
-  if (weapon === "fist") return MELEE.cooldown / (meleeSpeedFor(level, a) * mul);
-  // Пара клинков (два кинжала / два меча) бьёт по очереди, но не чаще одного клинка.
-  return WEAPONS2[weapon].interval / (meleeSpeedFor(level, a) * mul);
+  // Одна база на всех героев: пауза задаётся ТОЛЬКО типом оружия (его interval/tempoSoft),
+  // а темп — уровень, ЛОВ, дерево и ролл. Класс в формулу не входит.
+  const profile = weapon === "fist" ? null : WEAPONS2[weapon];
+  const base = profile?.interval ?? MELEE.cooldown;
+  const soft = profile?.tempoSoft ?? MELEE_SOFT;
+  const iv = base / (physTempo2(level, a, soft) * mul);
+  return Math.max(ATTACK_INTERVAL_MIN, iv);
 }
 
 /**
@@ -401,7 +402,9 @@ export function heroAttackInterval(weapon: AttackWeapon, level: number, a: Attrs
  * паузе 2.2 с от ЛОВ — вдвое реже игрока на ПК).
  */
 export function staffCastInterval(level: number, a: AttrsIn, mul = 1): number {
-  return MAGIC.firebolt.cooldown / (castTempo2(level, a) * mul);
+  // Посох — тоже оружие со своей паузой (WEAPONS2.staff.interval), а не отдельный
+  // класс заклинаний. Потолок 5 кастов/с общий.
+  return Math.max(ATTACK_INTERVAL_MIN, WEAPONS2.staff.interval / (castTempo2(level, a) * mul));
 }
 
 /** Скорость каста (посох, откат заклинаний): уровень × МДР. */
@@ -523,7 +526,29 @@ export const CLASSES2: Record<ClassId, ClassDef> = {
   },
 };
 
-/** Класс по тому, что в руках (как сейчас: оружие = класс). null — пустые руки. */
+export function isClassId(v: unknown): v is ClassId {
+  return typeof v === "string" && (CLASS_IDS as readonly string[]).includes(v);
+}
+
+/** Оружие, которым класс применяет свои умения (и получает профильные бонусы). */
+export function classWeapon(cls: ClassId): Weapon2 {
+  return CLASSES2[cls].main;
+}
+
+/**
+ * В руках есть оружие класса? Только с ним работают умения класса
+ * (автоатака любым оружием остаётся доступной).
+ */
+export function hasClassWeapon(cls: ClassId, left: string, right: string): boolean {
+  const w = classWeapon(cls);
+  return left === w || right === w;
+}
+
+/**
+ * Класс по оружию в руках — для старых сейвов, ботов и офлайн-инвентаря.
+ * У живого героя класс выбран при создании и лежит в PlayerState.cls; эта
+ * функция больше не определяет его на каждом ударе.
+ */
 export function classOf2(left: Weapon2 | "", right: Weapon2 | ""): ClassId | null {
   const h = [left, right];
   if (h.includes("spear")) return "spearman";
@@ -1071,10 +1096,10 @@ export function summarize2(h: Hero2): Summary2 {
   let perHit: number;
   let oneItem = w.twoHanded;
   if (magic) {
-    rate = castTempo2(h.level, a) / w.interval;
+    rate = 1 / staffCastInterval(h.level, a);
     perHit = w.dmg * magicPowerFor(h.level, a) * tierMul;
   } else {
-    rate = physTempo2(h.level, a, w.tempoSoft) / w.interval;
+    rate = 1 / heroAttackInterval(def.main as AttackWeapon, h.level, a);
     perHit = w.dmg * physPower2(h.level, a) * tierMul;
   }
   if (h.cls === "assassin") {

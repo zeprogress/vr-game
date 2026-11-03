@@ -91,8 +91,16 @@ test("resetAttrs: атрибуты снова на старте, очки — в
   assert.equal(p.unspent, pointsAt(p.level));
 });
 
-test("опыт за моба растёт с уровнем моба", () => {
-  for (let L = 1; L < PROGRESSION.maxLevel - 1; L++) assert.ok(mobXpAt(L + 1) > mobXpAt(L), `моб ${L}`);
+test("опыт за моба растёт до 75 уровня и дальше не растёт — мобов выше нет", () => {
+  for (let L = 1; L < PROGRESSION.mobMaxLevel; L++) assert.ok(mobXpAt(L + 1) > mobXpAt(L), `моб ${L}`);
+  for (let L = PROGRESSION.mobMaxLevel; L < PROGRESSION.maxLevel - 1; L++) assert.equal(mobXpAt(L + 1), mobXpAt(L), `моб ${L}`);
+});
+
+test("кривая до 100 с мобами до 75: около 2,8 года при 20 убийствах в минуту", () => {
+  let kills = 0;
+  for (let L = 1; L < PROGRESSION.maxLevel; L++) kills += xpToNext(L) / mobXpAt(L);
+  const years = kills / 20 / 60 / 24 / 365;
+  assert.ok(years > 2 && years < 4, `вышло ${years.toFixed(2)} года`);
 });
 
 test("killXp: моб своего уровня даёт базовый опыт, босс — во столько раз больше, сколько bossMul", () => {

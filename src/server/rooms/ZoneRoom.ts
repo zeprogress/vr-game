@@ -210,7 +210,7 @@ import { wallSlide } from "../sim/wallSlide";
 import { leashCut } from "../sim/leash";
 import { ATTR2 } from "#shared/attrs2";
 import { DRAW_IN, drawInPlan, drawModeOf, type DrawMode } from "#shared/drawIn";
-import { STEEL_AURA, steelAuraTick, steelModeOf, type SteelMode, ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, plagueAtk, SMOKE, SOUL_STEAL, skillAttrMul, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, hammerWaveDamage, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, MARK_FOCUS, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillAttrs, type SkillId, type Weapon2 } from "#shared/classes2";
+import { STEEL_AURA, steelAuraTick, steelModeOf, type SteelMode, ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, plagueAtk, SMOKE, SOUL_STEAL, skillAttrMul, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, hasClassWeapon, isClassId, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, hammerWaveDamage, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, MARK_FOCUS, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillAttrs, type SkillId, type Weapon2 } from "#shared/classes2";
 import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC } from "#shared/ultimates";
 import {
   MAGIC,
@@ -256,7 +256,7 @@ import {
 } from "#shared/quests";
 import { CHEST_MIN_QUALITY, HARD_SCROLL_CHANCE, SCROLL, SHOP, TAVERN_REACH } from "#shared/shop";
 import { chatLog, store, world } from "../store";
-import type { PlayerRecord } from "../PlayerStore";
+import { TREE_VER, type PlayerRecord } from "../PlayerStore";
 import { eliteOpts, WEAPON_DROP, ZoneSim, type Mob, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
 import { CatacombDirector, type CatHost } from "./catacombs";
 import { TELEGRAM } from "#shared/changelog";
@@ -1360,6 +1360,8 @@ interface JoinOpts {
   stream?: boolean;
   /** Пароль админ-ника (ADMIN_NICKS) — см. проверку в начале onJoin. */
   adminPass?: string;
+  /** Класс, выбранный при создании персонажа. Для старых сейвов игнорируется. */
+  cls?: string;
 }
 
 /**
@@ -1886,8 +1888,8 @@ export class ZoneRoom extends Room<ZoneState> {
       const p = this.state.players.get(client.sessionId);
       const rt = this.rt.get(client.sessionId);
       if (!p || !rt || !Array.isArray(msg?.skills)) return;
-      const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
-      if (!cls) return;
+      const cls = this.heroCls(p);
+      if (!hasClassWeapon(cls, p.leftCls, p.rightCls)) return;
       const allowed = CLASSES2[cls].skills;
       const pick: SkillId[] = [...new Set(msg.skills.filter((k: unknown): k is SkillId => allowed.includes(k as SkillId)))].slice(0, 2);
       if (pick.length === 0) return;
@@ -5334,7 +5336,7 @@ export class ZoneRoom extends Room<ZoneState> {
       strikePhys: this.strikePhysOfLive(p, rt),
       respecCost: RESPEC_ENABLED ? respecCostFor(rec?.respecCount ?? 0) : -1,
       skills: {
-        cls: classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "") ?? "",
+        cls: hasClassWeapon(this.heroCls(p), p.leftCls, p.rightCls) ? this.heroCls(p) : "",
         chosen: [p.skill1, p.skill2].filter(Boolean),
       },
       jewels: pcInvJewels(this.jewelsFor(rt.token ?? `nick:${normNick(p.nick)}`)),
@@ -6515,8 +6517,12 @@ export class ZoneRoom extends Room<ZoneState> {
     );
   }
 
-  /** Класс героя по оружию в руках — у каждого класса своё дерево прокачки. */
+  /**
+   * Класс героя — выбранный при создании (PlayerState.cls). У старых сейвов поля нет:
+   * выводим из оружия в руках, как раньше. Класс больше не меняется от того, что взял в руки.
+   */
   private heroCls(p: PlayerState): ClassId {
+    if (isClassId(p.cls)) return p.cls;
     return classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "") ?? "warrior";
   }
 
@@ -6880,6 +6886,8 @@ export class ZoneRoom extends Room<ZoneState> {
     if (off === "dagger" && !ownsClass(rec?.owned, "dagger") && pinL?.cls !== "dagger") off = "";
     p.leftCls = off;
     p.leftTier = pinL && pinL.cls === off ? pinL.tier : savedHeld.left?.cls === off ? savedHeld.left.tier : "";
+    // Класс бота: сохранённый при создании, иначе — по оружию в руках.
+    p.cls = isClassId(rec?.classId) ? rec.classId : (classOf2(rc as Weapon2 | "", off as Weapon2 | "") ?? "warrior");
     // Сумку восстанавливаем из сейва (restoreBag — как у живого игрока) —
     // раньше тут был emptyBag() с нуля КАЖДЫЙ !play, и весь "Лом" от разборки
     // (и любые другие расходники) стирался при первом же выходе бота в мир
@@ -7161,7 +7169,7 @@ export class ZoneRoom extends Room<ZoneState> {
           const p = this.state.players.get(h.id);
           return {
             nick: p?.nick ?? "?",
-            cls: p ? (classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "") ?? "") : "",
+            cls: p ? this.heroCls(p) : "",
             level: p?.level ?? 0,
             dmg: Math.round(this.sim.catDamage.get(h.id) ?? 0),
             kills: this.sim.catKills.get(h.id) ?? 0,
@@ -8075,9 +8083,9 @@ export class ZoneRoom extends Room<ZoneState> {
     const rec = store.get(`nick:${norm}`);
     const left = t ? t.p.leftCls : rec?.held?.left?.cls ?? "";
     const right = t ? t.p.rightCls : rec?.held?.right?.cls ?? "";
-    const cls = classOf2(left as Weapon2 | "", right as Weapon2 | "");
-    if (!cls) {
-      if (this.hintOk(norm)) this.reply(`@${nick} у героя нет оружия — сначала !play.`);
+    const cls = t ? this.heroCls(t.p) : isClassId(rec?.classId) ? rec.classId : classOf2(left as Weapon2 | "", right as Weapon2 | "");
+    if (!cls || !hasClassWeapon(cls, left, right)) {
+      if (this.hintOk(norm)) this.reply(`@${nick} умения класса — только с его оружием; сначала возьми его в руки.`);
       return;
     }
     const def = CLASSES2[cls];
@@ -8151,6 +8159,7 @@ export class ZoneRoom extends Room<ZoneState> {
       botActive: true, // в мире — восстановить после рестарта
       // Последнее сообщение хозяина — на диск (persistBot идёт раз в 10 с): отсчёт ухода бота переживает рестарт.
       lastChatAt: this.chatSeen.get(bot.norm),
+      ...(isClassId(p.cls) ? { classId: p.cls, treeVer: TREE_VER } : {}),
     });
   }
 
@@ -9325,8 +9334,8 @@ export class ZoneRoom extends Room<ZoneState> {
   private botClassSkills(bot: Bot, dt: number): void {
     const p = bot.state;
     if (p.dead || bot.fishing) return;
-    const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
-    if (!cls) return;
+    const cls = this.heroCls(p);
+    if (!hasClassWeapon(cls, p.leftCls, p.rightCls)) return;
     // «Стрела жизни» — спасательная: HP ниже половины — без жребия и раньше второго умения.
     if ((p.skill1 === "lifeArrow" || p.skill2 === "lifeArrow") && p.hp < p.maxHp * 0.5) {
       const t = this.mobsInRadius(p, SKILLS2.lifeArrow.radius - 2).sort(
@@ -9482,8 +9491,8 @@ export class ZoneRoom extends Room<ZoneState> {
     const rec = store.get(token);
     const left = p ? p.leftCls : rec?.held?.left?.cls ?? "";
     const right = p ? p.rightCls : rec?.held?.right?.cls ?? "";
-    const cls = classOf2(left as Weapon2 | "", right as Weapon2 | "");
-    if (!cls) return { ok: false, text: "Возьми оружие — умения зависят от класса." };
+    const cls = p ? this.heroCls(p) : isClassId(rec?.classId) ? rec.classId : classOf2(left as Weapon2 | "", right as Weapon2 | "");
+    if (!cls || !hasClassWeapon(cls, left, right)) return { ok: false, text: "Умения класса — только с его оружием." };
     const allowed = CLASSES2[cls].skills;
     const pick = [...new Set(ids.filter((k): k is SkillId => allowed.includes(k as SkillId)))].slice(0, 2);
     if (pick.length === 0) return { ok: false, text: "Нужно выбрать умения своего класса." };
@@ -9525,15 +9534,20 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Множитель отката умений: у магов (посох/молот) — МДР ускоряет. */
   private skillCdMul(p: PlayerState): number {
-    return skillCdMul2(classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | ""), p);
+    return skillCdMul2(this.heroCls(p), p);
   }
 
-  /** Выставить skill1/skill2 под класс оружия в руках (сохранённый выбор или по умолчанию). */
+  /**
+   * Выставить skill1/skill2 под выбранный класс. Умения работают только с оружием класса:
+   * без него панель пустая, а при возврате оружия выбор восстанавливается из сейва.
+   */
   private syncSkills(p: PlayerState, rt: Runtime): void {
-    const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "") ?? "";
-    if (cls === rt.skillCls) return;
-    rt.skillCls = cls;
-    if (!cls) {
+    const cls = this.heroCls(p);
+    const armed = hasClassWeapon(cls, p.leftCls, p.rightCls);
+    const key = armed ? cls : `${cls}:no`;
+    if (key === rt.skillCls) return;
+    rt.skillCls = key;
+    if (!armed) {
       p.skill1 = p.skill2 = "";
       return;
     }
@@ -9559,8 +9573,8 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Сила удара класса, который держит герой, — для окна умений (без класса не показываем). */
   private strikeOfLive(p: PlayerState, rt: Runtime): number | undefined {
-    const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
-    if (!cls) return undefined;
+    const cls = this.heroCls(p);
+    if (!hasClassWeapon(cls, p.leftCls, p.rightCls)) return undefined;
     return Math.round(skillStrike(cls, p.level, p, this.strikeHandFor(p, cls, rt)).dmg * 10) / 10;
   }
 
@@ -9576,7 +9590,8 @@ export class ZoneRoom extends Room<ZoneState> {
    * (plagueAtkOf); у остальных классов не задана.
    */
   private strikePhysOfLive(p: PlayerState, rt: Runtime): number | undefined {
-    const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
+    const cls = this.heroCls(p);
+    if (!hasClassWeapon(cls, p.leftCls, p.rightCls)) return undefined;
     if (cls === "assassin") return Math.round(this.plagueAtkOf(p, rt) * 10) / 10;
     if (cls !== "battlemage") return undefined;
     return Math.round(hammerPhysStrike(p.level, p, this.strikeHandFor(p, "battlemage", rt)) * 10) / 10;
@@ -9938,8 +9953,9 @@ export class ZoneRoom extends Room<ZoneState> {
       return false;
     }
     const t = this.findWeaponsTarget(norm);
-    const cls = t ? classOf2(t.p.leftCls as Weapon2 | "", t.p.rightCls as Weapon2 | "") : null;
-    if (!t || !cls) return false;
+    if (!t) return false;
+    const cls = this.heroCls(t.p);
+    if (!hasClassWeapon(cls, t.p.leftCls, t.p.rightCls)) return false;
     t.rt.ultAt = this.elapsed;
     this.startUlt(t.id, t.p, t.rt, cls);
     return true;
@@ -9949,7 +9965,7 @@ export class ZoneRoom extends Room<ZoneState> {
   private ultBlock(nick: string, norm: string): string | null {
     const t = this.findWeaponsTarget(norm);
     if (!t || t.p.dead) return "ульта — только когда герой в мире и жив";
-    if (!classOf2(t.p.leftCls as Weapon2 | "", t.p.rightCls as Weapon2 | "")) return "ульта — сначала возьми оружие класса";
+    if (!hasClassWeapon(this.heroCls(t.p), t.p.leftCls, t.p.rightCls)) return "ульта — сначала возьми оружие класса";
     // Админ-ник (zeprogress) — ульта без отката, для проверки.
     const left = isAdminNick(nick) ? 0 : ULT_COOLDOWN - (this.elapsed - t.rt.ultAt);
     if (left > 0) return `ульта через ${Math.ceil(left / 60)} мин`;
@@ -10117,9 +10133,9 @@ export class ZoneRoom extends Room<ZoneState> {
   private castSkill(kind: SkillId, ownerId: string, p: PlayerState, rt: Runtime, tx: number, tz: number): boolean {
     const ok = this.castSkillCore(kind, ownerId, p, rt, tx, tz);
     if (ok) {
-      const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
+      const cls = this.heroCls(p);
       this.broadcast(MSG.act, {
-        k: "cast", id: ownerId, x: p.head.x, y: p.head.y, z: p.head.z, s: kind, v: cls ? CLASS_IDS.indexOf(cls) : -1,
+        k: "cast", id: ownerId, x: p.head.x, y: p.head.y, z: p.head.z, s: kind, v: CLASS_IDS.indexOf(cls),
         // Сколько движений делает умение и за сколько секунд: клиент крутит/бьёт клип ровно столько раз.
         ...(rt.castReps ? { n: rt.castReps, d: rt.castSec } : {}),
       } satisfies ActRelay);
@@ -10128,8 +10144,9 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   private castSkillCore(kind: SkillId, ownerId: string, p: PlayerState, rt: Runtime, tx: number, tz: number): boolean {
-    const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
-    if (!cls || !CLASSES2[cls].skills.includes(kind)) return false;
+    const cls = this.heroCls(p);
+    if (!hasClassWeapon(cls, p.leftCls, p.rightCls)) return false;
+    if (!CLASSES2[cls].skills.includes(kind)) return false;
     if (p.skill1 !== kind && p.skill2 !== kind) return false;
     // Призрак не накладывается сам на себя: пока заряжена тень или действует его ускорение, повторный каст
     // не нужен. Иначе при коротком откате (мудрость) ускорение продлевалось бы без конца, и каждый каст давал
@@ -12663,6 +12680,14 @@ export class ZoneRoom extends Room<ZoneState> {
       rec?.skin && rec.skin >= 1 && rec.skin <= BOT.skins
         ? rec.skin
         : 1 + Math.floor(Math.random() * BOT.skins);
+    // Класс выбирается ОДИН раз при создании. Старые сейвы без поля выводим из оружия.
+    const savedHeldForClass = heldOwned(sanitizeHeld(rec?.held), rec?.owned);
+    const inferredCls = classOf2((savedHeldForClass.left?.cls ?? "") as Weapon2 | "", (savedHeldForClass.right?.cls ?? "") as Weapon2 | "");
+    p.cls = isClassId(rec?.classId)
+      ? rec.classId
+      : isClassId(options?.cls)
+        ? options.cls
+        : (inferredCls ?? "warrior");
     p.maxHp = maxHpFor(p.level, p);
     p.maxMana = maxManaFor(p.level, p);
     p.mana = p.maxMana;
@@ -12819,6 +12844,7 @@ export class ZoneRoom extends Room<ZoneState> {
       // Даже если модель не меняли ни разу: случайная, выданная при входе
       // без сейва, должна закрепиться за ником, а не выпадать заново.
       skin: p.skin,
+      ...(isClassId(p.cls) ? { classId: p.cls, treeVer: TREE_VER } : {}),
     };
     store.put(rt.token, patch);
   }
