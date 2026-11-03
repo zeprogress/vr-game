@@ -26,7 +26,8 @@
     "balance": "tsx scripts/balance.mts",
     "lab:balance": "tsx scripts/lab-balance.mts",
     "asset": "node scripts/asset.mjs",
-    "lab:unity": "tsx scripts/unity-skill-lab.mts"
+    "lab:unity": "tsx scripts/unity-skill-lab.mts",
+    "lab:check": "node --import tsx --test tests/shared/skillShow.test.ts tests/shared/skillShowHandlers.test.ts tests/shared/unitySkillLab.test.ts"
   },
   "dependencies": {
     "@babylonjs/core": "^7.34.0",
