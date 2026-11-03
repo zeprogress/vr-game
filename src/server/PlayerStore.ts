@@ -193,6 +193,12 @@ const FILE = process.env.PLAYERS_FILE
   ? resolve(process.cwd(), process.env.PLAYERS_FILE)
   : resolve(dirname(fileURLToPath(import.meta.url)), ".data/players.json");
 
+/**
+ * Чистый запуск: сейвы не читаются и не пишутся вообще. Для песочницы реворка —
+ * каждый рестарт с пустым миром, без миграций старых XP/дерева.
+ */
+const FRESH = process.env.PLAYERS_FRESH === "1";
+
 function blank(token: string): PlayerRecord {
   const p = blankProgress();
   return {
@@ -229,6 +235,10 @@ export class PlayerStore {
   private dirty = false;
 
   constructor() {
+    if (FRESH) {
+      console.log("[store] чистый старт: сейвы не читаются и не пишутся");
+      return;
+    }
     try {
       if (existsSync(FILE)) {
         const raw = JSON.parse(readFileSync(FILE, "utf8")) as PlayerRecord[];
@@ -291,7 +301,7 @@ export class PlayerStore {
   readonly lastFlush = { ms: 0, bytes: 0, count: 0 };
 
   flush(): void {
-    if (!this.dirty) return;
+    if (FRESH || !this.dirty) return;
     try {
       const t0 = performance.now();
       mkdirSync(dirname(FILE), { recursive: true });
