@@ -15,6 +15,7 @@ export {
   dodgeChance,
   heroAttackInterval,
   hpRegenFrac,
+  armorRegenFlat,
   holdsOneItem,
   maxHpFor,
   meleeAnimRate,

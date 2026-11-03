@@ -129,8 +129,11 @@ export function manaRegenFor(a: MagicAttrs): number {
 /** Доля магического урона (и снарядов магов), которую гасит МДР: max·n/(n+K). */
 export function magicResistFrac(a: MagicAttrs): number {
   const base = magicResistBase(a);
-  // Маг. защита брони (shared/armor.ts) — множится с МДР; кольца магзащиту не дают.
-  return 1 - (1 - base) * (1 - armorBonus(a, "magDef")) * (1 - treeBonus(a, "magDef"));
+  // Плоское Сопротивление магии брони — отдельный слой поверх МДР.
+  const lvl = Math.max(1, Number((a as { level?: number }).level) || 1);
+  const flat = armorBonus(a, "magDef");
+  const mit = flat > 0 ? flat / (flat + 100 + 4 * lvl) : 0;
+  return 1 - (1 - base) * (1 - mit) * (1 - treeBonus(a, "magDef"));
 }
 
 /** Множитель лечения зельями: +2% за каждый подъём ИНТ (сила лечения — от интеллекта). */

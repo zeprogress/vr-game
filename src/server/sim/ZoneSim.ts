@@ -4504,29 +4504,30 @@ export class ZoneSim {
     if (m.kind !== "shard") {
       const kind = m.kind === "boss" ? "boss" : m.eliteName !== "" ? "elite" : "regular";
       const champMul = m.kind !== "boss" && m.champ ? QUEST.champ.dropMul : 1;
+      const armorLvl = Math.max(1, m.eliteLevel || 1);
       if (kind === "boss") {
         // Золотой части у босса нет (только уникальная ниже).
         // Уникальная часть — отдельный шанс (вдвое реже золотой), тоже вместо обычной.
         if (Math.random() < armorLegendaryDropChance("boss")) {
           const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
-          rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "legendary") });
+          rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "legendary", undefined, armorLvl) });
         }
       } else {
         // Обычный и элитный моб: обычная и золотая часть — два независимых шанса; золото реже в ARMOR_GOLD.dropDiv раз.
         // Обычная часть: на 1-м уровне как есть, к 53-му падает до нуля (armorBaseLevelMul).
         if (!m.bossFight && Math.random() < ARMOR_DROP[kind] * champMul * armorBaseLevelMul(m.eliteLevel)) {
           const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
-          rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid()) });
+          rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "base", undefined, armorLvl) });
         }
         // Золотая — с 1-го уровня растёт линейно, к 53-му — как было (ARMOR_LEVEL_GATE).
         if (!m.bossFight && Math.random() < armorGoldDropChance(kind) * champMul * armorLevelMul(m.eliteLevel, ARMOR_LEVEL_GATE.gold)) {
           const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
-          rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "gold") });
+          rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "gold", undefined, armorLvl) });
         }
         // Уникальная часть растёт с уровнем моба: с 1-го уровня — ноль, к 53-му — как было (ARMOR_LEVEL_GATE).
         if (Math.random() < armorLegendaryDropChance(kind) * champMul * armorLevelMul(m.eliteLevel, ARMOR_LEVEL_GATE.legendary)) {
           const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
-          rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "legendary") });
+          rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "legendary", undefined, armorLvl) });
         }
       }
     }

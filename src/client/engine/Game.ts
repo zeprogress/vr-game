@@ -572,10 +572,7 @@ export class Game {
             ? ({ ...h.right, affix: self?.rightAffix || undefined, rc: self?.rightRc || undefined } as WornWeapon)
             : null,
         stowed: this.combat.stowedSnapshot(),
-        stats: {
-          level: this.progression.level,
-          ...this.progression.stats,
-        },
+        stats: { ...this.progression.attrs },
       };
     });
     // Плейсхолдер до первого пакета с сервера — syncSelf поправит на реальный.
@@ -2602,6 +2599,7 @@ export class Game {
 
     // Прокачку применяем только при изменении: applyRemote перерисовывает панель.
     const p = this.progression;
+    p.setArmorBonus(self.ab);
     if (
       p.level !== self.level ||
       p.xp !== self.xp ||

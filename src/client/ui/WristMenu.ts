@@ -534,7 +534,7 @@ export class WristMenu {
     // Откат и бонусы — как у сервера: атрибуты героя + прибавка от колец и камней + плоские
     // бонусы дерева (tb): без них урон/темп в окне не менялись после прокачки узлов.
     const tb = this.tree && this.tree.cls === cls ? treeBonusTotals(cls, this.tree.taken) : undefined;
-    const live = { ...this.prog.stats, gb: this.bonus(), ...(tb ? { tb } : {}) };
+    const live = { ...this.prog.attrs, gb: this.bonus(), ...(tb ? { tb } : {}) };
     const skillMods = this.tree && this.tree.cls === cls ? treeSkillState(cls, this.tree.taken).skills : undefined;
     const { strike, phys } = this.strikeOf() ?? {};
     for (const id of def.skills) {
@@ -933,8 +933,7 @@ export class WristMenu {
   private hero(): HeroStats {
     // С прибавкой от камней в кольцах — как считает сервер (attrOf читает gb).
     return {
-      level: this.prog.level,
-      ...this.prog.stats,
+      ...this.prog.attrs,
       gb: this.bonus(),
     };
   }

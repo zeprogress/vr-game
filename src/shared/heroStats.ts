@@ -4,7 +4,8 @@ import { BOW, CAMPFIRE, EVENT, SHIELD, SWORD_CRIT_MULT, STAFF_CRIT_MULT } from "
 import { SCROLL } from "./shop";
 import { CRAFT } from "./craft";
 import { fireboltDamage } from "./magic";
-import { armorFrac, dodgeChance, heroAttackInterval, holdsOneItem, hpRegenFrac, maxHpFor, moveSpeedFor, staffCastInterval } from "./progression";
+import { armorFrac, armorRegenFlat, dodgeChance, heroAttackInterval, holdsOneItem, hpRegenFrac, maxHpFor, moveSpeedFor, staffCastInterval } from "./progression";
+import { armorBonus } from "./armor";
 import { BASE_CRIT } from "./combat";
 import { ATTR2, attrOf, invested } from "./attrs2";
 import { DAGGER, hammerWaveDamage, SMOKE, staffMagicTier, WARCRY, WEAPONS2, type AttrsIn } from "./classes2";
@@ -97,7 +98,7 @@ export const CAP_MARK = " · кап";
 /** Минимальный набор полей, нужный для расчёта — общий для PlayerState и записи в PlayerStore. */
 export interface HeroStatInput {
   /** Бонусы надетой брони (PlayerState.ab, shared/armor.ts): здоровье, защиты, регенерация, уворот. */
-  ab?: Partial<Record<ArmorStat, number>>;
+  ab?: Partial<Record<ArmorStat | "move" | "atk", number>>;
   level: number;
   str: number;
   agi: number;
@@ -271,12 +272,15 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   }
 
   // Ролл щита гасит урон отдельным множителем сверх брони (см. ZoneRoom.hurtPlayer).
+  rows.push({ label: "Броня", value: String(Math.round(armorBonus(p, "physDef"))) });
+  rows.push({ label: "Маг. сопротивление", value: String(Math.round(armorBonus(p, "magDef"))) });
+  // Проценты снижения — справочно, рядом с числами брони.
   const arm = 1 - (1 - armorFrac(p)) * (1 - affixNum(shieldAffix, "Физ. защита")) * (1 - bm.def);
-  rows.push({ label: "Физ. защита", value: `${Math.round(arm * 100)}%` });
+  rows.push({ label: "Снижение физ. урона", value: `${Math.round(arm * 100)}%` });
   const mres = 1 - (1 - magicResistFrac(p)) * (1 - affixNum(shieldAffix, "Маг. защита")) * (1 - bm.def);
-  rows.push({ label: "Маг. защита", value: `${Math.round(mres * 100)}%` });
+  rows.push({ label: "Снижение маг. урона", value: `${Math.round(mres * 100)}%` });
   // Регенерация: ТЕЛ + ролл щита (доля макс. HP в секунду, и в бою). Базовое PLAYER_HP.regen вне боя в строку не выводим.
-  const regen = maxHpFor(p.level, p) * (hpRegenFrac(p) + affixNum(shieldAffix, "Регенерация"));
+  const regen = maxHpFor(p.level, p) * (hpRegenFrac(p) + affixNum(shieldAffix, "Регенерация")) + armorRegenFlat(p);
   rows.push({ label: "Регенерация", value: `${regen.toFixed(1)} HP/с` });
 
   const shieldTier = p.rightCls === "shield" ? p.rightTier : p.leftCls === "shield" ? p.leftTier : null;

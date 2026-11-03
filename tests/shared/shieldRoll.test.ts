@@ -4,10 +4,10 @@ import { ARMOR_RANGE, armorValue, ARMOR_POINTS_MAX } from "../../src/shared/armo
 import { LOOT_VER, affixAtPoints, affixPoints, migrateLoot, shieldRegen, shieldReflect, type WeaponInstance } from "../../src/shared/items";
 import { close } from "./rng";
 
-test("регенерация брони ×2: максимум — 0.3% макс. HP в секунду, минимум — 0.1%", () => {
-  assert.ok(close(ARMOR_RANGE.regen[0], 0.0013));
-  assert.ok(close(ARMOR_RANGE.regen[1], 0.0039));
-  assert.ok(close(armorValue("regen", ARMOR_POINTS_MAX), 0.0039));
+test("регенерация брони: плоские 0.004–0.12 HP/с за ролл", () => {
+  assert.ok(close(ARMOR_RANGE.regen[0], 0.004));
+  assert.ok(close(ARMOR_RANGE.regen[1], 0.12));
+  assert.ok(close(armorValue("regen", ARMOR_POINTS_MAX), 0.12));
 });
 
 test("регенерация щита ×2, отражение Эгиды до 35%: новые роллы — регенерация до 2%, отражение до 35%", () => {

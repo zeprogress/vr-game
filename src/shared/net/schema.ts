@@ -41,6 +41,8 @@ export class ArmorBonusSync extends Schema {
   @type("float32") magDef = 0;
   @type("float32") regen = 0;
   @type("float32") dodge = 0;
+  @type("float32") move = 0;
+  @type("float32") atk = 0;
 }
 
 /** Бонусы дерева прокачки (shared/passiveTree.ts, TREE_FX): доли; формулы боя читают их через treeBonus(). */

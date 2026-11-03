@@ -374,7 +374,7 @@ export class CombatSystem {
   /** Пауза между атаками этим оружием — общая формула (heroAttackInterval): ПК, телефон, VR и боты одинаковы. */
   private attackInterval(k: ItemKind | "fist"): number {
     const w = k === "fist" ? "fist" : k === "bow" ? "bow" : isNewKind(k) ? k : "sword";
-    return heroAttackInterval(w as AttackWeapon, this.prog.level, this.prog.stats, this.atkSpeedAffix);
+    return heroAttackInterval(w as AttackWeapon, this.prog.level, this.prog.attrs, this.atkSpeedAffix);
   }
 
   /** Длительность анимации взмаха (не темп!): короче паузы, чтобы клип успевал. */

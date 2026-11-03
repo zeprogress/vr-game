@@ -32,6 +32,12 @@ public ArmorBonusSync() { }
 		[Type(4, "float32")]
 		public float dodge = default(float);
 
+		[Type(5, "float32")]
+		public float move = default(float);
+
+		[Type(6, "float32")]
+		public float atk = default(float);
+
 		/*
 		 * Support for individual property change callbacks below...
 		 */
@@ -96,6 +102,30 @@ public ArmorBonusSync() { }
 			};
 		}
 
+		protected event PropertyChangeHandler<float> __moveChange;
+		public Action OnMoveChange(PropertyChangeHandler<float> __handler, bool __immediate = true) {
+			if (__callbacks == null) { __callbacks = new SchemaCallbacks(); }
+			__callbacks.AddPropertyCallback(nameof(this.move));
+			__moveChange += __handler;
+			if (__immediate && this.move != default(float)) { __handler(this.move, default(float)); }
+			return () => {
+				__callbacks.RemovePropertyCallback(nameof(move));
+				__moveChange -= __handler;
+			};
+		}
+
+		protected event PropertyChangeHandler<float> __atkChange;
+		public Action OnAtkChange(PropertyChangeHandler<float> __handler, bool __immediate = true) {
+			if (__callbacks == null) { __callbacks = new SchemaCallbacks(); }
+			__callbacks.AddPropertyCallback(nameof(this.atk));
+			__atkChange += __handler;
+			if (__immediate && this.atk != default(float)) { __handler(this.atk, default(float)); }
+			return () => {
+				__callbacks.RemovePropertyCallback(nameof(atk));
+				__atkChange -= __handler;
+			};
+		}
+
 		protected override void TriggerFieldChange(DataChange change) {
 			switch (change.Field) {
 				case nameof(hp): __hpChange?.Invoke((float) change.Value, (float) change.PreviousValue); break;
@@ -103,6 +133,8 @@ public ArmorBonusSync() { }
 				case nameof(magDef): __magDefChange?.Invoke((float) change.Value, (float) change.PreviousValue); break;
 				case nameof(regen): __regenChange?.Invoke((float) change.Value, (float) change.PreviousValue); break;
 				case nameof(dodge): __dodgeChange?.Invoke((float) change.Value, (float) change.PreviousValue); break;
+				case nameof(move): __moveChange?.Invoke((float) change.Value, (float) change.PreviousValue); break;
+				case nameof(atk): __atkChange?.Invoke((float) change.Value, (float) change.PreviousValue); break;
 				default: break;
 			}
 		}

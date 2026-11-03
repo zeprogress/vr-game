@@ -9,7 +9,12 @@ import {
   ARMOR_SCRAP_RANGE,
   ARMOR_ENCHANT_COST_MUL,
   ARMOR_TIER_MUL,
+  ARMOR_WEIGHT_BASE,
+  ARMOR_WEIGHTS_BY_TIER,
+  armorBaseStats,
   armorBonusOf,
+  armorLabel,
+  armorName,
   armorEnchantRow,
   armorScrap,
   sanitizeArmorList,
@@ -71,7 +76,7 @@ test("аффиксы одной части не повторяют стат и �
   }
 });
 
-test("тир усиливает значение: золотой ×1.2, уникальный ×1.3 к обычному", () => {
+test("тир усиливает значение: золотой ×1.2, уникальный ×1.35 к обычному", () => {
   const r = { stat: "physDef" as const, pts: 10 };
   const base = armorRollValue({ tier: "base" }, r);
   assert.ok(close(armorRollValue({ tier: "gold" }, r), base * ARMOR_TIER_MUL.gold));
@@ -79,14 +84,16 @@ test("тир усиливает значение: золотой ×1.2, уник
 });
 
 test("сумма бонусов брони — сумма значений всех её аффиксов", () => {
-  assert.deepEqual(armorBonusOf([]), { hp: 0, physDef: 0, magDef: 0, regen: 0, dodge: 0 });
+  assert.deepEqual(armorBonusOf([]), { hp: 0, physDef: 0, magDef: 0, regen: 0, dodge: 0, move: 0, atk: 0 });
   const worn = [...many("helm", "base", 2, 6), ...many("chest", "gold", 2, 7)];
   const bonus = armorBonusOf(worn);
-  for (const s of STATS) {
-    let sum = 0;
-    for (const a of worn) for (const r of a.rolls) if (r.stat === s) sum += armorRollValue(a, r);
-    assert.ok(close(bonus[s], sum), s);
+  const empty = { hp: 0, physDef: 0, magDef: 0, regen: 0, dodge: 0, move: 0, atk: 0 } as Record<string, number>;
+  for (const a of worn) {
+    const base = armorBaseStats(a);
+    for (const k of Object.keys(base) as (keyof typeof base)[]) empty[k] += base[k];
+    for (const r of a.rolls) empty[r.stat] += armorRollValue(a, r);
   }
+  for (const [k, v] of Object.entries(empty)) assert.ok(close(bonus[k as keyof typeof bonus], v), k);
 });
 
 test("множитель шанса по уровню моба: 0 на 1-м, 1 с 53-го, линейно между", () => {
@@ -118,7 +125,7 @@ test("рубиновая броня сильнее уникальной, лом 
   assert.deepEqual(ARMOR_SCRAP_RANGE.ruby, ARMOR_SCRAP_RANGE.legendary.map((x) => x * 100));
   assert.equal(ARMOR_ENCHANT_COST_MUL.ruby, ARMOR_ENCHANT_COST_MUL.legendary * 8);
   assert.equal(ARMOR_RUBY.dropChance, 0.2);
-  const lg: ArmorInstance = { id: "l", part: "chest", tier: "legendary", rolls: [{ stat: "hp", pts: 10 }, { stat: "physDef", pts: 20 }] };
+  const lg: ArmorInstance = { id: "l", part: "chest", tier: "legendary", weight: "medium", lvl: 1, rolls: [{ stat: "hp", pts: 10 }, { stat: "physDef", pts: 20 }] };
   const rb: ArmorInstance = { ...lg, id: "r", tier: "ruby" };
   // Округление по каждому аффиксу — до ±1 на аффикс.
   assert.ok(Math.abs(armorScrap(rb) - armorScrap(lg) * 100) <= 50 * rb.rolls.length, `лом ${armorScrap(rb)} против ${armorScrap(lg)}`);
@@ -134,6 +141,51 @@ test("сохранение: рубиновая часть с 4 аффиксам�
   assert.deepEqual(back[0], a);
   assert.equal(back[1].tier, "ruby");
   assert.equal(back[1].rolls.length, 2);
+});
+
+test("веса по грейдам: обычная — средняя, золотая — лёгкая/тяжёлая, уникальная и рубиновая — все три", () => {
+  assert.deepEqual(ARMOR_WEIGHTS_BY_TIER.base, ["medium"]);
+  assert.deepEqual(ARMOR_WEIGHTS_BY_TIER.gold, ["light", "heavy"]);
+  assert.deepEqual(ARMOR_WEIGHTS_BY_TIER.legendary, ["light", "medium", "heavy"]);
+  assert.deepEqual(ARMOR_WEIGHTS_BY_TIER.ruby, ["light", "medium", "heavy"]);
+});
+
+test("вес даёт характер: тяжёлая — физ. танк, лёгкая — антимагия, средняя — скорость атаки", () => {
+  const mk = (weight: "light" | "medium" | "heavy") => rollArmor("chest", weight, seeded(1), "ruby", weight, 30);
+  const l = armorBaseStats(mk("light"));
+  const m = armorBaseStats(mk("medium"));
+  const h = armorBaseStats(mk("heavy"));
+  assert.ok(h.physDef > m.physDef && m.physDef > l.physDef, "физ. броня: тяжёлая > средняя > лёгкая");
+  assert.ok(l.magDef > m.magDef, "лёгкая — лучшая маг. защита");
+  assert.ok(h.magDef === m.magDef, "у тяжёлой маг. защита как у средней");
+  assert.ok(h.hp > m.hp && m.hp > l.hp, "HP: тяжёлая > средняя > лёгкая");
+  assert.ok(l.move > 0 && h.move < 0 && m.move === 0, "бег: лёгкая быстрее, тяжёлая медленнее");
+  assert.ok(m.atk > 0 && h.atk < 0 && l.atk === 0, "атака: средняя быстрее, тяжёлая медленнее");
+  assert.ok(l.dodge > 0 && h.dodge < 0, "уворот: лёгкая плюс, тяжёлая минус");
+  assert.ok(ARMOR_WEIGHT_BASE.heavy.resist === ARMOR_WEIGHT_BASE.medium.resist);
+});
+
+test("полный сет: тяжёлая маг. защита как средняя, но уворот ниже; скорости суммируются", () => {
+  const full = (weight: "light" | "medium" | "heavy") =>
+    ARMOR_PARTS.map((part, i) => rollArmor(part, `${weight}${i}`, seeded(i + 1), "ruby", weight, 75));
+  const l = armorBonusOf(full("light"));
+  const m = armorBonusOf(full("medium"));
+  const h = armorBonusOf(full("heavy"));
+  assert.ok(close(l.move, 0.1), `лёгкая бег ${l.move}`);
+  assert.ok(close(m.atk, 0.075), `средняя атака ${m.atk}`);
+  assert.ok(close(h.move, -0.1) && close(h.atk, -0.1), "тяжёлая медленная");
+  assert.ok(h.physDef > m.physDef && m.physDef > l.physDef);
+  assert.ok(close(h.magDef, m.magDef), `маг. защита тяжёлой ${h.magDef}, средней ${m.magDef}`);
+  assert.ok(l.magDef > h.magDef, "лёгкая — лучшая антимагия");
+  assert.ok(l.dodge > 0 && h.dodge < 0, "уворот: лёгкая плюс, тяжёлая минус");
+});
+
+test("имя брони короткое, вес — только в описании", () => {
+  const a = rollArmor("chest", "name-test", seeded(2), "ruby", "heavy", 10);
+  const name = armorName(a);
+  assert.ok(!/лёгк|средн|тяжёл/i.test(name), `вес попал в имя: ${name}`);
+  assert.match(armorLabel(a), /Вес: тяжёлая/);
+  assert.match(name, /латная кираса/i);
 });
 
 test("аффиксы брони всегда в одном порядке (здоровье, физ., маг., регенерация, уворот) — и у новых, и у сохранённых", () => {

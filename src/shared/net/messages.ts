@@ -228,6 +228,10 @@ export interface PcInvArmor {
   id: string;
   part: "helm" | "chest" | "gloves" | "legs" | "boots";
   tier: "base" | "gold" | "legendary" | "ruby";
+  /** Вес: лёгкая/средняя/тяжёлая. */
+  weight?: "light" | "medium" | "heavy";
+  /** Уровень предмета (для чисел). */
+  lvl?: number;
   /** Оценка — сумма очков аффиксов (как у оружия: 1 аффикс — до 33, 2 — до 66). */
   pts: number;
   /** Сколько аффиксов (для подписи оценки, как affixes.length у оружия). */

@@ -111,11 +111,14 @@ const P = PROGRESSION.perLevel;
 export { invested };
 
 export function maxHp2(level: number, a: AttrsIn): number {
-  return (PLAYER_HP.max + levelGain(level, P.hp)) * (1 + inv(attrOf(a, "con")) * ATTR2.con.hp + armorBonus(a, "hp") + treeBonus(a, "hp"));
+  // Броня даёт ПЛОСКОЕ здоровье, а не долю: оно прибавляется после множителей.
+  return (PLAYER_HP.max + levelGain(level, P.hp)) * (1 + inv(attrOf(a, "con")) * ATTR2.con.hp + treeBonus(a, "hp")) + armorBonus(a, "hp");
 }
 
 export function moveSpeed2(level: number, a: AttrsIn): number {
-  return (PLAYER.runSpeed + levelGain(level, P.moveSpeed)) * (1 + inv(attrOf(a, "agi")) * ATTR2.agi.move + treeBonus(a, "move"));
+  return (PLAYER.runSpeed + levelGain(level, P.moveSpeed)) *
+    (1 + inv(attrOf(a, "agi")) * ATTR2.agi.move + treeBonus(a, "move")) *
+    Math.max(0.5, 1 + armorBonus(a, "move"));
 }
 
 /** Множитель физ. урона: уровень × СИЛ. Тир оружия и профиль — отдельно. */
@@ -138,7 +141,8 @@ function levelTempo(level: number): number {
  * `soft` — сила затухания роста от уровня: у ближнего боя сильнее (иначе «пропеллер»).
  */
 export function physTempo2(level: number, a: AttrsIn, soft: number): number {
-  return (1 + softGain(levelTempo(level) - 1, soft)) * agiTempo2(a) * (1 + treeBonus(a, "atk"));
+  return (1 + softGain(levelTempo(level) - 1, soft)) * agiTempo2(a) *
+    (1 + treeBonus(a, "atk")) * Math.max(0.5, 1 + armorBonus(a, "atk"));
 }
 
 /**
@@ -160,7 +164,9 @@ export function agiTempo2(a: AttrsIn, share = 1): number {
 
 /** Множитель скорости каста (посох): уровень (рост гаснет) × МДР — линейно, как ЛОВ у физ. темпа. */
 export function castTempo2(level: number, a: AttrsIn): number {
-  return (1 + softGain(levelTempo(level) - 1, ATK_SOFT)) * (1 + inv(attrOf(a, "wis")) * ATTR2.wis.cast) * (1 + treeBonus(a, "atk"));
+  return (1 + softGain(levelTempo(level) - 1, ATK_SOFT)) *
+    (1 + inv(attrOf(a, "wis")) * ATTR2.wis.cast) *
+    (1 + treeBonus(a, "atk")) * Math.max(0.5, 1 + armorBonus(a, "atk"));
 }
 
 /** Затухание уворота от УДЧ (2026-10-31): до ~20 очков почти линейно, дальше каждая точка слабее.
@@ -175,7 +181,7 @@ const DODGE_SOFT = 0.4;
 export function dodge2(a: AttrsIn, oneItem: boolean, dagger = false): number {
   const L = ATTR2.luc;
   const luck = softGain(inv(attrOf(a, "luc")) * L.dodge * (oneItem ? L.dodgeOneItem : 1), DODGE_SOFT);
-  return Math.min(L.dodgeCap, luck + (dagger ? DAGGER.dodge : 0) + armorBonus(a, "dodge") + treeBonus(a, "dodge"));
+  return Math.max(0, Math.min(L.dodgeCap, luck + (dagger ? DAGGER.dodge : 0) + armorBonus(a, "dodge") + treeBonus(a, "dodge")));
 }
 
 export function critChance2(a: AttrsIn, weaponBase: number): number {
@@ -328,13 +334,21 @@ const START: AttrsIn = { str: 1, agi: 1, int: 1, con: 1, luc: 1, wis: 1 };
 
 /** Регенерация здоровья от ТЕЛ — доля МАКС. HP в секунду, работает и в бою (вдобавок к PLAYER_HP.regen вне боя). Ролл щита «Регенерация» — сверху. */
 export function hpRegenFrac(a: AttrsIn): number {
-  // Регенерация от брони — складывается с телосложением (доля макс. HP в секунду).
-  return inv(attrOf(a, "con")) * ATTR2.con.regen + armorBonus(a, "regen") + treeBonus(a, "regen");
+  // Регенерация от ТЕЛ/дерева/щита — доля макс. HP в секунду. Броня даёт плоские HP/с отдельно.
+  return inv(attrOf(a, "con")) * ATTR2.con.regen + treeBonus(a, "regen");
 }
 
-/** Доля урона, гасимая физ. бронёй: броня от ТЕЛ, перемноженная с бронёй предметов (shared/armor.ts). */
+/** Плоская регенерация брони, HP/с. */
+export function armorRegenFlat(a: AttrsIn): number {
+  return armorBonus(a, "regen");
+}
+
+/** Доля урона, гасимая физ. бронёй: врождённая броня ТЕЛ × плоская Броня предметов. */
 export function armorFrac(a: AttrsIn): number {
-  return 1 - (1 - physArmorBase(a)) * (1 - armorBonus(a, "physDef")) * (1 - treeBonus(a, "physDef"));
+  const lvl = Math.max(1, Number((a as { level?: number }).level) || 1);
+  const flat = armorBonus(a, "physDef");
+  const mit = flat > 0 ? flat / (flat + 100 + 4 * lvl) : 0;
+  return 1 - (1 - physArmorBase(a)) * (1 - mit) * (1 - treeBonus(a, "physDef"));
 }
 
 /** Шанс увернуться от любой атаки (УДЧ); один предмет в руках — выше; кинжал в руке — врождённый уворот ассасина. */

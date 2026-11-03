@@ -185,6 +185,7 @@ import {
 } from "#shared/items";
 import {
   hpRegenFrac,
+  armorRegenFlat,
   atMaxLevel,
   meleeSpeedFor,
   staffCastInterval,
@@ -5399,7 +5400,7 @@ export class ZoneRoom extends Room<ZoneState> {
       trade: tradeViewOf(store.get(rt.token ?? `nick:${normNick(p.nick)}`), rt.token ?? `nick:${normNick(p.nick)}`),
       partners: this.exchangePartnerNicks(normNick(p.nick)),
       stats: heroStatRows({
-        ab: { hp: p.ab.hp, physDef: p.ab.physDef, magDef: p.ab.magDef, regen: p.ab.regen, dodge: p.ab.dodge },
+        ab: { hp: p.ab.hp, physDef: p.ab.physDef, magDef: p.ab.magDef, regen: p.ab.regen, dodge: p.ab.dodge, move: p.ab.move, atk: p.ab.atk },
         gb: p.gb,
         // Бонусы дерева прокачки — как в бою и в оверлее стрима (там считают по PlayerState.tb).
         tb: Object.fromEntries(TREE_FX.map((k) => [k, p.tb[k]])),
@@ -5687,7 +5688,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const parts = all ? [...ARMOR_PARTS] : [part!];
     const names: string[] = [];
     for (const p of parts) {
-      const a = rollArmor(p, shortId(Math.random), Math.random, tier);
+      const a = rollArmor(p, shortId(Math.random), Math.random, tier, undefined, t.p.level);
       t.rt.armor.push(a);
       t.rt.armorWorn[p] = a.id;
       names.push(armorLabel(a));
@@ -5844,12 +5845,14 @@ export class ZoneRoom extends Room<ZoneState> {
     if (!p || !rt) return;
     const b = armorBonusOf(wornArmorOf(rt.armor, rt.armorWorn));
     const ab = p.ab;
-    if (ab.hp === b.hp && ab.physDef === b.physDef && ab.magDef === b.magDef && ab.regen === b.regen && ab.dodge === b.dodge) return;
+    if (ab.hp === b.hp && ab.physDef === b.physDef && ab.magDef === b.magDef && ab.regen === b.regen && ab.dodge === b.dodge && ab.move === b.move && ab.atk === b.atk) return;
     ab.hp = b.hp;
     ab.physDef = b.physDef;
     ab.magDef = b.magDef;
     ab.regen = b.regen;
     ab.dodge = b.dodge;
+    ab.move = b.move;
+    ab.atk = b.atk;
     if (p.towerFloor > 0) return; // в башне свой потолок HP — вернётся с арены по maxHpFor
     const frac = p.maxHp > 0 ? p.hp / p.maxHp : 1;
     p.maxHp = maxHpFor(p.level, p);
@@ -8047,7 +8050,7 @@ export class ZoneRoom extends Room<ZoneState> {
       // Рубиновая броня — свой бросок (вдвое чаще рубинового оружия), случайная часть — сразу на склад.
       if (Math.random() < rubyMul(ARMOR_RUBY.dropChance)) {
         const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
-        const a = rollArmor(part, `r${shortId(Math.random)}`, Math.random, "ruby");
+        const a = rollArmor(part, `r${shortId(Math.random)}`, Math.random, "ruby", undefined, p.level);
         rt.armor.push(a);
         if (id.startsWith("bot:")) {
           this.botDressArmor(rt);
@@ -10938,7 +10941,7 @@ export class ZoneRoom extends Room<ZoneState> {
       case "steelAura": {
         // Аура раскалённой стали: режим — по оружию (щит / один меч / дуалы); регенерация — на момент каста.
         const mode = steelModeOf(p.leftCls, p.rightCls);
-        const regen = maxHpFor(p.level, p) * (hpRegenFrac(p) + shieldRegen(shieldOf(p, rt)?.inst));
+        const regen = maxHpFor(p.level, p) * (hpRegenFrac(p) + shieldRegen(shieldOf(p, rt)?.inst)) + armorRegenFlat(p);
         const tick0 = steelAuraTick(mode, regen);
         // Дерево: «урон ауры +N%».
         const tick = { ...tick0, dmg: tick0.dmg * (1 + (tm.dmg ?? 0)) * (tm.dmgMul ?? 1) };
@@ -12676,7 +12679,8 @@ export class ZoneRoom extends Room<ZoneState> {
       // Регенерация от ТЕЛ и ролла щита — доля макс. HP в секунду, работает и в бою.
       if (p.hp > 0 && p.hp < p.maxHp && p.towerFloor === 0) {
         const frac = hpRegenFrac(p) + shieldRegen(shieldOf(p, rt)?.inst);
-        if (frac > 0) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * frac * dt);
+        const flatRegen = armorRegenFlat(p);
+        if (frac > 0 || flatRegen > 0) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * frac * dt + flatRegen * dt);
       }
       if (p.hp > 0 && p.hp < p.maxHp && (inCamp || rt.sinceHurt > regenDelay)) {
         // Вне боя — доля макс. HP в секунду (иначе на больших пулах реген был незаметен),
