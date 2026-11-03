@@ -230,6 +230,8 @@ export interface PcInvArmor {
   tier: "base" | "gold" | "legendary" | "ruby";
   /** Короткое имя: «Кольчужный шлем». */
   name?: string;
+  /** Описание без повторения имени: вес и числа. */
+  desc?: string;
   /** Вес: лёгкая/средняя/тяжёлая. */
   weight?: "light" | "medium" | "heavy";
   /** Уровень предмета (для чисел). */

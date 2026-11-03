@@ -1795,7 +1795,7 @@ export class WristMenu {
   private armorWhCell(ctx: CanvasRenderingContext2D, a: PcInvArmor, x: number, y: number, w: number, h: number): void {
     const wd = this.add({
       id: `arm:${a.id}`, x, y, w, h, kind: "cell",
-      info: [a.name ?? a.label, `Вес: ${a.weight === "light" ? "лёгкая" : a.weight === "heavy" ? "тяжёлая" : "средняя"} · ${a.label}`],
+      info: [a.name ?? a.label, a.desc ?? `Вес: ${a.weight === "light" ? "лёгкая" : a.weight === "heavy" ? "тяжёлая" : "средняя"}`],
       act: () => this.openArmorPopup(a),
     });
     const st = this.styleFor(wd);
@@ -1813,7 +1813,7 @@ export class WristMenu {
     const wl = a.weight === "light" ? "Л" : a.weight === "medium" ? "С" : a.weight === "heavy" ? "Т" : "";
     if (wl) {
       ctx.font = "bold 15px system-ui, sans-serif";
-      ctx.fillStyle = "#e8ecf8";
+      ctx.fillStyle = a.weight === "light" ? "#6cb6ff" : a.weight === "medium" ? "#74e08a" : "#ff7466";
       ctx.fillText(wl, x + 7, y + h - 6);
     }
     // Оценка — в левом верхнем углу, как у оружия (числом).

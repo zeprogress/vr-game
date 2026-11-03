@@ -286,8 +286,13 @@ export function armorWeightName(weight: ArmorWeight): string {
   return ARMOR_WEIGHT_NAME[weight];
 }
 
+/** Описание без названия: вес и числа — чтобы не дублировать имя в карточке. */
+export function armorDescription(a: ArmorInstance): string {
+  return `Вес: ${armorWeightName(a.weight)} · ${armorStatsText(a)}`;
+}
+
 export function armorLabel(a: ArmorInstance): string {
-  return `${armorName(a)} · Вес: ${armorWeightName(a.weight)} · ${armorStatsText(a)}`;
+  return `${armorName(a)} · ${armorDescription(a)}`;
 }
 
 /** Рубиновое/уникальное/золотое — приставка к короткому имени. */
@@ -412,6 +417,7 @@ export function armorPcView(a: ArmorInstance): PcInvArmor {
     rolls: a.rolls.length,
     scrap: armorScrap(a),
     name: armorName(a),
+    desc: armorDescription(a),
     label: armorLabel(a),
     weight: a.weight,
     lvl: a.lvl,
