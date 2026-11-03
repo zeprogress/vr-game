@@ -6,11 +6,9 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import { terrainHeight } from "#shared/terrain";
+import { HUMAN } from "#shared/constants";
 import { NameTag } from "../../ui/NameTag";
 import type { ModelName } from "../models";
-
-/** Масштаб рига персонажа — как у аватаров игроков (LocalAvatar.RIG_SCALE). */
-const RIG_SCALE = 0.52;
 
 /**
  * NPC лагеря (трактирщик и т.п.): модель персонажа из пака, стоит на месте
@@ -34,7 +32,7 @@ export function spawnHubNpc(
   const root = new TransformNode(`npc_${title}`, scene);
   root.position.set(x, terrainHeight(x, z), z);
   root.rotationQuaternion = Quaternion.RotationYawPitchRoll(Math.atan2(faceX - x, faceZ - z), 0, 0);
-  const tag = new NameTag(scene, root, new Vector3(0, 2.5, 0), title, null, accent);
+  const tag = new NameTag(scene, root, new Vector3(0, HUMAN.height + 0.6, 0), title, null, accent);
   tag.setNameColor("#c79bff");
   tag.setScale(2.6);
   void (async () => {
@@ -45,7 +43,7 @@ export function spawnHubNpc(
       const rig = make();
       const holder = new TransformNode(`npcModel_${title}`, scene);
       holder.parent = root;
-      holder.scaling.setAll(RIG_SCALE);
+      holder.scaling.setAll(HUMAN.height / rig.nativeHeight);
       rig.root.parent = holder;
       rig.root.position.setAll(0);
       recolorCharacter(rig.root);

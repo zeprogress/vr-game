@@ -1,4 +1,5 @@
 import type { ClassId } from "#shared/classes2";
+import { HUMAN } from "#shared/constants";
 import type { ModelName } from "../world/models";
 import type { NewWeapon } from "../items/classWeapons";
 
@@ -17,7 +18,7 @@ export const HERO_MODEL: Record<ClassId, ModelName> = {
   spearman: "charSoldier",
   battlemage: "charViking",
 };
-export const HERO_H = 1.8;
+export const HERO_H = HUMAN.height;
 
 /** Что в руках у класса. */
 export function gearOf(c: ClassId, dual: boolean): { R?: Kind; L?: Kind } {

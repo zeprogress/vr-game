@@ -1,4 +1,4 @@
-import { SHIELD, WEAPON_DROP_MUL } from "./constants";
+import { HUMAN, SHIELD, WEAPON_DROP_MUL } from "./constants";
 import type { MobKind } from "./net/schema";
 
 export type ItemId =
@@ -395,7 +395,7 @@ function weaponItem(cls: WeaponClass, tier: WeaponTier): ItemDef {
 }
 
 /** Оружие в мире берут рукой с этого расстояния. */
-export const WEAPON_TAKE_REACH = 2.6;
+export const WEAPON_TAKE_REACH = HUMAN.reach;
 
 export function isItemId(v: unknown): v is ItemId {
   return typeof v === "string" && v in ITEMS;
@@ -404,7 +404,7 @@ export function isItemId(v: unknown): v is ItemId {
 export const BAG = {
   slots: 8,
   /** Ближе этого лут подбирается сам. */
-  pickupRadius: 1.9,
+  pickupRadius: HUMAN.reach,
   /** Сколько секунд обычный лут (банки хп и т.п.) лежит, прежде чем растаять (3 минуты). */
   dropLife: 180,
   /** Сколько секунд оружие лежит на земле, прежде чем растаять (10 минут) — чтобы не копилось на сервере вечно. */

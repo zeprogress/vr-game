@@ -106,20 +106,24 @@ export const MODELS = {
 export type ModelName = keyof typeof MODELS;
 
 /**
+ * Множитель для Unity-экспорта (scripts/unity-heightmap.mts) и старых
+ * потребителей. Веб-аватары больше не используют его: они нормируются по
+ * `HUMAN.height / rig.nativeHeight`, чтобы человек был 180 см. Для Unity
+ * здесь подобран множитель пака: 1.119 × 0.52 × 3.1 ≈ 1.8 м.
+ */
+export const MODEL_SCALE: Partial<Record<ModelName, number>> = { charHuman: 3.1, charElf: 3.1, charWoman: 3.1 };
+
+export function modelScale(name: ModelName): number {
+  return MODEL_SCALE[name] ?? 1;
+}
+
+
+/**
  * Модели со своими текстурами (PBR из файла): их не перекрашиваем в плоский цвет и не склеиваем в один меш —
  * иначе текстуры пропадают. Человек (charHuman) — ассет из /ASSETS/3D/human.
  */
 export const KEEP_MATERIALS: ReadonlySet<ModelName> = new Set<ModelName>(["charHuman", "charElf", "charWoman"]);
 
-/**
- * Множитель к общему масштабу персонажа: модели в файле крупнее или мельче пака Quaternius (Knight ≈ 3.2 м в нативе,
- * Человек ≈ 1.15 м). Человек по просьбе вдвое выше рыцаря (BOT_RIG_SCALE × этот множитель).
- */
-export const MODEL_SCALE: Partial<Record<ModelName, number>> = { charHuman: 5, charElf: 5, charWoman: 5 }; // рост ≈ 2.9 м (было 3.06 — 1.78 м)
-
-export function modelScale(name: ModelName): number {
-  return MODEL_SCALE[name] ?? 1;
-}
 
 /**
  * Посадка оружия (BOT_GEAR) подобрана в единицах кулака Quaternius. У модели с другим размером скелета

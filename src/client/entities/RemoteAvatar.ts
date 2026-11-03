@@ -31,10 +31,10 @@ import { StunStarsFx } from "../ui/StunStarsFx";
 import { WebCocoonFx } from "./WebCocoonFx";
 import type { Hittable } from "../combat/Hittable";
 import { makeBotBody } from "./botModels";
-import { loadRig, recolorCharacter, BOT_SKIN_MODELS, KEEP_MATERIALS, modelScale, type RigInstance, type ModelName } from "../world/models";
+import { loadRig, recolorCharacter, BOT_SKIN_MODELS, KEEP_MATERIALS, type RigInstance, type ModelName } from "../world/models";
 import { HandGrip, handsBusy } from "./handGrip";
 import { BlobShadow } from "../world/blobShadow";
-import { PLAYER, BOT } from "#shared/constants";
+import { PLAYER, BOT, HUMAN } from "#shared/constants";
 import { aegisTier, sharpPctOfText } from "#shared/items";
 import { isTwoHanded } from "#shared/hands";
 import { applySharpGlow } from "../items/weaponModels";
@@ -51,19 +51,17 @@ const BOT_MODEL_YAW = (() => {
   return p.has("byaw") && Number.isFinite(v) ? v : 0;
 })();
 /**
- * Единый масштаб персонажа. Не нормируем по высоте: у ведьмы/мага шляпа, у
- * гоблина низкий рост — пусть так и будет, естественный разброс. Было 0.78
- * (×1.5 от исходных 0.52), потом 0.62 — просили ещё меньше, вернули к
- * нативному размеру пака (0.52). Подбор вживую: `?botscale=0.45`.
+ * Масштаб персонажа: модель нормируется по росту 180 см, независимо от
+ * нативного размера пака. `?botscale=` остаётся отладочным множителем.
  */
 const BOT_RIG_SCALE = (() => {
   const v = Number(new URLSearchParams(location.search).get("botscale"));
-  return Number.isFinite(v) && v > 0.1 && v < 4 ? v : 0.52;
+  return Number.isFinite(v) && v > 0.1 && v < 4 ? v : 1;
 })();
-/** Масштаб заглушки — вровень с ригом (заглушка ~2.1 м «нативной», риг ~3.6). */
-const BOT_STUB_SCALE = BOT_RIG_SCALE * 1.7;
-/** Ноги модели ниже локального нуля аватара (ноль = уровень глаз ≈ 1.7 м). */
-const BOT_FEET_Y = -1.68;
+/** Масштаб заглушки — тоже под 180 см (нативная заглушка ~2.1 м). */
+const BOT_STUB_SCALE = BOT_RIG_SCALE * (HUMAN.height / 2.1);
+/** Ноги модели ниже локального нуля аватара (ноль = уровень глаз). */
+const BOT_FEET_Y = -HUMAN.eyeHeight;
 /**
  * Хват оружия у бота живёт в botGear.ts: значения меняются панелью `?gear=1`
  * прямо в игре. Замер по скелету пака: направление локоть→кулак совпадает с
@@ -1101,7 +1099,7 @@ export class RemoteAvatar implements Hittable {
         holder.position.set(0, BOT_FEET_Y, 0);
         rig.root.parent = holder;
         rig.root.position.setAll(0);
-        holder.scaling.setAll(BOT_RIG_SCALE * modelScale(model));
+        holder.scaling.setAll((HUMAN.height / rig.nativeHeight) * BOT_RIG_SCALE);
         // Шаг и бег — корпус на одной высоте, без подпрыгивания (bodySplit.dampRunBounce).
         dampRunBounce(rig.anims);
         try {
@@ -1136,8 +1134,8 @@ export class RemoteAvatar implements Hittable {
         this.head.isVisible = false;
         this.head.isPickable = false;
         // Плашка — точно над макушкой конкретной модели, облачко — над плашкой.
-        const tagY = BOT_FEET_Y + rig.nativeHeight * BOT_RIG_SCALE * modelScale(model) + 0.3;
-        this.botTagH = rig.nativeHeight * BOT_RIG_SCALE * modelScale(model) + 0.3;
+        const tagY = BOT_FEET_Y + HUMAN.height * BOT_RIG_SCALE + 0.3;
+        this.botTagH = HUMAN.height * BOT_RIG_SCALE + 0.3;
         this.nameTag.setAnchorY(tagY);
         this.bubbleY = tagY + 1.25 * this.tagScale; // над увеличенной плашкой
         this.bubble?.setAnchorY(this.bubbleY);

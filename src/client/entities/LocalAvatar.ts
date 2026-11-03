@@ -6,6 +6,7 @@ import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { BuffOrbitFx } from "../ui/BuffOutlineFx";
 import { CLASS_CLIP_NAMES, CLASS_ONE_SHOT, classClipsFor, type ClassAnimSet } from "../world/classPoses";
 import { HERO_MOVE_CLIPS, HERO_MOVE_ONE_SHOT, heroAnimSet, heroSkillClip, pickVariant } from "../world/heroMoves";
+import { HUMAN } from "#shared/constants";
 import type { ClassId, SkillId } from "../../shared/classes2";
 import { applyLegRate, applySplitWeight, blendSplit, dampRunBounce, legClip, legRate, startSplitWeight } from "./bodySplit";
 import { StunStarsFx } from "../ui/StunStarsFx";
@@ -17,7 +18,6 @@ import {
   recolorCharacter,
   BOT_SKIN_MODELS,
   KEEP_MATERIALS,
-  modelScale,
   type ModelName,
   type RigInstance,
 } from "../world/models";
@@ -36,9 +36,8 @@ const ONE_SHOT = new Set<string>(["swordslash", "recievehit", "pickup", "jump", 
 /** Подбор играем вдвое быстрее, как у RemoteAvatar (видно спектатору так же). */
 const PICKUP_RATE = 2;
 
-/** Масштаб и посадка модели — как у ботов (см. RemoteAvatar). */
-const RIG_SCALE = 0.52;
-const FEET_Y = -1.68;
+/** Масштаб под рост 180 см; ноги — под уровнем глаз. */
+const FEET_Y = -HUMAN.eyeHeight;
 const HIT_MS = 500;
 
 export class LocalAvatar {
@@ -318,9 +317,9 @@ export class LocalAvatar {
         holder.position.set(0, FEET_Y, 0);
         holder.rotationQuaternion = Quaternion.Identity();
         const curModel = this.model();
-        holder.scaling.setAll(RIG_SCALE * modelScale(curModel));
 
         const rig = make();
+        holder.scaling.setAll(HUMAN.height / rig.nativeHeight);
         rig.root.parent = holder;
         rig.root.position.setAll(0);
         if (!KEEP_MATERIALS.has(curModel)) recolorCharacter(rig.root);
