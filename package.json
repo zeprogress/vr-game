@@ -28,7 +28,8 @@
     "asset": "node scripts/asset.mjs",
     "lab:unity": "tsx scripts/unity-skill-lab.mts",
     "lab:check": "node --import tsx --test tests/shared/skillShow.test.ts tests/shared/skillShowHandlers.test.ts tests/shared/unitySkillLab.test.ts",
-    "server:rework": "ZEP_DATA_DIR=src/server/.data/rework tsx watch src/server/index.ts"
+    "server:rework": "ZEP_DATA_DIR=src/server/.data/rework tsx watch src/server/index.ts",
+    "dev:rework": "sh scripts/dev-rework.sh"
   },
   "dependencies": {
     "@babylonjs/core": "^7.34.0",
