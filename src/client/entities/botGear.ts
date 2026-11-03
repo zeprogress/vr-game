@@ -79,6 +79,9 @@ export const MODEL_SEATS: Record<string, Partial<Record<GearKind, { R: Seat3; L:
     },
   },
 };
+// Эльф и женщина-рыцарь используют тот же человеческий риг и кулак — та же посадка.
+MODEL_SEATS.charElf = MODEL_SEATS.charHuman;
+MODEL_SEATS.charWoman = MODEL_SEATS.charHuman;
 // </model-seats>
 
 /** Метка на кости кулака (ставит loadRig): чья это модель и во сколько раз её скелет меньше рыцаря. */

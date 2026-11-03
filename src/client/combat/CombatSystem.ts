@@ -372,6 +372,11 @@ export class CombatSystem {
 
   /** Пауза между ударами оружия относительно меча (кинжал/копьё/молот — своя; два клинка — по очереди, тот же темп). */
   /** Пауза между атаками этим оружием — общая формула (heroAttackInterval): ПК, телефон, VR и боты одинаковы. */
+  /** Масштаб оружия в руке: модели уже содержат свой внутренний масштаб. */
+  private weaponVisualScale(scale: number): number {
+    return scale;
+  }
+
   private attackInterval(k: ItemKind | "fist"): number {
     const w = k === "fist" ? "fist" : k === "bow" ? "bow" : isNewKind(k) ? k : "sword";
     return heroAttackInterval(w as AttackWeapon, this.prog.level, this.prog.attrs, this.atkSpeedAffix);
@@ -838,7 +843,7 @@ export class CombatSystem {
       item.mesh.rotationQuaternion = null;
       item.mesh.position.set(t.pos[0], t.pos[1], t.pos[2]);
       item.mesh.rotation.set(t.rot[0], t.rot[1], t.rot[2]);
-      item.mesh.scaling.setAll(t.scale);
+      item.mesh.scaling.setAll(this.weaponVisualScale(t.scale));
     }
   }
 
@@ -1936,7 +1941,7 @@ export class CombatSystem {
       const t = this.placement(item.kind, item.hand);
       item.mesh.position.set(t.pos[0], t.pos[1], t.pos[2]);
       item.mesh.rotation.set(t.rot[0], t.rot[1], t.rot[2]);
-      item.mesh.scaling.setAll(t.scale);
+      item.mesh.scaling.setAll(this.weaponVisualScale(t.scale));
     }
   }
 
@@ -1956,7 +1961,7 @@ export class CombatSystem {
   private anchorStaff(item: Item): void {
     const primary = item.hand as Side;
     const t = this.placement(item.kind as LoadoutItemKind, primary);
-    item.mesh.scaling.setAll(t.scale);
+    item.mesh.scaling.setAll(this.weaponVisualScale(t.scale));
 
     const grips = gripsOf(item.kind);
     const gyPrimary = (item.grip?.[primary] ?? "low") === "high" ? grips.high : grips.low;
@@ -2017,14 +2022,14 @@ export class CombatSystem {
     this.staffAxisZ.normalize();
 
     if (item.mesh.parent) item.mesh.parent = null;
-    item.mesh.scaling.setAll(t.scale);
+    item.mesh.scaling.setAll(this.weaponVisualScale(t.scale));
     if (!item.mesh.rotationQuaternion) item.mesh.rotationQuaternion = new Quaternion();
     Matrix.FromXYZAxesToRef(this.staffAxisX, this.staffAxisY, this.staffAxisZ, this.staffRotM);
     Quaternion.FromRotationMatrixToRef(this.staffRotM, item.mesh.rotationQuaternion);
 
     // Середина хватов (local y = (low+high)/2) — в середину между кистями.
     const gMid = (grips.low + grips.high) / 2;
-    this.staffAxisY.scaleToRef(gMid * t.scale, this.staffOtherW);
+    this.staffAxisY.scaleToRef(gMid * this.weaponVisualScale(t.scale), this.staffOtherW);
     item.mesh.position.set(
       (pLow.x + pHigh.x) / 2 - this.staffOtherW.x,
       (pLow.y + pHigh.y) / 2 - this.staffOtherW.y,
