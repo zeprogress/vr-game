@@ -34,6 +34,7 @@ import {
   SOUL_STEAL,
   SPEAR_FLURRY,
   SPEAR_HOP_TRAP,
+  SPEAR_RAIN,
   STEEL_AURA,
   SWARM_ARROW,
   THUNDER_SPIN,
@@ -80,6 +81,16 @@ export interface ShowStage {
   dur?: number;
   /** Режим оружия для «Ауры стали» и «Стягивания»: 0 щит, 1 один меч, 2 дуалы. */
   mode?: DrawMode;
+  /** Готовая точка прицела (сервер уже выбрал центр) — важнее выбора по манекенам. */
+  aim?: { x: number; z: number };
+  /** Готовая точка конца рывка/прыжка (сервер уже выбрал, куда встанет герой). */
+  end?: { x: number; z: number };
+  /** Упорядоченные цели для цепи: id манекенов в том порядке, в каком бьёт сервер. */
+  targets?: readonly string[];
+  /** Куда уходит «Кража душ» (самый раненый союзник); без неё — на себя. */
+  to?: { x: number; z: number; y?: number };
+  /** Сколько ударов/волн/стрел (дерево и кольца могут прибавить к данным умения). */
+  count?: number;
 }
 
 export interface ShowAct {
@@ -95,6 +106,9 @@ export interface ShowAct {
   v?: number;
   r?: number;
   mobId?: string;
+  /** Динамическое событие: сервер шлёт его сам (тик ауры, взрыв яда, стягивание),
+   *  лаборатория рисует его для предпросмотра. `playShow` на сервере такие пропускает. */
+  dyn?: boolean;
 }
 
 type Extra = Omit<ShowAct, "at" | "k" | "x" | "y" | "z">;
@@ -164,6 +178,7 @@ export function skillShow(id: SkillId, cls: ClassId, s: ShowStage): ShowAct[] | 
     return best;
   };
   const aim = (reach: number): P => {
+    if (s.aim) return { x: s.aim.x, y: s.y, z: s.aim.z };
     const m = target(reach);
     if (m) return { x: m.x, y: m.y, z: m.z };
     return fwd(Math.min(reach, 9));
@@ -185,10 +200,10 @@ export function skillShow(id: SkillId, cls: ClassId, s: ShowStage): ShowAct[] | 
           add(sk.castTime, "stunHit", feet, { r: sk.radius * R });
           return acts;
         }
-        const end = behind(m, (m.r ?? 0.6) + JUMP_BEHIND);
+        const end = s.end ?? behind(m, (m.r ?? 0.6) + JUMP_BEHIND);
         add(0, "leap", feet, { x2: end.x, z2: end.z, d: ASSASSIN_LEAP.time });
         add(ASSASSIN_LEAP.time, "stunHit", { x: m.x, y: m.y, z: m.z }, { r: m.r });
-        add(ASSASSIN_LEAP.time, "crit", { x: m.x, y: m.y + bodyH(m), z: m.z });
+        add(ASSASSIN_LEAP.time, "crit", { x: m.x, y: m.y + bodyH(m), z: m.z }, { dyn: true });
         return acts;
       }
       add(0, "stunBash", feet, { d: sk.castTime, r: sk.radius * R });
@@ -216,11 +231,12 @@ export function skillShow(id: SkillId, cls: ClassId, s: ShowStage): ShowAct[] | 
       const at = aim(SKILL.arrowRain.range);
       const radius = cls === "spearman" ? 5 * R : sk.radius * R;
       add(0, "arrowRain", at, { d: sk.castTime, r: radius });
-      // Визуал держится всё время зоны; залпы — по константе умения.
-      const hits = cls === "archer" ? SKILL.arrowRain.bowHits : sk.hits;
-      const gap = 0.55;
+      // Залпы — теми же шагами, что у сервера (arrowRainAt / skillRainAt / ливень копий).
+      const hits = s.count ?? (cls === "archer" ? SKILL.arrowRain.bowHits : cls === "spearman" ? SPEAR_RAIN.count : sk.hits);
+      const first = cls === "archer" ? 0.5 : cls === "spearman" ? 0.4 : 0.3;
+      const gap = cls === "archer" ? 1 : cls === "spearman" ? 0.8 : 0.6;
       for (let i = 0; i < hits; i++) {
-        add(sk.castTime + 0.2 + i * gap, "rainTick", at, { r: radius });
+        add(sk.castTime + first + i * gap, "rainTick", at, { r: radius });
       }
       return acts;
     }
@@ -234,7 +250,8 @@ export function skillShow(id: SkillId, cls: ClassId, s: ShowStage): ShowAct[] | 
       const m = target(11);
       const hop = cls === "archer" ? 7 : cls === "spearman" ? 4 : 0;
       let end: P;
-      if (m && cls === "assassin") end = behind(m, (m.r ?? 0.6) + JUMP_BEHIND);
+      if (s.end) end = { x: s.end.x, y: s.y, z: s.end.z };
+      else if (m && cls === "assassin") end = behind(m, (m.r ?? 0.6) + JUMP_BEHIND);
       else if (m) end = { x: m.x - fx * hop, y: s.y, z: m.z - fz * hop };
       else end = fwd(-hop || -8);
       add(0, "shadowStep", feet, { x2: end.x, z2: end.z, v });
@@ -267,7 +284,7 @@ export function skillShow(id: SkillId, cls: ClassId, s: ShowStage): ShowAct[] | 
 
     case "whirlwind": {
       if (cls === "spearman") {
-        const F = { ...SPEAR_FLURRY, duration: SPEAR_FLURRY.duration * D, range: SPEAR_FLURRY.range * R };
+        const F = { ...SPEAR_FLURRY, duration: SPEAR_FLURRY.duration * D, range: SPEAR_FLURRY.range * R, thrusts: s.count ?? SPEAR_FLURRY.thrusts };
         add(0, "spearFlurry", feet, { d: F.duration, r: F.range });
         for (let i = 0; i < F.thrusts; i++) {
           const t = (F.duration / F.thrusts) * (i + 0.5);
@@ -275,7 +292,7 @@ export function skillShow(id: SkillId, cls: ClassId, s: ShowStage): ShowAct[] | 
         }
         return acts;
       }
-      const hits = sk.hits;
+      const hits = s.count ?? sk.hits;
       add(0, "whirl", feet, { d: WHIRL.duration * D, r: sk.radius * R, v: hits });
       if (cls === "battlemage") {
         const out = mobs
@@ -304,10 +321,12 @@ export function skillShow(id: SkillId, cls: ClassId, s: ShowStage): ShowAct[] | 
     }
 
     case "chain": {
-      const hops = cls === "battlemage" ? CHAIN_HAMMER.hops : sk.hits;
+      const hops = s.count ?? (cls === "battlemage" ? CHAIN_HAMMER.hops : sk.hits);
       const used = new Set<string>();
+      const order = s.targets?.map((id) => mobs.find((m) => m.id === id)).filter((m): m is ShowMob => !!m) ?? [];
+      const ordered = order.length > 0;
       let from: P = { x: s.x, y: s.y + 1.2, z: s.z };
-      let cur = target(sk.radius);
+      let cur = ordered ? order[0] : target(sk.radius);
       if (!cur) {
         add(0, "chainHit", from, { x2: aim(sk.radius).x, z2: aim(sk.radius).z, d: s.y + 1.2, r: 0, v });
         return acts;
@@ -317,13 +336,16 @@ export function skillShow(id: SkillId, cls: ClassId, s: ShowStage): ShowAct[] | 
         add(0, "chainHit", from, { x2: cur.x, z2: cur.z, d: cur.y + bodyH(cur), r: i, v });
         from = { x: cur.x, y: cur.y + bodyH(cur), z: cur.z };
         let next: ShowMob | null = null;
-        let bd = CHAIN.jump * R;
-        for (const o of mobs) {
-          if (used.has(o.id)) continue;
-          const d = Math.hypot(o.x - cur.x, o.z - cur.z);
-          if (d < bd) {
-            bd = d;
-            next = o;
+        if (ordered) next = order[i + 1] ?? null;
+        else {
+          let bd = CHAIN.jump * R;
+          for (const o of mobs) {
+            if (used.has(o.id)) continue;
+            const d = Math.hypot(o.x - cur.x, o.z - cur.z);
+            if (d < bd) {
+              bd = d;
+              next = o;
+            }
           }
         }
         cur = next;
@@ -335,7 +357,7 @@ export function skillShow(id: SkillId, cls: ClassId, s: ShowStage): ShowAct[] | 
     case "plague": {
       add(0, "plagueOn", feet, { d: PLAGUE.duration * D });
       const m = target(3);
-      if (m) add(0.8, "plagueBurst", { x: m.x, y: m.y, z: m.z }, { r: PLAGUE.burstRadius * R, d: m.y + bodyH(m) });
+      if (m) add(0.8, "plagueBurst", { x: m.x, y: m.y, z: m.z }, { r: PLAGUE.burstRadius * R, d: m.y + bodyH(m), dyn: true });
       return acts;
     }
 
@@ -349,8 +371,9 @@ export function skillShow(id: SkillId, cls: ClassId, s: ShowStage): ShowAct[] | 
     case "soulSteal": {
       const m = target(SOUL_STEAL.reach);
       const at = m ? { x: m.x, y: m.y + bodyH(m), z: m.z } : { ...aim(SOUL_STEAL.reach), y: s.y + 1.2 };
-      add(0, "soulSteal", at, { x2: s.x, z2: s.z, d: s.y + 1.5 });
-      add(0.15, "healHit", { x: s.x, y: s.y + 1.2, z: s.z });
+      const to = s.to ?? { x: s.x, z: s.z };
+      add(0, "soulSteal", at, { x2: to.x, z2: to.z, d: to.y ?? s.y + 1.5 });
+      add(0.15, "healHit", { x: s.x, y: s.y + 1.2, z: s.z }, { dyn: true });
       return acts;
     }
 
@@ -365,7 +388,7 @@ export function skillShow(id: SkillId, cls: ClassId, s: ShowStage): ShowAct[] | 
       if (mode !== 2) {
         const inR = mobs.filter((m) => Math.hypot(m.x - s.x, m.z - s.z) <= sk.radius * R + (m.r ?? 0));
         for (let t = 1; t <= Math.floor(STEEL_AURA.duration * D); t++) {
-          for (const m of inR) add(t, "steelBurn", { x: m.x, y: m.y + 0.6, z: m.z }, { v: mode });
+          for (const m of inR) add(t, "steelBurn", { x: m.x, y: m.y + 0.6, z: m.z }, { v: mode, dyn: true });
         }
       }
       return acts;
@@ -385,7 +408,7 @@ export function skillShow(id: SkillId, cls: ClassId, s: ShowStage): ShowAct[] | 
     case "lifeArrow": {
       const m = target(sk.radius);
       const at = m ? { x: m.x, y: m.y + bodyH(m), z: m.z } : { ...aim(sk.radius), y: s.y + 1.2 };
-      add(0, "skillShot", feet, { d: 0, r: 1 });
+      add(0, "skillShot", feet, { d: 0, r: 1, dyn: true });
       add(0.05, "lifeArrow", { x: s.x, y: s.y + 1.2, z: s.z }, { x2: at.x, z2: at.z, d: at.y });
       return acts;
     }
@@ -399,7 +422,7 @@ export function skillShow(id: SkillId, cls: ClassId, s: ShowStage): ShowAct[] | 
     case "blastArrow": {
       const m = target(BLAST_ARROW.range);
       const at = m ? { x: m.x, y: m.y + bodyH(m), z: m.z } : { ...aim(BLAST_ARROW.range), y: s.y + 1.2 };
-      add(0, "skillShot", feet, { d: 0, r: 1 });
+      add(0, "skillShot", feet, { d: 0, r: 1, dyn: true });
       add(0.05, "blastArrow", { x: s.x, y: s.y + 1.2, z: s.z }, {
         x2: at.x, z2: at.z, d: at.y, r: BLAST_ARROW.radius * R,
       });
@@ -407,7 +430,7 @@ export function skillShow(id: SkillId, cls: ClassId, s: ShowStage): ShowAct[] | 
     }
 
     case "arrowStorm": {
-      const A = { ...ARROW_STORM, radius: ARROW_STORM.radius * R };
+      const A = { ...ARROW_STORM, radius: ARROW_STORM.radius * R, waves: s.count ?? ARROW_STORM.waves };
       add(0, "stormWave", feet, { d: 0, r: A.radius });
       for (let w = 0; w < A.waves; w++) {
         add(A.first - A.fall + w * A.gap, "stormWave", feet, { d: w + 1, r: A.radius });
@@ -422,11 +445,11 @@ export function skillShow(id: SkillId, cls: ClassId, s: ShowStage): ShowAct[] | 
     }
 
     case "swarmArrow": {
-      const S = { ...SWARM_ARROW, range: SWARM_ARROW.range * R, blastR: SWARM_ARROW.blastR * R };
+      const S = { ...SWARM_ARROW, range: SWARM_ARROW.range * R, blastR: SWARM_ARROW.blastR * R, arrows: s.count ?? SWARM_ARROW.arrows };
       const yaw0 = Math.atan2(fx, fz);
       for (let volley = 0; volley < S.volleys; volley++) {
         const at0 = volley * S.volleyGap;
-        add(at0, "skillShot", feet, { d: volley, r: S.arrows });
+        add(at0, "skillShot", feet, { d: volley, r: S.arrows, dyn: true });
         for (let i = 0; i < S.arrows; i++) {
           const a = yaw0 + (S.arrows > 1 ? (i / (S.arrows - 1) - 0.5) * 2 * S.halfAngle : 0);
           const ax = Math.sin(a);
@@ -455,7 +478,7 @@ export function skillShow(id: SkillId, cls: ClassId, s: ShowStage): ShowAct[] | 
     }
 
     case "barrierArrow": {
-      add(0, "skillShot", feet, { d: 0, r: 12 });
+      add(0, "skillShot", feet, { d: 0, r: 12, dyn: true });
       add(0.02, "arrowBarrier", feet, { d: BARRIER_ARROW.duration * D, r: sk.radius * R });
       return acts;
     }
@@ -466,7 +489,7 @@ export function skillShow(id: SkillId, cls: ClassId, s: ShowStage): ShowAct[] | 
       const at = m ? { x: m.x, y: m.y, z: m.z } : aim(WEB_ARROW.range);
       const r = sk.radius * k * R;
       const sec = WEB_ARROW.duration * k * D;
-      add(0, "skillShot", feet, { d: 0, r: 1 });
+      add(0, "skillShot", feet, { d: 0, r: 1, dyn: true });
       add(0.02, "webShot", { x: s.x, y: s.y + 1.2, z: s.z }, { x2: at.x, z2: at.z, d: at.y });
       add(skillArrowTime(Math.hypot(at.x - s.x, at.z - s.z)), "webZone", at, { d: sec, r });
       return acts;

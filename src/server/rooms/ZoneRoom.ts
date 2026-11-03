@@ -86,6 +86,7 @@ import { MOB_MID_K, SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPIT
 import { DragonFight, type DragonHost } from "./dragonFight";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
 import { hammerPhysStrike, skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
+import { skillShow, type ShowMob, type ShowStage } from "#shared/skillShow";
 import { assassinLeapDamage, crushHealFrac, fanKnifeDamage, hammerWhirlHit, sealBoltDamage, spearRainDamage, thunderSpinMul } from "#shared/skillMath";
 import { RaidFight, type RaidHost } from "./raidFight";
 import { heroStatLine, heroStatRows } from "#shared/heroStats";
@@ -209,7 +210,7 @@ import { wallSlide } from "../sim/wallSlide";
 import { leashCut } from "../sim/leash";
 import { ATTR2 } from "#shared/attrs2";
 import { DRAW_IN, drawInPlan, drawModeOf, type DrawMode } from "#shared/drawIn";
-import { STEEL_AURA, steelAuraTick, steelModeOf, type SteelMode, ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, plagueAtk, SMOKE, SOUL_STEAL, skillAttrMul, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, hammerWaveDamage, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, MARK_FOCUS, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { STEEL_AURA, steelAuraTick, steelModeOf, type SteelMode, ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, plagueAtk, SMOKE, SOUL_STEAL, skillAttrMul, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, hammerWaveDamage, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, MARK_FOCUS, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillAttrs, type SkillId, type Weapon2 } from "#shared/classes2";
 import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC } from "#shared/ultimates";
 import {
   MAGIC,
@@ -9993,20 +9994,21 @@ export class ZoneRoom extends Room<ZoneState> {
    * Точки — drawInPlan (mode: 0 — кучка перед fx/fz, 1 — по бокам, 2 — кольцом вокруг feet). Визуал — одни и те же act.
    * Боссов сюда не передавать (их тянуть нельзя).
    */
-  private yankMobs(ownerId: string, mobs: Mob[], feet: { x: number; y: number; z: number }, fx: number, fz: number, mode: DrawMode, radius: number, stunSec: number): void {
+  private yankMobs(ownerId: string, mobs: Mob[], feet: { x: number; y: number; z: number }, fx: number, fz: number, mode: DrawMode, radius: number, stunSec: number, emit = true): void {
     const plan = drawInPlan(mode, fx, fz, feet.x, feet.z, mobs);
-    this.broadcast(MSG.act, { k: "drawIn", id: ownerId, ...feet, d: DRAW_IN.sec, r: radius, v: mode } satisfies ActRelay);
+    if (emit) this.broadcast(MSG.act, { k: "drawIn", id: ownerId, ...feet, d: DRAW_IN.sec, r: radius, v: mode } satisfies ActRelay);
     mobs.forEach((m, i) => {
       const q = plan[i];
       this.sim.pullMob(m.id, q.x, q.z, DRAW_IN.sec);
       this.sim.stunMob(m.id, stunSec);
-      if (i < 12) {
+      if (emit && i < 12) {
         this.broadcast(MSG.act, {
           k: "drawPull", id: ownerId, mobId: m.id, x: m.x, y: m.y + MOB.bodyRadius * m.scale, z: m.z, x2: q.x, z2: q.z, d: DRAW_IN.sec, v: mode,
         } satisfies ActRelay);
       }
     });
     // Удар о землю — в момент прихода; точки уникальны по кучкам, сообщаем до 6.
+    if (!emit) return;
     this.clock.setTimeout(() => {
       for (const q of plan.slice(0, 6)) {
         this.broadcast(MSG.act, { k: "drawImpact", id: ownerId, x: q.x, y: terrainHeight(q.x, q.z), z: q.z, v: mode } satisfies ActRelay);
@@ -10232,6 +10234,38 @@ export class ZoneRoom extends Room<ZoneState> {
       const pp = this.state.players.get(ownerId);
       if (pp) act({ k: "skillShot", x: pp.head.x, y: pp.head.y - PLAYER.eyeHeight, z: pp.head.z, d: volley, r: n });
     };
+    /**
+     * Показать умение по общему сценарию shared/skillShow.ts — тому же, что играет
+     * веб- и Unity-лаборатория. Числа и порядок эффектов больше не живут в двух местах.
+     * События с `dyn` (тики ауры, взрыв яда, стягивание) шлёт свой серверный тик — здесь пропускаем.
+     */
+    const show = (id: SkillId, extra: Partial<ShowStage> = {}): void => {
+      const mobs: ShowMob[] = [];
+      for (const m of this.sim.mobs.values()) {
+        if (m.dead) continue;
+        if (Math.hypot(m.x - p.head.x, m.z - p.head.z) > 40) continue;
+        mobs.push({ id: m.id, x: m.x, y: m.y, z: m.z, r: this.sim.targetRadius("mob", m.id), h: MOB.bodyRadius * m.scale });
+      }
+      const acts = skillShow(id, cls, {
+        x: p.head.x, y: feetY, z: p.head.z, yaw: rt.yaw,
+        attrs: p as unknown as SkillAttrs,
+        rad: RAD, dur: DUR,
+        mobs,
+        ...extra,
+      });
+      if (!acts) return;
+      for (const a of acts) {
+        if (a.dyn) continue;
+        const msg: ActRelay = { k: a.k, id: ownerId, x: a.x, y: a.y, z: a.z, v: a.v ?? v };
+        if (a.d !== undefined) msg.d = a.d;
+        if (a.x2 !== undefined) msg.x2 = a.x2;
+        if (a.z2 !== undefined) msg.z2 = a.z2;
+        if (a.r !== undefined) msg.r = a.r;
+        if (a.mobId !== undefined) msg.mobId = a.mobId;
+        if (a.at <= 0.001) this.broadcast(MSG.act, msg);
+        else this.clock.setTimeout(() => this.broadcast(MSG.act, msg), a.at * 1000);
+      }
+    };
     /** Стрела умения в моба: урон ×mul силы удара, крит — как у выстрела (роллы лука, УДЧ), у каждой стрелы свой. */
     const arrowHit = (m: Mob, mul: number, fromX: number, fromZ: number): void => {
       if (m.dead) return;
@@ -10256,7 +10290,7 @@ export class ZoneRoom extends Room<ZoneState> {
           const behind = this.sim.targetRadius("mob", m0.id) + JUMP_BEHIND;
           const lx = m0.x + ax * behind;
           const lz = m0.z + az * behind;
-          act({ k: "leap", x: p.head.x, y: feetY, z: p.head.z, x2: lx, z2: lz, d: L.time });
+          show("stunBash", { targetId: m0.id, end: { x: lx, z: lz } });
           this.clock.setTimeout(() => {
             const pp = this.state.players.get(ownerId);
             if (!pp || pp.dead) return;
@@ -10268,7 +10302,7 @@ export class ZoneRoom extends Room<ZoneState> {
           }, L.time * 1000);
           return true;
         }
-        act({ k: "stunBash", x: p.head.x, y: feetY, z: p.head.z, d: sk.castTime, r: sk.radius });
+        show("stunBash");
         // Воин: крит меча у каждого задетого — роллы «Крит» и УДЧ, как у обычного удара.
         const bashCrit = cls === "warrior" ? rolledCrit(p, p.rightCls === "sword" ? "right" : "left", rt) : null;
         this.clock.setTimeout(() => {
@@ -10276,7 +10310,6 @@ export class ZoneRoom extends Room<ZoneState> {
           if (!pp || pp.dead) return;
           const px = pp.head.x;
           const pz = pp.head.z;
-          act({ k: "stunHit", x: px, y: pp.head.y - PLAYER.eyeHeight, z: pz, r: sk.radius });
           for (const m of around(px, pz, sk.radius)) {
             const [dx, dz] = dirTo(m, px, pz);
             const critM = bashCrit ? rollCritMult("sword", Math.random, false, bashCrit.chance, bashCrit.mult, SWORD_CRIT_MULT, attrOf(pp, "luc")) : 1;
@@ -10296,7 +10329,6 @@ export class ZoneRoom extends Room<ZoneState> {
             // Громовой удар: молнии ещё по 3 мобам подальше.
             const far = around(px, pz, 8 * RNG).filter((m) => Math.hypot(m.x - px, m.z - pz) > sk.radius * 0.6).slice(0, 3);
             for (const m of far) {
-              act({ k: "chainHit", x: px, y: pp.head.y, z: pz, x2: m.x, z2: m.z, d: m.y + MOB.bodyRadius * m.scale, r: 0 });
               this.skillHitMob(ownerId, m, sk.dmgMult * pow.dmg, 0, 0, false, false, true, false, hit);
             }
           }
@@ -10310,9 +10342,8 @@ export class ZoneRoom extends Room<ZoneState> {
           const hx = p.head.x - fx * ASSASSIN_FAN_HOP * RNG;
           const hz = p.head.z - fz * ASSASSIN_FAN_HOP * RNG;
           const fanR = FAN.range * RNG;
-          act({ k: "shadowStep", x: p.head.x, y: feetY, z: p.head.z, x2: hx, z2: hz });
+          show("arrowRain", { end: { x: hx, z: hz }, yaw: Math.atan2(fx, fz) });
           if (isBot) this.placeBotAt(p, hx, hz);
-          act({ k: "fanKnives", x: p.head.x, y: feetY, z: p.head.z, x2: p.head.x + fx * fanR, z2: p.head.z + fz * fanR, d: FAN.volleys });
           // Веер: сколько залпов — столько бросков делает модель (уедет в акте «cast»).
           rt.castReps = FAN.volleys;
           rt.castSec = 0.15 + (FAN.volleys - 1) * 0.18 + 0.12;
@@ -10337,7 +10368,8 @@ export class ZoneRoom extends Room<ZoneState> {
         const spears = cls === "spearman";
         const radius = spears ? 5 * RAD : sk.radius;
         const [cx, cz] = clampPoint(SKILL.arrowRain.range, 12);
-        act({ k: "arrowRain", x: cx, y: terrainHeight(cx, cz), z: cz, d: sk.castTime, r: radius });
+        const rainHits = cls === "archer" ? SKILL.arrowRain.bowHits : cls === "spearman" ? 3 + tCount : SKILL.arrowRain.hits + tCount;
+        show("arrowRain", { aim: { x: cx, z: cz }, count: rainHits });
         this.clock.setTimeout(() => {
           const pp = this.state.players.get(ownerId);
           if (!pp) return;
@@ -10347,7 +10379,6 @@ export class ZoneRoom extends Room<ZoneState> {
             // Ливень копий: три тяжёлых копья (+ дерево), каждое оглушает.
             for (let i = 0; i < 3 + tCount; i++) {
               this.clock.setTimeout(() => {
-                this.broadcast(MSG.act, { k: "rainTick", id: ownerId, x: cx, y: terrainHeight(cx, cz), z: cz } satisfies ActRelay);
                 for (const m of around(cx, cz, radius)) {
                   const [dx, dz] = dirTo(m, cx, cz);
                   this.skillHitMob(ownerId, m, spearRainDamage(pow.dmg), dx, dz, true, false, false, false, hit);
@@ -10390,13 +10421,11 @@ export class ZoneRoom extends Room<ZoneState> {
         if (cls === "spearman") {
           // Ловушка копейщика: мобы вокруг стягиваются к старому месту в кучку — как «Стягивание» воина — и замедлены.
           const T = { ...SPEAR_HOP_TRAP, radius: SPEAR_HOP_TRAP.radius * RAD };
-          act({ k: "seal", x: sx, y: feetY, z: sz, d: SPEAR_HOP_TRAP.seconds * DUR, r: T.radius });
           const caught = around(sx, sz, T.radius);
           for (const m of caught) slow(m.id, SPEAR_HOP_TRAP.seconds, T.slow);
           this.yankMobs(ownerId, caught.filter((m) => m.kind !== "boss"), { x: sx, y: feetY, z: sz }, 0, 0, 0, T.radius, (DRAW_IN.sec + DRAW_IN.holdSec) * DUR);
         } else if (archer) {
           // Дымовая ловушка на старом месте: кто войдёт за 4 с — пригвождён на 3 с.
-          act({ k: "seal", x: sx, y: feetY, z: sz, d: 4 * DUR, r: 2.5 * RAD });
           for (let t = 0; t < Math.round(8 * DUR); t++) {
             this.clock.setTimeout(() => {
               for (const m of around(sx, sz, 2.5 * RAD)) root(m.id, 3);
@@ -10411,24 +10440,23 @@ export class ZoneRoom extends Room<ZoneState> {
             ez += ((ez - sz) / L) * 1.4;
           }
         }
+        show("shadowStep", { targetId: stepTarget?.id, end: { x: ex, z: ez } });
         if (isBot) {
           this.placeBotAt(p, ex, ez, stepTarget ?? undefined);
           ex = p.head.x;
           ez = p.head.z;
         }
-        act({ k: "shadowStep", x: sx, y: feetY, z: sz, x2: ex, z2: ez });
         return true;
       }
       case "crush": {
         const [cx, cz] = clampPoint(8, 3.5);
         const cy = terrainHeight(cx, cz);
-        act({ k: "crushMark", x: cx, y: cy, z: cz, d: sk.castTime, r: sk.radius });
+        show("crush", { aim: { x: cx, z: cz }, y: cy });
         this.clock.setTimeout(() => {
           const pp = this.state.players.get(ownerId);
           if (!pp || pp.dead) return;
           // Бот приземляется в центр удара, но не внутрь моба — его выталкивает наружу.
           if (isBot) this.placeBotAt(pp, cx, cz);
-          act({ k: "crushHit", x: cx, y: cy, z: cz, r: sk.radius });
           for (const m of around(cx, cz, sk.radius)) {
             const [dx, dz] = dirTo(m, cx, cz);
             this.skillHitMob(ownerId, m, sk.dmgMult * pow.dmg, dx, dz, false, false, pow.magic, false, hit);
@@ -10439,7 +10467,6 @@ export class ZoneRoom extends Room<ZoneState> {
             // Отхил бури: сам герой и союзники в круге волны.
             // ВАЖНО: это зона НА ЗЕМЛЕ (лечит вокруг точки удара), поэтому и акт отдельный —
             // healAura (летит за героем) тут был бы обманом: круг остался бы в точке, а свет уехал.
-            act({ k: "healZone", x: cx, y: cy, z: cz, d: 1.5, r: sk.radius });
             // Лечение растёт с мудростью кастера; союзники — в большом радиусе, тем же числом.
             const frac = crushHealFrac(attrOf(pp, "wis") - ATTR2.start);
             this.state.players.forEach((ally) => {
@@ -10457,7 +10484,8 @@ export class ZoneRoom extends Room<ZoneState> {
           // Град выпадов: сколько выпадов — столько повторов движения модели (уедет в акте «cast»).
           rt.castReps = F.thrusts;
           rt.castSec = F.duration;
-          act({ k: "spearFlurry", x: p.head.x, y: feetY, z: p.head.z, d: F.duration, r: F.range });
+          const [ffx, ffz] = fwd();
+          show("whirlwind", { count: F.thrusts, rad: RAD * RNG, yaw: Math.atan2(ffx, ffz) });
           for (let i = 0; i < F.thrusts; i++) {
             this.clock.setTimeout(() => {
               const pp = this.state.players.get(ownerId);
@@ -10478,7 +10506,6 @@ export class ZoneRoom extends Room<ZoneState> {
                 // ◆ «Стена копий»: выпады отбрасывают.
                 if (tk.flurryShove) this.sim.shoveMob(m.id, vx / d, vz / d, 3);
               }
-              this.broadcast(MSG.act, { k: "spearPierce", id: ownerId, x: ox, y: pp.head.y, z: oz, x2: ox + fx * F.range, z2: oz + fz * F.range, r: F.cone } satisfies ActRelay);
             }, ((F.duration / F.thrusts) * (i + 0.5)) * 1000);
           }
           return true;
@@ -10498,17 +10525,14 @@ export class ZoneRoom extends Room<ZoneState> {
         rt.castSec = WHIRL.duration;
         rt.whirlUntil = this.elapsed + (cls === "assassin" ? WHIRL.assassinInvulSec : WHIRL.duration);
         rt.whirlKind = cls === "assassin" ? 2 : cls === "warrior" ? 1 : 0;
-        // v — сколько УДАРОВ вокруг себя: модель должна крутиться столько же раз (клиет делает v оборотов за d с).
-        // Через broadcast, а не local act(): у act() поле v занято классом, а здесь нужен счёт ударов.
-        this.broadcast(MSG.act, {
-          k: "whirl", id: ownerId, x: p.head.x, y: feetY, z: p.head.z, d: WHIRL.duration, r: radius, v: hits,
-        } satisfies ActRelay);
         const step = WHIRL.duration / hits;
+        // v — сколько УДАРОВ вокруг себя: модель должна крутиться столько же раз (клиент делает v оборотов за d с).
+        const [wfx, wfz] = fwd();
+        show("whirlwind", { count: hits, yaw: Math.atan2(wfx, wfz) });
         // Боевой маг: удары молотом — физика от силы (как у воина); молния в конце — магия от интеллекта (pow).
         const hitDmg = cls === "battlemage" ? hammerWhirlHit(1, hammerPhysStrike(p.level, p, this.strikeHandFor(p, cls, rt))) * this.buffMult(ownerId, "dmg") : pow.dmg;
         const hitMagic = cls === "battlemage" ? false : pow.magic;
         // Ассасин — вихрь-рывок: проносится вперёд (бота переносим по шагам; игрок летит сам — Game.castSkill).
-        const [wfx, wfz] = fwd();
         for (let i = 0; i < hits; i++) {
           this.clock.setTimeout(() => {
             const pp = this.state.players.get(ownerId);
@@ -10534,7 +10558,6 @@ export class ZoneRoom extends Room<ZoneState> {
               const out = around(pp.head.x, pp.head.z, THUNDER_SPIN.range * RNG).find((m) => !near.includes(m));
               if (out) {
                 const boltMul = thunderSpinMul(attrOf(pp, "int") - ATTR2.start);
-                act({ k: "chainHit", x: pp.head.x, y: pp.head.y, z: pp.head.z, x2: out.x, z2: out.z, d: out.y + MOB.bodyRadius * out.scale, r: 1 });
                 this.skillHitMob(ownerId, out, boltMul * pow.dmg, 0, 0, false, false, true, false, hit);
               }
             }
@@ -10557,7 +10580,7 @@ export class ZoneRoom extends Room<ZoneState> {
         if (!bless && !rally) {
           for (const m of around(p.head.x, p.head.z, sk.radius)) this.sim.tauntMob(m.id, ownerId, WARCRY.aggroSec * DUR);
         }
-        act({ k: "warcry", x: p.head.x, y: feetY, z: p.head.z, d: (bless ? WARCRY.blessDuration : WARCRY.duration) * DUR + tDur, r: sk.radius });
+        show("warcry");
         return true;
       }
       case "mark": {
@@ -10571,7 +10594,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sim.markMob(m.id, ownerId, md, cls === "archer" ? 1 : MARK.dmgMul);
         if (cls === "spearman") slow(m.id, MARK.duration, 1 - MARK.slow);
         this.marks.set(m.id, { owner: ownerId, until: this.elapsed + md });
-        act({ k: "markOn", x: m.x, y: m.y, z: m.z, mobId: m.id, d: md });
+        show("mark", { targetId: m.id, aim: { x: m.x, z: m.z } });
         return true;
       }
       case "massHeal": {
@@ -10581,7 +10604,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const total = healAmountFor(p.level, p, BOT.healCharge) * BOT.healGroupFraction * rolledDmgMul(p, h, rt) * HEAL_AURA.totalMul * tHeal;
         this.dropOwnerZones(ownerId, "massHeal");
         this.healAuras.push({ owner: ownerId, kind: "massHeal", r: sk.radius, until: this.elapsed + HEAL_AURA.duration * DUR, perTick: total / (HEAL_AURA.duration * 2), tickT: 0 });
-        act({ k: "healAura", x: p.head.x, y: feetY, z: p.head.z, d: HEAL_AURA.duration * DUR, r: sk.radius });
+        show("massHeal");
         return true;
       }
       case "drawIn": {
@@ -10592,7 +10615,9 @@ export class ZoneRoom extends Room<ZoneState> {
         const near = [...this.sim.mobs.values()].filter(
           (m) => !m.dead && m.kind !== "boss" && !m.immune && Math.hypot(m.x - p.head.x, m.z - p.head.z) - this.sim.targetRadius("mob", m.id) <= DRAW_IN.radius * RAD + (tm.rad ?? 0),
         );
-        this.yankMobs(ownerId, near, { x: p.head.x, y: feetY, z: p.head.z }, fx, fz, mode, DRAW_IN.radius * RAD + (tm.rad ?? 0), (DRAW_IN.sec + DRAW_IN.holdSec) * DUR + tDur);
+        const nearShow = near.map((m) => ({ id: m.id, x: m.x, y: m.y, z: m.z, r: this.sim.targetRadius("mob", m.id), h: MOB.bodyRadius * m.scale }));
+        show("drawIn", { mode, mobs: nearShow, yaw: Math.atan2(fx, fz) });
+        this.yankMobs(ownerId, near, { x: p.head.x, y: feetY, z: p.head.z }, fx, fz, mode, DRAW_IN.radius * RAD + (tm.rad ?? 0), (DRAW_IN.sec + DRAW_IN.holdSec) * DUR + tDur, false);
         return true;
       }
       case "steelAura": {
@@ -10604,43 +10629,24 @@ export class ZoneRoom extends Room<ZoneState> {
         const tick = { ...tick0, dmg: tick0.dmg * (1 + (tm.dmg ?? 0)) * (tm.dmgMul ?? 1) };
         this.dropOwnerZones(ownerId, "steelAura");
         this.steelAuras.push({ owner: ownerId, kind: "steelAura", r: sk.radius, until: this.elapsed + STEEL_AURA.duration * DUR, mode, dmg: tick.dmg, tickT: 0 });
-        this.broadcast(MSG.act, {
-          k: "steelAura", id: ownerId, x: p.head.x, y: feetY, z: p.head.z, d: STEEL_AURA.duration * DUR, r: sk.radius,
-          v: ["shield", "sword", "dual"].indexOf(mode),
-        } satisfies ActRelay);
+        show("steelAura", { mode: ["shield", "sword", "dual"].indexOf(mode) as DrawMode });
         return true;
       }
       case "chain": {
         if (cls === "support") return this.healChain(ownerId, p, pow.dmg, v);
+        const hammer = cls === "battlemage";
+        const hits = (hammer ? CHAIN_HAMMER.hops : sk.hits) + tCount;
+        const order: Mob[] = [];
+        const hitSet = new Set<string>();
         let cur: Mob | null = target(sk.radius, fwd());
         if (!cur) {
           rt.skillAt[kind] = -999;
           return false;
         }
-        const hammer = cls === "battlemage";
-        const hits = (hammer ? CHAIN_HAMMER.hops : sk.hits) + tCount;
-        const hitSet = new Set<string>();
-        let fromX = p.head.x;
-        let fromY = p.head.y - 0.3;
-        let fromZ = p.head.z;
-        let dmg = sk.dmgMult * pow.dmg;
-        for (let i = 0; i < hits && cur; i++) {
+        while (cur && order.length < hits) {
           const m: Mob = cur;
+          order.push(m);
           hitSet.add(m.id);
-          const toY = m.y + MOB.bodyRadius * m.scale;
-          act({ k: "chainHit", x: fromX, y: fromY, z: fromZ, x2: m.x, z2: m.z, d: toY, r: i });
-          const dd = dmg;
-          const dx = m.x - fromX;
-          const dz = m.z - fromZ;
-          this.clock.setTimeout(() => {
-            this.skillHitMob(ownerId, m, dd, dx, dz, false, false, true, false, hit);
-            if (hammer) this.sim.vulnMob(m.id, CHAIN_HAMMER.vulnSec * DUR, CHAIN_HAMMER.vulnMul);
-            else stun(m.id, 0.5);
-          }, i * 90);
-          dmg *= CHAIN.falloff;
-          fromX = m.x;
-          fromY = toY;
-          fromZ = m.z;
           let next: Mob | null = null;
           let nd: number = CHAIN.jump * RNG;
           for (const o of this.sim.mobs.values()) {
@@ -10652,6 +10658,24 @@ export class ZoneRoom extends Room<ZoneState> {
             }
           }
           cur = next;
+        }
+        show("chain", { targets: order.map((m) => m.id), count: hits });
+        let fromX = p.head.x;
+        let fromZ = p.head.z;
+        let dmg = sk.dmgMult * pow.dmg;
+        for (let i = 0; i < order.length; i++) {
+          const m = order[i];
+          const dd = dmg;
+          const dx = m.x - fromX;
+          const dz = m.z - fromZ;
+          this.clock.setTimeout(() => {
+            this.skillHitMob(ownerId, m, dd, dx, dz, false, false, true, false, hit);
+            if (hammer) this.sim.vulnMob(m.id, CHAIN_HAMMER.vulnSec * DUR, CHAIN_HAMMER.vulnMul);
+            else stun(m.id, 0.5);
+          }, i * 90);
+          dmg *= CHAIN.falloff;
+          fromX = m.x;
+          fromZ = m.z;
         }
         return true;
       }
@@ -10666,12 +10690,12 @@ export class ZoneRoom extends Room<ZoneState> {
           x: p.head.x, z: p.head.z, r: rad, until: this.elapsed + dur, owner: ownerId, kind: "seal", burn, tickT: 0, stun: hammer ? HAMMER_FIELD.stunSec * DUR + (tm.stunAdd ?? 0) : 0,
           heal: cls === "support", healMul: tHeal, shield: guard ? GUARD_SEAL.shield : cls === "support" ? SEAL.shield : 0, taunt: guard,
         });
-        act({ k: "seal", x: p.head.x, y: feetY, z: p.head.z, d: dur, r: rad });
+        show("seal");
         return true;
       }
       case "plague": {
         rt.plagueUntil = this.elapsed + PLAGUE.duration;
-        act({ k: "plagueOn", x: p.head.x, y: feetY, z: p.head.z, d: PLAGUE.duration });
+        show("plague");
         // 2026-10-07: рывок к цели убран по просьбе — только отравленные клинки на PLAGUE.duration.
         return true;
       }
@@ -10682,7 +10706,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const cx = tgt ? tgt.x : p.head.x;
         const cz = tgt ? tgt.z : p.head.z;
         this.sim.addSmoke(cx, cz, sk.radius, sec);
-        act({ k: "smoke", x: cx, y: terrainHeight(cx, cz), z: cz, d: sec, r: sk.radius });
+        show("smoke", { aim: { x: cx, z: cz } });
         return true;
       }
       case "lifeArrow": {
@@ -10696,7 +10720,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const toY = m.y + MOB.bodyRadius * m.scale;
         const oy = p.head.y - 0.3;
         shot(0, 1);
-        act({ k: "lifeArrow", x: p.head.x, y: oy, z: p.head.z, x2: m.x, z2: m.z, d: toY });
+        show("lifeArrow", { targetId: m.id, aim: { x: m.x, z: m.z } });
         // Урон и лечение — когда стрела долетит (то же время, что у стрелы на клиенте).
         this.clock.setTimeout(() => {
           if (p.dead || m.dead) return;
@@ -10732,20 +10756,23 @@ export class ZoneRoom extends Room<ZoneState> {
         });
         this.skillHeal(ownerId, ally, dmg * SOUL_STEAL.transfer * skillAttrMul("soulSteal", p) * tHeal);
         const allyId = this.idOf(ally) ?? ownerId;
-        act({ k: "soulSteal", x: m.x, y: m.y + MOB.bodyRadius * m.scale, z: m.z, x2: ally.head.x, z2: ally.head.z, d: ally.head.y - 0.5 });
+        show("soulSteal", {
+          targetId: m.id,
+          aim: { x: m.x, z: m.z },
+          to: { x: ally.head.x, z: ally.head.z, y: ally.head.y - 0.5 },
+        });
         this.broadcast(MSG.act, { k: "healHit", id: allyId, x: ally.head.x, y: ally.head.y, z: ally.head.z } satisfies ActRelay);
         return true;
       }
       case "cleave": {
         // Рассекающий удар (воин): широкий конус перед собой — урон, отброс, замедление.
         const [fx, fz] = fwd();
-        act({ k: "spearPierce", x: p.head.x, y: p.head.y, z: p.head.z, x2: p.head.x + fx * sk.radius, z2: p.head.z + fz * sk.radius, r: CLEAVE.halfAngle });
+        show("cleave", { yaw: Math.atan2(fx, fz) });
         this.clock.setTimeout(() => {
           const pp = this.state.players.get(ownerId);
           if (!pp || pp.dead) return;
           const ox = pp.head.x;
           const oz = pp.head.z;
-          act({ k: "stunHit", x: ox + fx * sk.radius * 0.5, y: pp.head.y - PLAYER.eyeHeight, z: oz + fz * sk.radius * 0.5, r: sk.radius * 0.5 });
           for (const m of around(ox, oz, sk.radius)) {
             const vx = m.x - ox;
             const vz = m.z - oz;
@@ -10774,7 +10801,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const toY = m.y + MOB.bodyRadius * m.scale;
         shot(0, 1);
         const blastR = BLAST_ARROW.radius * RAD + (tm.rad ?? 0);
-        act({ k: "blastArrow", x: ox, y: oy, z: oz, x2: cx, z2: cz, d: toY, r: blastR });
+        show("blastArrow", { targetId: m.id, aim: { x: cx, z: cz } });
         // Урон и взрыв — когда стрела долетит (то же время, что у стрелы на клиенте).
         this.clock.setTimeout(() => {
           arrowHit(m, sk.dmgMult, ox, oz);
@@ -10786,7 +10813,7 @@ export class ZoneRoom extends Room<ZoneState> {
         // 🧪 Шквал стрел: волны по всем врагам вокруг лучника (круг идёт за ним), крит — у каждого попадания.
         const A = { ...ARROW_STORM, radius: ARROW_STORM.radius * RAD, waves: ARROW_STORM.waves + tCount };
         shot(0, 12);
-        act({ k: "stormWave", x: p.head.x, y: feetY, z: p.head.z, d: 0, r: A.radius });
+        show("arrowStorm", { count: A.waves });
         // Шквал: сколько волн — столько залпов-повторов движения модели (уедет в акте «cast»).
         rt.castReps = A.waves;
         rt.castSec = A.first + (A.waves - 1) * A.gap + 0.15;
@@ -10799,7 +10826,6 @@ export class ZoneRoom extends Room<ZoneState> {
             if (!pp || pp.dead) return;
             cx = pp.head.x;
             cz = pp.head.z;
-            act({ k: "stormWave", x: cx, y: pp.head.y - PLAYER.eyeHeight, z: cz, d: w + 1, r: A.radius });
             this.clock.setTimeout(() => {
               const p2 = this.state.players.get(ownerId);
               if (!p2 || p2.dead) return;
@@ -10820,7 +10846,7 @@ export class ZoneRoom extends Room<ZoneState> {
         // 🧪 Стрела-призрак: обычные мобы не видят (список героев для мобов), урон ниже, попадания лечат.
         const sec = GHOST_ARROW.duration * skillAttrMul("ghostArrow", p) * DUR;
         rt.ghostUntil = this.elapsed + sec;
-        act({ k: "ghostOn", x: p.head.x, y: feetY, z: p.head.z, d: sec });
+        show("ghostArrow");
         return true;
       }
       case "swarmArrow": {
@@ -10828,6 +10854,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const S = { ...SWARM_ARROW, range: SWARM_ARROW.range * RNG + tRng, blastR: SWARM_ARROW.blastR * RAD, runSec: SWARM_ARROW.runSec * DUR, arrows: SWARM_ARROW.arrows + tCount };
         const [fx, fz] = fwd();
         const yaw = Math.atan2(fx, fz);
+        show("swarmArrow", { count: S.arrows, yaw });
         const touched = new Set<string>();
         const volley = (pp: PlayerState, vi: number): void => {
           shot(vi, S.arrows);
@@ -10854,15 +10881,11 @@ export class ZoneRoom extends Room<ZoneState> {
                 hit = m;
               }
             }
-            if (!hit) {
-              act({ k: "swarmArrow", x: ox, y: oy, z: oz, x2: ox + ax * S.range, z2: oz + az * S.range, d: oy - 0.6, r: 0 });
-              continue;
-            }
+            if (!hit) continue;
             const m: Mob = hit;
             const cx = m.x;
             const cz = m.z;
             const toY = m.y + MOB.bodyRadius * m.scale;
-            act({ k: "swarmArrow", x: ox, y: oy, z: oz, x2: cx, z2: cz, d: toY, r: S.blastR });
             // Урон и взрыв — когда стрела долетит.
             this.clock.setTimeout(() => {
               touched.add(m.id);
@@ -10896,7 +10919,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.dropOwnerZones(ownerId, "barrierArrow");
         this.barriers.push({ x: p.head.x, z: p.head.z, r: sk.radius, until: this.elapsed + dur, owner: ownerId, kind: "barrierArrow", dmg: sk.dmgMult * pow.dmg, tickT: 0, pushAt: new Map(), hitAt: new Map() });
         shot(0, 12);
-        act({ k: "arrowBarrier", x: p.head.x, y: feetY, z: p.head.z, d: dur, r: sk.radius });
+        show("barrierArrow");
         return true;
       }
       case "webArrow": {
@@ -10912,12 +10935,11 @@ export class ZoneRoom extends Room<ZoneState> {
         const oy = p.head.y - 0.3;
         const oz = p.head.z;
         shot(0, 1);
-        act({ k: "webShot", x: ox, y: oy, z: oz, x2: cx, z2: cz, d: cy });
+        show("webArrow", { targetId: tgt?.id, aim: { x: cx, z: cz } });
         // Паутина раскрывается, когда стрела воткнулась в землю.
         this.clock.setTimeout(() => {
           this.dropOwnerZones(ownerId, "webArrow");
           this.webs.push({ x: cx, z: cz, r, until: this.elapsed + sec, owner: ownerId, kind: "webArrow", dps: sk.dmgMult * pow.dmg, tickT: 0 });
-          act({ k: "webZone", x: cx, y: cy, z: cz, d: sec, r });
         }, skillArrowTime(Math.hypot(cx - ox, cy - oy, cz - oz)) * 1000);
         return true;
       }
@@ -10925,7 +10947,7 @@ export class ZoneRoom extends Room<ZoneState> {
         rt.abyssUntil = this.elapsed + ABYSS.duration + tDur;
         rt.abyssStrike = true;
         rt.forceCritUntil = this.elapsed + ABYSS.duration + tDur;
-        act({ k: "abyss", x: p.head.x, y: feetY, z: p.head.z, d: ABYSS.duration + tDur });
+        show("abyss");
         return true;
       }
       default:
@@ -11133,10 +11155,8 @@ export class ZoneRoom extends Room<ZoneState> {
     const step = duration / hits0;
     // Дерево прокачки: «+1 волна» — тем же шагом, дождь идёт дольше.
     const hits = hits0 + extraHits;
-    const y = terrainHeight(cx, cz);
     for (let i = 0; i < hits; i++) {
       this.clock.setTimeout(() => {
-        this.broadcast(MSG.act, { k: "rainTick", id: ownerId, x: cx, y, z: cz } satisfies ActRelay);
         for (const m of [...this.sim.mobs.values()]) {
           if (m.dead) continue;
           const dx = m.x - cx;
@@ -11326,7 +11346,6 @@ export class ZoneRoom extends Room<ZoneState> {
   ): void {
     const { bowHits: hits, duration } = SKILL.arrowRain;
     const step = duration / hits;
-    const y = terrainHeight(cx, cz);
     const mult = multIn(p, hand) * rolledDmgMul(p, hand, rt);
     const rc = rolledCrit(p, hand, rt);
     const t0 = this.elapsed;
@@ -11343,7 +11362,6 @@ export class ZoneRoom extends Room<ZoneState> {
     for (let i = 0; i < hits; i++) {
       this.clock.setTimeout(() => {
         pin();
-        this.broadcast(MSG.act, { k: "rainTick", id: ownerId, x: cx, y, z: cz } satisfies ActRelay);
         const base =
           weaponDamage("arrow", p.level, p, mult) * this.buffMult(ownerId, "dmg");
         for (const m of [...this.sim.mobs.values()]) {
