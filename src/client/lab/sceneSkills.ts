@@ -258,7 +258,7 @@ export async function build(ctx: LabCtx): Promise<void> {
     marker.material = mm;
     marker.isPickable = false;
     marker.setEnabled(false);
-    ctx.frame(-3.2, 1.2, 4.2, 18);
+    ctx.frame(window.innerWidth < 1300 ? -2 : -3.2, 1.2, 4.2, 18);
   }
 
   function targetDummy(): Dummy | null {
