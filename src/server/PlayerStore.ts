@@ -135,10 +135,10 @@ export const ATTR_VER = 3;
 export const TREE_VER = 2;
 
 /**
- * Текущая версия кривой опыта. 3 — XP_CURVE реворка (мобы до 75), 4 — начальный
- * множитель earlyMul для первых 15 уровней (2026-11-03).
+ * Текущая версия кривой опыта. 3 — XP_CURVE реворка (мобы до 75), 4 — earlyMul
+ * только до 15 ур., 5 — плавный earlyMul до 100 ур. (2026-11-03).
  */
-export const XP_VER = 4;
+export const XP_VER = 5;
 
 /**
  * Переход на новую кривую опыта: в старой записи опыт — в единицах удвоения (до следующего уровня
@@ -152,12 +152,16 @@ export function migrateXp(r: PlayerRecord): boolean {
   // Старые кривые: v1 — 2^(L−1), v2 — XP_CURVE 2026-10-16, v3 — XP_CURVE реворка
   // без начального множителя. Долю уровня сохраняем, абсолютный опыт не переносим —
   // иначе старые миллиарды подняли бы героя на десятки уровней.
+  // v4 — earlyMul ×2.5 только до 16 ур. (линейно); v3 — без него.
+  const v4Mul = level >= 16 ? 1 : 1 + (2.5 - 1) * ((16 - level) / 15);
   const oldNeed =
-    ver >= 3
-      ? 100 * 1.18 ** Math.max(0, level - 1)
-      : ver === 2
-        ? 100 * 1.23 ** Math.max(0, level - 1)
-        : Math.pow(2, Math.max(0, level - 1));
+    ver >= 4
+      ? 100 * 1.18 ** Math.max(0, level - 1) * v4Mul
+      : ver === 3
+        ? 100 * 1.18 ** Math.max(0, level - 1)
+        : ver === 2
+          ? 100 * 1.23 ** Math.max(0, level - 1)
+          : Math.pow(2, Math.max(0, level - 1));
   const need = xpToNext(level);
   const frac = oldNeed > 0 ? Math.max(0, Math.min(0.999, (r.xp ?? 0) / oldNeed)) : 0;
   r.xp = Number.isFinite(need) ? Math.round(frac * need) : 0;

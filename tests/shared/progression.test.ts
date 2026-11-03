@@ -101,6 +101,11 @@ test("первые уровни медленнее: 1-й — не меньше 2
   assert.ok(xpToNext(10) / mobXpAt(10) > 40, `10 ур: ${xpToNext(10) / mobXpAt(10)}`);
 });
 
+test("к 100 уровню ранний множитель сходится к базовой кривой", () => {
+  const base99 = 100 * 1.18 ** 98;
+  assert.ok(Math.abs(xpToNext(99) / base99 - 1) < 0.001, `99 ур: ${xpToNext(99) / base99}`);
+});
+
 test("кривая до 100 с мобами до 75: около 2,8 года при 20 убийствах в минуту", () => {
   let kills = 0;
   for (let L = 1; L < PROGRESSION.maxLevel; L++) kills += xpToNext(L) / mobXpAt(L);

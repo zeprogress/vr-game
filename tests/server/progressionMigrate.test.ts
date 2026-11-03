@@ -5,7 +5,7 @@ import { xpToNext } from "../../src/shared/progression";
 
 const rec = (patch: Record<string, unknown>): PlayerRecord => ({ level: 40, xp: 0, ...patch } as unknown as PlayerRecord);
 
-test("миграция опыта v2 → v4 сохраняет долю уровня, а не старое число", () => {
+test("миграция опыта v2 → v5 сохраняет долю уровня, а не старое число", () => {
   const level = 40;
   const oldNeed = 100 * 1.23 ** (level - 1);
   const r = rec({ xpVer: 2, xp: oldNeed * 0.5 });
@@ -15,10 +15,19 @@ test("миграция опыта v2 → v4 сохраняет долю уров
   assert.equal(migrateXp(r), false);
 });
 
-test("миграция опыта v3 → v4 сохраняет долю уровня при новом earlyMul", () => {
+test("миграция опыта v3 → v5 сохраняет долю уровня при новом earlyMul", () => {
   const level = 10;
   const oldNeed = 100 * 1.18 ** (level - 1);
   const r = rec({ level, xpVer: 3, xp: oldNeed * 0.5 });
+  assert.equal(migrateXp(r), true);
+  assert.equal(r.xpVer, XP_VER);
+  assert.ok(Math.abs(r.xp - xpToNext(level) * 0.5) <= 1, `xp=${r.xp}`);
+});
+
+test("миграция опыта v4 → v5 сохраняет долю уровня", () => {
+  const level = 10;
+  const oldNeed = 100 * 1.18 ** (level - 1) * (1 + 1.5 * ((16 - level) / 15));
+  const r = rec({ level, xpVer: 4, xp: oldNeed * 0.5 });
   assert.equal(migrateXp(r), true);
   assert.equal(r.xpVer, XP_VER);
   assert.ok(Math.abs(r.xp - xpToNext(level) * 0.5) <= 1, `xp=${r.xp}`);

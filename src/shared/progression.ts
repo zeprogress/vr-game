@@ -70,7 +70,7 @@ export function resetAttrs(p: Progress): void {
  * mobXpAt клампится на PROGRESSION.mobMaxLevel: до 100 уровня выходит ≈29.7 млн
  * убийств мобов 75 ур. = **≈2.8 года** при 20 убийствах в минуту (для сравнения,
  * старая кривая с реальными мобами до 100 давала ~1 год). Начальный множитель
- * (earlyMul) замедляет только первые 15 уровней и почти не меняет итог.
+ * (earlyMul) плавно сходит к 1 к 100 уровню и почти не меняет итог.
  *
  * Когда появятся мобы 76–100, поднять PROGRESSION.mobMaxLevel — кривая ускорится
  * без правки формулы.
@@ -80,13 +80,15 @@ export const XP_CURVE = {
   growth: 1.18,
   killsBase: 10,
   /**
-   * Начальный множитель опыта: первые 15 уровней стоят дороже, к 16-му — обычная
-   * кривая. Раньше 1 уровень брался за 10 убийств, 5 — за 16, 10 — за 30;
-   * теперь 1 — за ~25, 5 — за ~34, 10 — за ~48. Дальше кривая не меняется.
+   * Плавный ранний множитель: на 1 уровне ×2.5, к 100 уровню — ровно ×1,
+   * без ступеньки. Квадрат делает замедление сильнее внизу и мягче к середине:
+   * 1 уровень — ~25 убийств вместо 10, 10 — ~67 вместо 30, 20 — ~202 вместо 102,
+   * 40 — ~1822 вместо 1175, 80 — почти как раньше. К 100 — ровно текущая кривая.
    */
   earlyMul: 2.5,
-  earlyMulUntil: 16,
-  /** Базовая кривая: 10 убийств на 1 ур. без earlyMul; с ним — ~25 на 1 и ~48 на 10. */
+  earlyMulUntil: PROGRESSION.maxLevel,
+  earlyMulPower: 2,
+  /** Базовая кривая: 10 убийств на 1 ур. без earlyMul; с ним — ~25 на 1 и ~67 на 10. */
   killsGrowth: 1.13,
   /** Босс: во столько раз больше моба уровня бойца (делится по вкладу). */
   bossMul: 10,
@@ -102,10 +104,12 @@ function baseXpToNext(level: number): number {
   return XP_CURVE.base * XP_CURVE.growth ** (level - 1);
 }
 
-/** Множитель первых уровней: на 1-м — `earlyMul`, к `earlyMulUntil` — 1. */
+/** Плавный множитель: на 1-м — `earlyMul`, к `earlyMulUntil` — ровно 1. */
 function earlyMulAt(level: number): number {
-  if (level >= XP_CURVE.earlyMulUntil) return 1;
-  return 1 + (XP_CURVE.earlyMul - 1) * ((XP_CURVE.earlyMulUntil - level) / (XP_CURVE.earlyMulUntil - 1));
+  const until = XP_CURVE.earlyMulUntil;
+  if (level >= until) return 1;
+  const t = (until - level) / (until - 1);
+  return 1 + (XP_CURVE.earlyMul - 1) * t ** XP_CURVE.earlyMulPower;
 }
 
 /** Сколько опыта нужно для перехода с `level` на следующий. */
