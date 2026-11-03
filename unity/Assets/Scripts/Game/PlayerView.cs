@@ -41,6 +41,7 @@ namespace Zep
         /// Событие героя по сети (Spectator.onAct в вебе): замах, выстрел, флинч, новый уровень.
         public void OnAct(string kind, System.Collections.Generic.Dictionary<string, object> m = null)
         {
+            if (!rig) return; // полигон умений: тело без сети/рига — эффектам достаточно transform
             switch (kind)
             {
                 case "cast":
@@ -62,7 +63,7 @@ namespace Zep
         }
 
         /// Эмоция героя от умения (ClassActs: roll/jump/cheer) — клипы как BOT_EMOTE_CLIP в вебе.
-        public void Emote(string e) => rig.PlayOneShot(e == "cheer" ? "Victory" : e == "roll" ? "Roll" : "Jump");
+        public void Emote(string e) { if (rig) rig.PlayOneShot(e == "cheer" ? "Victory" : e == "roll" ? "Roll" : "Jump"); }
 
         Vector3 Target() => new Vector3(state.head.x, state.head.y - Hero.EyeHeight, state.head.z);
 

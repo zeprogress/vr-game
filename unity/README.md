@@ -36,3 +36,9 @@ Unity Hub → Add → папка `unity/`. Сцена `Assets/Scenes/Slice.unity
 ## Качество
 `Mobile` (URP_Mobile: без HDR/SSAO, тени 40 м, render scale 0.8) и `PC High`
 (HDR, MSAA 4×, мягкие тени 4 каскада 4096, SSAO). Выбор по платформе — `QualityBoot`.
+
+## Полигон умений (лаборатория)
+`npm run lab:unity` (из корня) собирает `Assets/Resources/skillLab.json` из `shared/classes2.ts`
+и `shared/skillShow.ts`. В Unity: **Zep → Open Skills Lab** (сцена `Assets/Scenes/Lab.unity`),
+Play — справа список всех умений класса, эффекты играет общий `ClassActs`/`BossActs`.
+Подробности — `docs/lab.md`.

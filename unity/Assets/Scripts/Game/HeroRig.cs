@@ -20,6 +20,10 @@ namespace Zep
 
         public void Init(SliceAssets assets) { this.assets = assets; }
 
+        /// Своя модель (с собственными клипами умений). Лаборатории нужно знать,
+        /// можно ли звать PlaySkill, или откатиться на PlaySwing.
+        public bool Own => own;
+
         /// Рост модели в мире (по мешам; 0 — не измерен): по нему плашка над головой.
         public float ModelHeight { get; private set; }
 

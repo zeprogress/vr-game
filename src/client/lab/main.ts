@@ -45,6 +45,7 @@ interface LabScene {
 
 const SCENES: LabScene[] = [
   { id: "classes", title: "⚔️ Классы 2.0: бой и баланс", load: () => import("./sceneClasses") },
+  { id: "skills", title: "🎬 Полигон умений: все классы", load: () => import("./sceneSkills") },
   { id: "fire", title: "🔥 Огонь: старый vs частицы", load: () => import("./sceneFire") },
   { id: "models", title: "👾 Модели и анимации", load: () => import("./sceneModels") },
   { id: "fx", title: "✨ Эффекты умений", load: () => import("./sceneFx") },

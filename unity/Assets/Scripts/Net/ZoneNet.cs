@@ -22,6 +22,8 @@ namespace Zep
         public string adminPass = "";
         [Tooltip("Невидимый спектатор: без героя, только смотрит (SPECTATOR_KEY на сервере)")]
         public bool spectator;
+        [Tooltip("Локальный режим (полигон умений): не подключаться к серверу и не пытаться переподключиться")]
+        public bool offline;
         public string spectatorKey = "zepgame-spec-a19f3c7d5b"; // SPECTATOR_KEY в shared/constants.ts
 
         public ColyseusRoom<ZoneState> Room { get; private set; }
@@ -128,6 +130,7 @@ namespace Zep
 
         void Update()
         {
+            if (offline) return;
             // Колбэк потери комнаты может прийти не с главного потока — цикл стартуем здесь, чтобы
             // Joined и создание объектов мира шли по главному потоку Unity.
             // Сторож: комнаты нет и вход не идёт — входим (даже если OnLeave не пришёл или цикл оборвался).

@@ -38,10 +38,11 @@ import {
 import type { WeaponTier } from "#shared/items";
 import { HandGrip, handsBusy } from "../entities/handGrip";
 import { BOT_GEAR, MODEL_SEATS, modelSeat, seatFor, type GearTune } from "../entities/botGear";
-import { createClassWeapon, type NewWeapon } from "../items/classWeapons";
+import { createClassWeapon } from "../items/classWeapons";
 import { makeWeaponMesh } from "../world/LootDrops";
 import { buildClassClips } from "../world/classPoses";
 import { loadRig, recolorCharacter, recolorMonster, KEEP_MATERIALS, type ModelName, type RigInstance } from "../world/models";
+import { ATTACK, gearOf, HERO_H, HERO_MODEL, IDLE, type Kind } from "./classSetup";
 import type { LabCtx } from "./main";
 
 /**
@@ -56,44 +57,8 @@ import type { LabCtx } from "./main";
  * кулаке; кнопка печатает готовый код.
  */
 
-type Kind = "sword" | "shield" | "bow" | "staff" | NewWeapon;
-
-const HERO_MODEL: Record<ClassId, ModelName> = {
-  warrior: "charKnight",
-  archer: "charCowboy",
-  support: "charWizard",
-  assassin: "charNinja",
-  spearman: "charSoldier",
-  battlemage: "charViking",
-};
-const HERO_H = 1.8;
 /** ?hero=<модель> — показать другую модель героя (проверка новых скинов). */
 const HERO_OVERRIDE = new URLSearchParams(location.search).get("hero") as ModelName | null;
-
-/** Что в руках у класса. */
-function gearOf(c: ClassId, dual: boolean): { R?: Kind; L?: Kind } {
-  switch (c) {
-    case "warrior": return { R: "sword", L: "shield" };
-    case "archer": return { L: "bow" };
-    case "support": return { R: "staff" };
-    case "assassin": return dual ? { R: "dagger", L: "dagger" } : { R: "dagger" };
-    case "spearman": return { R: "spear" };
-    case "battlemage": return { R: "hammer" };
-  }
-}
-
-const IDLE: Record<ClassId, string> = {
-  warrior: "idle", archer: "bowidle", support: "idle", assassin: "daggeridle", spearman: "spearidle", battlemage: "hammeridle",
-};
-/** Клип атаки и доля клипа, на которой удар «доходит». */
-const ATTACK: Record<ClassId, [string, number]> = {
-  warrior: ["swordslash", 0.45],
-  archer: ["bowshoot", 0.6],
-  support: ["onehanded", 0.5],
-  assassin: ["daggerstabr", 0.3],
-  spearman: ["spearthrust", 0.42],
-  battlemage: ["hammerslam", 0.5],
-};
 
 /** Посадка в кулаке: стартуем с подобранных у ботов, новое — с меча. Ключ — `вид:рука`. */
 const SEATS = new Map<string, GearTune>();
@@ -637,6 +602,10 @@ export async function build(ctx: LabCtx): Promise<void> {
   });
 
   // ---------------------------------------------------------------- панель
+  ui.note("Здесь — баланс и DPS. Визуал всех умений класса (настоящие эффекты игры) — в «Полигоне умений».");
+  ui.button("🎬 Открыть полигон умений", () => {
+    location.search = "?s=skills";
+  });
   ui.section("Герой");
   ui.select("Класс", CLASS_IDS.map((c) => `${CLASSES2[c].icon} ${CLASSES2[c].name}`), `${CLASSES2[cls].icon} ${CLASSES2[cls].name}`, (v) => {
     cls = CLASS_IDS.find((c) => v.endsWith(CLASSES2[c].name)) ?? cls;
