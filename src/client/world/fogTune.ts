@@ -20,8 +20,7 @@ export interface FogTune {
 }
 
 export const FOG_TUNE: FogTune = {
-  // Ночной туман — тёмно-синий, не чёрный: с чёрным даль уходила в абсолютную темноту.
-  nightColor: [0.035, 0.05, 0.1],
+  nightColor: [0, 0, 0],
   near: 150,
   far: 400,
   dayNear: 60,
