@@ -655,7 +655,7 @@ export class Game {
       {
         const b = HUB.zones.questBoard;
         const h = HUB.zones.hunter;
-        this.bangBoard = new QuestBang(this.scene, b.x, b.z, 2.8);
+        this.bangBoard = new QuestBang(this.scene, b.x, b.z, 3.2);
         this.bangHunter = new QuestBang(this.scene, h.x, h.z, 3.6);
       }
       this.hunterWin = new HunterWindow({

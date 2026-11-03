@@ -644,23 +644,24 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
       return m;
     };
     const wood: Mesh[] = [];
-    for (const px of [-1, 1]) {
-      wood.push(at(px, 1.2, 0, MeshBuilder.CreateBox("qbPost", { width: 0.14, height: 2.4, depth: 0.14 }, scene)));
+    // Доска под рост 180 см: щит выше человека, чтобы листки читались стоя.
+    for (const px of [-1.35, 1.35]) {
+      wood.push(at(px, 1.4, 0, MeshBuilder.CreateBox("qbPost", { width: 0.16, height: 2.8, depth: 0.16 }, scene)));
     }
-    wood.push(at(0, 2.45, 0, MeshBuilder.CreateBox("qbRoof", { width: 2.5, height: 0.1, depth: 0.45 }, scene)));
+    wood.push(at(0, 3.0, 0, MeshBuilder.CreateBox("qbRoof", { width: 3.2, height: 0.12, depth: 0.5 }, scene)));
     merge(wood, "hubQuestBoard", matWood);
-    const panel = [at(0, 1.55, 0, MeshBuilder.CreateBox("qbPanel", { width: 1.9, height: 1.2, depth: 0.06 }, scene))];
+    const panel = [at(0, 1.75, 0, MeshBuilder.CreateBox("qbPanel", { width: 2.6, height: 1.7, depth: 0.08 }, scene))];
     merge(panel, "hubQuestBoard", matWoodLite);
     const paperMat = flatMat(scene, "hubQuestPaper", new Color3(0.93, 0.88, 0.74), undefined, dayLit);
     const notes: Mesh[] = [];
-    const spots: [number, number, number, number][] = [[-0.55, 1.75, 0.42, 0.5], [0.05, 1.65, 0.4, 0.55], [0.6, 1.8, 0.38, 0.46], [-0.3, 1.25, 0.44, 0.34], [0.4, 1.25, 0.4, 0.36]];
+    const spots: [number, number, number, number][] = [[-0.8, 2.15, 0.62, 0.55], [0.0, 2.05, 0.64, 0.6], [0.8, 2.2, 0.56, 0.5], [-0.45, 1.45, 0.56, 0.4], [0.55, 1.4, 0.52, 0.4]];
     for (const [lx, y, w, h] of spots) {
-      notes.push(at(lx, y, 0.04, MeshBuilder.CreateBox("qbNote", { width: w, height: h, depth: 0.01 }, scene)));
-      notes.push(at(lx, y, -0.04, MeshBuilder.CreateBox("qbNote", { width: w, height: h, depth: 0.01 }, scene)));
+      notes.push(at(lx, y, 0.05, MeshBuilder.CreateBox("qbNote", { width: w, height: h, depth: 0.01 }, scene)));
+      notes.push(at(lx, y, -0.05, MeshBuilder.CreateBox("qbNote", { width: w, height: h, depth: 0.01 }, scene)));
     }
     merge(notes, "hubQuestNotes", paperMat);
     // «!» над доской — динамический (QuestBang в Game): горит, только когда есть что взять/сдать.
-    obstacles.push({ x: b.x, z: b.z, r: 1.1 });
+    obstacles.push({ x: b.x, z: b.z, r: 1.6 });
   }
 
   // --- 13в. Трактир: стойка перед трактирщиком и бочки ---
