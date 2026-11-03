@@ -38,6 +38,15 @@ public ArmorBonusSync() { }
 		[Type(6, "float32")]
 		public float atk = default(float);
 
+		[Type(7, "float32")]
+		public float ht = default(float);
+
+		[Type(8, "float32")]
+		public float hr = default(float);
+
+		[Type(9, "float32")]
+		public float hm = default(float);
+
 		/*
 		 * Support for individual property change callbacks below...
 		 */
@@ -126,6 +135,42 @@ public ArmorBonusSync() { }
 			};
 		}
 
+		protected event PropertyChangeHandler<float> __htChange;
+		public Action OnHtChange(PropertyChangeHandler<float> __handler, bool __immediate = true) {
+			if (__callbacks == null) { __callbacks = new SchemaCallbacks(); }
+			__callbacks.AddPropertyCallback(nameof(this.ht));
+			__htChange += __handler;
+			if (__immediate && this.ht != default(float)) { __handler(this.ht, default(float)); }
+			return () => {
+				__callbacks.RemovePropertyCallback(nameof(ht));
+				__htChange -= __handler;
+			};
+		}
+
+		protected event PropertyChangeHandler<float> __hrChange;
+		public Action OnHrChange(PropertyChangeHandler<float> __handler, bool __immediate = true) {
+			if (__callbacks == null) { __callbacks = new SchemaCallbacks(); }
+			__callbacks.AddPropertyCallback(nameof(this.hr));
+			__hrChange += __handler;
+			if (__immediate && this.hr != default(float)) { __handler(this.hr, default(float)); }
+			return () => {
+				__callbacks.RemovePropertyCallback(nameof(hr));
+				__hrChange -= __handler;
+			};
+		}
+
+		protected event PropertyChangeHandler<float> __hmChange;
+		public Action OnHmChange(PropertyChangeHandler<float> __handler, bool __immediate = true) {
+			if (__callbacks == null) { __callbacks = new SchemaCallbacks(); }
+			__callbacks.AddPropertyCallback(nameof(this.hm));
+			__hmChange += __handler;
+			if (__immediate && this.hm != default(float)) { __handler(this.hm, default(float)); }
+			return () => {
+				__callbacks.RemovePropertyCallback(nameof(hm));
+				__hmChange -= __handler;
+			};
+		}
+
 		protected override void TriggerFieldChange(DataChange change) {
 			switch (change.Field) {
 				case nameof(hp): __hpChange?.Invoke((float) change.Value, (float) change.PreviousValue); break;
@@ -135,6 +180,9 @@ public ArmorBonusSync() { }
 				case nameof(dodge): __dodgeChange?.Invoke((float) change.Value, (float) change.PreviousValue); break;
 				case nameof(move): __moveChange?.Invoke((float) change.Value, (float) change.PreviousValue); break;
 				case nameof(atk): __atkChange?.Invoke((float) change.Value, (float) change.PreviousValue); break;
+				case nameof(ht): __htChange?.Invoke((float) change.Value, (float) change.PreviousValue); break;
+				case nameof(hr): __hrChange?.Invoke((float) change.Value, (float) change.PreviousValue); break;
+				case nameof(hm): __hmChange?.Invoke((float) change.Value, (float) change.PreviousValue); break;
 				default: break;
 			}
 		}

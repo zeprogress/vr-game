@@ -204,3 +204,21 @@ export function spendPoint(p: Progress, stat: StatName): boolean {
 export function isStatName(v: unknown): v is StatName {
   return v === "str" || v === "agi" || v === "int" || v === "con" || v === "luc" || v === "wis";
 }
+
+/** Плоская регенерация от истории перековки надетой брони (HP/с): залеченные трещины. */
+export function historyRegenOf(a: object): number {
+  const v = (a as { hr?: unknown }).hr;
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
+/** Прибавка к темпу атаки от истории перековки ОРУЖИЯ в руках (доля). */
+export function historyTempoOf(a: object): number {
+  const v = (a as { ht?: unknown }).ht;
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
+/** Прибавка к скорости бега от истории перековки надетой брони (доля). */
+export function historyMoveOf(a: object): number {
+  const v = (a as { hm?: unknown }).hm;
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}

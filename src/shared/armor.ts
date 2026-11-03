@@ -16,6 +16,7 @@
  */
 import { enchantCurve, POINTS_MAX, RUBY, type EnchantDeck, type EnchantInfo } from "./items";
 import type { PcInvArmor } from "./net/messages";
+import { crackText, historyText, natureName, natureText, polishChance, polishCost } from "./nature";
 
 export const ARMOR_PARTS = ["helm", "chest", "gloves", "legs", "boots"] as const;
 export type ArmorPart = (typeof ARMOR_PARTS)[number];
@@ -208,6 +209,12 @@ export interface ArmorInstance {
   lvl: number;
   rolls: ArmorRoll[];
   fav?: boolean;
+  /** Природа брони (shared/nature.ts): по весу, случайная, не меняется. */
+  nat?: string;
+  /** Трещины перековки, 0..3. */
+  cracks?: number;
+  /** История перековки. */
+  rh?: { pol: number; up: number; swaps: number; healed: number };
 }
 
 /** Все числовые бонусы брони, включая скорости от веса. */
@@ -358,7 +365,23 @@ export function rollArmor(
     rolls.push({ stat, pts });
   }
   sortArmorRolls(rolls);
-  return { id, part, tier, weight: w, lvl: Math.max(1, Math.floor(lvl) || 1), rolls };
+  return { id, part, tier, weight: w, lvl: Math.max(1, Math.floor(lvl) || 1), rolls, nat: rollArmorNature(w, rnd) };
+}
+
+/** Стабильный ГПСЧ из id — чтобы выданная однажды природа не менялась. */
+function seededFrom(id: string): () => number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+  return () => {
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h >>> 0) % 100000) / 100000;
+  };
+}
+
+/** Природа брони по весу: тяжёлая — стойкость, лёгкая — пиявка, средняя — стойкость/игрок. */
+export function rollArmorNature(weight: ArmorWeight, rnd: () => number = Math.random): string {
+  const pool = weight === "heavy" ? ["steadfast", "gambler"] : weight === "light" ? ["leech", "wind"] : ["steadfast", "leech", "gambler"];
+  return pool[Math.min(pool.length - 1, Math.floor(rnd() * pool.length))];
 }
 
 export function armorQuality(a: ArmorInstance): number {
@@ -421,6 +444,11 @@ export function armorPcView(a: ArmorInstance): PcInvArmor {
     label: armorLabel(a),
     weight: a.weight,
     lvl: a.lvl,
+    ...(a.nat ? { nat: a.nat, natText: `${natureName(a.nat)} — ${natureText(a.nat)}` } : {}),
+    cracks: a.cracks ?? 0,
+    crackText: crackText(a.cracks, a.nat),
+    hist: historyText(a.rh),
+    polish: { cost: polishCost(a.tier, a.cracks ?? 0), chance: polishChance(a.cracks ?? 0, a.nat) },
     ench: armorEnchantRows(a),
     fav: a.fav === true,
   };
@@ -464,6 +492,17 @@ export function sanitizeArmorList(v: unknown): ArmorInstance[] {
       rolls,
     };
     if (a.fav === true) inst.fav = true;
+    // Природа: у старых частей её нет — выдаём один раз и навсегда (то же при каждой загрузке).
+    if (typeof inst.nat !== "string") inst.nat = rollArmorNature(inst.weight, seededFrom(inst.id));
+    const nat = (a as { nat?: unknown }).nat;
+    if (typeof nat === "string") inst.nat = nat;
+    const cr = Number((a as { cracks?: unknown }).cracks);
+    if (Number.isFinite(cr) && cr > 0) inst.cracks = Math.min(3, Math.round(cr));
+    const rh = (a as { rh?: unknown }).rh;
+    if (rh && typeof rh === "object") {
+      const r = rh as Record<string, unknown>;
+      inst.rh = { pol: Math.max(0, Math.floor(Number(r.pol) || 0)), up: Math.max(0, Math.floor(Number(r.up) || 0)), swaps: Math.max(0, Math.floor(Number(r.swaps) || 0)), healed: Math.max(0, Math.floor(Number(r.healed) || 0)) };
+    }
     out.push(inst);
   }
   return out;

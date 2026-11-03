@@ -43,6 +43,12 @@ export class ArmorBonusSync extends Schema {
   @type("float32") dodge = 0;
   @type("float32") move = 0;
   @type("float32") atk = 0;
+  /** История перековки ОРУЖИЯ: прибавка к темпу атаки (доля). */
+  @type("float32") ht = 0;
+  /** История перековки БРОНИ: прибавка к регенерации HP/с. */
+  @type("float32") hr = 0;
+  /** История перековки БРОНИ: прибавка к скорости бега (доля). */
+  @type("float32") hm = 0;
 }
 
 /** Бонусы дерева прокачки (shared/passiveTree.ts, TREE_FX): доли; формулы боя читают их через treeBonus(). */

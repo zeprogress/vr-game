@@ -14,7 +14,7 @@ export const SCROLL = {
   windMul: 1.2,
 } as const;
 
-export type ShopId = "potions" | "scrap" | "scroll_wind" | "scroll_xp" | "fish_trade";
+export type ShopId = "potions" | "scrap" | "scroll_wind" | "scroll_xp" | "fish_trade" | "brand";
 
 export interface ShopItem {
   id: ShopId;
@@ -35,6 +35,8 @@ export const SHOP: readonly ShopItem[] = [
   { id: "scroll_wind", name: "Свиток ветра ×10", desc: "+20% скорости бега на 15 мин", price: 1, item: "scroll_wind", count: 10 },
   { id: "scroll_xp", name: "Свиток мудрости ×10", desc: "×2 опыта на 15 мин (с благословением ×3)", price: 1, item: "scroll_xp", count: 10 },
   { id: "fish_trade", name: "Обмен рыбы на жетоны", desc: "25 рыб → 5 ◈", price: 0, fishCost: 25, tokensGet: 5 },
+  // Перековка: в лавке — только Грань (Знамение и Эссенция — лишь с боёв).
+  { id: "brand", name: "Грань ×1", desc: "перековка: заменить грань предмета", price: 3 },
 ];
 
 /** Минимальная оценка уникального оружия из сундука. */

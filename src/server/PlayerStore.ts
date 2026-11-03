@@ -120,6 +120,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   recipes?: string[];
   /** Опыт кузнеца (уровень — smithLevel в shared/craft.ts). */
   smithXp?: number;
+  /** Валюты перековки (shared/nature.ts): грань, эссенция, знамение. */
+  cur?: Record<string, number>;
   /** Непрочитанные подарки (server/trade.ts): показываются в инвентаре, пока не нажмут «Понятно». */
   giftNotes?: { from: string; text: string; at: number }[];
   /** Обмен: окна с другими героями (общие для обоих); предметы каждого — в окне до подтверждения. */

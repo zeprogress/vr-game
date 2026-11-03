@@ -6,6 +6,7 @@ import { ATTR2, attrOf, invested, physArmorBase } from "./attrs2";
 import { glyph } from "./icons";
 import { RUBY, WEAPON_NOUN, type WeaponClass } from "./items";
 import { armorBonus } from "./armor";
+import { historyRegenOf, historyTempoOf, historyMoveOf } from "./progression";
 
 export { levelGain };
 
@@ -118,7 +119,7 @@ export function maxHp2(level: number, a: AttrsIn): number {
 export function moveSpeed2(level: number, a: AttrsIn): number {
   return (PLAYER.runSpeed + levelGain(level, P.moveSpeed)) *
     (1 + inv(attrOf(a, "agi")) * ATTR2.agi.move + treeBonus(a, "move")) *
-    Math.max(0.5, 1 + armorBonus(a, "move"));
+    Math.max(0.5, 1 + armorBonus(a, "move")) * (1 + historyMoveOf(a));
 }
 
 /** Множитель физ. урона: уровень × СИЛ. Тир оружия и профиль — отдельно. */
@@ -142,7 +143,7 @@ function levelTempo(level: number): number {
  */
 export function physTempo2(level: number, a: AttrsIn, soft: number): number {
   return (1 + softGain(levelTempo(level) - 1, soft)) * agiTempo2(a) *
-    (1 + treeBonus(a, "atk")) * Math.max(0.5, 1 + armorBonus(a, "atk"));
+    (1 + treeBonus(a, "atk")) * Math.max(0.5, 1 + armorBonus(a, "atk")) * (1 + historyTempoOf(a));
 }
 
 /**
@@ -166,7 +167,7 @@ export function agiTempo2(a: AttrsIn, share = 1): number {
 export function castTempo2(level: number, a: AttrsIn): number {
   return (1 + softGain(levelTempo(level) - 1, ATK_SOFT)) *
     (1 + inv(attrOf(a, "wis")) * ATTR2.wis.cast) *
-    (1 + treeBonus(a, "atk")) * Math.max(0.5, 1 + armorBonus(a, "atk"));
+    (1 + treeBonus(a, "atk")) * Math.max(0.5, 1 + armorBonus(a, "atk")) * (1 + historyTempoOf(a));
 }
 
 /** Затухание уворота от УДЧ (2026-10-31): до ~20 очков почти линейно, дальше каждая точка слабее.
@@ -338,9 +339,9 @@ export function hpRegenFrac(a: AttrsIn): number {
   return inv(attrOf(a, "con")) * ATTR2.con.regen + treeBonus(a, "regen");
 }
 
-/** Плоская регенерация брони, HP/с. */
+/** Плоская регенерация брони, HP/с (грани брони + история перековки). */
 export function armorRegenFlat(a: AttrsIn): number {
-  return armorBonus(a, "regen");
+  return armorBonus(a, "regen") + historyRegenOf(a);
 }
 
 /** Доля урона, гасимая физ. бронёй: врождённая броня ТЕЛ × плоская Броня предметов. */
