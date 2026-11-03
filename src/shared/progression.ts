@@ -69,7 +69,8 @@ export function resetAttrs(p: Progress): void {
  * killsBase·killsGrowth^(L−1) убийств. Выше 75 уровня мобов в мире нет, поэтому
  * mobXpAt клампится на PROGRESSION.mobMaxLevel: до 100 уровня выходит ≈29.7 млн
  * убийств мобов 75 ур. = **≈2.8 года** при 20 убийствах в минуту (для сравнения,
- * старая кривая с реальными мобами до 100 давала ~1 год).
+ * старая кривая с реальными мобами до 100 давала ~1 год). Начальный множитель
+ * (earlyMul) замедляет только первые 15 уровней и почти не меняет итог.
  *
  * Когда появятся мобы 76–100, поднять PROGRESSION.mobMaxLevel — кривая ускорится
  * без правки формулы.
@@ -78,7 +79,14 @@ export const XP_CURVE = {
   base: 100,
   growth: 1.18,
   killsBase: 10,
-  /** Начало: 10 убийств на 1 ур., ~30 на 10 ур.; дальше рост числа убийств на уровень. */
+  /**
+   * Начальный множитель опыта: первые 15 уровней стоят дороже, к 16-му — обычная
+   * кривая. Раньше 1 уровень брался за 10 убийств, 5 — за 16, 10 — за 30;
+   * теперь 1 — за ~25, 5 — за ~34, 10 — за ~48. Дальше кривая не меняется.
+   */
+  earlyMul: 2.5,
+  earlyMulUntil: 16,
+  /** Базовая кривая: 10 убийств на 1 ур. без earlyMul; с ним — ~25 на 1 и ~48 на 10. */
   killsGrowth: 1.13,
   /** Босс: во столько раз больше моба уровня бойца (делится по вкладу). */
   bossMul: 10,
@@ -89,10 +97,21 @@ export const XP_CURVE = {
   bonusMax: 0.5,
 } as const;
 
+/** Базовая кривая без начального налога — её же видит опыт моба. */
+function baseXpToNext(level: number): number {
+  return XP_CURVE.base * XP_CURVE.growth ** (level - 1);
+}
+
+/** Множитель первых уровней: на 1-м — `earlyMul`, к `earlyMulUntil` — 1. */
+function earlyMulAt(level: number): number {
+  if (level >= XP_CURVE.earlyMulUntil) return 1;
+  return 1 + (XP_CURVE.earlyMul - 1) * ((XP_CURVE.earlyMulUntil - level) / (XP_CURVE.earlyMulUntil - 1));
+}
+
 /** Сколько опыта нужно для перехода с `level` на следующий. */
 export function xpToNext(level: number): number {
   if (level >= PROGRESSION.maxLevel) return Infinity;
-  return Math.round(XP_CURVE.base * XP_CURVE.growth ** (level - 1));
+  return Math.round(baseXpToNext(level) * earlyMulAt(level));
 }
 
 /**
@@ -101,7 +120,9 @@ export function xpToNext(level: number): number {
  */
 export function mobXpAt(level: number): number {
   const L = Math.max(1, Math.min(PROGRESSION.mobMaxLevel, Math.floor(level) || 1));
-  return xpToNext(L) / (XP_CURVE.killsBase * XP_CURVE.killsGrowth ** (L - 1));
+  // Опыт моба — от БАЗОВОЙ кривой, без начального налога: иначе налог
+  // пропорционально увеличивал бы и опыт моба, и замедления бы не было.
+  return baseXpToNext(L) / (XP_CURVE.killsBase * XP_CURVE.killsGrowth ** (L - 1));
 }
 
 /**

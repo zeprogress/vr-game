@@ -96,7 +96,7 @@ export interface PlayerRecord extends SaveMsg, Progress {
   scrollWindUntil?: number;
   /** Версия системы атрибутов: 2 — «Классы 2.0» (6 атрибутов, цена очков растёт). Нет/1 — старая. */
   attrVer?: number;
-  /** Версия кривой опыта (XP_VER): старые записи хранят опыт в единицах удвоения 2^(L−1). */
+  /** Версия кривой опыта (XP_VER): нужна миграции, чтобы сохранить долю уровня при смене формулы. */
   xpVer?: number;
   /** Хозяин сам распределяет очки атрибутов (вложил вручную или сбросил) — бот больше не раскидывает их сам. */
   manualAttrs?: boolean;
@@ -134,8 +134,11 @@ export const ATTR_VER = 3;
 /** Версия формы дерева. 2 — большое дерево реворка (2026-11-03, ~220 узлов). */
 export const TREE_VER = 2;
 
-/** Текущая версия кривой опыта (3 — XP_CURVE реворка от 2026-11-03, мобы до 75). */
-export const XP_VER = 3;
+/**
+ * Текущая версия кривой опыта. 3 — XP_CURVE реворка (мобы до 75), 4 — начальный
+ * множитель earlyMul для первых 15 уровней (2026-11-03).
+ */
+export const XP_VER = 4;
 
 /**
  * Переход на новую кривую опыта: в старой записи опыт — в единицах удвоения (до следующего уровня
@@ -146,9 +149,15 @@ export function migrateXp(r: PlayerRecord): boolean {
   if (r.xpVer === XP_VER) return false;
   const level = r.level ?? 1;
   const ver = r.xpVer ?? 1;
-  // Старые кривые: v1 — 2^(L−1), v2 — XP_CURVE 2026-10-16. Долю уровня сохраняем,
-  // абсолютный опыт не переносим — иначе старые миллиарды подняли бы героя на десятки уровней.
-  const oldNeed = ver >= 2 ? 100 * 1.23 ** Math.max(0, level - 1) : Math.pow(2, Math.max(0, level - 1));
+  // Старые кривые: v1 — 2^(L−1), v2 — XP_CURVE 2026-10-16, v3 — XP_CURVE реворка
+  // без начального множителя. Долю уровня сохраняем, абсолютный опыт не переносим —
+  // иначе старые миллиарды подняли бы героя на десятки уровней.
+  const oldNeed =
+    ver >= 3
+      ? 100 * 1.18 ** Math.max(0, level - 1)
+      : ver === 2
+        ? 100 * 1.23 ** Math.max(0, level - 1)
+        : Math.pow(2, Math.max(0, level - 1));
   const need = xpToNext(level);
   const frac = oldNeed > 0 ? Math.max(0, Math.min(0.999, (r.xp ?? 0) / oldNeed)) : 0;
   r.xp = Number.isFinite(need) ? Math.round(frac * need) : 0;

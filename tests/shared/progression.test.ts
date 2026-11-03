@@ -18,7 +18,7 @@ import {
 import { close } from "./rng";
 
 test("опыт до следующего уровня растёт; на максимуме — бесконечность", () => {
-  assert.equal(xpToNext(1), XP_CURVE.base);
+  assert.equal(xpToNext(1), Math.round(XP_CURVE.base * XP_CURVE.earlyMul));
   for (let L = 1; L < PROGRESSION.maxLevel - 1; L++) assert.ok(xpToNext(L + 1) > xpToNext(L), `уровень ${L}`);
   assert.equal(xpToNext(PROGRESSION.maxLevel), Infinity);
 });
@@ -94,6 +94,11 @@ test("resetAttrs: атрибуты снова на старте, очки — в
 test("опыт за моба растёт до 75 уровня и дальше не растёт — мобов выше нет", () => {
   for (let L = 1; L < PROGRESSION.mobMaxLevel; L++) assert.ok(mobXpAt(L + 1) > mobXpAt(L), `моб ${L}`);
   for (let L = PROGRESSION.mobMaxLevel; L < PROGRESSION.maxLevel - 1; L++) assert.equal(mobXpAt(L + 1), mobXpAt(L), `моб ${L}`);
+});
+
+test("первые уровни медленнее: 1-й — не меньше 20 убийств, 10-й — больше 40", () => {
+  assert.ok(xpToNext(1) / mobXpAt(1) >= 20, `1 ур: ${xpToNext(1) / mobXpAt(1)}`);
+  assert.ok(xpToNext(10) / mobXpAt(10) > 40, `10 ур: ${xpToNext(10) / mobXpAt(10)}`);
 });
 
 test("кривая до 100 с мобами до 75: около 2,8 года при 20 убийствах в минуту", () => {
