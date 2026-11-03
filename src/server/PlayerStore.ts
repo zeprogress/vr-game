@@ -184,7 +184,14 @@ export function migrateTree(r: PlayerRecord): boolean {
   return true;
 }
 
-const FILE = resolve(dirname(fileURLToPath(import.meta.url)), ".data/players.json");
+/**
+ * Файл сейвов. По умолчанию `.data/players.json` рядом с сервером. Для
+ * параллельного запуска ветки реворка на тех же машинах можно указать
+ * `PLAYERS_FILE=...` — тогда миграции XP/дерева не тронут сейвы основной ветки.
+ */
+const FILE = process.env.PLAYERS_FILE
+  ? resolve(process.cwd(), process.env.PLAYERS_FILE)
+  : resolve(dirname(fileURLToPath(import.meta.url)), ".data/players.json");
 
 function blank(token: string): PlayerRecord {
   const p = blankProgress();

@@ -27,7 +27,8 @@
     "lab:balance": "tsx scripts/lab-balance.mts",
     "asset": "node scripts/asset.mjs",
     "lab:unity": "tsx scripts/unity-skill-lab.mts",
-    "lab:check": "node --import tsx --test tests/shared/skillShow.test.ts tests/shared/skillShowHandlers.test.ts tests/shared/unitySkillLab.test.ts"
+    "lab:check": "node --import tsx --test tests/shared/skillShow.test.ts tests/shared/skillShowHandlers.test.ts tests/shared/unitySkillLab.test.ts",
+    "server:rework": "PLAYERS_FILE=src/server/.data/rework/players.json tsx watch src/server/index.ts"
   },
   "dependencies": {
     "@babylonjs/core": "^7.34.0",

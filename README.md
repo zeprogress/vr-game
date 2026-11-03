@@ -3,6 +3,7 @@
 VR MMORPG (пет-проект). Общий мир: VR (Quest 2/3), браузер на десктопе, телефон.
 Полный план разработки — в [PLAN.md](PLAN.md).
 Реворк ядра и мира (черновик) — в [docs/rework-core.md](docs/rework-core.md).
+Как поднять сервер ветки `rework` — в [docs/rework-run.md](docs/rework-run.md).
 
 ## Текущий этап: 9 — голосовой чат
 
