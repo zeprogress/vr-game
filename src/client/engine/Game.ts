@@ -447,12 +447,6 @@ export class Game {
       this.sfx,
       this.progression,
       zone.groundHeight,
-      zone.swordHome,
-      zone.bowHome,
-      zone.shieldHome,
-      zone.staffHome,
-      zone.weaponsFaceYaw,
-      zone.classHomes,
     );
     this.combat.sharpOf = (hand) => this.heldSharpPct(hand);
     this.combat.rcOf = (hand) => !!(hand === "left" ? this.net?.self?.leftRc : this.net?.self?.rightRc);

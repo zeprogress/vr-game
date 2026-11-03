@@ -94,8 +94,6 @@ export const HUB = {
    * игроков — по периметру. Планировка по концепту (см. art/HUB).
    */
   zones: {
-    /** Оружейная: стойки с существующим sword/bow/shield/staff. Восток. */
-    weapons: { x: HUB_CENTER.x + 19, z: HUB_CENTER.z + 4 },
     /** Тренировочная площадка: мишени + манекены. Запад. */
     training: { x: HUB_CENTER.x - 19, z: HUB_CENTER.z + 2 },
     /** Торговые лавки. Северо-запад. */
@@ -104,8 +102,6 @@ export const HUB = {
     forge: { x: HUB_CENTER.x + 16, z: HUB_CENTER.z - 15 },
     /** Палатка медика. Юго-запад. */
     medic: { x: HUB_CENTER.x - 20, z: HUB_CENTER.z - 10 },
-    /** Главный шатёр (позади площади, дальше от ворот). Юг. */
-    mainTent: { x: HUB_CENTER.x - 1, z: HUB_CENTER.z - 21 },
     /** Смотровая башня — ориентир у ворот, видна отовсюду. */
     watchTower: { x: HUB_CENTER.x + 10, z: HUB_CENTER.z + 20 },
     /** Доска заданий (квесты дня) — у выхода из лагеря, справа от ворот (если идти наружу). */

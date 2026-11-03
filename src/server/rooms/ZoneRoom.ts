@@ -211,7 +211,7 @@ import { wallSlide } from "../sim/wallSlide";
 import { leashCut } from "../sim/leash";
 import { ATTR2 } from "#shared/attrs2";
 import { DRAW_IN, drawInPlan, drawModeOf, type DrawMode } from "#shared/drawIn";
-import { STEEL_AURA, steelAuraTick, steelModeOf, type SteelMode, ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, plagueAtk, SMOKE, SOUL_STEAL, skillAttrMul, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, hasClassWeapon, isClassId, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, hammerWaveDamage, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, MARK_FOCUS, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillAttrs, type SkillId, type Weapon2 } from "#shared/classes2";
+import { STEEL_AURA, steelAuraTick, steelModeOf, type SteelMode, ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, plagueAtk, SMOKE, SOUL_STEAL, skillAttrMul, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, classWeapon, hasClassWeapon, isClassId, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, hammerWaveDamage, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, MARK_FOCUS, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillAttrs, type SkillId, type Weapon2 } from "#shared/classes2";
 import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC } from "#shared/ultimates";
 import {
   MAGIC,
@@ -847,12 +847,12 @@ function sanitizeHeld(v: unknown): HeldWeapons {
 }
 
 /**
- * Руки при входе. Базовое оружие в руках не держим: его никто не надевает сам (ни при входе, ни при подборе),
- * а сохранённое раньше — снимаем. Щит и кинжал — только если они у героя есть (owned).
+ * Руки при входе. Базовое оружие — такое же, как остальные тиры: сохранённое
+ * остаётся в руке. Щит и кинжал требуют права владения (owned).
  */
 function heldOwned(h: HeldWeapons, owned: readonly string[] | undefined): HeldWeapons {
   const need = (c: CarriedWeapon | null): CarriedWeapon | null =>
-    !c || c.tier === "base" || ((c.cls === "shield" || c.cls === "dagger") && !ownsClass(owned, c.cls)) ? null : c;
+    !c || ((c.cls === "shield" || c.cls === "dagger") && !ownsClass(owned, c.cls)) ? null : c;
   return { left: need(h.left), right: need(h.right) };
 }
 
@@ -1293,9 +1293,9 @@ function recHeldIds(rec: { weapons?: WeaponInstance[]; equippedWeaponId?: unknow
 }
 
 function preserveLegacyWeapon(rt: { weapons: WeaponInstance[] }, cls: string, tier: string): void {
-  if (tier === "base" || !isWeaponClass(cls) || !isWeaponTier(tier)) return;
+  if (!isWeaponClass(cls) || !isWeaponTier(tier)) return;
   if (rt.weapons.some((w) => w.cls === cls && w.tier === tier)) return;
-  rt.weapons.push(plainWeaponInstance(cls, tier));
+  rt.weapons.push(tier === "base" ? rollWeaponInstance(cls, tier) : plainWeaponInstance(cls, tier));
 }
 
 /**
@@ -2096,8 +2096,8 @@ export class ZoneRoom extends Room<ZoneState> {
         if (!claim || !isWeaponClass(claim.cls) || !isWeaponTier(claim.tier)) {
           return { cls: "", tier: "" };
         }
-        // Не поднимал — рука пустая (базовое сам не надеваем).
-        if (claim.tier !== "base" && !rt.owned.has(weaponKey(claim.cls, claim.tier))) return { cls: "", tier: "" };
+        // Не поднимал — рука пустая (любой тир требует права владения).
+        if (!rt.owned.has(weaponKey(claim.cls, claim.tier))) return { cls: "", tier: "" };
         return { cls: claim.cls, tier: claim.tier };
       };
 
@@ -2123,12 +2123,8 @@ export class ZoneRoom extends Room<ZoneState> {
                 isWeaponTier(s.tier) &&
                 (s.side === "left" || s.side === "right"),
             )
-            .map((s) => ({
-              cls: s.cls,
-              tier:
-                s.tier === "base" || rt.owned.has(weaponKey(s.cls, s.tier)) ? s.tier : "base",
-              side: s.side,
-            }))
+            .filter((s) => rt.owned.has(weaponKey(s.cls, s.tier)))
+            .map((s) => ({ cls: s.cls, tier: s.tier, side: s.side }))
         : [];
       // Закреплённый за рукой инстанс, которого больше нет ни в руках, ни за
       // спиной (убрали в склад из окна снаряжения / при подборе другого), —
@@ -2240,7 +2236,6 @@ export class ZoneRoom extends Room<ZoneState> {
       const rt = this.rt.get(client.sessionId);
       if (!p || !rt || !msg) return;
       if (!isWeaponClass(msg.cls) || !isWeaponTier(msg.tier)) return;
-      if (msg.tier === "base") return; // базовое лежит у камней, в мир не кладём
       if (!rt.owned.has(weaponKey(msg.cls, msg.tier))) return; // не поднимал — не роняет
 
       const edge = WORLD.size / 2 - 2;
@@ -5445,16 +5440,14 @@ export class ZoneRoom extends Room<ZoneState> {
     return true;
   }
 
-  /**
-   * Объявление в чат о подобранном золотом/легендарном оружии — с роллами,
-   * если они есть. База не объявляем (не редкость, и не дропается вообще).
-   */
+  /** Объявление о подобранном редком оружии — обычное в кил-фид не пишем. */
   private announcePickup(
     nick: string,
     cls: WeaponClass,
     tier: WeaponTier,
     instance?: WeaponInstance,
   ): void {
+    // Обычное оружие — не редкость, в кил-фид не пишем; на механику это не влияет.
     if (tier === "base") return;
     const name = instance ? instanceName(instance) : weaponDef(cls, tier).name;
     const affixes = instance ? instanceLabels(instance).join(", ") : "";
@@ -5477,6 +5470,38 @@ export class ZoneRoom extends Room<ZoneState> {
       if (rt) return { id, p, rt };
     }
     return null;
+  }
+
+  /** У любого оружия в руке/за спиной должен быть инстанс на складе — иначе снятие сотрёт его. */
+  private ensureWeaponInstance(rt: Runtime, cls: string, tier: string): WeaponInstance | undefined {
+    if (!isWeaponClass(cls) || !isWeaponTier(tier)) return undefined;
+    const have = rt.weapons.find((w) => w.cls === cls && w.tier === tier);
+    if (have) {
+      rt.owned.add(weaponKey(have.cls, have.tier));
+      return have;
+    }
+    const w = rollWeaponInstance(cls, tier);
+    rt.weapons.push(w);
+    rt.owned.add(weaponKey(w.cls, w.tier));
+    return w;
+  }
+
+  private ensureHeldInstance(p: PlayerState, rt: Runtime, side: "left" | "right"): void {
+    const c = heldIn(p, side);
+    if (!c) return;
+    const w = this.ensureWeaponInstance(rt, c.cls, c.tier);
+    if (w) rt.equippedWeaponId[side] = w.id;
+  }
+
+  /** Новому герою — оружие его класса в руку. Единственное автонадевание. */
+  private giveStartingWeapon(p: PlayerState, rt: Runtime): void {
+    if (heldIn(p, "right") || heldIn(p, "left")) return;
+    const cls = classWeapon(this.heroCls(p)) as WeaponClass;
+    const w = rollWeaponInstance(cls, "base");
+    rt.weapons.push(w);
+    rt.owned.add(weaponKey(w.cls, w.tier));
+    applyEquip(p, rt, w, cls === "shield" ? "left" : "right");
+    this.syncSkills(p, rt);
   }
 
   // ---------------------------------------------------------------- админ-суперпользователь
@@ -7243,6 +7268,9 @@ export class ZoneRoom extends Room<ZoneState> {
       fishAuto: false,
     };
     this.rt.set(id, rt);
+    this.ensureHeldInstance(p, rt, "left");
+    this.ensureHeldInstance(p, rt, "right");
+    for (const s of rt.stowed) this.ensureWeaponInstance(rt, s.cls, s.tier);
     this.applyJewels(id);
     this.botDressArmor(rt);
     this.applyArmor(id);
@@ -13042,6 +13070,11 @@ export class ZoneRoom extends Room<ZoneState> {
       fishBiteAt: null,
       fishAuto: false,
     });
+    const rt = this.rt.get(client.sessionId)!;
+    if (!rec) this.giveStartingWeapon(p, rt);
+    this.ensureHeldInstance(p, rt, "left");
+    this.ensureHeldInstance(p, rt, "right");
+    for (const s of rt.stowed) this.ensureWeaponInstance(rt, s.cls, s.tier);
     this.applyJewels(client.sessionId);
     this.applyArmor(client.sessionId);
     // Снимок инвентаря сразу при входе — в меню на руке уже видна сила удара (без открытия окна).
@@ -13064,13 +13097,24 @@ export class ZoneRoom extends Room<ZoneState> {
             y: rec.y,
             z: rec.z,
             yaw: rec.yaw,
-            stowed: sanitizeStowed(rec.stowed),
-            held: sanitizeHeld(rec.held),
+            stowed: rt.stowed,
+            held: { left: heldIn(p, "left"), right: heldIn(p, "right") },
             overrides: sanitizeOverrides(rec.overrides),
             leaveBot: rec.leaveBot === true,
             eventBuffUntil: 0,
           }
-        : null,
+        : {
+            // Новый герой: сразу с классовым оружием в руке, без «пустого» первого кадра.
+            x: p.head.x,
+            y: p.head.y,
+            z: p.head.z,
+            yaw: rt.yaw,
+            stowed: [],
+            held: { left: heldIn(p, "left"), right: heldIn(p, "right") },
+            overrides: {},
+            leaveBot: false,
+            eventBuffUntil: 0,
+          },
     );
 
     if (catPrev) {

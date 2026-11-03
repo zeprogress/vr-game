@@ -67,7 +67,6 @@ export function rocks(): Rock[] {
     };
     // Камень внутри главного шатра лагеря — убран. Проверка ПОСЛЕ всех r():
     // последовательность остальных камней не сдвигается.
-    if (Math.hypot(x - HUB.zones.mainTent.x, z - HUB.zones.mainTent.z) < 7) continue;
     if (clearSpot(x, z)) continue;
     out.push(rock);
   }

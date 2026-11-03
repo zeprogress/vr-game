@@ -44,6 +44,13 @@ const CONTRIB_RECENCY = 20;
 
 /** Каким предметом каждое оружие лежит в мире. */
 export const WEAPON_DROP: Partial<Record<string, ItemId>> = {
+  "sword:base": "base_sword",
+  "bow:base": "base_bow",
+  "staff:base": "base_staff",
+  "dagger:base": "base_dagger",
+  "spear:base": "base_spear",
+  "hammer:base": "base_hammer",
+  "shield:base": "base_shield",
   "sword:gold": "gold_sword",
   "bow:gold": "gold_bow",
   "staff:gold": "gold_staff",
@@ -4478,12 +4485,15 @@ export class ZoneSim {
       const own = Object.values(ELITE_MOBS).find((d) => d.model === m.model)?.legendaryChance;
       // Уникальное — наоборот: с 1-го уровня моба ноль, к 53-му — как есть (ARMOR_LEVEL_GATE.legendary).
       const legendaryChance = elite && m.model ? (own ?? DROP_CHANCE.eliteLegendary) * champMul * UNIQUE_DROP_MUL * armorLevelMul(m.eliteLevel, ARMOR_LEVEL_GATE.legendary) : 0;
+      const baseChance = DROP_CHANCE.baseWeapon * champMul * WEAPON_DROP_MUL;
       const tier: WeaponTier | null =
         legendaryChance > 0 && Math.random() < legendaryChance
           ? "legendary"
           : Math.random() < goldChance
             ? "gold"
-            : null;
+            : Math.random() < baseChance
+              ? "base"
+              : null;
       if (tier) {
         const cls = pick(tier === "legendary" ? LEGENDARY_CLASSES : GOLD_CLASSES);
         const item = WEAPON_DROP[weaponKey(cls, tier)];
@@ -4556,7 +4566,6 @@ export class ZoneSim {
   /** Положить оружие на землю. Базовое не роняем — оно всегда доступно. */
   /** Возвращает id реально упавшего предмета (для баннера с иконкой) или null. */
   dropWeapon(cls: WeaponClass, tier: WeaponTier, x: number, z: number, aegis = false): ItemId | null {
-    if (tier === "base") return null;
     const item = WEAPON_DROP[weaponKey(cls, tier)];
     if (!item) return null;
     const instance = aegis ? rollAegisInstance() : rollWeaponInstance(cls, tier);
@@ -4573,7 +4582,6 @@ export class ZoneSim {
   }
 
   dropInstance(inst: WeaponInstance, x: number, z: number): ItemId | null {
-    if (inst.tier === "base") return null;
     delete inst.fav; // звёздочка — личная пометка хозяина, на земле её нет
     const item = WEAPON_DROP[weaponKey(inst.cls, inst.tier)];
     if (!item) return null;

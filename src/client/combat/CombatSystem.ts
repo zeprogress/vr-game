@@ -36,13 +36,9 @@ import type { PlayerController } from "../player/PlayerController";
 import type { Progression } from "../player/Progression";
 import type { Side } from "../player/Hands";
 import type { Sfx } from "../audio/Sfx";
-import { createSword } from "../items/Sword";
-import { createClassWeapon } from "../items/classWeapons";
 import { applySharpGlow } from "../items/weaponModels";
 import { SKILLS2, WEAPONS2 } from "#shared/classes2";
-import { createStaff } from "../items/Staff";
 import { createPotion, type PotionBottle } from "../items/Potion";
-import { createShield } from "../items/Shield";
 import { createBow, tintBow, type BowParts } from "../items/Bow";
 import { createArrowProto, tintArrows, Arrow } from "./Arrow";
 import type { Hittable } from "./Hittable";
@@ -153,10 +149,8 @@ interface Item {
   hand2?: Side | null;
   /** За какой хват держит каждая рука (посох): нижний / верхний. */
   grip?: Partial<Record<Side, "low" | "high">>;
-  /** Где лежит/стоит, когда его не держат. */
-  rest: { pos: Vector3; yaw: number; bob: boolean;
-    /** Задан — предмет стоит неподвижно в этой ориентации (стойка HUB), без парения и вращения. */
-    stand?: Vector3 };
+  /** Где лежит, когда его не держат. */
+  rest: { pos: Vector3; yaw: number; bob: boolean };
   /** Полётное состояние — не null, пока предмет летит. */
   flight: Flight | null;
   /** Рука, за спину которой предмет убран, либо null. */
@@ -193,8 +187,6 @@ function newMotion(): HandMotion {
   };
 }
 
-/** Подсветка обычного оружия на стойках (см. highlightStands). */
-const STAND_GLOW = new Color3(1, 0.93, 0.7);
 
 /** ПК: подошёл к оружию на земле ближе этого (м, по горизонтали) — подбирается само. */
 const PC_AUTO_PICK_R = 1.7;
@@ -483,10 +475,6 @@ export class CombatSystem {
   onSoundEvent:
     | ((kind: "swing" | "bow" | "arrowHit", x: number, y: number, z: number) => void)
     | null = null;
-  /** Где лежит базовое оружие (камни у спавна) — туда возвращается лук. */
-  private readonly homes: Record<ItemKind, Vector3>;
-  /** Куда «лицом» стоит оружие на стойке лагеря. */
-  private readonly weaponsFaceYaw: number;
 
   /** Сообщить соседям про звук (взмах/выстрел/стрела). */
   private emitSound(kind: "swing" | "bow" | "arrowHit", p: Vector3): void {
@@ -504,54 +492,14 @@ export class CombatSystem {
     private readonly sfx: Sfx,
     private readonly prog: Progression,
     private readonly groundHeight: (x: number, z: number) => number,
-    swordHome: Vector3,
-    bowHome: Vector3,
-    shieldHome: Vector3,
-    staffHome: Vector3,
-    /** Куда «лицом» стоит оружие на стойке лагеря (к площади). */
-    weaponsFaceYaw = 0,
-    /** Места на стойке оружия «Классов 2.0». */
-    classHomes?: { dagger: Vector3; dagger2: Vector3; spear: Vector3; hammer: Vector3 },
   ) {
-    this.weaponsFaceYaw = weaponsFaceYaw;
-    this.homes = {
-      sword: swordHome.clone(),
-      bow: bowHome.clone(),
-      shield: shieldHome.clone(),
-      staff: staffHome.clone(),
-      dagger: (classHomes?.dagger ?? swordHome).clone(),
-      spear: (classHomes?.spear ?? staffHome).clone(),
-      hammer: (classHomes?.hammer ?? staffHome).clone(),
-    };
-    const sword = createSword(scene);
-    const shield = createShield(scene);
-    const staff = createStaff(scene);
+    // Единственный постоянный предмет — лук: к нему привязаны тетива и стрела.
+    // Он существует всегда, но спрятан, пока лук не в руках/за спиной.
     this.bowParts = createBow(scene);
     const bow = this.bowParts.mesh;
-
-    this.items = [
-      this.makeItem("sword", "base", sword, swordHome),
-      this.makeItem("bow", "base", bow, bowHome),
-      this.makeItem("shield", "base", shield, shieldHome),
-      this.makeItem("staff", "base", staff, staffHome),
-    ];
-    // Оружие «Классов 2.0» на стойке: два кинжала (ассасин берёт оба), копьё, молот.
-    if (classHomes) {
-      this.items.push(
-        this.makeItem("dagger", "base", createClassWeapon(scene, "dagger", 0), classHomes.dagger),
-        this.makeItem("dagger", "base", createClassWeapon(scene, "dagger", 0), classHomes.dagger2),
-        this.makeItem("spear", "base", createClassWeapon(scene, "spear", 0), classHomes.spear),
-        this.makeItem("hammer", "base", createClassWeapon(scene, "hammer", 0), classHomes.hammer),
-      );
-    }
-    // Базовое оружие СТОИТ на стойке лагеря: вертикально, чуть завалено назад
-    // на планку, лицом к площади — не парит и не крутится, легко разглядеть и
-    // подойти взять. Позы возвращаются сюда же после того, как оружие бросили.
-    for (const it of this.items) {
-      it.rest.bob = false;
-      it.rest.stand = this.standPose(it.kind, weaponsFaceYaw);
-      this.layRest(it);
-    }
+    const hidden = new Vector3(0, -1000, 0);
+    this.items = [this.makeItem("bow", "base", bow, hidden)];
+    bow.setEnabled(false);
     this.backAnchor = new TransformNode("backAnchor", scene);
     this.beltAnchor = new TransformNode("beltAnchor", scene);
     this.potion = createPotion(scene);
@@ -934,8 +882,7 @@ export class CombatSystem {
     sp = secNow();
     if (this.player.inVR) this.handleGripsVR();
     else {
-      // Телефон: ⚔ с пустыми руками у оружия (стойка, земля) — подобрать, а не бить кулаком.
-      if (this.player.thirdPerson && primaryEdge && !this.weapon) this.tryPickupFlat();
+      // Телефон/ПК: подбор — только явной кнопкой (E/✋), а не ударом.
       this.handleInteractFlat(inp.interact, interactEdge, interactReleased, dt);
     }
     secAdd("combat.grips", sp);
@@ -963,7 +910,6 @@ export class CombatSystem {
     sp = secNow();
     if (this.player.inVR) this.autoPickupWeapons(dt);
     else if (this.lootToBag) this.pcAutoPickup(dt);
-    this.highlightStands(dt);
     secAdd("combat.autoPickup", sp);
 
     sp = secNow();
@@ -1343,39 +1289,12 @@ export class CombatSystem {
     return true;
   }
 
-  private standT = 0;
-  private readonly standLit = new Set<Item>();
-
-  /**
-   * Обычное оружие на стойках в лагере чуть светится — видно, что его можно
-   * взять (все платформы; у спектатора CombatSystem нет). Мягкий тёплый
-   * налёт поверх модели, еле заметно пульсирует.
-   */
-  private highlightStands(dt: number): void {
-    this.standT += dt;
-    const a = 0.16 + 0.07 * Math.sin(this.standT * 2.2);
-    for (const it of this.items) {
-      const onStand = it.tier === "base" && !it.hand && !it.hand2 && !it.stow && !it.flight;
-      const was = this.standLit.has(it);
-      if (onStand !== was) {
-        if (onStand) this.standLit.add(it);
-        else this.standLit.delete(it);
-        for (const m of [it.mesh, ...it.mesh.getChildMeshes(false)]) {
-          m.renderOverlay = onStand;
-          if (onStand) m.overlayColor = STAND_GLOW;
-        }
-      }
-      if (onStand) for (const m of [it.mesh, ...it.mesh.getChildMeshes(false)]) m.overlayAlpha = a;
-    }
-  }
-
-  /** ПК: взял обычное оружие со стойки (без сервера) — анимация подбора. */
+  /** ПК: анимация подбора (когда предмет всё же берут в руку явно). */
   onLocalPickup: (() => void) | null = null;
 
-  /** Лут с земли: в свободную подходящую руку, иначе — в сумку. */
-  private pcPickupWorld(cls: ItemKind, id: string): void {
-    const side = this.freeHandFor(cls);
-    if (side && this.tryPickupWorldWeapon(side)) return;
+  /** Лут с земли: автоматически — только на склад, не в руку. */
+  private pcPickupWorld(_cls: ItemKind, id: string): void {
+    // Ничего не надеваем само: подобранное уходит на склад, надеть — вручную.
     this.takeWorldWeapon(id, null);
     this.sfx.bowDraw();
   }
@@ -1512,19 +1431,13 @@ export class CombatSystem {
       const bow = this.bowItem;
       if (bow.hand || bow.stow) return null; // лук уже занят
       bow.tier = tier;
+      bow.mesh.setEnabled(true);
       tintBow(bow.mesh, tier);
       this.nockLocal.copyFrom(this.bowParts.nockRest);
       tintArrows(tier); // золотому луку — золотые стрелы
       bow.flight = null;
       bow.mesh.rotationQuaternion = null;
       return bow;
-    }
-    // Меч/щит: базовый предмет переиспользуем, если он свободен; иначе — новый.
-    const base = this.items.find((i) => i.kind === kind && i.tier === "base");
-    if (tier === "base" && base && !base.hand && !base.stow) {
-      base.flight = null;
-      base.mesh.rotationQuaternion = null;
-      return base;
     }
     const mesh = this.makeWeaponMesh?.(kind, tier);
     if (!mesh) return null;
@@ -1577,9 +1490,8 @@ export class CombatSystem {
   }
 
   /**
-   * VR: подошёл к оружию на земле — оно подбирается само. Есть свободная рука,
-   * которой можно его держать, — берётся сразу в руку; руки заняты (или оружие
-   * не подходит к тому, что в руках) — уходит на склад персонажа.
+   * VR: подошёл к оружию на земле — оно уходит на склад. В руку ничего не
+   * надевается само: надеть можно вручную из меню.
    */
   private autoPickupWeapons(dt: number): void {
     this.autoPickupCd = Math.max(0, this.autoPickupCd - dt);
@@ -1592,12 +1504,7 @@ export class CombatSystem {
     const ws = this.nearestWorldWeapon(p);
     if (!ws || Vector3.Distance(p, ws.pos) > WEAPON_TAKE_REACH * 0.85 || this.recentlyTaken(ws.id)) return;
     this.autoPickupCd = 0.7;
-    // Свободная рука (правая раньше) — пробуем взять в руку.
-    for (const side of ["right", "left"] as Side[]) {
-      if (this.uiLockHand === side || this.inHand(side)) continue;
-      if (this.tryPickupWorldWeapon(side)) return;
-    }
-    // Руки заняты / не подошло — на склад (не в руку — рука не задействована).
+    // Ничего не надеваем автоматически: подобранное уходит на склад.
     this.takeWorldWeapon(ws.id, null);
     this.haptic("right", 0.3, 50);
   }
@@ -1605,7 +1512,7 @@ export class CombatSystem {
   /** Оружие с земли (лут) — в свободную руку. true — взято в руку; false — не подошло/рядом нет. */
   // ---- склад (меню на руке) ----
 
-  /** Убрать предмет из мира «на склад»: базовые/лук возвращаются на своё место, остальные исчезают. */
+  /** Убрать предмет из мира «на склад»: любой тир одинаково уходит из рук. */
   private retireItem(item: Item): void {
     item.hand = null;
     item.hand2 = null;
@@ -1616,28 +1523,15 @@ export class CombatSystem {
       this.nockArrow.setEnabled(false);
       this.draw = 0;
       this.vrNocked = false;
-    }
-    this.resetCast();
-    item.mesh.parent = null;
-    item.mesh.rotationQuaternion = null;
-    if (item.kind === "bow") {
-      // Лук один: на склад уходит «содержимое» (золото/уникальный), а на стойке снова обычный.
-      item.tier = "base";
-      tintBow(item.mesh, "base");
-      this.nockLocal.copyFrom(this.bowParts.nockRest);
-      tintArrows("base");
-      item.rest.pos.copyFrom(this.homes.bow);
-      item.rest.bob = false;
-      item.rest.stand = this.standPose("bow", this.weaponsFaceYaw);
-      this.layRest(item);
-      return;
-    }
-    if (item.tier === "base") {
-      item.mesh.position.copyFrom(item.rest.pos); // стойка/камень — на месте
+      // Лук один: меш живёт всегда, но пока лук на складе — спрятан.
+      item.mesh.parent = null;
+      item.mesh.rotationQuaternion = null;
+      item.mesh.setEnabled(false);
       return;
     }
     const i = this.items.indexOf(item);
     if (i >= 0) this.items.splice(i, 1);
+    item.mesh.parent = null;
     item.mesh.dispose();
   }
 
@@ -1779,6 +1673,7 @@ export class CombatSystem {
     if (ws.cls === "bow") {
       const bow = this.bowItem;
       if (this.canPick(bow)) {
+        bow.mesh.setEnabled(true);
         bow.tier = ws.tier;
         tintBow(bow.mesh, ws.tier);
         this.nockLocal.copyFrom(this.bowParts.nockRest);
@@ -1845,6 +1740,7 @@ export class CombatSystem {
 
   /** Положить предмет в руку и сбросить связанное с ним состояние. */
   private equip(item: Item, side: Side): void {
+    item.mesh.setEnabled(true);
     // Щит всегда в левой руке (кроме VR — там держат чем взяли). Так он не
     // занимает руку под меч/посох и не мешает их поднять.
     if (item.kind === "shield" && !this.player.inVR) side = "left";
@@ -1921,7 +1817,6 @@ export class CombatSystem {
         item.rest.pos.set(mesh.position.x, gy + 0.12, mesh.position.z);
         item.rest.yaw = Math.atan2(f.vel.x, f.vel.z) + Math.random() * 0.5 - 0.25;
         item.rest.bob = false;
-        item.rest.stand = undefined;
         item.flight = null;
         mesh.rotationQuaternion = null;
         this.layFlat(item);
@@ -1930,26 +1825,13 @@ export class CombatSystem {
     }
   }
 
-  /**
-   * Отдать упавшее заработанное оружие миру (серверу). Базовое остаётся своим:
-   * оно и так всегда доступно у камней.
-   */
+  /** Отдать упавшее оружие миру (серверу) — любой тир, включая базовый. */
   private handOverToWorld(item: Item): void {
-    if (item.tier === "base" || !this.onWeaponLanded) return;
+    if (!this.onWeaponLanded) return;
     const p = item.mesh.position;
     this.onWeaponLanded(item.kind as WeaponClass, item.tier, p.x, p.z, item.thrownFrom ?? null);
-
     if (item.kind === "bow") {
-      // Лук в игре один — не удаляем, а возвращаем к базовому виду и на камень.
-      item.tier = "base";
-      tintBow(item.mesh, "base");
-      this.nockLocal.copyFrom(this.bowParts.nockRest);
-      tintArrows("base");
-      item.rest.pos.copyFrom(this.homes.bow);
-      item.rest.bob = false;
-      item.rest.stand = this.standPose("bow", this.weaponsFaceYaw);
-      item.mesh.rotationQuaternion = null;
-      this.layRest(item);
+      item.mesh.setEnabled(false);
       return;
     }
     const i = this.items.indexOf(item);
@@ -2010,48 +1892,18 @@ export class CombatSystem {
     return this.heldHand === "left" ? "right" : "left";
   }
 
-  /** Ориентация предмета, стоящего на стойке лагеря (см. конструктор). */
-  private standPose(kind: ItemKind, faceYaw: number): Vector3 {
-    const LEAN = 0.16; // завал назад на планку, рад
-    if (kind === "shield") return new Vector3(-Math.PI / 2 + LEAN, faceYaw, 0);
-    if (kind === "bow") return new Vector3(LEAN, faceYaw + Math.PI / 2, 0);
-    // меч и посох — клинок/навершие вверх
-    return new Vector3(-LEAN, faceYaw, 0);
-  }
-
-  /** Поставить предмет в его позу покоя (стойка или «лежит плашмя»). */
-  private layRest(item: Item): void {
-    item.mesh.rotationQuaternion = null;
-    item.mesh.position.copyFrom(item.rest.pos);
-    if (item.rest.stand) item.mesh.rotation.copyFrom(item.rest.stand);
-    else item.mesh.rotation.set(Math.PI / 2, item.rest.yaw, 0);
-  }
-
   private layFlat(item: Item): void {
     item.mesh.rotationQuaternion = null;
     item.mesh.position.copyFrom(item.rest.pos);
     item.mesh.rotation.set(Math.PI / 2, item.rest.yaw, 0);
   }
 
-  /** Предметы, которые никто не держит и которые не летят, лежат/парят на месте. */
+  /** Предметы, которые никто не держит, не парят: лук просто спрятан. */
   private updateRestPoses(dt: number): void {
     this.bob += dt;
-    let phase = 0;
     for (const item of this.items) {
-      phase++;
       if (item.hand || item.flight || item.stow) continue;
-      if (item.rest.stand) {
-        this.layRest(item); // стоит на стойке — неподвижно
-      } else if (item.rest.bob) {
-        item.mesh.position.set(
-          item.rest.pos.x,
-          item.rest.pos.y + Math.sin(this.bob * 2 + phase) * 0.08,
-          item.rest.pos.z,
-        );
-        item.mesh.rotation.set(0, this.bob * 0.7, 0);
-      } else {
-        this.layFlat(item);
-      }
+      if (item.kind === "bow") item.mesh.setEnabled(false);
     }
   }
 

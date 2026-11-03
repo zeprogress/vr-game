@@ -1311,7 +1311,7 @@ export class WristMenu {
 
   /** Очки роллов оружия в руке: по закреплённому инстансу, иначе лучший этого класса/тира. */
   private handQuality(w: WornWeapon | null, side: Side): string | undefined {
-    if (!w || w.tier === "base") return undefined;
+    if (!w) return undefined;
     // Лук в интерфейсе стоит в левой руке, а закреплён мог быть за любой.
     const id = bothHandsCls(w.cls) ? this.equippedIds.left ?? this.equippedIds.right : this.equippedIds[side];
     const byId = id ? this.warehouse.find((x) => x.id === id) : undefined;
@@ -1711,7 +1711,7 @@ export class WristMenu {
     const out = new Map<string, string>();
     const used = new Set<string>();
     const claim = (w: WornWeapon | null, label: string, preferId: string | null): void => {
-      if (!w || w.tier === "base") return;
+      if (!w) return;
       const cands = this.warehouse.filter((x) => x.cls === w.cls && x.tier === w.tier && !used.has(x.id));
       if (cands.length === 0) return;
       let pick = preferId ? cands.find((x) => x.id === preferId) : undefined;

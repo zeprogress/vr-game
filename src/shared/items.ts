@@ -3,6 +3,13 @@ import type { MobKind } from "./net/schema";
 
 export type ItemId =
   | "potion"
+  | "base_sword"
+  | "base_bow"
+  | "base_staff"
+  | "base_dagger"
+  | "base_spear"
+  | "base_hammer"
+  | "base_shield"
   | "gold_sword"
   | "gold_bow"
   | "gold_staff"
@@ -264,6 +271,13 @@ export interface ItemDef {
 export const BIG_STACK = 4_294_967_295;
 
 export const ITEMS: Record<ItemId, ItemDef> = {
+  base_sword: weaponItem("sword", "base"),
+  base_bow: weaponItem("bow", "base"),
+  base_staff: weaponItem("staff", "base"),
+  base_dagger: weaponItem("dagger", "base"),
+  base_spear: weaponItem("spear", "base"),
+  base_hammer: weaponItem("hammer", "base"),
+  base_shield: weaponItem("shield", "base"),
   potion: {
     name: "Зелье лечения",
     short: "Зелье",
@@ -870,7 +884,7 @@ export function qualityStars(quality: number, rolls: number): string {
 
 /** Сколько роллов у нового дропа этого тира — принцип "выше тир — больше роллов". */
 function rollAffixCount(tier: WeaponTier, rnd: () => number): number {
-  if (tier === "base") return 0;
+  if (tier === "base") return 1;
   if (tier === "gold") return rnd() < 0.3 ? 2 : 1;
   if (tier === "ruby") return rnd() < RUBY.fourChance ? 4 : 3;
   return rnd() < 0.4 ? 3 : 2; // legendary

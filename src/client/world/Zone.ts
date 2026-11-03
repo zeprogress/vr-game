@@ -57,15 +57,6 @@ export interface Zone {
     playerPos: Vector3,
     net?: { hour: number; auto: number } | null,
   ) => void;
-  /** Точки, где лежат меч, лук и щит (над камнями). */
-  swordHome: Vector3;
-  bowHome: Vector3;
-  shieldHome: Vector3;
-  staffHome: Vector3;
-  /** Стойка: места кинжалов, копья и молота. */
-  classHomes: { dagger: Vector3; dagger2: Vector3; spear: Vector3; hammer: Vector3 };
-  /** Куда «лицом» смотрит оружие на стойке (к площади лагеря). */
-  weaponsFaceYaw: number;
   /** Катакомбы: залы за краем карты и портал сбора в лагере (кормят Game/Spectator состоянием). */
   catacombs: CatacombsFx;
   dungeon: DungeonFx;
@@ -172,36 +163,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
     }
   }
 
-  // Базовое оружие стоит на стойке оружейной HUB — вертикально, не парит и не
-  // крутится (позы задаёт CombatSystem по weaponsFaceYaw). `lift` у каждого
-  // свой: столько от точки хвата до земли, чтобы предмет стоял на грунте.
-  const wz = HUB.zones.weapons;
-  const wYaw = Math.atan2(HUB.center.x - wz.x, HUB.center.z - wz.z); // лицом к площади
-  const alongX = Math.cos(wYaw); // вдоль планки стойки
-  const alongZ = -Math.sin(wYaw);
-  const fwdX = Math.sin(wYaw); // от стойки к площади (там стоит игрок)
-  const fwdZ = Math.cos(wYaw);
-  const homeAt = (slot: number, lift: number): Vector3 => {
-    const hx = wz.x + alongX * slot + fwdX * 0.35;
-    const hz = wz.z + alongZ * slot + fwdZ * 0.35;
-    return new Vector3(hx, terrain.heightAt(hx, hz) + lift, hz);
-  };
-  // Каменных постаментов под оружием больше нет — предмет стоит прямо на земле.
-  // Lift подобран по замеру габаритов в стойке (нижняя точка модели = грунт +2 см):
-  // раньше меч и посох уходили в землю на ~11 см, камень это скрывал.
-  const swordHome = homeAt(-1.8, 0.155);
-  const bowHome = homeAt(-0.6, 0.72);
-  const shieldHome = homeAt(0.6, 0.35);
-  const staffHome = homeAt(1.8, 0.63);
-  // «Классы 2.0»: кинжалы — левее меча, копьё и молот — правее посоха.
-  const classHomes = {
-    dagger: homeAt(-3.0, 0.12),
-    dagger2: homeAt(-3.4, 0.12),
-    spear: homeAt(3.0, 0.55),
-    hammer: homeAt(4.0, 0.44),
-  };
-
-  // Камни из пака: под оружием + по карте. Крупные — препятствия.
+  // Камни из пака: по карте. Крупные — препятствия.
 
   // HUB «Боевой лагерь» — блокаут в той же сцене (не отдельный мир).
   const hub = buildHubBlockout(scene);
@@ -316,11 +278,5 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
       if ((hubTickN++ & 1) === 0) hub.tick(day.daylight); // костёр и свечение лагеря — через кадр (его dt считается по часам)
       secAdd("zone.hub", sp);
     },
-    swordHome,
-    bowHome,
-    shieldHome,
-    staffHome,
-    classHomes,
-    weaponsFaceYaw: wYaw,
   };
 }

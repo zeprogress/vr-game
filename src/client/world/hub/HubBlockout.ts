@@ -548,41 +548,6 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     }
   }
 
-  // --- 9. Оружейная: навес + стойки (само оружие ставит CombatSystem по
-  //        zone.*Home — они уже указывают сюда, см. Zone.ts) ---
-  {
-    const w = HUB.zones.weapons;
-    const gy0 = groundY(w.x, w.z);
-    const faceYaw = Math.atan2(cx - w.x, cz - w.z);
-    const parts: Mesh[] = [];
-    // 4 столба навеса
-    for (const [sx, sz] of [[-2.5, -1.5], [2.5, -1.5], [-2.5, 1.5], [2.5, 1.5]] as const) {
-      const px = w.x + Math.cos(faceYaw) * sx - Math.sin(faceYaw) * sz;
-      const pz = w.z - Math.sin(faceYaw) * sx - Math.cos(faceYaw) * sz;
-      const post = MeshBuilder.CreateCylinder(`wArmPost`, { height: 2.6, diameter: 0.16 }, scene);
-      post.position.set(px, groundY(px, pz) + 1.3, pz);
-      parts.push(post);
-    }
-    // стойка-планка за оружием
-    const rack = MeshBuilder.CreateBox("wArmRack", { width: 5, height: 1.1, depth: 0.2 }, scene);
-    rack.position.set(w.x, gy0 + 0.9, w.z);
-    rack.rotation.y = faceYaw;
-    parts.push(rack);
-    const rack2 = MeshBuilder.CreateBox("wArmRack2", { width: 5, height: 0.15, depth: 0.4 }, scene);
-    rack2.position.set(w.x, gy0 + 0.1, w.z);
-    rack2.rotation.y = faceYaw;
-    parts.push(rack2);
-    merge(parts, "hubWeaponsRack", matWood);
-    // навес-полотно
-    const roof = MeshBuilder.CreatePlane("hubWeaponsCanopy", { width: 6, height: 4 }, scene);
-    roof.rotation.x = Math.PI / 2;
-    roof.position.set(w.x, gy0 + 2.6, w.z);
-    roof.material = flatMat(scene, "hubCanopyW", C.canvas, undefined, dayLit);
-    roof.parent = root;
-    roof.isPickable = false;
-    obstacles.push({ x: w.x, z: w.z, r: 1.4 });
-  }
-
   // --- 10. Тренировочная площадка: колышки-дистанции у чучел (сами чучела
   //         рисует существующая система Dummy по HUB.training.dummies) ---
   {
@@ -594,47 +559,6 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
       obstacles.push({ x: d.x, z: d.z, r: 0.45 });
     }
     merge(stakes, "hubTrainStakes", matStone);
-  }
-
-  // --- 11. Главный шатёр (позади площади) ---
-  {
-    const mt = HUB.zones.mainTent;
-    const gy0 = groundY(mt.x, mt.z);
-    const parts: Mesh[] = [];
-    for (const [sx, sz] of [[-5, -4], [5, -4], [-5, 4], [5, 4], [0, 0]] as const) {
-      const pole = MeshBuilder.CreateCylinder("tentPole", { height: sx === 0 && sz === 0 ? 5.2 : 3.6, diameter: 0.2 }, scene);
-      pole.position.set(mt.x + sx, gy0 + (sx === 0 && sz === 0 ? 2.6 : 1.8), mt.z + sz);
-      parts.push(pole);
-    }
-    merge(parts, "hubTentPoles", matWood);
-    // шатёр-крыша: четыре ската пирамидой
-    const roof = MeshBuilder.CreateCylinder("hubTentRoof", { height: 2.2, diameterBottom: 15, diameterTop: 0, tessellation: 4 }, scene);
-    roof.position.set(mt.x, gy0 + 4.2, mt.z);
-    roof.rotation.y = Math.PI / 4;
-    roof.material = flatMat(scene, "hubTentCanvas", C.canvas, undefined, dayLit);
-    roof.parent = root;
-    roof.isPickable = false;
-    // стены-полотна с трёх сторон (вход со стороны площади открыт)
-    for (const [wx, wz, ww, ry] of [[0, -4, 10, 0], [-5, 0, 8, Math.PI / 2], [5, 0, 8, Math.PI / 2]] as const) {
-      const wall = MeshBuilder.CreatePlane("tentWall", { width: ww, height: 3.4 }, scene);
-      wall.position.set(mt.x + wx, gy0 + 1.7, mt.z + wz);
-      wall.rotation.y = ry;
-      wall.material = flatMat(scene, "hubTentWall", C.canvas.scale(0.92), undefined, dayLit);
-      wall.parent = root;
-      wall.isPickable = false;
-    }
-    const banner = MeshBuilder.CreatePlane("hubTentBanner", { width: 1.3, height: 3 }, scene);
-    banner.position.set(mt.x, gy0 + 3.4, mt.z + 4.05);
-    banner.material = matBanner;
-    banner.parent = root;
-    banner.isPickable = false;
-    // Коллизия по стенам шатра (задняя + две боковые), вход со стороны
-    // площади открыт.
-    for (let t = -1; t <= 1; t += 0.5) {
-      obstacles.push({ x: mt.x + t * 4.5, z: mt.z - 4, r: 0.7 }); // задняя
-      obstacles.push({ x: mt.x - 5, z: mt.z + t * 3.6, r: 0.7 }); // левая
-      obstacles.push({ x: mt.x + 5, z: mt.z + t * 3.6, r: 0.7 }); // правая
-    }
   }
 
   // --- 12. Смотровая башня (ориентир, виден отовсюду) ---
