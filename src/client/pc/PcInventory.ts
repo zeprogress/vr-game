@@ -2,12 +2,12 @@ import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, skillCooldownFor, skillDe
 import { pcTreePanel } from "./PcTree";
 import { SHOP, type ShopId } from "#shared/shop";
 import { armorIconKey, glyph, skillIcon, weaponIcon } from "#shared/icons";
-import { ARMOR_PART_NAME, ARMOR_PARTS, ARMOR_STAT_NAME, armorPool, type ArmorPart, type ArmorStat, type ArmorTier } from "#shared/armor";
+import { ARMOR_PART_NAME, ARMOR_PARTS, type ArmorPart } from "#shared/armor";
 import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
 import { ensureIconCss, iconHtml, preloadIconImages, setIconEl } from "../ui/icons";
 import type { IconKey } from "#shared/icons";
-import { AEGIS_NAME, AFFIX_NAME, craftPow, isCraftRare, rollableSubs, weaponName, ATTACK_CLASSES, WEAPON_NOUN, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, qualityStarsShort, sharpPctOf, weaponDef, type AffixSub, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, AFFIX_NAME, craftPow, isCraftRare, weaponName, ATTACK_CLASSES, WEAPON_NOUN, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, qualityStarsShort, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcEnchRow, PcInvActMsg, PcInvArmor, PcInvData, PcInvResult, PcInvWeapon, TradeItemView } from "#shared/net/messages";
 import { skinPicture } from "#shared/skins";
 import { BOT_SKIN_LABELS } from "../world/models";
@@ -133,21 +133,6 @@ const STAT_ICON: Record<string, IconKey> = {
 };
 
 export const WEIGHT_LETTER: Record<string, string> = { light: "Л", medium: "С", heavy: "Т" };
-
-/** Виды граней, которые бывают у оружия класса (для Эссенции). */
-function reforgeKindsFor(cls: WeaponClass): readonly AffixSub[] {
-  return rollableSubs(cls);
-}
-
-/** Виды граней, которые бывают у части брони (для Эссенции). */
-function armorKindsOf(a: PcInvArmor): readonly string[] {
-  return armorPool(a.part as ArmorPart, a.tier as ArmorTier);
-}
-
-/** Русское название вида грани оружия. */
-function affixNameOf(sub: string, _cls: WeaponClass): string {
-  return AFFIX_NAME[sub as AffixSub] ?? sub;
-}
 
 export class PcInventory {
   private readonly root: HTMLDivElement;
@@ -654,7 +639,6 @@ export class PcInventory {
       scroll_wind: "i.scroll_wind",
       scroll_xp: "i.scroll_xp",
       fish_trade: "i.fish",
-      brand: "i.scrap",
     };
     const box = div("pcinv-shop");
     const head = div("pcinv-shop-head");
@@ -1833,85 +1817,6 @@ export class PcInventory {
     });
   }
 
-  /** Перековка: природа, трещины, история, полировка за лом и валюты. Показывается в карточке предмета. */
-  private ask(prompt: string, def: string): string | null {
-    return typeof window === "undefined" ? def : window.prompt(prompt, def);
-  }
-
-  private reforgeBlock(body: HTMLElement, d: PcInvData, x: { id: string; nat?: string; natText?: string; cracks?: number; crackText?: string; hist?: string; polish?: { cost: number; chance: number } }, kinds: readonly string[], kindNames: (k: string) => string): void {
-    const box = div("pcinv-rf");
-    if (x.nat) {
-      const nat = div("pcinv-rf-nat");
-      const lab = span("Природа: ");
-      lab.className = "pcinv-rf-lab";
-      const val = span(x.natText ?? "");
-      val.className = "pcinv-rf-val";
-      nat.append(lab, val);
-      box.append(nat);
-    }
-    const row = div("pcinv-rf-row");
-    if (x.crackText) row.append(div(`pcinv-rf-crack${(x.cracks ?? 0) > 0 ? " on" : ""}`, x.crackText));
-    if (x.hist) row.append(div("pcinv-rf-hist", `История: ${x.hist}`));
-    box.append(row);
-    const cur = d.cur ?? { brand: 0, essence: 0, omen: 0 };
-    const act = this.hooks.act;
-    if (!act) {
-      body.append(box);
-      return;
-    }
-    if (x.polish) {
-      const b = document.createElement("button");
-      b.className = "pcinv-btn sm pcinv-forge";
-      const ch = Math.round(x.polish.chance * 100);
-      b.innerHTML = `${iconHtml("i.scrap")}<span>Полировать · ${x.polish.cost} · ${ch}%</span>`;
-      b.title = `Полировка: перекат всех граней (${x.polish.cost} лома, шанс ${ch}%). Может и просадить`;
-      b.disabled = this.forging || (x.cracks ?? 0) >= 3 || d.scrap < x.polish.cost;
-      b.onclick = () => this.reforge(x.id, "polish");
-      box.append(div("pcinv-rf-acts", ""), b);
-    }
-    const btns = div("pcinv-rf-btns");
-    const mk = (label: string, n: number, fuel: (i: number) => string, title: string): void => {
-      const b = document.createElement("button");
-      b.className = "pcinv-btn sm";
-      b.textContent = `${label} (${n})`;
-      b.title = title;
-      b.disabled = this.forging || n < 1;
-      b.onclick = () => {
-        const idx = this.ask(`Номер грани (с 1, всего ${kinds.length}):`, "1");
-        if (!idx) return;
-        this.reforge(x.id, fuel(Math.max(0, Math.min(kinds.length - 1, (Number(idx) || 1) - 1))));
-      };
-      btns.append(b);
-    };
-    mk("Грань", cur.brand ?? 0, (i) => `brand:${i}`, "Заменить выбранную грань на случайную из пула");
-    mk("Знамение", cur.omen ?? 0, (i) => `omen:${i}`, "Раскол: стереть выбранную грань (ниже минимума грейда — трещина)");
-    if (kinds.length) {
-      const b = document.createElement("button");
-      b.className = "pcinv-btn sm";
-      b.textContent = `Эссенция (${cur.essence ?? 0})`;
-      b.title = "Поставить нужную грань; ещё одна грань сменится случайно; лечит одну трещину";
-      b.disabled = this.forging || (cur.essence ?? 0) < 1;
-      b.onclick = () => {
-        const idx = this.ask(`Номер грани (с 1, всего ${kinds.length}):`, "1");
-        if (!idx) return;
-        const i = Math.max(0, Math.min(kinds.length - 1, (Number(idx) || 1) - 1));
-        const want = this.ask(`Какой вид грани: ${kinds.map(kindNames).join(", ")}`, kindNames(kinds[0]));
-        if (!want) return;
-        const k = kinds.find((z) => kindNames(z).toLowerCase() === want.trim().toLowerCase());
-        if (!k) return;
-        this.reforge(x.id, `essence:${i}:${k}`);
-      };
-      btns.append(b);
-    }
-    if (btns.children.length) box.append(btns);
-    body.append(box);
-  }
-
-  /** Отправить действие перековки (окно перерисуется само после ответа сервера). */
-  private reforge(id: string, fuel: string): void {
-    this.hooks.act?.({ act: "reforge", id, idx: 0, fuel } as never);
-  }
-
   /** Итог последнего действия (заточка, камни…) — строкой в карточке. */
   private resultLine(body: HTMLElement): void {
     if (this.lastResult) body.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
@@ -1944,10 +1849,8 @@ export class PcInventory {
     const atk = attackLabel(cls, tier, w ? sharpPctOf(w) : 0, w ? craftPow(w) * 100 : 0, !!w?.rc);
     if (atk) extra.push(div("pcinv-tipatk", atk));
     for (const e of w?.effects ?? []) extra.push(div("pcinv-tipeff", e));
-    if (w?.natText) extra.push(div("pcinv-tipnat", `Природа: ${w.natText}`));
     this.cardHead(head, ico, name, `t-${tier}`, `${cap(TIER_LOOK[tier].name)}${q ? ` · оценка <b>${q}</b>` : ""}`, inHand ? "в руке" : "", extra);
 
-    if (w) this.reforgeBlock(body, d, w, reforgeKindsFor(w.cls).map(String), (k) => affixNameOf(k, w.cls));
     if (w?.ench.length) this.enchRows(body, w.id, w.ench, w.affixes, d.scrap);
     else body.append(div("pcinv-small", w ? "Роллов нет — точить нечего." : "Обычное оружие со стойки — без роллов, точить нечего."));
     this.resultLine(body);
@@ -1985,10 +1888,7 @@ export class PcInventory {
     setIconEl(ico, armorIconKey(a.part, a.tier));
     const wl = WEIGHT_LETTER[a.weight ?? ""];
     if (wl) ico.append(div(`pcinv-w ${a.weight ?? ""}`, wl));
-    const aExtra: HTMLElement[] = [div("pcinv-tipaff", a.desc ?? a.label)];
-    if (a.natText) aExtra.push(div("pcinv-tipnat", `Природа: ${a.natText}`));
-    this.cardHead(head, ico, a.name ?? ARMOR_PART_NAME[a.part], `t-${a.tier}`, `Броня · оценка <b>${qualityStarsShort(a.pts, a.rolls)}</b>`, worn ? "надета" : "", aExtra);
-    this.reforgeBlock(body, d, a, armorKindsOf(a).map(String), (k) => ARMOR_STAT_NAME[k as ArmorStat] ?? k);
+    this.cardHead(head, ico, a.name ?? ARMOR_PART_NAME[a.part], `t-${a.tier}`, `Броня · оценка <b>${qualityStarsShort(a.pts, a.rolls)}</b>`, worn ? "надета" : "", [div("pcinv-tipaff", a.desc ?? a.label)]);
     this.enchRows(body, a.id, a.ench, a.ench.map((r) => r.label), d.scrap);
     this.resultLine(body);
     body.append(div("pcinv-hint", "Чем ближе стат к максимуму — тем дороже и меньше шанс. При неудаче лом сгорает. Надетую броню можно точить на месте."));
@@ -2274,88 +2174,7 @@ export class PcInventory {
   /** Открытый выбор на сцене по нажатию ячейки цепочки (основа, материал, катализатор, метод). */
   private craftPick: "base" | "mat" | "cat" | "meth" | null = null;
 
-  /**
-   * «Перековка»: выбрать предмет, увидеть природу/грани/трещины/историю и действовать —
-   * полировка за лом, Грань, Эссенция, Знамение. Общий вид строится reforgeBlock в карточке,
-   * здесь — список предметов и склад валют.
-   */
-  private renderReforge(d: PcInvData): void {
-    const cur = d.cur ?? { brand: 0, essence: 0, omen: 0 };
-    const panel = div("pcinv-reforge");
-    const head = div("pcinv-rf-head");
-    head.append(div("pcinv-fg-name", "Перековка"));
-    head.append(div("pcinv-rf-purse", `Грань ${cur.brand} · Эссенция ${cur.essence} · Знамение ${cur.omen}`));
-    panel.append(head);
-    panel.append(div("pcinv-fg-hint", "Грейд предмета не меняется. Полировка перекатывает числа всех граней за лом; валюты меняют виды граней и лечат трещины."));
-    const items: { id: string; label: string; tier: string; icon: HTMLElement; extra: HTMLElement }[] = [];
-    for (const w of d.weapons) {
-      const ico = div(`pcinv-cell t-${w.tier}`);
-      setIcon(ico, w.cls, w.name, w.tier);
-      const row = div("pcinv-rf-item");
-      const nat = w.natText ? w.natText : "природа не задана";
-      const extra = div("pcinv-rf-info");
-      extra.append(div("pcinv-rf-name", w.name));
-      extra.append(div("pcinv-rf-sub", `${nat} · ${w.crackText ?? ""}`));
-      row.append(ico, extra);
-      items.push({ id: w.id, label: w.name, tier: w.tier, icon: row, extra });
-    }
-    for (const a of d.armor ?? []) {
-      const ico = div(`pcinv-cell t-${a.tier}`);
-      setIconEl(ico, armorIconKey(a.part, a.tier));
-      const wl = WEIGHT_LETTER[a.weight ?? ""];
-      if (wl) ico.append(div(`pcinv-w ${a.weight ?? ""}`, wl));
-      const row = div("pcinv-rf-item");
-      const extra = div("pcinv-rf-info");
-      extra.append(div("pcinv-rf-name", a.name ?? ARMOR_PART_NAME[a.part]));
-      extra.append(div("pcinv-rf-sub", `${a.natText ?? "природа не задана"} · ${a.crackText ?? ""}`));
-      row.append(ico, extra);
-      items.push({ id: a.id, label: a.name ?? a.label, tier: a.tier, icon: row, extra });
-    }
-    if (!items.length) panel.append(div("pcinv-small", "Предметов нет — добудь оружие или броню."));
-    const list = div("pcinv-rf-list");
-    for (const it of items) {
-      it.icon.classList.toggle("on", this.reforgeSel === it.id);
-      it.icon.addEventListener("click", () => {
-        this.reforgeSel = it.id;
-        this.render();
-      });
-      list.append(it.icon);
-    }
-    panel.append(list);
-    const sel = items.find((i) => i.id === this.reforgeSel) ?? items[0];
-    if (sel) {
-      this.reforgeSel = sel.id;
-      const body = div("pcinv-rf-body");
-      const w = d.weapons.find((x) => x.id === sel.id);
-      const a = (d.armor ?? []).find((x) => x.id === sel.id);
-      body.append(div("pcinv-rf-title", sel.label));
-      if (w) this.reforgeBlock(body, d, w, rollableSubs(w.cls).map(String), (k) => AFFIX_NAME[k as AffixSub] ?? k);
-      else if (a) this.reforgeBlock(body, d, a, armorPool(a.part as ArmorPart, a.tier as ArmorTier).map(String), (k) => ARMOR_STAT_NAME[k as ArmorStat] ?? k);
-      panel.append(body);
-    }
-    this.root.append(panel);
-  }
-
-  /** Раздел «Кузница»: крафт или перековка. */
-  private forgeMode: "craft" | "reforge" = "craft";
-  /** Выбранный предмет для перековки. */
-  private reforgeSel: string | null = null;
-
   private renderCraft(d: PcInvData): void {
-    const tabs = div("pcinv-fgmode");
-    for (const [k, label] of [["craft", "Крафт"], ["reforge", "Перековка"]] as const) {
-      const b = button(label, () => {
-        this.forgeMode = k;
-        this.render();
-      });
-      b.className = `pcinv-fgmodebtn${this.forgeMode === k ? " on" : ""}`;
-      tabs.append(b);
-    }
-    this.root.append(tabs);
-    if (this.forgeMode === "reforge") {
-      this.renderReforge(d);
-      return;
-    }
     const c = d.craft ?? { stock: [], book: [], xp: 0 };
     const stock = new Map<CraftItemId, number>(c.stock);
     // Камни для катализатора — старшие уровни первыми.
@@ -3385,28 +3204,6 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-jw > span[style*="display:block"] { width:100% !important; height:auto !important; aspect-ratio:1 / 1; }
 .pcinv-q { position:absolute; left:7px; top:5px; font:800 10.5px/1 system-ui; color:var(--quality); text-shadow:0 1px 2px #000,0 0 3px #000; pointer-events:none; z-index:1; }
 .pcinv-w { position:absolute; left:5px; bottom:3px; min-width:14px; height:14px; padding:0 3px; border-radius:4px; background:rgba(10,12,18,.88); border:1px solid rgba(255,255,255,.22); color:#e8ecf8; font:800 10px/14px system-ui; text-align:center; pointer-events:none; z-index:3; }
-.pcinv-fgmode { display:flex; gap:8px; padding:10px 14px 0; }
-.pcinv-fgmodebtn { padding:7px 18px; border:1px solid #3a2a1a; border-radius:8px 8px 0 0; background:#1a120a; color:#c8b8a4; font:700 15px system-ui; cursor:pointer; }
-.pcinv-fgmodebtn.on { background:#3a2410; color:#ffd38a; border-color:var(--tier-craft); }
-.pcinv-reforge { display:flex; flex-direction:column; gap:10px; padding:14px 18px 20px; }
-.pcinv-rf-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
-.pcinv-rf-purse { font:700 13px system-ui; color:#9fe3c2; }
-.pcinv-rf-list { display:flex; flex-direction:column; gap:6px; max-height:min(240px, 30vh); overflow-y:auto; }
-.pcinv-rf-item { display:flex; align-items:center; gap:10px; padding:6px 8px; border:1px solid #2a3f5c; border-radius:8px; background:rgba(10,18,30,.6); cursor:pointer; }
-.pcinv-rf-item.on { border-color:var(--tier-craft); background:rgba(70,36,8,.42); }
-.pcinv-rf-info { display:flex; flex-direction:column; gap:2px; min-width:0; }
-.pcinv-rf-name { font:700 14px system-ui; color:#f3ead7; }
-.pcinv-rf-sub { font:400 11.5px system-ui; color:#8fa2ba; }
-.pcinv-rf-body { padding:10px 12px; border:1px solid #2a3f5c; border-radius:10px; background:rgba(8,14,26,.6); }
-.pcinv-rf-title { font:700 17px system-ui; color:#ffd38a; margin-bottom:6px; }
-.pcinv-rf { display:flex; flex-direction:column; gap:6px; margin:6px 0 8px; padding:8px 10px; border:1px solid #2a3f5c; border-radius:8px; background:rgba(12,22,38,.55); }
-.pcinv-rf-nat { font-size:12.5px; color:#f3ead7; }
-.pcinv-rf-lab { color:#9fb0c8; }
-.pcinv-rf-val { color:#8ed6ff; font-weight:700; }
-.pcinv-rf-row { display:flex; flex-wrap:wrap; gap:10px; font-size:11.5px; color:#8fa2ba; }
-.pcinv-rf-crack.on { color:#ff9a6b; font-weight:700; }
-.pcinv-rf-btns { display:flex; flex-wrap:wrap; gap:6px; }
-.pcinv-tipnat { font-size:12px; color:#8ed6ff; }
 .pcinv-w.light { color:#6cb6ff; border-color:rgba(108,182,255,.65); }
 .pcinv-w.medium { color:#74e08a; border-color:rgba(116,224,138,.65); }
 .pcinv-w.heavy { color:#ff7466; border-color:rgba(255,116,102,.68); }

@@ -1,5 +1,4 @@
 import { HUMAN, SHIELD, WEAPON_DROP_MUL } from "./constants";
-import { rollNature } from "./nature";
 import type { MobKind } from "./net/schema";
 
 export type ItemId =
@@ -596,25 +595,9 @@ export interface WeaponInstance {
   by?: string;
   /** Мастерское по скрытому рецепту: id рецепта (CRAFT_RECIPES). */
   rc?: string;
-  /** Природа предмета (shared/nature.ts): выдаётся при дропе случайно, не меняется никогда. */
-  nat?: string;
-  /** Трещины перековки, 0..3 (3 — сколот: числа больше не растут). */
-  cracks?: number;
-  /** История перековки — влияет на бонусы (historyBonus). */
-  rh?: { pol: number; up: number; swaps: number; healed: number };
 }
 
 // ★ Избранное — без лимита (2026-10-20; было FAV_MAX = 24 на оружие, кольца и броню вместе).
-
-/** Стабильный ГПСЧ из id предмета: миграции выдают одно и то же при каждой загрузке. */
-export function rndFromId(id: string): () => number {
-  let h = 2166136261;
-  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
-  return () => {
-    h = Math.imul(h ^ (h >>> 13), 1274126177);
-    return ((h >>> 0) % 100000) / 100000;
-  };
-}
 
 /** Текущая версия формата роллов (WeaponInstance.lv). */
 export const LOOT_VER = 15;
@@ -936,8 +919,6 @@ export function rollWeaponInstance(
   sortAffixes(affixes);
   return {
     id: shortId(rnd), cls, tier, affixes, lv: LOOT_VER,
-    // Природа — случайная при дропе, не меняется никогда (shared/nature.ts).
-    nat: rollNature(rnd, cls),
     ...(aegis ? { nm: tier === "ruby" ? RUBY_AEGIS_NAME : LEGACY_LEGENDARY.shield?.name } : {}),
     ...(cls === "staff" ? { sv: 1 } : {}),
   };
@@ -1194,8 +1175,6 @@ function maxRoll(w: WeaponInstance, sub: AffixSub): void {
  * Помечает w.lv, повторный вызов ничего не делает. true — что-то поменялось.
  */
 export function migrateLoot(w: WeaponInstance): boolean {
-  // Природа: у старых предметов её нет — выдаём один раз и навсегда (randomRoll детерминирован по id).
-  if (!w.nat) w.nat = rollNature(rndFromId(w.id), w.cls);
   if ((w.lv ?? 0) >= LOOT_VER) return false;
   const ver = w.lv ?? 0;
   // Сила крита → Крит (до версии 3 потолок силы был 0.8).

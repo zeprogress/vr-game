@@ -98,7 +98,7 @@ export const CAP_MARK = " · кап";
 /** Минимальный набор полей, нужный для расчёта — общий для PlayerState и записи в PlayerStore. */
 export interface HeroStatInput {
   /** Бонусы надетой брони (PlayerState.ab, shared/armor.ts): здоровье, защиты, регенерация, уворот. */
-  ab?: Partial<Record<ArmorStat | "move" | "atk" | "ht" | "hr" | "hm", number>>;
+  ab?: Partial<Record<ArmorStat | "move" | "atk", number>>;
   level: number;
   str: number;
   agi: number;

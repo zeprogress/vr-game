@@ -248,16 +248,6 @@ export interface PcInvArmor {
   ench: PcEnchRow[];
   /** ★ Избранное. */
   fav?: boolean;
-  /** Природа предмета: id и строка «Хищник — по врагу с полным HP +20%». */
-  nat?: string;
-  natText?: string;
-  /** Трещины (0..3) и строка про них. */
-  cracks?: number;
-  crackText?: string;
-  /** История перековки строкой. */
-  hist?: string;
-  /** Цена и шанс полировки (лом). */
-  polish?: { cost: number; chance: number };
 }
 
 export interface PcInvWeapon {
@@ -282,16 +272,6 @@ export interface PcInvWeapon {
   cp?: number;
   /** ★ Избранное — не разбирается. */
   fav?: boolean;
-  /** Природа предмета (shared/nature.ts): id, название-описание и строка. */
-  nat?: string;
-  natText?: string;
-  /** Трещины перековки и строка про них. */
-  cracks?: number;
-  crackText?: string;
-  /** История перековки строкой. */
-  hist?: string;
-  /** Цена и шанс полировки (лом). */
-  polish?: { cost: number; chance: number };
 }
 
 /** Одно задание в окне/трекере. */
@@ -408,8 +388,6 @@ export interface QuestActMsg {
 
 export interface PcInvData {
   weapons: PcInvWeapon[];
-  /** Валюты перековки (Грань, Эссенция, Знамение) в сумке героя. */
-  cur?: { brand: number; essence: number; omen: number };
   equipped: { left: string | null; right: string | null };
   /** Броня в сумке (все части, и надетые тоже) и что надето в каждом слоте (id части). */
   armor?: PcInvArmor[];
@@ -452,10 +430,10 @@ export interface PcInvData {
 
 export interface PcInvActMsg {
   /** title — надеть титул (id = название, "" — снять); fav — звёздочка «избранное» у оружия id; scrapAll — разобрать всё, кроме избранного и надетого. */
-  act: "enchant" | "armorEnchant" | "neckEnchant" | "ringEnchant" | "reforge" | "stat" | "tree" | "respec" | "title" | "skin" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | "tradeOpen" | "tradeAdd" | "tradeRemove" | "tradeConfirm" | "tradeCancel" | "sharpen" | "craft" | "smelt" | "shop" | JewelAct;
+  act: "enchant" | "armorEnchant" | "neckEnchant" | "ringEnchant" | "stat" | "tree" | "respec" | "title" | "skin" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | "tradeOpen" | "tradeAdd" | "tradeRemove" | "tradeConfirm" | "tradeCancel" | "sharpen" | "craft" | "smelt" | "shop" | JewelAct;
   id: string;
   idx: number;
-  /** Подарок — ник получателя; обмен — список предметов; крафт — состав (craftCode); перековка — действие (reforgeCode). */
+  /** Подарок — ник получателя; обмен — список предметов; крафт — состав (craftCode). */
   fuel?: string;
 }
 
@@ -468,9 +446,6 @@ export interface PcInvResult {
   /** Крафт: исход (CRAFT_OUTCOMES, 0 — провал), id нового оружия, найденный рецепт. */
   craft?: { outcome: number; id?: string; found?: string };
 }
-
-/** Перековка (fuel): «polish», «brand:<idx>», «omen:<idx>», «essence:<idx>:<вид>». */
-export type ReforgeCode = string;
 
 export interface ChatLineMsg {
   nick: string;

@@ -1,8 +1,6 @@
 import { SKIN_LABELS } from "#shared/skins";
 import colyseus from "colyseus";
 import { invHub, type InvActKind, type InvActResult } from "../invHub";
-import { CRACK_MAX, REFORGE_CURRENCY_NAME, crackText, historyBonus, historyText, natureName, natureText, polishChance, polishCost } from "#shared/nature";
-import { brandItem, essenceItem, omenItem, polishItem, type ReforgeItem } from "../reforge";
 import { armorBonusOf, armorEnchant, armorEnchantRow, armorLabel, armorPcView, armorQuality, armorScrap, rollArmor, sanitizeArmorList, wornArmorOf, ARMOR_PARTS, ARMOR_RUBY, ARMOR_TIERS, type ArmorInstance, type ArmorPart, type ArmorTier } from "#shared/armor";
 import { devChat } from "../devChat";
 import type { Client } from "colyseus";
@@ -1295,19 +1293,6 @@ function recHeldIds(rec: { weapons?: WeaponInstance[]; equippedWeaponId?: unknow
   return new Set([eq.left, eq.right, inHand(heldRec.left), inHand(heldRec.right)]);
 }
 
-/** Поля перековки для окна инвентаря: природа, трещины, история, цена и шанс полировки. */
-function reforgeView(x: { tier: string; nat?: string; cracks?: number; rh?: { pol: number; up: number; swaps: number; healed: number } }): {
-  nat?: string; natText?: string; cracks?: number; crackText?: string; hist?: string; polish: { cost: number; chance: number };
-} {
-  return {
-    ...(x.nat ? { nat: x.nat, natText: `${natureName(x.nat)} — ${natureText(x.nat)}` } : {}),
-    cracks: x.cracks ?? 0,
-    crackText: crackText(x.cracks, x.nat),
-    hist: historyText(x.rh),
-    polish: { cost: polishCost(x.tier, x.cracks ?? 0), chance: polishChance(x.cracks ?? 0, x.nat) },
-  };
-}
-
 function preserveLegacyWeapon(rt: { weapons: WeaponInstance[] }, cls: string, tier: string): void {
   if (!isWeaponClass(cls) || !isWeaponTier(tier)) return;
   if (rt.weapons.some((w) => w.cls === cls && w.tier === tier)) return;
@@ -2333,7 +2318,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sendQuests(client);
         return;
       }
-      if (msg.act !== "enchant" && msg.act !== "sharpen" && msg.act !== "armorEnchant" && msg.act !== "neckEnchant" && msg.act !== "ringEnchant" && msg.act !== "stat" && msg.act !== "tree" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && msg.act !== "craft" && msg.act !== "smelt" && msg.act !== "reforge" && !(JEWEL_ACTS as readonly string[]).includes(msg.act) && !(TRADE_ACTS as readonly string[]).includes(msg.act)) return;
+      if (msg.act !== "enchant" && msg.act !== "sharpen" && msg.act !== "armorEnchant" && msg.act !== "neckEnchant" && msg.act !== "ringEnchant" && msg.act !== "stat" && msg.act !== "tree" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && msg.act !== "craft" && msg.act !== "smelt" && !(JEWEL_ACTS as readonly string[]).includes(msg.act) && !(TRADE_ACTS as readonly string[]).includes(msg.act)) return;
       const norm = normNick(p.nick);
       if (!norm) return;
       const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(msg.act === "gift" ? 99999 : 99, Math.floor(Number(msg.idx) || 0))), typeof msg.fuel === "string" ? msg.fuel : undefined);
@@ -5016,16 +5001,6 @@ export class ZoneRoom extends Room<ZoneState> {
     const bag = t ? readBag(t.p) : restoreBag(rec.bag);
     const tokens = rec.tokens ?? 0;
     const patch: Partial<PlayerRecord> = {};
-    if (item.id === "brand") {
-      // Перековка: Грань — валюта в записи героя, а не предмет сумки.
-      if (tokens < item.price) return { ok: false, text: `Не хватает жетонов: нужно ${item.price} ◈` };
-      const cur = { ...(rec.cur ?? {}) };
-      const n = item.count ?? 1;
-      cur.brand = (cur.brand ?? 0) + n;
-      store.put(token, { cur, tokens: tokens - item.price });
-      if (t) this.syncWarehouse(t.id, t.rt);
-      return { ok: true, text: `Куплено: ${item.name} · −${item.price} ◈ (осталось ${tokens - item.price} ◈)` };
-    }
     let note: string;
     if (item.fishCost) {
       // Обмен рыбы на жетоны: рыба из сумки → tokensGet ◈.
@@ -5395,7 +5370,6 @@ export class ZoneRoom extends Room<ZoneState> {
         ...(w.cp ? { cp: w.cp } : {}),
         ...(w.rc ? { rc: true } : {}),
         fav: !!w.fav,
-        ...reforgeView(w),
       })),
       // Что реально считается в руке (закреплённое или лучший экземпляр того же вида) —
       // иначе незакреплённое надетое оружие показывалось ещё и в сумке.
@@ -5405,7 +5379,6 @@ export class ZoneRoom extends Room<ZoneState> {
       potions: bagCount(bag, "potion"),
       scrap: bagCount(bag, "scrap"),
       fish: bagCount(bag, "fish"),
-      cur: { brand: rec?.cur?.brand ?? 0, essence: rec?.cur?.essence ?? 0, omen: rec?.cur?.omen ?? 0 },
       scrollXp: bagCount(bag, "scroll_xp"),
       scrollWind: bagCount(bag, "scroll_wind"),
       titles: rec?.titles ?? [],
@@ -5427,7 +5400,7 @@ export class ZoneRoom extends Room<ZoneState> {
       trade: tradeViewOf(store.get(rt.token ?? `nick:${normNick(p.nick)}`), rt.token ?? `nick:${normNick(p.nick)}`),
       partners: this.exchangePartnerNicks(normNick(p.nick)),
       stats: heroStatRows({
-        ab: { hp: p.ab.hp, physDef: p.ab.physDef, magDef: p.ab.magDef, regen: p.ab.regen, dodge: p.ab.dodge, move: p.ab.move, atk: p.ab.atk, ht: p.ab.ht, hr: p.ab.hr, hm: p.ab.hm },
+        ab: { hp: p.ab.hp, physDef: p.ab.physDef, magDef: p.ab.magDef, regen: p.ab.regen, dodge: p.ab.dodge, move: p.ab.move, atk: p.ab.atk },
         gb: p.gb,
         // Бонусы дерева прокачки — как в бою и в оверлее стрима (там считают по PlayerState.tb).
         tb: Object.fromEntries(TREE_FX.map((k) => [k, p.tb[k]])),
@@ -5734,8 +5707,6 @@ export class ZoneRoom extends Room<ZoneState> {
     this.adminArmorCmd(nick, norm, ["all", "ruby"]);
     const bag = emptyBag();
     addToBag(bag, "scrap", 100_000_000);
-    // Валюты перековки — проверить всё окно «Перековка» без долгой добычи.
-    store.put(`nick:${norm}`, { cur: { brand: 50, essence: 10, omen: 10 } });
     addToBag(bag, "fish", 1_000_000);
     addToBag(bag, "potion", 99);
     addToBag(bag, "scroll_xp", 99);
@@ -5874,21 +5845,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (!p || !rt) return;
     const b = armorBonusOf(wornArmorOf(rt.armor, rt.armorWorn));
     const ab = p.ab;
-    // История перековки: оружие в руках даёт темп, надетые части — регенерацию и бег.
-    let hRegen = 0;
-    let hMove = 0;
-    const worn = wornArmorOf(rt.armor, rt.armorWorn);
-    for (const a of worn) {
-      const hb = historyBonus(a.rh);
-      hRegen += hb.regen;
-      hMove += hb.move;
-    }
-    let hTempo = 0;
-    for (const hand of ["left", "right"] as const) {
-      const w = rolledIn(p, hand, rt);
-      if (w && w.tier !== "base" && w.tier !== "gold") hTempo = Math.max(hTempo, historyBonus(w.rh).tempo);
-    }
-    if (ab.hp === b.hp && ab.physDef === b.physDef && ab.magDef === b.magDef && ab.regen === b.regen && ab.dodge === b.dodge && ab.move === b.move && ab.atk === b.atk && ab.ht === hTempo && ab.hr === hRegen && ab.hm === hMove) return;
+    if (ab.hp === b.hp && ab.physDef === b.physDef && ab.magDef === b.magDef && ab.regen === b.regen && ab.dodge === b.dodge && ab.move === b.move && ab.atk === b.atk) return;
     ab.hp = b.hp;
     ab.physDef = b.physDef;
     ab.magDef = b.magDef;
@@ -5896,9 +5853,6 @@ export class ZoneRoom extends Room<ZoneState> {
     ab.dodge = b.dodge;
     ab.move = b.move;
     ab.atk = b.atk;
-    ab.ht = hTempo;
-    ab.hr = hRegen;
-    ab.hm = hMove;
     if (p.towerFloor > 0) return; // в башне свой потолок HP — вернётся с арены по maxHpFor
     const frac = p.maxHp > 0 ? p.hp / p.maxHp : 1;
     p.maxHp = maxHpFor(p.level, p);
@@ -6085,106 +6039,6 @@ export class ZoneRoom extends Room<ZoneState> {
     store.put(token, { mats: stock, ...(t ? {} : { bag }) });
     if (t) this.persistNick(norm);
     return { ok: true, text: `Переплавлено: лом −${need} → ${CRAFT_ITEMS.alloy.name} +${n}` };
-  }
-
-  /**
-   * Перековка: полировка за лом, валюты (Грань, Эссенция, Знамение). Грейд не меняется.
-   * `fuel`: «polish», «brand:<idx>», «omen:<idx>», «essence:<idx>:<вид>».
-   */
-  private reforgeAct(norm: string, id: string, fuel: string): InvActResult {
-    const t = this.findWeaponsTarget(norm);
-    const token = t?.rt.token ?? `nick:${norm}`;
-    const rec = store.get(token);
-    if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
-    const [mode, idxRaw, kindRaw] = fuel.split(":");
-    const idx = Math.max(0, Math.min(9, Math.floor(Number(idxRaw) || 0)));
-    // Предмет: сначала оружие, потом броня (id уникальны).
-    const weapon = t ? t.rt.weapons.find((x) => x.id === id) : (rec.weapons ?? []).find((x) => x.id === id);
-    const armorList = t ? t.rt.armor : sanitizeArmorList(rec.armor);
-    const armor = armorList.find((x) => x.id === id);
-    const item = (weapon as ReforgeItem | undefined) ?? (armor as ReforgeItem | undefined);
-    if (!item) return { ok: false, text: "Этого предмета уже нет на складе." };
-    const bag = t ? readBag(t.p) : restoreBag(rec.bag);
-    const cur = { ...(rec.cur ?? {}) };
-    const takeCur = (k: string, n = 1): boolean => {
-      if ((cur[k] ?? 0) < n) return false;
-      cur[k] = (cur[k] ?? 0) - n;
-      return true;
-    };
-    const save = (): void => {
-      if (t) writeBag(t.p, bag);
-      const patch: Partial<PlayerRecord> = { cur };
-      if (weapon) patch.weapons = t ? t.rt.weapons : undefined;
-      if (armor) patch.armor = armorList;
-      if (!t) patch.bag = bag;
-      store.put(token, t ? patch : { ...patch, weapons: rec.weapons, armor: rec.armor });
-      if (t) this.persistNick(norm);
-    };
-    if (mode === "polish") {
-      const cost = polishCost(item.tier, item.cracks ?? 0);
-      if (item.cracks !== undefined && item.cracks >= CRACK_MAX) return { ok: false, text: "Предмет сколот: числа больше не растут." };
-      if (!takeFromBag(bag, "scrap", cost)) return { ok: false, text: `Нужно лома: ${cost} (есть ${bagCount(bag, "scrap")}).` };
-      const r = polishItem(item);
-      save();
-      if (t) this.applyArmor(t.id);
-      return { ok: true, up: r.up, text: r.up ? "Полировка удалась: грани подросли." : "Полировка не удалась: грани просели." };
-    }
-    if (mode === "brand") {
-      if (!takeCur("brand")) return { ok: false, text: "Нет ни одной Грани." };
-      const r = brandItem(item, idx);
-      if (!r.ok) return r;
-      save();
-      if (t && armor) this.applyArmor(t.id);
-      return { ok: true, text: r.text };
-    }
-    if (mode === "omen") {
-      if (!takeCur("omen")) return { ok: false, text: "Нет ни одного Знамения." };
-      const r = omenItem(item, idx);
-      if (!r.ok) return r;
-      save();
-      if (t && armor) this.applyArmor(t.id);
-      return { ok: true, text: r.text };
-    }
-    if (mode === "essence") {
-      if (!takeCur("essence")) return { ok: false, text: "Нет ни одной Эссенции." };
-      const r = essenceItem(item, idx, kindRaw ?? "");
-      if (!r.ok) return r;
-      save();
-      if (t && armor) this.applyArmor(t.id);
-      return { ok: true, text: r.text };
-    }
-    return { ok: false, text: "Неизвестное действие перековки." };
-  }
-
-  /**
-   * Валюты перековки с убийства: Грань — с обычных мобов, Знамение — с элиток и боссов,
-   * Эссенция — только с боссов и вожаков (сильная валюта). В лавке продаётся лишь Грань.
-   */
-  private reforgeDrop(owner: string, k: { champ?: boolean; boss?: boolean }): void {
-    const p = this.state.players.get(owner);
-    const rt = this.rt.get(owner) ?? (owner.startsWith("bot:") ? this.bots.get(owner.slice(4))?.rt : undefined);
-    if (!p || !rt) return;
-    const token = rt.token ?? `nick:${normNick(p.nick)}`;
-    const rec = store.get(token);
-    if (!rec) return;
-    const got: [string, number][] = [];
-    if (k.boss) {
-      got.push(["essence", 1]);
-      got.push(["omen", 1]);
-      got.push(["brand", 2]);
-    } else if (k.champ) {
-      if (Math.random() < 0.5) got.push(["essence", 1]);
-      if (Math.random() < 0.8) got.push(["omen", 1]);
-      got.push(["brand", 1]);
-    } else if (Math.random() < 0.03) {
-      got.push(["brand", 1]);
-    }
-    if (!got.length) return;
-    const cur = { ...(rec.cur ?? {}) };
-    for (const [id, n] of got) cur[id] = (cur[id] ?? 0) + n;
-    store.put(token, { cur });
-    const text = got.map(([id, n]) => `${REFORGE_CURRENCY_NAME[id as "brand"]}${n > 1 ? ` ×${n}` : ""}`).join(", ");
-    this.clientOf(owner)?.send(MSG.jewelGot, { text });
   }
 
   /** Материалы крафта с убитого элитного моба — убийце в запись (как камни). Лагерь — по campType, катакомбы — по имени. */
@@ -6560,7 +6414,6 @@ export class ZoneRoom extends Room<ZoneState> {
   private invAct(norm: string, act: InvActKind, id: string, idx: number, fuel?: string): InvActResult {
     if ((JEWEL_ACTS as readonly string[]).includes(act)) return this.jewelAct(norm, act as JewelAct, id, idx, fuel);
     if (act === "craft") return this.craftAct(norm, id);
-    if (act === "reforge") return this.reforgeAct(norm, id, fuel ?? "");
     if (act === "shop") return this.shopAct(norm, id);
     if (act === "smelt") return this.smeltAct(norm, idx);
     if (act === "gift") return this.giftAct(norm, id, idx, fuel ?? "");
@@ -7424,7 +7277,6 @@ export class ZoneRoom extends Room<ZoneState> {
     this.applyJewels(id);
     this.botDressArmor(rt);
     this.applyArmor(id);
-    // История перековки оружия в руках — при первом расчёте (applyArmor её уже учитывает).
 
     this.bots.set(norm, {
       spawnedAt: fresh ? Date.now() : 0,
@@ -12239,7 +12091,6 @@ export class ZoneRoom extends Room<ZoneState> {
         else this.scrapDrop(k.owner, k.jl, k.sc, boss);
       }
       if (Math.random() < pen) this.craftDrop(k.owner, k.campType, k.name, k.champ);
-      this.reforgeDrop(k.owner, { champ: k.champ, boss });
       this.chatQuestKill(k.owner, k.champ);
       if (k.campType) {
         // Охота и вожаки — всем, кто нанёс мобу урон (как делится опыт), а не только добившему. Боссы — по bossXpShare ниже.
