@@ -132,6 +132,8 @@ const STAT_ICON: Record<string, IconKey> = {
   "Отражение щитом": "st.block",
 };
 
+export const WEIGHT_LETTER: Record<string, string> = { light: "Л", medium: "С", heavy: "Т" };
+
 export class PcInventory {
   private readonly root: HTMLDivElement;
   private readonly win: HTMLDivElement;
@@ -699,7 +701,7 @@ export class PcInventory {
     }
     for (const a of d.armor ?? []) {
       if (d.armorWorn?.[a.part] === a.id || a.fav) continue; // надетое и ★ в обмен не идут
-      out.push({ code: `a:${a.id}`, label: a.label, max: 1, stack: false, view: { k: "armor", name: a.label, n: 1, part: a.part, tier: a.tier } });
+      out.push({ code: `a:${a.id}`, label: a.name ?? a.label, max: 1, stack: false, view: { k: "armor", name: a.name ?? a.label, n: 1, part: a.part, tier: a.tier, weight: a.weight } });
     }
     const j = d.jewels;
     if (j) {
@@ -740,7 +742,11 @@ export class PcInventory {
     else if (it.k === "neck") box.innerHTML = neckHtml((it.tier ?? "base") as NeckTier, it.gems ?? []);
     else if (it.k === "gem") box.innerHTML = gemHtml(it.key ?? "");
     else if (it.k === "mat") box.innerHTML = iconHtml(`m.${it.mat ?? "alloy"}` as IconKey);
-    else if (it.k === "armor" && it.part) setIconEl(box, armorIconKey(it.part, it.tier));
+    else if (it.k === "armor" && it.part) {
+      setIconEl(box, armorIconKey(it.part, it.tier));
+      const wl = WEIGHT_LETTER[it.weight ?? ""];
+      if (wl) box.append(div("pcinv-w", wl));
+    }
     else box.innerHTML = iconHtml(`i.${it.item ?? "scrap"}` as Parameters<typeof iconHtml>[0]);
     return box;
   }
@@ -1880,7 +1886,9 @@ export class PcInventory {
     const worn = d.armorWorn?.[a.part] === a.id;
     const ico = div(`pcinv-cell huge t-${a.tier}`);
     setIconEl(ico, armorIconKey(a.part, a.tier));
-    this.cardHead(head, ico, ARMOR_PART_NAME[a.part], `t-${a.tier}`, `Броня · оценка <b>${qualityStarsShort(a.pts, a.rolls)}</b>`, worn ? "надета" : "", [div("pcinv-tipaff", a.label)]);
+    const wl = WEIGHT_LETTER[a.weight ?? ""];
+    if (wl) ico.append(div("pcinv-w", wl));
+    this.cardHead(head, ico, a.name ?? ARMOR_PART_NAME[a.part], `t-${a.tier}`, `Броня · оценка <b>${qualityStarsShort(a.pts, a.rolls)}</b>`, worn ? "надета" : "", [div("pcinv-tipaff", a.label)]);
     this.enchRows(body, a.id, a.ench, a.ench.map((r) => r.label), d.scrap);
     this.resultLine(body);
     body.append(div("pcinv-hint", "Чем ближе стат к максимуму — тем дороже и меньше шанс. При неудаче лом сгорает. Надетую броню можно точить на месте."));
@@ -2785,6 +2793,8 @@ export class PcInventory {
   private armorCell(a: PcInvArmor): HTMLDivElement {
     const c = div(`pcinv-cell t-${a.tier}${this.card?.kind === "armor" && this.card.id === a.id ? " sel" : ""}`);
     setIconEl(c, armorIconKey(a.part, a.tier));
+    const wl = WEIGHT_LETTER[a.weight ?? ""];
+    if (wl) c.append(div("pcinv-w", wl));
     c.append(div("pcinv-q", qualityStarsShort(a.pts, a.rolls)));
     // Как у оружия и колец: ★ видна у избранного; на телефоне пустую не показываем.
     if (!this.hooks.touch || a.fav) c.append(this.favStar(!!a.fav, () => this.toggleArmorFav(a.id)));
@@ -2814,6 +2824,8 @@ export class PcInventory {
     const c = div(a ? `pcinv-cell big t-${a.tier}${this.card?.kind === "armor" && this.card.id === a.id ? " sel" : ""}` : "pcinv-cell big locked");
     setIconEl(c, armorIconKey(part, a?.tier));
     if (a) {
+      const wl = WEIGHT_LETTER[a.weight ?? ""];
+      if (wl) c.append(div("pcinv-w", wl));
       c.append(div("pcinv-q", qualityStarsShort(a.pts, a.rolls)));
       if (a.fav) c.append(div("pcinv-fav on", glyph("ui.fav")));
       c.addEventListener("mouseenter", () =>
@@ -3191,6 +3203,7 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 /* Значок кольца/камня — квадрат по ширине ячейки: у ячеек с aspect-ratio высота 100% не считается, и картинка сплющивалась. */
 .pcinv-jw > span[style*="display:block"] { width:100% !important; height:auto !important; aspect-ratio:1 / 1; }
 .pcinv-q { position:absolute; left:7px; top:5px; font:800 10.5px/1 system-ui; color:var(--quality); text-shadow:0 1px 2px #000,0 0 3px #000; pointer-events:none; z-index:1; }
+.pcinv-w { position:absolute; left:5px; bottom:3px; min-width:14px; height:14px; padding:0 3px; border-radius:4px; background:rgba(10,12,18,.82); border:1px solid rgba(255,255,255,.22); color:#e8ecf8; font:800 10px/14px system-ui; text-align:center; pointer-events:none; z-index:2; }
 .pcinv-sb { position:absolute; right:7px; top:5px; font:800 10.5px/1 system-ui; color:#fff; text-shadow:0 1px 2px #000,0 0 3px #000; pointer-events:none; z-index:1; }
 .pcinv-cnt { position:absolute; right:5px; bottom:3px; font:700 11px/1 system-ui; color:#f3f6fa; text-shadow:0 1px 2px #000,0 0 3px #000; pointer-events:none; z-index:1; }
 .pcinv-glv { position:absolute; left:5px; top:3px; font:800 10.5px/1 system-ui; color:#fff; text-shadow:0 1px 2px #000; z-index:1; }

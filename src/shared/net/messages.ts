@@ -228,6 +228,8 @@ export interface PcInvArmor {
   id: string;
   part: "helm" | "chest" | "gloves" | "legs" | "boots";
   tier: "base" | "gold" | "legendary" | "ruby";
+  /** Короткое имя: «Кольчужный шлем». */
+  name?: string;
   /** Вес: лёгкая/средняя/тяжёлая. */
   weight?: "light" | "medium" | "heavy";
   /** Уровень предмета (для чисел). */
@@ -341,6 +343,8 @@ export interface TradeItemView {
   item?: string;
   /** Для брони — часть (иконка). */
   part?: "helm" | "chest" | "gloves" | "legs" | "boots";
+  /** Для брони — вес. */
+  weight?: "light" | "medium" | "heavy";
   /** Материал или особый катализатор крафта (shared/craft.ts CraftItemId) — иконка. */
   mat?: string;
   /** Оружие: удачных точек атаки (заточка) — значок «+N» и подпись. */

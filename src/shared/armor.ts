@@ -411,6 +411,7 @@ export function armorPcView(a: ArmorInstance): PcInvArmor {
     pts: armorQuality(a),
     rolls: a.rolls.length,
     scrap: armorScrap(a),
+    name: armorName(a),
     label: armorLabel(a),
     weight: a.weight,
     lvl: a.lvl,

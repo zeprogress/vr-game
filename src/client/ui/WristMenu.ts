@@ -1795,7 +1795,7 @@ export class WristMenu {
   private armorWhCell(ctx: CanvasRenderingContext2D, a: PcInvArmor, x: number, y: number, w: number, h: number): void {
     const wd = this.add({
       id: `arm:${a.id}`, x, y, w, h, kind: "cell",
-      info: [a.label, `Надевается в слот: ${ARMOR_PART_NAME[a.part]} — нажми: действия`],
+      info: [a.name ?? a.label, `Вес: ${a.weight === "light" ? "лёгкая" : a.weight === "heavy" ? "тяжёлая" : "средняя"} · ${a.label}`],
       act: () => this.openArmorPopup(a),
     });
     const st = this.styleFor(wd);
@@ -1808,7 +1808,14 @@ export class WristMenu {
     this.drawIconAt(ctx, armorIconKey(a.part, a.tier), x + 6, y + 22, 52, TIER_COLOR[a.tier]);
     ctx.font = "bold 17px system-ui, sans-serif";
     ctx.fillStyle = TIER_COLOR[a.tier];
-    ctx.fillText(this.shortName(ARMOR_PART_NAME[a.part]), x + 62, y + 8);
+    ctx.fillText(this.shortName(a.name ?? ARMOR_PART_NAME[a.part]), x + 62, y + 8);
+    // Вес — буквой в левом нижнем углу, как на иконках инвентаря.
+    const wl = a.weight === "light" ? "Л" : a.weight === "medium" ? "С" : a.weight === "heavy" ? "Т" : "";
+    if (wl) {
+      ctx.font = "bold 15px system-ui, sans-serif";
+      ctx.fillStyle = "#e8ecf8";
+      ctx.fillText(wl, x + 7, y + h - 6);
+    }
     // Оценка — в левом верхнем углу, как у оружия (числом).
     ctx.font = "bold 18px system-ui, sans-serif";
     ctx.fillStyle = "#f2c74b";
@@ -1816,7 +1823,7 @@ export class WristMenu {
     if (this.armorWorn[a.part] === a.id) {
       ctx.font = "16px system-ui, sans-serif";
       ctx.fillStyle = "#7ee081";
-      ctx.fillText("надета", x + 8, y + h - 6);
+      ctx.fillText("надета", x + 26, y + h - 6);
     }
   }
 
@@ -1854,7 +1861,7 @@ export class WristMenu {
       if (!a.fav) buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${a.scrap} лома, предмет исчезнет`, color: "#ff9a9a", act: () => send("scrap") });
     }
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
-    this.popup = { title: a.label, sub: `Часть: ${ARMOR_PART_NAME[a.part]}`, color: TIER_COLOR[a.tier], buttons };
+    this.popup = { title: a.name ?? a.label, sub: `Вес: ${a.weight === "light" ? "лёгкая" : a.weight === "heavy" ? "тяжёлая" : "средняя"} · ${ARMOR_PART_NAME[a.part]}`, color: TIER_COLOR[a.tier], buttons };
     this.focusId = worn ? "pop:unwear" : "pop:wear";
   }
 
