@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
+import { dataFile } from "./dataDir";
 import { randomUUID } from "node:crypto";
 
 /**
@@ -16,7 +16,7 @@ import { randomUUID } from "node:crypto";
  * InventoryRoom только зовёт `act()` и перерисовывает страницу.
  */
 
-const FILE = resolve(dirname(fileURLToPath(import.meta.url)), ".data/invSessions.json");
+const FILE = dataFile("invSessions.json");
 const CODE_TTL_MS = 10 * 60_000;
 const SESSION_TTL_MS = 60 * 24 * 3600_000;
 

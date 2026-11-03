@@ -1,12 +1,12 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
+import { dataFile } from "./dataDir";
 
 import type { CamTuneKey } from "#shared/camTune";
 
 import type { DropSave } from "./sim/ZoneSim";
 
-const FILE = resolve(dirname(fileURLToPath(import.meta.url)), ".data/world.json");
+const FILE = dataFile("world.json");
 
 /**
  * Настройки пульта, которые должны переживать перезапуск сервера (Ф10):

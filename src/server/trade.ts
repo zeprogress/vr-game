@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
+import { dataFile } from "./dataDir";
 
 import type { TradeItemView } from "#shared/net/messages";
 import { addToBag, attackPoints, bagCount, instanceName, ITEMS, takeFromBag, type ItemId, type Slot, type WeaponInstance } from "#shared/items";
@@ -286,7 +286,7 @@ export function tradeViewOf(rec: { trades?: TradeSession[] } | undefined, token:
 
 // ---------------------------------------------------------------- журнал
 
-const LOG = resolve(dirname(fileURLToPath(import.meta.url)), ".data/trades.jsonl");
+const LOG = dataFile("trades.jsonl");
 
 /** Запись в журнал передач (по строке JSON): кто, кому, что — разбирать жалобы «у меня пропало». */
 export function tradeLog(e: { kind: "gift" | "trade"; from: { nick: string; token: string }; to: { nick: string; token: string }; items: readonly Taken[] }): void {

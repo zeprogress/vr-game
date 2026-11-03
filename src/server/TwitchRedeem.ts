@@ -2,6 +2,7 @@ import WebSocket from "ws";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { dataFile } from "./dataDir";
 
 /**
  * Баллы канала Twitch → команды чата игры. Активации наград приходят EventSub-событием
@@ -30,7 +31,7 @@ export const REDEEM_FORBIDDEN = new Set<string>([
 /** Конфиг наград (без секретов — лежит в репозитории). */
 export const REDEEM_RULES_FILE = resolve(dirname(fileURLToPath(import.meta.url)), "../../deploy/redeems.json");
 /** Токен стримера после обновлений (в .data, в git не попадает). */
-export const REDEEM_TOKEN_FILE = resolve(dirname(fileURLToPath(import.meta.url)), ".data/twitch-redeem.json");
+export const REDEEM_TOKEN_FILE = dataFile("twitch-redeem.json");
 
 export interface RedeemRule {
   /** Название награды в Twitch (регистр не важен). */

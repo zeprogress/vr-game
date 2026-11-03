@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dataFile } from "./dataDir";
 
 import { PLAYER, RESPAWN } from "#shared/constants";
 import type { ArmorInstance, ArmorPart } from "#shared/armor";
@@ -191,7 +191,7 @@ export function migrateTree(r: PlayerRecord): boolean {
  */
 const FILE = process.env.PLAYERS_FILE
   ? resolve(process.cwd(), process.env.PLAYERS_FILE)
-  : resolve(dirname(fileURLToPath(import.meta.url)), ".data/players.json");
+  : dataFile("players.json");
 
 /**
  * Чистый запуск: сейвы не читаются и не пишутся вообще. Для песочницы реворка —

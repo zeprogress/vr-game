@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
+import { dataFile } from "./dataDir";
 
 import { isFeedbackKind, isFeedbackMark, type FeedbackKind, type FeedbackMark, type FeedbackView } from "#shared/feedback";
 
-const FILE = resolve(dirname(fileURLToPath(import.meta.url)), ".data/feedback.json");
+const FILE = dataFile("feedback.json");
 
 /** Запись в файле: вид и кто пометил — остальное как FeedbackView. */
 export interface FeedbackItem extends FeedbackView {

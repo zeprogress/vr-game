@@ -1,8 +1,8 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
+import { dataFile } from "./dataDir";
 
-const FILE = resolve(dirname(fileURLToPath(import.meta.url)), ".data/chatlog.jsonl");
+const FILE = dataFile("chatlog.jsonl");
 
 /** Сколько дней хранить сообщения — старше просто выпиливаются при чистке. */
 const RETAIN_DAYS = 3;
