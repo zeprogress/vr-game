@@ -1,7 +1,7 @@
 import { SKIN_LABELS } from "#shared/skins";
 import colyseus from "colyseus";
 import { invHub, type InvActKind, type InvActResult } from "../invHub";
-import { armorBonusOf, armorEnchant, armorEnchantRow, armorLabel, armorPcView, armorQuality, armorScrap, rollArmor, sanitizeArmorList, wornArmorOf, ARMOR_PARTS, ARMOR_RUBY, type ArmorInstance, type ArmorPart } from "#shared/armor";
+import { armorBonusOf, armorEnchant, armorEnchantRow, armorLabel, armorPcView, armorQuality, armorScrap, rollArmor, sanitizeArmorList, wornArmorOf, ARMOR_PARTS, ARMOR_RUBY, ARMOR_TIERS, type ArmorInstance, type ArmorPart, type ArmorTier } from "#shared/armor";
 import { devChat } from "../devChat";
 import type { Client } from "colyseus";
 import type { IncomingMessage } from "node:http";
@@ -81,7 +81,7 @@ import {
   type AutoGoMsg,
 } from "#shared/net/messages";
 import { isCamTuneKey, type CamTuneKey } from "#shared/camTune";
-import { NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, huntPhaseFor, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL, STORM_COUNTER } from "#shared/constants";
+import { NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, huntPhaseFor, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL, STORM_COUNTER, PROGRESSION } from "#shared/constants";
 import { MOB_MID_K, SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, ICE_GIANT, reflectCapped, mobArmorBits, type CatDefense, CAT_SOULS_KNOCK } from "#shared/mobs";
 import { DragonFight, type DragonHost } from "./dragonFight";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
@@ -172,6 +172,7 @@ import {
   isCraftRare,
   takeOne,
   weaponDef,
+  weaponName,
   weaponKey,
   WEAPON_TAKE_REACH,
   type ItemId,
@@ -720,6 +721,38 @@ const INV_COMMANDS = new Set([
   "!инв", "!инвентарь", "!инвент", "!бэг", "!сумка", "!рюкзак", "!оружие", "!склад",
   "!вещи", "!шмот", "!шмотки", "!предметы", "!снаряжение", "!лут",
 ]);
+
+/** Админские алиасы: русские названия классов, тиров, частей брони и ресурсов. */
+const ADMIN_WEAPON_ALIASES: Record<string, WeaponClass> = {
+  sword: "sword", меч: "sword",
+  bow: "bow", лук: "bow",
+  staff: "staff", посох: "staff",
+  dagger: "dagger", кинжал: "dagger",
+  spear: "spear", копьё: "spear", копье: "spear",
+  hammer: "hammer", молот: "hammer",
+  shield: "shield", щит: "shield",
+};
+const ADMIN_TIER_ALIASES: Record<string, WeaponTier> = {
+  base: "base", база: "base", обычный: "base",
+  gold: "gold", золото: "gold", золотой: "gold",
+  legendary: "legendary", уник: "legendary", уникальный: "legendary", легенда: "legendary",
+  ruby: "ruby", рубин: "ruby", рубиновый: "ruby",
+  craft: "craft", крафт: "craft", мастерский: "craft",
+};
+const ADMIN_ARMOR_ALIASES: Record<string, ArmorPart> = {
+  helm: "helm", шлем: "helm",
+  chest: "chest", нагрудник: "chest", броня: "chest",
+  gloves: "gloves", перчатки: "gloves",
+  legs: "legs", поножи: "legs",
+  boots: "boots", сапоги: "boots",
+};
+const ADMIN_ITEM_ALIASES: Record<string, ItemId> = {
+  лом: "scrap", мусор: "scrap",
+  рыба: "fish",
+  зелье: "potion", банка: "potion", хилка: "potion",
+  "свиток мудрости": "scroll_xp", мудрость: "scroll_xp", опыт: "scroll_xp",
+  "свиток ветра": "scroll_wind", ветер: "scroll_wind", скорость: "scroll_wind",
+};
 
 /** Все опции элитного моба из описания ELITE_MOBS — те же, что у лагерей (ZoneSim.eliteOpts). */
 function eliteMobOpts(d: (typeof ELITE_MOBS)[string]): NonNullable<Parameters<ZoneSim["spawnEventMob"]>[3]> {
@@ -2272,7 +2305,8 @@ export class ZoneRoom extends Room<ZoneState> {
       if (!p || !rt || typeof msg?.text !== "string") return;
       const text = msg.text.replace(/[\r\n]+/g, " ").trim().slice(0, 200);
       if (!text || !p.nick) return;
-      if (this.elapsed - (rt.chatSayAt ?? -99) < 1.5) return; // не чаще раза в 1.5 с
+      // Обычным — не чаще раза в 1.5 с; суперпользователю не мешаем тестировать.
+      if (this.elapsed - (rt.chatSayAt ?? -99) < 1.5 && !isAdminNick(p.nick)) return;
       rt.chatSayAt = this.elapsed;
       this.twitch?.say(`🎮 ${p.nick}: ${text}`);
       this.onChat(p.nick, text, true);
@@ -4351,11 +4385,13 @@ export class ZoneRoom extends Room<ZoneState> {
     // Из игры ник не подтверждён (не Twitch): коды входа в !inv и команды админов — только из Twitch.
     if (fromGame && /^\d{4}$/.test(text.trim())) return;
     if (fromGame && isAdminNick(nick)) {
-      // Админский ник из игры: без админских прав — только озвучка и запись в катакомбы как у всех.
+      // Админский ник из игры: это уже сессия с ADMIN_PASS, команды можно
+      // выполнять прямо из чата героя. Без «!» — как обычная озвучка.
       const c0 = text.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
-      if (!c0.startsWith("!")) this.voiceChat(nick, norm, text);
-      else if (CAT_CMDS.includes(c0)) this.catJoinChat(nick, norm, undefined, false);
-      return;
+      if (!c0.startsWith("!")) {
+        this.voiceChat(nick, norm, text);
+        return;
+      }
     }
     // Код входа в веб-инвентарь (4 цифры со страницы /inv?ник) — не болтовня бота.
     if (invHub.tryChatCode(norm, text)) {
@@ -4364,6 +4400,29 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     const parts = text.trim().split(/\s+/);
     const cmd = parts[0]?.toLowerCase();
+    // Суперпользователь: команды работают и из Twitch, и из чата героя (после ADMIN_PASS).
+    if (isAdminNick(nick)) {
+      if (["!setlevel", "!level", "!lvl", "!уровень"].includes(cmd ?? "")) {
+        this.adminSetLevel(nick, norm, parts[1] ?? "");
+        return;
+      }
+      if (["!give", "!item", "!ресурс", "!рес"].includes(cmd ?? "")) {
+        this.adminGive(nick, norm, parts.slice(1));
+        return;
+      }
+      if (["!weapon", "!giveweapon", "!wpn", "!оруж", "!оружие"].includes(cmd ?? "")) {
+        this.adminWeaponCmd(nick, norm, parts.slice(1));
+        return;
+      }
+      if (["!armor", "!givearmor", "!броня"].includes(cmd ?? "")) {
+        this.adminArmorCmd(nick, norm, parts.slice(1));
+        return;
+      }
+      if (["!god", "!super", "!супер", "!всё", "!все"].includes(cmd ?? "")) {
+        this.adminGod(nick, norm);
+        return;
+      }
+    }
     // Только стенд: поджечь всех мобов на 20 с (почти без урона) — проверка огня.
     // Стенд: !lvl N — выставить уровень герою этого ника (очки атрибутов — заново).
     if (STAGING && cmd === "!lvl") {
@@ -5418,6 +5477,217 @@ export class ZoneRoom extends Room<ZoneState> {
       if (rt) return { id, p, rt };
     }
     return null;
+  }
+
+  // ---------------------------------------------------------------- админ-суперпользователь
+
+  /** Живой герой админа: бот зрителя или подключённый игрок. */
+  private adminHero(nick: string, norm: string): { id: string; p: PlayerState; rt: Runtime } | null {
+    const t = this.findWeaponsTarget(norm);
+    if (!t) this.reply(`@${nick} сначала !play — менять можно только героя в мире.`);
+    return t;
+  }
+
+  /** `!setlevel N` — любой уровень 1..100, с пересчётом очков дерева и HP/маны. */
+  private adminSetLevel(nick: string, norm: string, raw: string): void {
+    const lvl = Math.max(1, Math.min(PROGRESSION.maxLevel, Math.floor(Number(raw)) || 0));
+    if (!lvl) {
+      this.reply(`@${nick} формат: !setlevel <1..${PROGRESSION.maxLevel}>`);
+      return;
+    }
+    const t = this.findWeaponsTarget(norm);
+    if (!t) {
+      const token = `nick:${norm}`;
+      const rec = store.get(token);
+      if (!rec) {
+        this.reply(`@${nick} у тебя ещё нет героя — сначала !play.`);
+        return;
+      }
+      store.put(token, { level: lvl, xp: 0 });
+      this.reply(`@${nick} уровень ${lvl} записан; зайди в мир, чтобы применить.`);
+      return;
+    }
+    const token = t.rt.token ?? `nick:${norm}`;
+    const cls = this.heroCls(t.p);
+    const taken = this.treeTaken(token, cls);
+    let treeReset = false;
+    if (taken.length > treePointsAt(lvl)) {
+      const tree = store.get(token)?.tree ?? {};
+      store.put(token, { tree: { ...tree, [cls]: [] } });
+      treeReset = true;
+    }
+    t.p.level = lvl;
+    t.p.xp = 0;
+    this.syncTree(t.p, t.id);
+    t.p.hp = t.p.maxHp;
+    t.p.mana = t.p.maxMana;
+    this.persistNick(norm);
+    this.reply(
+      `@${nick} уровень ${lvl}, свободных очков дерева ${t.p.unspent}${treeReset ? "; дерево сброшено — очков на новый уровень" : ""}.`,
+    );
+  }
+
+  private adminItemId(arg: string): ItemId | null {
+    const a = arg.trim().toLowerCase();
+    if (!a) return null;
+    if (isItemId(a)) return a;
+    if (ADMIN_ITEM_ALIASES[a]) return ADMIN_ITEM_ALIASES[a];
+    const byName = (Object.keys(ITEMS) as ItemId[]).find(
+      (id) => ITEMS[id].name.toLowerCase() === a || ITEMS[id].short.toLowerCase() === a,
+    );
+    return byName ?? null;
+  }
+
+  private adminCount(raw: string | undefined, def: number): number {
+    const n = Math.floor(Number(raw));
+    if (!Number.isFinite(n) || n <= 0) return def;
+    return Math.min(1_000_000_000, n);
+  }
+
+  /** `!give <предмет|all|resources> [сколько]` — ресурсы в сумку, оружие на склад. */
+  private adminGive(nick: string, norm: string, args: string[]): void {
+    const what = (args[0] ?? "").toLowerCase();
+    if (!what) {
+      this.reply(`@${nick} формат: !give <предмет|all|resources> [сколько]; пример: !give scrap 99999, !give potion 99, !give all`);
+      return;
+    }
+    const t = this.adminHero(nick, norm);
+    if (!t) return;
+    if (!["all", "все", "всё", "resources", "ресурсы", "рес"].includes(what) && this.adminItemId(what) === "armor") {
+      this.reply(`@${nick} броню выдаёт !armor <часть|all> [тир].`);
+      return;
+    }
+    const all = what === "all" || what === "все" || what === "всё";
+    const resources = what === "resources" || what === "ресурсы" || what === "рес";
+    const ids: ItemId[] = all
+      ? (Object.keys(ITEMS) as ItemId[]).filter((id) => id !== "armor")
+      : resources
+        ? ["scrap", "fish", "potion", "scroll_xp", "scroll_wind"]
+        : (() => {
+            const id = this.adminItemId(what);
+            return id ? [id] : [];
+          })();
+    if (ids.length === 0) {
+      this.reply(`@${nick} не знаю такого предмета. Есть: ${(Object.keys(ITEMS) as ItemId[]).filter((id) => id !== "armor").join(", ")}`);
+      return;
+    }
+    const bag = readBag(t.p);
+    const given: string[] = [];
+    let left = 0;
+    for (const id of ids) {
+      const def = ITEMS[id];
+      if (def.weapon) {
+        this.adminWeapon(t, def.weapon.cls, def.weapon.tier, false, false);
+        given.push(def.name);
+        continue;
+      }
+      const count = all || resources ? def.stack : this.adminCount(args[1], def.stack);
+      left += addToBag(bag, id, count);
+      given.push(`${def.name} ×${count}`);
+    }
+    writeBag(t.p, bag);
+    this.persistNick(norm);
+    this.reply(`@${nick} выдано: ${given.join(", ")}${left > 0 ? `; в сумку не влезло ${left}` : ""}.`);
+  }
+
+  private adminWeapon(
+    t: { id: string; p: PlayerState; rt: Runtime },
+    cls: WeaponClass,
+    tier: WeaponTier,
+    all: boolean,
+    equip: boolean,
+  ): void {
+    const classes: WeaponClass[] = all ? [...ATTACK_CLASSES, "shield"] : [cls];
+    for (const c of classes) {
+      const w = rollWeaponInstance(c, tier);
+      if (tier === "craft") w.cp = Math.max(w.cp ?? 0, 0.15);
+      t.rt.weapons.push(w);
+      t.rt.owned.add(weaponKey(w.cls, w.tier));
+      if (equip && !all) applyEquip(t.p, t.rt, w, "right");
+    }
+    if (equip && !all) this.syncSkills(t.p, t.rt);
+  }
+
+  private adminWeaponCmd(nick: string, norm: string, args: string[]): void {
+    const what = (args[0] ?? "").toLowerCase();
+    if (!what) {
+      this.reply(`@${nick} формат: !weapon <класс|all> [тир]; классы: ${[...ATTACK_CLASSES, "shield"].join(", ")}; тиры: base, gold, legendary, ruby, craft`);
+      return;
+    }
+    const tierRaw = (args[1] ?? "ruby").toLowerCase();
+    const tier = isWeaponTier(tierRaw) ? tierRaw : ADMIN_TIER_ALIASES[tierRaw];
+    if (!tier) {
+      this.reply(`@${nick} тир: base, gold, legendary, ruby, craft (можно по-русски: золото, уник, рубин, крафт).`);
+      return;
+    }
+    const t = this.adminHero(nick, norm);
+    if (!t) return;
+    if (what === "all" || what === "все" || what === "всё") {
+      const before = t.rt.weapons.length;
+      this.adminWeapon(t, "sword", tier, true, false);
+      this.persistNick(norm);
+      this.reply(`@${nick} на склад: все классы + щит, тир ${tier} (${t.rt.weapons.length - before} шт.). Надеть — в !inv.`);
+      return;
+    }
+    const cls = isWeaponClass(what) ? what : ADMIN_WEAPON_ALIASES[what];
+    if (!cls) {
+      this.reply(`@${nick} класс: ${[...ATTACK_CLASSES, "shield"].join(", ")} (меч, лук, посох, кинжал, копьё, молот, щит).`);
+      return;
+    }
+    this.adminWeapon(t, cls, tier, false, true);
+    this.persistNick(norm);
+    this.reply(`@${nick} выдано и надето: ${weaponName(cls, tier)}. Умения класса — только с его оружием.`);
+  }
+
+  private adminArmorCmd(nick: string, norm: string, args: string[]): void {
+    const what = (args[0] ?? "").toLowerCase();
+    if (!what) {
+      this.reply(`@${nick} формат: !armor <часть|all> [тир]; части: ${ARMOR_PARTS.join(", ")}; тиры: base, gold, legendary, ruby`);
+      return;
+    }
+    const tierRaw = (args[1] ?? "ruby").toLowerCase();
+    const tier = (isWeaponTier(tierRaw) ? tierRaw : ADMIN_TIER_ALIASES[tierRaw]) as ArmorTier | undefined;
+    if (!tier || !ARMOR_TIERS.includes(tier)) {
+      this.reply(`@${nick} тир брони: base, gold, legendary, ruby (крафта брони пока нет).`);
+      return;
+    }
+    const t = this.adminHero(nick, norm);
+    if (!t) return;
+    const all = what === "all" || what === "все" || what === "всё";
+    const part = all ? null : (ARMOR_PARTS.includes(what as ArmorPart) ? (what as ArmorPart) : ADMIN_ARMOR_ALIASES[what]);
+    if (!all && !part) {
+      this.reply(`@${nick} часть: ${ARMOR_PARTS.join(", ")} (шлем, нагрудник, перчатки, поножи, сапоги).`);
+      return;
+    }
+    const parts = all ? [...ARMOR_PARTS] : [part!];
+    const names: string[] = [];
+    for (const p of parts) {
+      const a = rollArmor(p, shortId(Math.random), Math.random, tier);
+      t.rt.armor.push(a);
+      t.rt.armorWorn[p] = a.id;
+      names.push(armorLabel(a));
+    }
+    this.applyArmor(t.id);
+    this.persistNick(norm);
+    this.reply(`@${nick} надето: ${names.join(" · ")}.`);
+  }
+
+  /** `!god` — 100 уровень, все рубиновые оружия/броня и полная сумка ресурсов. */
+  private adminGod(nick: string, norm: string): void {
+    const t = this.adminHero(nick, norm);
+    if (!t) return;
+    this.adminSetLevel(nick, norm, "100");
+    this.adminWeapon(t, "sword", "ruby", true, false);
+    this.adminArmorCmd(nick, norm, ["all", "ruby"]);
+    const bag = emptyBag();
+    addToBag(bag, "scrap", 100_000_000);
+    addToBag(bag, "fish", 1_000_000);
+    addToBag(bag, "potion", 99);
+    addToBag(bag, "scroll_xp", 99);
+    addToBag(bag, "scroll_wind", 99);
+    writeBag(t.p, bag);
+    this.persistNick(norm);
+    this.reply(`@${nick} супергерой: 100 ур., все рубиновые оружия и броня, сумка ресурсов.`);
   }
 
   /**
