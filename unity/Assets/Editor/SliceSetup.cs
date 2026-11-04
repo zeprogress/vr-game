@@ -484,9 +484,11 @@ public static class SliceSetup
                 {
                     if (r.name != "hubGround") continue;
                     // Плоскость земли лагеря висела над поляной и бросала тень на стык.
+                    // Слегка приподнимаем её над террейном: при опускании зелёная
+                    // поляна проступала сквозь стыки, теней у неё уже нет.
                     r.shadowCastingMode = ShadowCastingMode.Off;
                     r.receiveShadows = false;
-                    r.transform.position -= new Vector3(0, 0.06f, 0);
+                    r.transform.position += new Vector3(0, 0.1f, 0);
                     var m = new Material(r.sharedMaterial);
                     m.SetColor("_EmissionColor", Color.black);
                     r.sharedMaterial = m;

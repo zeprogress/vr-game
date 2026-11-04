@@ -2302,6 +2302,11 @@ export class PcInventory {
     left.append(div("pcinv-fg-sub", "Найденные рецепты"));
     if (c.hidden) left.append(div("pcinv-small pcinv-fg-empty", "Книга рецептов видна только владельцу героя."));
     else if (!found.length) left.append(div("pcinv-small pcinv-fg-empty", "Пока ни одного. Скрытые рецепты находятся только опытом — пробуй сочетания."));
+    const unknown = CRAFT_RECIPES.filter((r) => !c.book.includes(r.id));
+    if (!c.hidden && unknown.length) {
+      left.append(div("pcinv-fg-sub", "Слухи о скрытых рецептах"));
+      for (const rc of unknown) left.append(div("pcinv-small pcinv-fg-rumor", `«${rc.name}»: ${rc.hint}`));
+    }
     for (const rc of found) {
       const row = div("pcinv-fg-row rec");
       const ic = div("pcinv-fg-ic");
@@ -2352,7 +2357,7 @@ export class PcInventory {
     const baseIc = div("pcinv-fg-big");
     setIcon(baseIc, sel.cls, undefined, "craft");
     chain.append(slot("Основа", baseIc, WEAPON_NOUN[sel.cls].name, "мастерское", "Основа — какое оружие куём. Нажми — выбрать.", true, () => pickOpen("base")), arrow());
-    const matBox = div("pcinv-fg-mats");
+    const matBox = div(`pcinv-fg-mats${CRAFT.maxMats >= 6 ? " six" : ""}`);
     for (let i = 0; i < CRAFT.maxMats; i++) {
       const m = sel.mats[i];
       const cell = div(`pcinv-fg-mcell${m ? " full" : ""}`);
@@ -3480,6 +3485,9 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-fg-big.empty { color:#5d6f88; font:700 26px system-ui; }
 .pcinv-fg-mats { position:absolute; inset:6%; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); grid-template-rows:minmax(0,1.3fr) minmax(0,1fr); gap:4px; }
 .pcinv-fg-mcell { min-width:0; min-height:0; overflow:hidden; border:1px dashed #3a4f6b; display:flex; align-items:center; justify-content:center; }
+.pcinv-fg-rumor { display:block; padding:5px 7px; border-left:2px solid #6b5736; color:#b9c3cf; line-height:1.35; }
+.pcinv-fg-mats.six { grid-template-rows:repeat(3,minmax(0,1fr)); }
+.pcinv-fg-mats.six .pcinv-fg-mcell:first-child { grid-column:auto; }
 .pcinv-fg-mcell:first-child { grid-column:1 / span 2; }
 .pcinv-fg-mcell.full { border:1px solid #8a6a3a; cursor:pointer; background:rgba(60,36,12,.35); }
 .pcinv-fg-mcell .gico { max-width:86%; max-height:86%; width:auto; height:86%; aspect-ratio:1/1; object-fit:contain; }
