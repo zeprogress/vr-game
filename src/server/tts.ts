@@ -17,8 +17,12 @@ import { TTS_DEFAULT_VOICE } from "#shared/tts";
  */
 const FISH_TTS_URL = "https://api.fish.audio/v1/tts";
 const FISH_MODEL = "s2.1-pro-free";
-/** Куда пишем mp3 (nginx-корень статики). */
-const OUT_DIR = resolve(process.cwd(), "dist/tts");
+/**
+ * Куда пишем mp3. На VPS — `dist/tts` (nginx-корень статики). На домашнем
+ * сервере с Vite — `public/tts`, иначе dev-сервер отдаёт на `/tts/...` HTML
+ * приложения вместо аудио (см. TTS_DIR в stream.env).
+ */
+const OUT_DIR = resolve(process.cwd(), process.env.TTS_DIR || "dist/tts");
 /** Сколько держать файл на диске, мс. */
 const TTL_MS = 120_000;
 /** Не длиннее — обрезаем (одна фраза = один запрос). */
