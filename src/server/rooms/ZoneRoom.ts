@@ -1,7 +1,9 @@
 import { SKIN_LABELS } from "#shared/skins";
 import colyseus from "colyseus";
 import { invHub, type InvActKind, type InvActResult } from "../invHub";
-import { armorBonusOf, armorEnchant, armorEnchantRow, armorLabel, armorPcView, armorQuality, armorScrap, rollArmor, sanitizeArmorList, wornArmorOf, ARMOR_PARTS, ARMOR_RUBY, ARMOR_TIERS, type ArmorInstance, type ArmorPart, type ArmorTier } from "#shared/armor";
+import { armorBonusOf, armorLabel, armorPool, armorPcView, armorQuality, armorScrap, rollArmor, sanitizeArmorList, wornArmorOf, ARMOR_PARTS, ARMOR_RUBY, ARMOR_TIERS, type ArmorInstance, type ArmorPart, type ArmorTier } from "#shared/armor";
+import { runeKey, runePts, runeRemoveCost, runeSlots, runeStockOf, runeSubName, solidText } from "#shared/runes";
+import { insertRune, randomRune, removeRune } from "../runes";
 import { devChat } from "../devChat";
 import type { Client } from "colyseus";
 import type { IncomingMessage } from "node:http";
@@ -126,10 +128,8 @@ import {
   handsRoll,
   handsCrit,
   isMeleeClass,
-  affixPoints,
   bagCount,
   takeFromBag,
-  enchantInfo,
   attackPointBest,
   attackPointBonus,
   attackPoints,
@@ -141,6 +141,9 @@ import {
   HEAL_CARRY_MAX,
   affixLabel,
   affixCapNote,
+  affixPoints,
+  rollableSubs,
+  POINTS_MAX,
   instanceLabels,
   instanceName,
   shortId,
@@ -1157,36 +1160,6 @@ function applyUnequip(
 }
 
 /**
- * Одна попытка заточки аффикса `idx`: лом списывается в любом случае,
- * шанс/цена/прирост — enchantInfo/ENCHANT в items.ts. Мутирует w и bag.
- */
-function enchantTry(
-  w: WeaponInstance,
-  idx: number,
-  bag: Slot[],
-): InvActResult {
-  const info = enchantInfo(w, idx);
-  if (!info) return { ok: false, text: "Нет такого ролла." };
-  if (info.max) return { ok: false, text: "Этот ролл уже на максимуме." };
-  if (!takeFromBag(bag, "scrap", info.cost)) {
-    return { ok: false, text: `Не хватает лома: нужно ${info.cost}, есть ${bagCount(bag, "scrap")}.` };
-  }
-  const up = enchantRoll(w.affixes[idx], info.chance);
-  const before = info.points;
-  if (up) {
-    const gain = ENCHANT.gainMin + Math.floor(Math.random() * (ENCHANT.gainMax - ENCHANT.gainMin + 1));
-    enchantApply(w, idx, gain);
-  }
-  const label = affixLabel(w.affixes[idx]);
-  const gained = affixPoints(w.affixes[idx], w) - before;
-  return {
-    ok: true,
-    text: up ? `Заточка удалась: ${label}` : `Не вышло — лом сгорел (−${info.cost})`,
-    enchant: { id: w.id, idx, up, gain: gained, cost: info.cost, label },
-  };
-}
-
-/**
  * Точка атаки за лом (attackPointTry в items.ts): лом списывается и при неудаче. Мутирует w и bag.
  */
 function sharpenTry(w: WeaponInstance, bag: Slot[]): InvActResult & { spent: boolean } {
@@ -1204,31 +1177,6 @@ function sharpenTry(w: WeaponInstance, bag: Slot[]): InvActResult & { spent: boo
     text: r.up
       ? `Точка атаки +${fmtPct(r.gain * 100, 2)}% · всего +${fmtPct(attackPointBonus(r.points) * 100)}% к урону`
       : `Не вышло — лом сгорел (−${r.cost})`,
-  };
-}
-
-/**
- * Одна попытка заточки брони: лом списывается в любом случае, как у оружия (шанс и цена — armorEnchantRow).
- * Удача — +1..3 очка к стату, не выше максимума. Мутирует a и bag.
- */
-function armorEnchantTry(a: ArmorInstance, idx: number, bag: Slot[]): InvActResult {
-  const info = armorEnchantRow(a, idx);
-  if (!info) return { ok: false, text: "Такого свойства у брони нет." };
-  if (info.max) return { ok: false, text: "Это свойство уже на максимуме." };
-  if (!takeFromBag(bag, "scrap", info.cost)) {
-    return { ok: false, text: `Не хватает лома: нужно ${info.cost}, есть ${bagCount(bag, "scrap")}.` };
-  }
-  const up = enchantRoll(a.rolls[idx], info.chance);
-  const before = a.rolls[idx].pts;
-  if (up) {
-    const gain = ENCHANT.gainMin + Math.floor(Math.random() * (ENCHANT.gainMax - ENCHANT.gainMin + 1));
-    armorEnchant(a, idx, gain);
-  }
-  const label = armorEnchantRow(a, idx)!.label;
-  return {
-    ok: true,
-    text: up ? `Заточка удалась: ${label}` : `Не вышло — лом сгорел (−${info.cost})`,
-    enchant: { id: a.id, idx, up, gain: a.rolls[idx].pts - before, cost: info.cost, label },
   };
 }
 
@@ -1291,6 +1239,41 @@ function recHeldIds(rec: { weapons?: WeaponInstance[]; equippedWeaponId?: unknow
   const heldRec = sanitizeHeld(rec.held);
   const inHand = (h: CarriedWeapon | null): string | undefined => (h ? bestWeaponInstance(weapons, h.cls, h.tier)?.id : undefined);
   return new Set([eq.left, eq.right, inHand(heldRec.left), inHand(heldRec.right)]);
+}
+
+/** Руны из склада, которые встают в часть брони (свободное гнездо и вид из пула части). */
+function armorRuneChoices(a: ArmorInstance, stock: unknown): { key: string; sub: string; power: number; n: number }[] {
+  const st = runeStockOf(stock);
+  if (a.rolls.length >= runeSlots(a.tier)) return [];
+  const pool = armorPool(a.part, a.tier) as readonly string[];
+  const used = new Set(a.rolls.map((r) => r.stat as string));
+  return Object.entries(st)
+    .map(([key, n]) => {
+      const [sub, p] = key.split(":");
+      return { key, sub, power: Number(p), n };
+    })
+    .filter((r) => pool.includes(r.sub) && !used.has(r.sub))
+    .sort((a2, b2) => b2.power - a2.power);
+}
+
+/**
+ * Руны из склада, которые встают в этот предмет: есть свободное гнездо и вид из пула.
+ * Руна того же вида, что уже стоит, тоже показывается — она ПОВЫШАЕТ грань до своей силы
+ * (замена хуже/лучше), поэтому `improves` говорит, поднимет ли она очки.
+ */
+function runeChoices(w: WeaponInstance, stock: unknown): { key: string; sub: string; power: number; n: number; improves: boolean }[] {
+  const st = runeStockOf(stock);
+  if (!w.cls) return [];
+  const pool = rollableSubs(w.cls);
+  const free = w.affixes.length < runeSlots(w.tier);
+  const used = new Map(w.affixes.map((a) => [a.sub, affixPoints(a, w)]));
+  return Object.entries(st)
+    .map(([key, n]) => {
+      const [sub, p] = key.split(":");
+      return { key, sub, power: Number(p), n, improves: runePts(Number(p)) > (used.get(sub as AffixSub) ?? -1) };
+    })
+    .filter((r) => pool.includes(r.sub as AffixSub) && (free || used.has(r.sub as AffixSub)) && (used.get(r.sub as AffixSub) ?? 0) < runePts(r.power))
+    .sort((a, b) => b.power - a.power);
 }
 
 function preserveLegacyWeapon(rt: { weapons: WeaponInstance[] }, cls: string, tier: string): void {
@@ -2318,7 +2301,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sendQuests(client);
         return;
       }
-      if (msg.act !== "enchant" && msg.act !== "sharpen" && msg.act !== "armorEnchant" && msg.act !== "neckEnchant" && msg.act !== "ringEnchant" && msg.act !== "stat" && msg.act !== "tree" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && msg.act !== "craft" && msg.act !== "smelt" && !(JEWEL_ACTS as readonly string[]).includes(msg.act) && !(TRADE_ACTS as readonly string[]).includes(msg.act)) return;
+      if (msg.act !== "enchant" && msg.act !== "sharpen" && msg.act !== "armorEnchant" && msg.act !== "neckEnchant" && msg.act !== "ringEnchant" && msg.act !== "stat" && msg.act !== "tree" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && msg.act !== "craft" && msg.act !== "smelt" && msg.act !== "runeOut" && !(JEWEL_ACTS as readonly string[]).includes(msg.act) && !(TRADE_ACTS as readonly string[]).includes(msg.act)) return;
       const norm = normNick(p.nick);
       if (!norm) return;
       const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(msg.act === "gift" ? 99999 : 99, Math.floor(Number(msg.idx) || 0))), typeof msg.fuel === "string" ? msg.fuel : undefined);
@@ -5365,7 +5348,12 @@ export class ZoneRoom extends Room<ZoneState> {
         effects: instanceEffects(w),
         quality: weaponQuality(w),
         scrap: scrapValue(w),
-        ench: w.affixes.map((a, i) => ({ label: affixLabel(a), ...(affixCapNote(a, w) ? { capNote: affixCapNote(a, w) } : {}), ...enchantInfo(w, i)! })),
+        // Заточки больше нет: строка грани без шанса и цены (окно показывает руны).
+        ench: w.affixes.map((a) => ({ label: affixLabel(a), ...(affixCapNote(a, w) ? { capNote: affixCapNote(a, w) } : {}), points: affixPoints(a, w), of: POINTS_MAX, max: affixPoints(a, w) >= POINTS_MAX, chance: 0, cost: 0 })),
+        solid: w.solid,
+        solidText: solidText(w.solid),
+        slots: runeSlots(w.tier),
+        runeOk: runeChoices(w, rec?.runes),
         sharp: attackPoints(w),
         ...(w.cp ? { cp: w.cp } : {}),
         ...(w.rc ? { rc: true } : {}),
@@ -5374,8 +5362,9 @@ export class ZoneRoom extends Room<ZoneState> {
       // Что реально считается в руке (закреплённое или лучший экземпляр того же вида) —
       // иначе незакреплённое надетое оружие показывалось ещё и в сумке.
       equipped: { left: heldL, right: heldR },
-      armor: rt.armor.map(armorPcView),
+      armor: rt.armor.map((a) => ({ ...armorPcView(a), solid: a.solid, solidText: solidText(a.solid), slots: runeSlots(a.tier), runeOk: armorRuneChoices(a, rec?.runes) })),
       armorWorn: { ...rt.armorWorn },
+      runes: Object.entries(runeStockOf(rec?.runes)),
       potions: bagCount(bag, "potion"),
       scrap: bagCount(bag, "scrap"),
       fish: bagCount(bag, "fish"),
@@ -5698,6 +5687,55 @@ export class ZoneRoom extends Room<ZoneState> {
     this.reply(`@${nick} надето: ${names.join(" · ")}.`);
   }
 
+  /** Вынуть грань: руна возвращается в сумку, стоит лом по грейду. */
+  private runeOutAct(norm: string, id: string, idx: number): InvActResult {
+    const t = this.findWeaponsTarget(norm);
+    const token = t?.rt.token ?? `nick:${norm}`;
+    const rec = store.get(token);
+    if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
+    const weapon = t ? t.rt.weapons.find((x) => x.id === id) : (rec.weapons ?? []).find((x) => x.id === id);
+    const armorList = t ? t.rt.armor : sanitizeArmorList(rec.armor);
+    const armor = armorList.find((x) => x.id === id);
+    const item = (weapon as WeaponInstance | ArmorInstance | undefined) ?? (armor as WeaponInstance | ArmorInstance | undefined);
+    if (!item) return { ok: false, text: "Этого предмета уже нет на складе." };
+    const cost = runeRemoveCost(item.tier);
+    const bag = t ? readBag(t.p) : restoreBag(rec.bag);
+    if (!takeFromBag(bag, "scrap", cost)) return { ok: false, text: `Нужно лома: ${cost} (есть ${bagCount(bag, "scrap")}).` };
+    const r = removeRune(item, idx);
+    if (r.err || !r.key) return { ok: false, text: r.err ?? "Не вышло." };
+    const stock = { ...runeStockOf(rec.runes) };
+    stock[r.key] = (stock[r.key] ?? 0) + 1;
+    const patch: Partial<PlayerRecord> = { runes: stock };
+    if (t) writeBag(t.p, bag);
+    else patch.bag = bag;
+    if (weapon) patch.weapons = t ? t.rt.weapons : rec.weapons;
+    if (armor) patch.armor = armorList;
+    store.put(token, patch);
+    if (t) {
+      this.persistNick(norm);
+      this.applyArmor(t.id);
+    }
+    return { ok: true, text: `Грань вынута — руна вернулась в сумку (−${cost} лома).` };
+  }
+
+  /**
+   * Огранка: вставить руну `fuel` («вид:сила») новой гранью в свободное гнездо.
+   * Руна списывается со склада героя; старые роллы не перекатываются — заточки больше нет.
+   */
+  private runeAct(norm: string, item: WeaponInstance | ArmorInstance, fuel: string): InvActResult {
+    const token = this.findWeaponsTarget(norm)?.rt.token ?? `nick:${norm}`;
+    const rec = store.get(token);
+    if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
+    const stock = runeStockOf(rec.runes);
+    if ((stock[fuel] ?? 0) < 1) return { ok: false, text: "Такой руны нет в сумке." };
+    const err = insertRune(item, fuel);
+    if (err) return { ok: false, text: err };
+    stock[fuel] = (stock[fuel] ?? 0) - 1;
+    if (stock[fuel] <= 0) delete stock[fuel];
+    store.put(token, { runes: stock });
+    return { ok: true, text: `Вставлена руна: ${runeSubName(fuel.split(":")[0])} (сила ${fuel.split(":")[1]})` };
+  }
+
   /** `!god` — 100 уровень, все рубиновые оружия/броня и полная сумка ресурсов. */
   private adminGod(nick: string, norm: string): void {
     const t = this.adminHero(nick, norm);
@@ -5712,8 +5750,14 @@ export class ZoneRoom extends Room<ZoneState> {
     addToBag(bag, "scroll_xp", 99);
     addToBag(bag, "scroll_wind", 99);
     writeBag(t.p, bag);
+    // Руны всех видов и сил — проверить гнёзда огранки без долгой добычи.
+    const runes: Record<string, number> = {};
+    for (const sub of ["dmgFlat", "atkSpeedPct", "critChance", "vamp", "block", "physDef", "magDef", "regen", "pierce", "ignite"]) {
+      for (let p = 1; p <= 5; p++) runes[`${sub}:${p}`] = 9;
+    }
+    store.put(`nick:${norm}`, { runes });
     this.persistNick(norm);
-    this.reply(`@${nick} супергерой: 100 ур., все рубиновые оружия и броня, сумка ресурсов.`);
+    this.reply(`@${nick} супергерой: 100 ур., все рубиновые оружия и броня, сумка ресурсов и руны.`);
   }
 
   /**
@@ -6039,6 +6083,25 @@ export class ZoneRoom extends Room<ZoneState> {
     store.put(token, { mats: stock, ...(t ? {} : { bag }) });
     if (t) this.persistNick(norm);
     return { ok: true, text: `Переплавлено: лом −${need} → ${CRAFT_ITEMS.alloy.name} +${n}` };
+  }
+
+  /** Руны огранки с убийства: обычные мобы — слабые, элитки/вожаки/боссы — сильнее. */
+  private runeDrop(owner: string, kind: "regular" | "elite" | "champ" | "boss"): void {
+    const chance = kind === "boss" ? 1 : kind === "champ" ? 0.5 : kind === "elite" ? 0.25 : 0.06;
+    if (Math.random() >= chance) return;
+    const p = this.state.players.get(owner);
+    const rt = this.rt.get(owner) ?? (owner.startsWith("bot:") ? this.bots.get(owner.slice(4))?.rt : undefined);
+    if (!p || !rt) return;
+    const cls = isWeaponClass(p.rightCls) && p.rightCls !== "shield" ? p.rightCls : "sword";
+    const r = randomRune(cls, kind);
+    const key = runeKey(r.sub, r.power);
+    const token = rt.token ?? `nick:${normNick(p.nick)}`;
+    const rec = store.get(token);
+    if (!rec) return;
+    const stock = { ...runeStockOf(rec.runes) };
+    stock[key] = (stock[key] ?? 0) + 1;
+    store.put(token, { runes: stock });
+    this.clientOf(owner)?.send(MSG.jewelGot, { text: `Руна: ${runeSubName(r.sub)} (сила ${r.power})` });
   }
 
   /** Материалы крафта с убитого элитного моба — убийце в запись (как камни). Лагерь — по campType, катакомбы — по имени. */
@@ -6414,6 +6477,7 @@ export class ZoneRoom extends Room<ZoneState> {
   private invAct(norm: string, act: InvActKind, id: string, idx: number, fuel?: string): InvActResult {
     if ((JEWEL_ACTS as readonly string[]).includes(act)) return this.jewelAct(norm, act as JewelAct, id, idx, fuel);
     if (act === "craft") return this.craftAct(norm, id);
+    if (act === "runeOut") return this.runeOutAct(norm, id, idx);
     if (act === "shop") return this.shopAct(norm, id);
     if (act === "smelt") return this.smeltAct(norm, idx);
     if (act === "gift") return this.giftAct(norm, id, idx, fuel ?? "");
@@ -6652,14 +6716,13 @@ export class ZoneRoom extends Room<ZoneState> {
       return r;
     }
     if (act === "armorEnchant") {
+      // Огранка брони: руна `fuel` («вид:сила») встаёт новой гранью в свободное гнездо.
       if (t) {
         const a = t.rt.armor.find((x) => x.id === id);
         if (!a) return { ok: false, text: "Этой брони уже нет в сумке." };
-        const bag = readBag(t.p);
-        const r = armorEnchantTry(a, idx, bag);
-        if (r.enchant) {
-          writeBag(t.p, bag);
-          this.applyArmor(t.id); // надетая часть — новый стат сразу в бонусах
+        const r = this.runeAct(norm, a, fuel ?? "");
+        if (r.ok) {
+          this.applyArmor(t.id); // надетая часть — новая грань сразу в бонусах
           this.persistNick(norm);
         }
         return r;
@@ -6669,19 +6732,17 @@ export class ZoneRoom extends Room<ZoneState> {
       const armor = sanitizeArmorList(rec?.armor);
       const a = armor.find((x) => x.id === id);
       if (!rec || !a) return { ok: false, text: "Этой брони уже нет в сумке." };
-      const bag = restoreBag(rec.bag);
-      const r = armorEnchantTry(a, idx, bag);
-      if (r.enchant) store.put(token, { armor, bag });
+      const r = this.runeAct(norm, a, fuel ?? "");
+      if (r.ok) store.put(token, { armor });
       return r;
     }
     if (act === "enchant") {
+      // Огранка оружия: руна `fuel` («вид:сила») встаёт новой гранью в свободное гнездо.
       if (t) {
         const w = t.rt.weapons.find((x) => x.id === id);
         if (!w) return { ok: false, text: "Этого предмета уже нет на складе." };
-        const bag = readBag(t.p);
-        const r = enchantTry(w, idx, bag);
-        if (r.enchant) {
-          writeBag(t.p, bag);
+        const r = this.runeAct(norm, w, fuel ?? "");
+        if (r.ok) {
           this.persistNick(norm);
           if (w.tier === "ruby" && !t.id.startsWith("bot:")) this.syncWarehouse(t.id, t.rt);
         }
@@ -6691,9 +6752,8 @@ export class ZoneRoom extends Room<ZoneState> {
       const rec = store.get(token);
       const w = rec?.weapons?.find((x) => x.id === id);
       if (!rec || !w) return { ok: false, text: "Этого предмета уже нет на складе." };
-      const bag = restoreBag(rec.bag);
-      const r = enchantTry(w, idx, bag);
-      if (r.enchant) store.put(token, { weapons: rec.weapons, bag });
+      const r = this.runeAct(norm, w, fuel ?? "");
+      if (r.ok) store.put(token, { weapons: rec.weapons });
       return r;
     }
     if (t) {
@@ -12091,6 +12151,7 @@ export class ZoneRoom extends Room<ZoneState> {
         else this.scrapDrop(k.owner, k.jl, k.sc, boss);
       }
       if (Math.random() < pen) this.craftDrop(k.owner, k.campType, k.name, k.champ);
+      this.runeDrop(k.owner, boss ? "boss" : k.champ ? "champ" : k.campType ? "elite" : "regular");
       this.chatQuestKill(k.owner, k.champ);
       if (k.campType) {
         // Охота и вожаки — всем, кто нанёс мобу урон (как делится опыт), а не только добившему. Боссы — по bossXpShare ниже.

@@ -2,6 +2,7 @@ import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, skillCooldownFor, skillDe
 import { pcTreePanel } from "./PcTree";
 import { SHOP, type ShopId } from "#shared/shop";
 import { armorIconKey, glyph, skillIcon, weaponIcon } from "#shared/icons";
+import { runeSubName } from "#shared/runes";
 import { ARMOR_PART_NAME, ARMOR_PARTS, type ArmorPart } from "#shared/armor";
 import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
@@ -102,7 +103,7 @@ type DragSrc = { kind: "bag"; id: string } | { kind: "hand"; side: Side } | { ki
 type BagEntry = { w: PcInvWeapon } | { r: PcInvJewels["rings"][number] } | { a: PcInvArmor } | { n: PcInvNeck };
 
 /** Фильтры сумки (вкладки над сеткой). */
-type BagFilter = "all" | "fav" | "weapon" | "armor" | "ring" | "gem" | "misc";
+type BagFilter = "all" | "fav" | "weapon" | "armor" | "ring" | "gem" | "rune" | "misc";
 const BAG_FILTERS: readonly [BagFilter, string][] = [
   ["all", "Все"],
   ["fav", "★ Избранное"],
@@ -110,8 +111,10 @@ const BAG_FILTERS: readonly [BagFilter, string][] = [
   ["armor", "Броня"],
   ["ring", "Украшения"],
   ["gem", "Камни"],
+  ["rune", "Руны"],
   ["misc", "Прочее"],
 ];
+
 
 /** Значок строки характеристик (подписи — shared/heroStats.ts). */
 const STAT_ICON: Record<string, IconKey> = {
@@ -143,6 +146,8 @@ export class PcInventory {
   private readonly dropCatcher: HTMLDivElement;
   private readonly cursEl: HTMLDivElement;
   private data: PcInvData | null = null;
+  /** Открытое всплывающее окно выбора руны. */
+  private closePopup: (() => void) | null = null;
   /** Слепок последних данных: одинаковый не вызывает перерисовку. */
   private dataSig = "";
   private tab: InvTab = "gear";
@@ -1167,6 +1172,8 @@ export class PcInventory {
     const shown = bag.filter((e) => f === "all" || (f === "fav" && favOf(e)) || (f === "weapon" && "w" in e) || (f === "ring" && ("r" in e || "n" in e)) || (f === "armor" && "a" in e));
     if (f !== "gem" && f !== "misc") for (const e of shown) cells.push(this.entryCell(e));
     if (f === "all" || f === "gem") for (const [gk, n] of j.gems) cells.push(this.gemCell(gk, n, d));
+    // Руны огранки — стопками по «вид:сила» (вкладка «Руны» и во «Всех»).
+    if (f === "all" || f === "rune") for (const [key, n] of d.runes ?? []) cells.push(this.runeCell(key, n));
     // Материалы и особые катализаторы крафта — стопками, в «Прочем» (и во «Всех»).
     if (f === "all" || f === "misc") for (const [id, n] of d.craft?.stock ?? []) cells.push(this.matCell(id, n));
     if (f === "all" || f === "misc") cells.push(...this.consCells(d));
@@ -1677,7 +1684,7 @@ export class PcInventory {
     const ico = div(`pcinv-cell huge pcinv-jw t-${n.tier}`);
     ico.innerHTML = neckHtml(n.tier, n.gems);
     this.cardHead(head, ico, NECK_TIER_NAME[n.tier], `t-${n.tier}`, `Ожерелье · оценка <b>${qualityStarsShort(n.pts, n.rolls)}</b>`, worn ? "надето" : "", n.affs.map((t) => div("pcinv-tipaff", t)));
-    this.enchRows(body, n.id, n.ench, n.ench.map((r) => r.label), d.scrap);
+    this.enchRows(body, n.ench, n.ench.map((r) => r.label), (i) => this.hooks.act({ act: "neckEnchant", id: n.id, idx: i }));
     this.resultLine(body);
     body.append(div("pcinv-hint", "Ожерелье усиливает умения: радиус и дальность, длительность эффектов, откат. Чем ближе свойство к максимуму — тем дороже и меньше шанс заточки, при неудаче лом сгорает."));
     if (n.gems.length) this.socketRows(body, d, n.id, n.gems);
@@ -1788,33 +1795,95 @@ export class PcInventory {
     head.append(ico, info);
   }
 
-  /** Строки заточки: ролл, очки из максимума, полоса и кнопка «лом · шанс» (или MAX). */
-  private enchRows(body: HTMLElement, id: string, rows: readonly PcEnchRow[], texts: readonly string[], scrap: number): void {
+  /**
+   * Грани предмета: название, очки из максимума и полоса. Кнопки заточки нет —
+   * грань ставится руной в гнездо (экран «Огранка»).
+   * `onRemove` — гнездо с гранью: кнопка «∅» вынимает руну (у рун и кольца своя логика).
+   */
+  private enchRows(body: HTMLElement, rows: readonly PcEnchRow[], texts: readonly string[], onRemove?: (i: number) => void): void {
     rows.forEach((a, i) => {
       const row = div("pcinv-erow");
       const lab = div("pcinv-elabel");
       lab.append(span(texts[i] ?? a.label), span(`${a.points} / ${a.of}`));
-      if (a.capNote) lab.title = `Потолок ролла (крафт): ${a.capNote} — заточка доводит до него.`;
+      if (a.capNote) lab.title = `Потолок грани (крафт): ${a.capNote}`;
       const bar = div("pcinv-ebar");
       const fill = div("pcinv-efill");
       fill.style.width = `${Math.round((a.points / a.of) * 100)}%`;
       bar.append(fill);
-      const b = document.createElement("button");
-      b.className = "pcinv-btn sm pcinv-forge";
-      if (a.max) {
-        b.textContent = "MAX";
-        b.disabled = true;
-        b.classList.add("max");
-      } else {
-        const ch = Math.round(a.chance * 100);
-        b.innerHTML = `${iconHtml("i.scrap")}<span>${a.cost} · ${ch}%</span>`;
-        b.title = `Заточить: ${a.cost} лома, шанс ${ch}%. При неудаче лом сгорает`;
-        b.disabled = scrap < a.cost || this.forging;
-        b.onclick = () => this.forge(id, i);
+      row.append(lab, bar);
+      if (onRemove) {
+        const b = document.createElement("button");
+        b.className = "pcinv-btn sm pcinv-runex";
+        b.textContent = "∅";
+        b.title = "Вынуть грань (руна вернётся в сумку, стоит лом)";
+        b.onclick = () => onRemove(i);
+        row.append(b);
       }
-      row.append(lab, b, bar);
       body.append(row);
     });
+  }
+
+  /** Строки огранки оружия: гнёзда — занятые грани с «вынуть» и пустые с «вставить». */
+  private runeSlots(body: HTMLElement, d: PcInvData, w: PcInvWeapon): void {
+    const slots = w.slots ?? w.ench.length;
+    this.enchRows(body, w.ench, w.affixes, (i) => this.hooks.act({ act: "runeOut", id: w.id, idx: i }));
+    for (let i = w.ench.length; i < slots; i++) {
+      const row = div("pcinv-erow pcinv-emptyslot");
+      const lab = div("pcinv-elabel");
+      const sl = div("pcinv-slotlab", `Гнездо ${i + 1} — пусто`);
+      lab.append(sl);
+      row.append(lab);
+      const b = document.createElement("button");
+      b.className = "pcinv-btn sm";
+      b.textContent = "Вставить руну";
+      b.onclick = () => this.openRunePicker(w.id, w.name, w.runeOk ?? []);
+      row.append(b);
+      body.append(row);
+    }
+    body.append(div("pcinv-hint", "Грани ставятся рунами — их дают мобы, элитки и боссы. Точить кликом больше нельзя."));
+    void d;
+  }
+
+  /** Выбор руны для гнезда: сетка рун из сумки, клик — и она встаёт на место. */
+  private openRunePicker(id: string, title: string, runes: PcInvWeapon["runeOk"]): void {
+    this.closePopup?.();
+    const box = div("pcinv-rune-pick");
+    box.append(div("pcinv-rune-title", `Руна в «${title}»`));
+    const list = runes ?? [];
+    if (!list.length) box.append(div("pcinv-small", "Подходящих рун нет — добудь руны с мобов, элиток и боссов."));
+    const grid = div("pcinv-rune-grid");
+    for (const r of list) {
+      const cell = div(`pcinv-rune p${r.power}`);
+      cell.append(div("pcinv-rune-name", runeSubName(r.sub)));
+      cell.append(div("pcinv-rune-pw", `${r.improves ? "Повысит" : "Сила"} · ${r.power}`));
+      cell.append(div("pcinv-rune-n", `×${r.n}`));
+      cell.title = `${runeSubName(r.sub)} · сила ${r.power}`;
+      cell.addEventListener("click", () => {
+        box.remove();
+        this.hooks.act({ act: "enchant", id, idx: 0, fuel: r.key });
+      });
+      grid.append(cell);
+    }
+    box.append(grid);
+    const cancel = button("Отмена", () => box.remove());
+    box.append(cancel);
+    this.root.append(box);
+    this.closePopup = () => box.remove();
+  }
+
+  /** Иконка стопки рун: вид, сила и количество. Клик — выбор предмета для этой руны не нужен: руна живёт в гнезде. */
+  private runeCell(key: string, n: number): HTMLDivElement {
+    const [sub, p] = key.split(":");
+    const power = Number(p) || 1;
+    const c = div(`pcinv-cell pcinv-runecell p${power}`);
+    c.append(div("pcinv-rune-glyph", "✦"));
+    c.append(div("pcinv-runeclab", runeSubName(sub)));
+    c.append(div("pcinv-runeclab pcinv-runepw", `${power}`));
+    const cnt = div("pcinv-cnt", `×${n}`);
+    c.append(cnt);
+    c.addEventListener("mouseenter", () => this.textTip(c, `${runeSubName(sub)} · сила ${power}`, "Руна ставится в пустое гнездо предмета: карточка предмета → «Вставить руну»"));
+    c.addEventListener("mouseleave", () => this.hideTip());
+    return c;
   }
 
   /** Итог последнего действия (заточка, камни…) — строкой в карточке. */
@@ -1851,18 +1920,10 @@ export class PcInventory {
     for (const e of w?.effects ?? []) extra.push(div("pcinv-tipeff", e));
     this.cardHead(head, ico, name, `t-${tier}`, `${cap(TIER_LOOK[tier].name)}${q ? ` · оценка <b>${q}</b>` : ""}`, inHand ? "в руке" : "", extra);
 
-    if (w?.ench.length) this.enchRows(body, w.id, w.ench, w.affixes, d.scrap);
-    else body.append(div("pcinv-small", w ? "Роллов нет — точить нечего." : "Обычное оружие со стойки — без роллов, точить нечего."));
+    if (w?.solidText) extra.push(div("pcinv-tipsolid", `Твердь: ${w.solidText}`));
+    if (w) this.runeSlots(body, d, w);
     this.resultLine(body);
     if (w && attackPointEligible(w)) body.append(this.sharpBlock(w, d));
-    if (w?.ench.length) {
-      body.append(
-        div(
-          "pcinv-hint",
-          "Чем ближе ролл к максимуму и чем лучше предмет — тем дороже и меньше шанс. При неудаче лом сгорает." + (w.tier === "ruby" ? " Рубиновое — цена в ломе ×100." : ""),
-        ),
-      );
-    }
 
     if (src.kind === "bag" && w) {
       // Меч/кинжал — парное оружие: можно выбрать руку (второй — к такому же в правой).
@@ -1888,10 +1949,26 @@ export class PcInventory {
     setIconEl(ico, armorIconKey(a.part, a.tier));
     const wl = WEIGHT_LETTER[a.weight ?? ""];
     if (wl) ico.append(div(`pcinv-w ${a.weight ?? ""}`, wl));
-    this.cardHead(head, ico, a.name ?? ARMOR_PART_NAME[a.part], `t-${a.tier}`, `Броня · оценка <b>${qualityStarsShort(a.pts, a.rolls)}</b>`, worn ? "надета" : "", [div("pcinv-tipaff", a.desc ?? a.label)]);
-    this.enchRows(body, a.id, a.ench, a.ench.map((r) => r.label), d.scrap);
+    const aExtra: HTMLElement[] = [div("pcinv-tipaff", a.desc ?? a.label)];
+    if (a.solidText) aExtra.push(div("pcinv-tipsolid", `Твердь: ${a.solidText}`));
+    this.cardHead(head, ico, a.name ?? ARMOR_PART_NAME[a.part], `t-${a.tier}`, `Броня · оценка <b>${qualityStarsShort(a.pts, a.rolls)}</b>`, worn ? "надета" : "", aExtra);
+    this.enchRows(body, a.ench, a.ench.map((r) => r.label), (i) => this.hooks.act({ act: "runeOut", id: a.id, idx: i }));
+    const slots = a.slots ?? a.ench.length;
+    for (let i = a.ench.length; i < slots; i++) {
+      const row = div("pcinv-erow pcinv-emptyslot");
+      const lab = div("pcinv-elabel");
+      const sl = div("pcinv-slotlab", `Гнездо ${i + 1} — пусто`);
+      lab.append(sl);
+      row.append(lab);
+      const b = document.createElement("button");
+      b.className = "pcinv-btn sm";
+      b.textContent = "Вставить руну";
+      b.onclick = () => this.openRunePicker(a.id, a.name ?? ARMOR_PART_NAME[a.part], (a.runeOk ?? []) as PcInvWeapon["runeOk"]);
+      row.append(b);
+      body.append(row);
+    }
+    body.append(div("pcinv-hint", "Грани брони ставятся рунами того же вида — с мобов, элиток и боссов."));
     this.resultLine(body);
-    body.append(div("pcinv-hint", "Чем ближе стат к максимуму — тем дороже и меньше шанс. При неудаче лом сгорает. Надетую броню можно точить на месте."));
     if (!this.hooks.armorAct) return true;
     const act = (x: "wear" | "unwear" | "scrap" | "drop" | "fav"): void => this.hooks.armorAct?.(a.id, x);
     if (worn) {
@@ -1918,7 +1995,7 @@ export class PcInventory {
     const bonus = [...ringBonusText(r)].map((t) => div("pcinv-tipaff", t));
     this.cardHead(head, ico, ringName(r), `t-${r.tier}`, `Кольцо · оценка <b>${qualityStarsShort(r.pts, r.nRolls)}</b>${r.gems.length ? ` · гнёзд ${r.gems.length}` : ""}`, slot >= 0 ? `надето · слот ${slot + 1}` : "", bonus);
     // Аффиксы урона умений — заточка, как у брони и ожерелья.
-    this.enchRows(body, r.id, r.ench, r.affs, d.scrap);
+    this.enchRows(body, r.ench, r.affs, (i) => this.hooks.act({ act: "ringEnchant", id: r.id, idx: i }));
     this.resultLine(body);
     body.append(div("pcinv-hint", "Аффиксы колец работают только на умения и ульту; два кольца складываются. Чем ближе свойство к максимуму — тем дороже и меньше шанс заточки, при неудаче лом сгорает."));
 

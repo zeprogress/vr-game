@@ -1,4 +1,5 @@
 import { HUMAN, SHIELD, WEAPON_DROP_MUL } from "./constants";
+import { rollSolid } from "./runes";
 import type { MobKind } from "./net/schema";
 
 export type ItemId =
@@ -595,6 +596,8 @@ export interface WeaponInstance {
   by?: string;
   /** Мастерское по скрытому рецепту: id рецепта (CRAFT_RECIPES). */
   rc?: string;
+  /** Твердь (shared/runes.ts): главный стат предмета, задан при дропе, не меняется. */
+  solid?: string;
 }
 
 // ★ Избранное — без лимита (2026-10-20; было FAV_MAX = 24 на оружие, кольца и броню вместе).
@@ -919,6 +922,8 @@ export function rollWeaponInstance(
   sortAffixes(affixes);
   return {
     id: shortId(rnd), cls, tier, affixes, lv: LOOT_VER,
+    // Твердь — главный стат предмета (shared/runes.ts): выдаётся при дропе, не меняется.
+    solid: rollSolid(cls, rnd),
     ...(aegis ? { nm: tier === "ruby" ? RUBY_AEGIS_NAME : LEGACY_LEGENDARY.shield?.name } : {}),
     ...(cls === "staff" ? { sv: 1 } : {}),
   };
