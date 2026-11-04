@@ -234,11 +234,6 @@ export interface PcInvArmor {
   desc?: string;
   /** Вес: лёгкая/средняя/тяжёлая. */
   weight?: "light" | "medium" | "heavy";
-  /** Твердь (shared/runes.ts) и гнёзда огранки. */
-  solid?: string;
-  solidText?: string;
-  slots?: number;
-  runeOk?: { key: string; sub: string; power: number; n: number; improves?: boolean }[];
   /** Уровень предмета (для чисел). */
   lvl?: number;
   /** Оценка — сумма очков аффиксов (как у оружия: 1 аффикс — до 33, 2 — до 66). */
@@ -277,13 +272,6 @@ export interface PcInvWeapon {
   cp?: number;
   /** ★ Избранное — не разбирается. */
   fav?: boolean;
-  /** Твердь (shared/runes.ts): название и что даёт. */
-  solid?: string;
-  solidText?: string;
-  /** Гнёзда огранки: сколько всего по грейду. */
-  slots?: number;
-  /** Руны, которые встают в этот предмет: «вид:сила» → сила. */
-  runeOk?: { key: string; sub: string; power: number; n: number; improves?: boolean }[];
 }
 
 /** Одно задание в окне/трекере. */
@@ -400,8 +388,6 @@ export interface QuestActMsg {
 
 export interface PcInvData {
   weapons: PcInvWeapon[];
-  /** Руны огранки в сумке героя: «вид:сила» → сколько. */
-  runes?: [string, number][];
   equipped: { left: string | null; right: string | null };
   /** Броня в сумке (все части, и надетые тоже) и что надето в каждом слоте (id части). */
   armor?: PcInvArmor[];
@@ -444,7 +430,7 @@ export interface PcInvData {
 
 export interface PcInvActMsg {
   /** title — надеть титул (id = название, "" — снять); fav — звёздочка «избранное» у оружия id; scrapAll — разобрать всё, кроме избранного и надетого. */
-  act: "enchant" | "armorEnchant" | "neckEnchant" | "ringEnchant" | "stat" | "tree" | "respec" | "title" | "skin" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | "tradeOpen" | "tradeAdd" | "tradeRemove" | "tradeConfirm" | "tradeCancel" | "sharpen" | "craft" | "smelt" | "shop" | "runeOut" | JewelAct;
+  act: "enchant" | "armorEnchant" | "neckEnchant" | "ringEnchant" | "stat" | "tree" | "respec" | "title" | "skin" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | "tradeOpen" | "tradeAdd" | "tradeRemove" | "tradeConfirm" | "tradeCancel" | "sharpen" | "craft" | "smelt" | "shop" | JewelAct;
   id: string;
   idx: number;
   /** Подарок — ник получателя; обмен — список предметов; крафт — состав (craftCode). */

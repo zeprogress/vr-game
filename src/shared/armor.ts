@@ -16,7 +16,6 @@
  */
 import { enchantCurve, POINTS_MAX, RUBY, type EnchantDeck, type EnchantInfo } from "./items";
 import type { PcInvArmor } from "./net/messages";
-import { runeSlots, solidText } from "./runes";
 
 export const ARMOR_PARTS = ["helm", "chest", "gloves", "legs", "boots"] as const;
 export type ArmorPart = (typeof ARMOR_PARTS)[number];
@@ -209,10 +208,6 @@ export interface ArmorInstance {
   lvl: number;
   rolls: ArmorRoll[];
   fav?: boolean;
-  /** Твердь брони (shared/runes.ts): выдаётся при дропе, не меняется. */
-  solid?: string;
-  /** Природа брони (shared/nature.ts): по весу, выдаётся при дропе, не меняется. */
-  nat?: string;
 }
 
 /** Все числовые бонусы брони, включая скорости от веса. */
@@ -363,29 +358,7 @@ export function rollArmor(
     rolls.push({ stat, pts });
   }
   sortArmorRolls(rolls);
-  return { id, part, tier, weight: w, lvl: Math.max(1, Math.floor(lvl) || 1), rolls, solid: rollArmorSolid(w, rnd), nat: rollArmorNature(w, rnd) };
-}
-
-/** Стабильный ГПСЧ из id — чтобы выданные однажды природа и твердь не менялись между загрузками. */
-function seededFrom(id: string): () => number {
-  let h = 2166136261;
-  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
-  return () => {
-    h = Math.imul(h ^ (h >>> 13), 1274126177);
-    return ((h >>> 0) % 100000) / 100000;
-  };
-}
-
-/** Природа брони по весу: тяжёлая — стойкость, лёгкая — пиявка, средняя — стойкость/игрок. */
-export function rollArmorNature(weight: ArmorWeight, rnd: () => number = Math.random): string {
-  const pool = weight === "heavy" ? ["steadfast", "gambler"] : weight === "light" ? ["leech", "wind"] : ["steadfast", "leech", "gambler"];
-  return pool[Math.min(pool.length - 1, Math.floor(rnd() * pool.length))];
-}
-
-/** Твердь брони по весу: тяжёлая — Живучесть, лёгкая — Поток, средняя — Живучесть/Оберег. */
-export function rollArmorSolid(weight: ArmorWeight, rnd: () => number = Math.random): string {
-  const pool = weight === "heavy" ? ["vigor", "guard"] : weight === "light" ? ["flow", "greed"] : ["vigor", "ward", "guard"];
-  return pool[Math.min(pool.length - 1, Math.floor(rnd() * pool.length))];
+  return { id, part, tier, weight: w, lvl: Math.max(1, Math.floor(lvl) || 1), rolls };
 }
 
 export function armorQuality(a: ArmorInstance): number {
@@ -450,9 +423,6 @@ export function armorPcView(a: ArmorInstance): PcInvArmor {
     lvl: a.lvl,
     ench: armorEnchantRows(a),
     fav: a.fav === true,
-    solid: a.solid,
-    solidText: solidText(a.solid),
-    slots: runeSlots(a.tier),
   };
 }
 
@@ -494,13 +464,6 @@ export function sanitizeArmorList(v: unknown): ArmorInstance[] {
       rolls,
     };
     if (a.fav === true) inst.fav = true;
-    const savedNat = (a as { nat?: unknown }).nat;
-    if (typeof savedNat === "string") inst.nat = savedNat;
-    const savedSolid = (a as { solid?: unknown }).solid;
-    if (typeof savedSolid === "string") inst.solid = savedSolid;
-    // Природа и твердь: у старых частей их нет — выдаём один раз и навсегда (то же при каждой загрузке).
-    if (typeof inst.nat !== "string") inst.nat = rollArmorNature(inst.weight, seededFrom(inst.id));
-    if (typeof inst.solid !== "string") inst.solid = rollArmorSolid(inst.weight, seededFrom(`${inst.id}#s`));
     out.push(inst);
   }
   return out;
