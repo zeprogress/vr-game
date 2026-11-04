@@ -5725,7 +5725,10 @@ export class ZoneRoom extends Room<ZoneState> {
       if (this.hintOk(norm)) this.reply(`@${nick} у тебя ещё нет героя — сначала !play.`);
       return;
     }
-    this.reply(`@${nick} твой инвентарь: http://zepgame.duckdns.org/inv?${encodeURIComponent(norm)}`);
+    // Публичный адрес страницы: на домашнем сервере это адрес туннеля (PUBLIC_URL),
+    // на VPS — обычный домен. Без переменной оставляем прежний прод-адрес.
+    const base = (process.env.PUBLIC_URL ?? "http://zepgame.duckdns.org").replace(/\/+$/, "");
+    this.reply(`@${nick} твой инвентарь: ${base}/inv?${encodeURIComponent(norm)}`);
   }
 
   /** Сохранить живого героя этого ника в store (бот или подключённый игрок). */
