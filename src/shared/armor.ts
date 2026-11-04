@@ -188,6 +188,12 @@ export function levelFadeMul(level: number, from: number, to: number): number {
   return 1 - armorLevelMul(level, { from, full: to });
 }
 
+/** Окно уровня с затуханием: до from — 0, на from — 1, к to — 0, после to — 0. */
+export function levelWindowMul(level: number, from: number, to: number): number {
+  if (level < from || level >= to) return 0;
+  return 1 - (level - from) / (to - from);
+}
+
 export function armorBaseLevelMul(level: number): number {
   return 1 - armorLevelMul(level, { from: 1, full: 53 });
 }

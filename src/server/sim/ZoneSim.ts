@@ -5,7 +5,7 @@ import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { RAID } from "#shared/raid";
 import { MOB_MID_K, BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, WEB, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER, ICE_GIANT, MOB_SWING } from "#shared/mobs";
 import { DUN_MOB_CAMPS, DUN_X, DUN_Z, dunFloorLocal, dunProject, dunWorld, inDunRegion } from "#shared/dungeon";
-import { ARMOR_DROP, ARMOR_PARTS, armorBaseLevelMul, armorGoldDropChance, armorLegendaryDropChance, armorLevelMul, ARMOR_LEVEL_GATE, levelFadeMul, rollArmor, type ArmorInstance } from "#shared/armor";
+import { ARMOR_DROP, ARMOR_PARTS, armorBaseLevelMul, armorGoldDropChance, armorLegendaryDropChance, armorLevelMul, ARMOR_LEVEL_GATE, levelWindowMul, rollArmor, type ArmorInstance } from "#shared/armor";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
 import { PLAGUE } from "#shared/classes2";
 import { catProject, inCatRegion } from "#shared/catacombs";
@@ -4475,8 +4475,11 @@ export class ZoneSim {
       }
     } else if (m.kind !== "shard") {
       const elite = m.eliteName !== "";
-      // Золото — по уровню моба: с 1-го полный шанс, к 53-му падает до нуля.
-      const goldMul = levelFadeMul(m.eliteLevel, 1, 53);
+      // Тир оружия — по уровню моба: обычное 1–20, золото 15–30, уникальное 25–50.
+      // В каждом окне шанс стартует полным и затухает к верхней границе.
+      const goldMul = levelWindowMul(m.eliteLevel, 15, 30);
+      const baseMul = levelWindowMul(m.eliteLevel, 1, 20);
+      const legendaryMul = levelWindowMul(m.eliteLevel, 25, 50);
       // Вожак — шанс оружия выше в QUEST.champ.dropMul раз (уникальное — только у вожаков лагерей).
       const champMul = m.champ ? QUEST.champ.dropMul : 1;
       // В катакомбах золотого оружия из мобов нет (только легендарное у элитных).
@@ -4484,8 +4487,8 @@ export class ZoneSim {
       const goldChance = inCatRegion(m.x, m.z) || m.bossFight ? 0 : (elite ? DROP_CHANCE.eliteGold : DROP_CHANCE.regularGold) * goldMul * champMul * WEAPON_DROP_MUL;
       const own = Object.values(ELITE_MOBS).find((d) => d.model === m.model)?.legendaryChance;
       // Уникальное — наоборот: с 1-го уровня моба ноль, к 53-му — как есть (ARMOR_LEVEL_GATE.legendary).
-      const legendaryChance = elite && m.model ? (own ?? DROP_CHANCE.eliteLegendary) * champMul * UNIQUE_DROP_MUL * armorLevelMul(m.eliteLevel, ARMOR_LEVEL_GATE.legendary) : 0;
-      const baseChance = DROP_CHANCE.baseWeapon * champMul * WEAPON_DROP_MUL;
+      const legendaryChance = elite && m.model ? (own ?? DROP_CHANCE.eliteLegendary) * champMul * UNIQUE_DROP_MUL * legendaryMul : 0;
+      const baseChance = DROP_CHANCE.baseWeapon * champMul * WEAPON_DROP_MUL * baseMul;
       const tier: WeaponTier | null =
         legendaryChance > 0 && Math.random() < legendaryChance
           ? "legendary"
