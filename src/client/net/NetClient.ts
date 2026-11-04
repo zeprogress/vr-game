@@ -277,9 +277,6 @@ export class NetClient {
   /** Ключ спектатора (этап 17). Задан — входим как невидимый наблюдатель. */
   private spectatorKey: string | null = null;
 
-  /** Параметры входа для reconnectLoop — обычный игрок, зритель-по-нику или спектатор. */
-  private cls = "";
-
   private joinOpts(): {
     nick?: string;
     token?: string;
@@ -287,11 +284,10 @@ export class NetClient {
     spectator?: string;
     stream?: boolean;
     adminPass?: string;
-    cls?: string;
   } {
     if (this.spectatorKey !== null) return { spectator: this.spectatorKey };
-    if (this.stream) return { nick: this.nick, stream: true, adminPass: this.adminPass, ...(this.cls ? { cls: this.cls } : {}) };
-    return { nick: this.nick, token: this.token, sid: this.sid, adminPass: this.adminPass, ...(this.cls ? { cls: this.cls } : {}) };
+    if (this.stream) return { nick: this.nick, stream: true, adminPass: this.adminPass };
+    return { nick: this.nick, token: this.token, sid: this.sid, adminPass: this.adminPass };
   }
 
   /** Сессия браузера (localStorage, та же, что у веб-инвентаря): подтверждённый кодом вход. */
@@ -324,12 +320,11 @@ export class NetClient {
   }
 
   /** `true` — успех, `false` — сервера нет (одиночный режим) или неверный пароль админ-ника. */
-  async connect(nick: string, token: string, stream = false, adminPass = "", cls = ""): Promise<boolean> {
+  async connect(nick: string, token: string, stream = false, adminPass = ""): Promise<boolean> {
     this.nick = nick;
     this.token = token;
     this.stream = stream;
     this.adminPass = adminPass;
-    this.cls = cls;
     this.closedByUs = false;
     this.client = new Client();
     this.lastJoinError = "";

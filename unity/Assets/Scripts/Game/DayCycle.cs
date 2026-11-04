@@ -42,7 +42,7 @@ namespace Zep
 
         float PointI(float webI, float range) => webI * range * range * 0.25f * pointMatch;
         /// Заливка неба на поверхности: в вебе её почти нет, объём держат солнце и подсветка материалов.
-        public float skyFill = 0.38f, nightFill = 0.18f;
+        public float skyFill = 0.38f, nightFill = 0.32f;
 
         DayRow[] day;
         DunLight[] dun;
@@ -118,7 +118,11 @@ namespace Zep
             if (sun)
             {
                 sun.enabled = true;
-                if (dir.sqrMagnitude > 1e-6f) sun.transform.rotation = Quaternion.LookRotation(dir.normalized);
+                // Ночью солнце уходит под горизонт, и его лучи светили СНИЗУ — синий
+                // подсвет снизу и чёрные верхние грани. Для ночи разворачиваем свет
+                // так, чтобы луна светила сверху; переход плавный через сумерки.
+                var lightDir = Vector3.Lerp(dir, new Vector3(dir.x, -dir.y, dir.z), Mathf.Clamp01((night - 0.5f) * 2f));
+                if (lightDir.sqrMagnitude > 1e-6f) sun.transform.rotation = Quaternion.LookRotation(lightDir.normalized);
                 // Днём солнце белее веба: тёплый тон (1, 0.82, 0.48) в URP с Neutral-тонмаппингом читался жёлтым.
                 // Чем выше солнце, тем ближе к тёпло-белому; у горизонта цвет из таблицы.
                 float high = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.25f, 0.85f, -dir.normalized.y));
@@ -151,11 +155,13 @@ namespace Zep
             // Отражения неба в материалах: днём слабые, ночью почти нет (в вебе всё матовое).
             RenderSettings.reflectionIntensity = Mathf.Lerp(0.03f, 0.35f, daylight);
             // Заливка — трёхцветная от неба (днём слабая, ночью лунно-синяя).
-            float k = Mathf.Lerp(nightFill * 0.25f, skyFill, daylight);
+            // Ночью заливка была почти нулевой: земля и модели уходили в чёрный, а синий
+            // снизу давал только ground-цвет. Даём мягкий лунный свет сверху и чуть warmer низ.
+            float k = Mathf.Lerp(nightFill, skyFill, daylight);
             SetAmbient(
-                Color.Lerp(new Color(0.38f, 0.45f, 0.66f) * 0.4f, zen, daylight) * k,
-                Color.Lerp(new Color(0.2f, 0.24f, 0.36f) * 0.4f, hor, daylight) * k,
-                Color.Lerp(Color.black, new Color(0.35f, 0.3f, 0.22f), daylight) * k * 0.6f);
+                Color.Lerp(new Color(0.38f, 0.45f, 0.66f) * 0.55f, zen, daylight) * k,
+                Color.Lerp(new Color(0.2f, 0.24f, 0.36f) * 0.55f, hor, daylight) * k,
+                Color.Lerp(new Color(0.08f, 0.09f, 0.12f), new Color(0.35f, 0.3f, 0.22f), daylight) * k * 0.5f);
             // Костёр лагеря — только ночью, мерцает.
             if (!campfire) campfire = MakePoint("hubCampfire", new Color(1f, 0.54f, 0.2f), 15f);
             var ground = Terrain.activeTerrain ? Terrain.activeTerrain.SampleHeight(HubFire) + Terrain.activeTerrain.transform.position.y : 0f;

@@ -212,7 +212,7 @@ import { wallSlide } from "../sim/wallSlide";
 import { leashCut } from "../sim/leash";
 import { ATTR2 } from "#shared/attrs2";
 import { DRAW_IN, drawInPlan, drawModeOf, type DrawMode } from "#shared/drawIn";
-import { STEEL_AURA, steelAuraTick, steelModeOf, type SteelMode, ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, plagueAtk, SMOKE, SOUL_STEAL, skillAttrMul, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, classWeapon, hasClassWeapon, isClassId, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, hammerWaveDamage, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, MARK_FOCUS, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillAttrs, type SkillId, type Weapon2 } from "#shared/classes2";
+import { STEEL_AURA, steelAuraTick, steelModeOf, type SteelMode, ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, plagueAtk, SMOKE, SOUL_STEAL, skillAttrMul, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, classWeapon, hasClassWeapon,  skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, hammerWaveDamage, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, MARK_FOCUS, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillAttrs, type SkillId, type Weapon2 } from "#shared/classes2";
 import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC } from "#shared/ultimates";
 import {
   MAGIC,
@@ -5629,7 +5629,11 @@ export class ZoneRoom extends Room<ZoneState> {
       if (tier === "craft") w.cp = Math.max(w.cp ?? 0, 0.15);
       t.rt.weapons.push(w);
       t.rt.owned.add(weaponKey(w.cls, w.tier));
-      if (equip && !all) applyEquip(t.p, t.rt, w, "right");
+      if (equip && !all) {
+        applyEquip(t.p, t.rt, w, "right");
+        this.heroCls(t.p);
+        this.syncSkills(t.p, t.rt);
+      }
     }
     if (equip && !all) this.syncSkills(t.p, t.rt);
   }
@@ -6442,6 +6446,8 @@ export class ZoneRoom extends Room<ZoneState> {
       if (t) {
         const err = applyUnequip(t.p, t.rt, side);
         if (err) return { ok: false, text: err };
+        this.heroCls(t.p);
+        this.syncSkills(t.p, t.rt);
         this.persistNick(norm);
         return { ok: true, text: "Снято на склад" };
       }
@@ -6705,6 +6711,8 @@ export class ZoneRoom extends Room<ZoneState> {
       const name = instanceName(w);
       if (act === "equip") {
         applyEquip(t.p, t.rt, w, idx === 1 ? "left" : "right");
+        this.heroCls(t.p);
+        this.syncSkills(t.p, t.rt);
         this.persistNick(norm);
         return { ok: true, text: `Надето: ${name}` };
       }
@@ -6819,12 +6827,13 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /**
-   * Класс героя — выбранный при создании (PlayerState.cls). У старых сейвов поля нет:
-   * выводим из оружия в руках, как раньше. Класс больше не меняется от того, что взял в руки.
+   * Класс героя — всегда по оружию в руках (как до выбора класса при создании).
+   * `p.cls` держим синхронно для клиента: сменил оружие — сменились класс и умения.
    */
   private heroCls(p: PlayerState): ClassId {
-    if (isClassId(p.cls)) return p.cls;
-    return classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "") ?? "warrior";
+    const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "") ?? "warrior";
+    p.cls = cls;
+    return cls;
   }
 
   /** Ключ сейва героя: у живого игрока — токен сессии, у бота — nick:<ник>. */
@@ -7188,7 +7197,7 @@ export class ZoneRoom extends Room<ZoneState> {
     p.leftCls = off;
     p.leftTier = pinL && pinL.cls === off ? pinL.tier : savedHeld.left?.cls === off ? savedHeld.left.tier : "";
     // Класс бота: сохранённый при создании, иначе — по оружию в руках.
-    p.cls = isClassId(rec?.classId) ? rec.classId : (classOf2(rc as Weapon2 | "", off as Weapon2 | "") ?? "warrior");
+    p.cls = classOf2(rc as Weapon2 | "", off as Weapon2 | "") ?? "warrior";
     // Сумку восстанавливаем из сейва (restoreBag — как у живого игрока) —
     // раньше тут был emptyBag() с нуля КАЖДЫЙ !play, и весь "Лом" от разборки
     // (и любые другие расходники) стирался при первом же выходе бота в мир
@@ -8387,7 +8396,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const rec = store.get(`nick:${norm}`);
     const left = t ? t.p.leftCls : rec?.held?.left?.cls ?? "";
     const right = t ? t.p.rightCls : rec?.held?.right?.cls ?? "";
-    const cls = t ? this.heroCls(t.p) : isClassId(rec?.classId) ? rec.classId : classOf2(left as Weapon2 | "", right as Weapon2 | "");
+    const cls = t ? this.heroCls(t.p) : classOf2(left as Weapon2 | "", right as Weapon2 | "");
     if (!cls || !hasClassWeapon(cls, left, right)) {
       if (this.hintOk(norm)) this.reply(`@${nick} умения класса — только с его оружием; сначала возьми его в руки.`);
       return;
@@ -8463,7 +8472,7 @@ export class ZoneRoom extends Room<ZoneState> {
       botActive: true, // в мире — восстановить после рестарта
       // Последнее сообщение хозяина — на диск (persistBot идёт раз в 10 с): отсчёт ухода бота переживает рестарт.
       lastChatAt: this.chatSeen.get(bot.norm),
-      ...(isClassId(p.cls) ? { classId: p.cls, treeVer: TREE_VER } : {}),
+      treeVer: TREE_VER,
     });
   }
 
@@ -9795,7 +9804,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const rec = store.get(token);
     const left = p ? p.leftCls : rec?.held?.left?.cls ?? "";
     const right = p ? p.rightCls : rec?.held?.right?.cls ?? "";
-    const cls = p ? this.heroCls(p) : isClassId(rec?.classId) ? rec.classId : classOf2(left as Weapon2 | "", right as Weapon2 | "");
+    const cls = p ? this.heroCls(p) : classOf2(left as Weapon2 | "", right as Weapon2 | "");
     if (!cls || !hasClassWeapon(cls, left, right)) return { ok: false, text: "Умения класса — только с его оружием." };
     const allowed = CLASSES2[cls].skills;
     const pick = [...new Set(ids.filter((k): k is SkillId => allowed.includes(k as SkillId)))].slice(0, 2);
@@ -12985,14 +12994,8 @@ export class ZoneRoom extends Room<ZoneState> {
       rec?.skin && rec.skin >= 1 && rec.skin <= BOT.skins
         ? rec.skin
         : 1 + Math.floor(Math.random() * BOT.skins);
-    // Класс выбирается ОДИН раз при создании. Старые сейвы без поля выводим из оружия.
-    const savedHeldForClass = heldOwned(sanitizeHeld(rec?.held), rec?.owned);
-    const inferredCls = classOf2((savedHeldForClass.left?.cls ?? "") as Weapon2 | "", (savedHeldForClass.right?.cls ?? "") as Weapon2 | "");
-    p.cls = isClassId(rec?.classId)
-      ? rec.classId
-      : isClassId(options?.cls)
-        ? options.cls
-        : (inferredCls ?? "warrior");
+    // Класс — по оружию в руках; отдельного выбора при создании больше нет.
+    p.cls = "warrior";
     p.maxHp = maxHpFor(p.level, p);
     p.maxMana = maxManaFor(p.level, p);
     p.mana = p.maxMana;
@@ -13003,6 +13006,7 @@ export class ZoneRoom extends Room<ZoneState> {
     p.leftTier = savedHeld.left?.tier ?? "";
     p.rightCls = savedHeld.right?.cls ?? "";
     p.rightTier = savedHeld.right?.tier ?? "";
+    this.heroCls(p);
     writeBag(p, restoreBag(rec?.bag));
     // Мёртвым в сейве не воскресаем в бою — входим с полным здоровьем.
     p.hp = rec && rec.hp > 0 ? Math.min(rec.hp, p.maxHp) : p.maxHp;
@@ -13165,7 +13169,7 @@ export class ZoneRoom extends Room<ZoneState> {
       // Даже если модель не меняли ни разу: случайная, выданная при входе
       // без сейва, должна закрепиться за ником, а не выпадать заново.
       skin: p.skin,
-      ...(isClassId(p.cls) ? { classId: p.cls, treeVer: TREE_VER } : {}),
+      treeVer: TREE_VER,
     };
     store.put(rt.token, patch);
   }
