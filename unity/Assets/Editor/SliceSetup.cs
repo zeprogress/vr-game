@@ -539,7 +539,7 @@ public static class SliceSetup
                 var chunks = new Dictionary<Vector2Int, List<CombineInstance>>();
                 var rnd = new System.Random(20261105);
                 int made = 0;
-                for (int i = 0; i < 12000; i++)
+                for (int i = 0; i < 20000; i++)
                 {
                     float x = info.x0 + (float)rnd.NextDouble() * info.size;
                     float z = info.z0 + (float)rnd.NextDouble() * info.size;
@@ -548,7 +548,7 @@ public static class SliceSetup
                     float y = terrain.SampleHeight(new Vector3(x, 0, z)) + tgo.transform.position.y;
                     var pos = new Vector3(x, y, z);
                     var rot = Quaternion.Euler(0, (float)rnd.NextDouble() * 360f, 0);
-                    var sc = 0.65f + (float)rnd.NextDouble() * 0.9f;
+                    var sc = 0.28f + (float)rnd.NextDouble() * 0.42f;
                     var key = new Vector2Int(Mathf.FloorToInt((x - info.x0) / (info.size / 6f)), Mathf.FloorToInt((z - info.z0) / (info.size / 6f)));
                     if (!chunks.TryGetValue(key, out var list)) chunks[key] = list = new List<CombineInstance>();
                     list.Add(new CombineInstance { mesh = gm.sharedMesh, transform = Matrix4x4.TRS(pos, rot, Vector3.one * sc) });
