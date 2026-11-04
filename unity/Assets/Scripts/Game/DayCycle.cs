@@ -135,10 +135,15 @@ namespace Zep
             RenderSettings.fogMode = FogMode.Linear;
             RenderSettings.fogStartDistance = Mathf.Lerp(a.fogNear, b.fogNear, t);
             RenderSettings.fogEndDistance = Mathf.Lerp(a.fogFar, b.fogFar, t);
-            RenderSettings.fogColor = L(a.fog, b.fog, t);
-            // Небо: зенит и горизонт веба; ночью — гаснет почти в ноль.
+            // Ночное небо чуть светлее чистого веба: иначе купол и дальний лес
+            // сливаются в чёрный прямоугольник. Днём значения не трогаем.
+            var fog = L(a.fog, b.fog, t);
+            fog = Color.Lerp(new Color(0.025f, 0.03f, 0.055f), fog, daylight);
+            RenderSettings.fogColor = fog;
             var zen = L(a.zenith, b.zenith, t);
             var hor = L(a.horizon, b.horizon, t);
+            zen = Color.Lerp(new Color(0.035f, 0.05f, 0.095f), zen, daylight);
+            hor = Color.Lerp(new Color(0.07f, 0.085f, 0.14f), hor, daylight);
             var sky = RenderSettings.skybox;
             if (sky)
             {
@@ -149,7 +154,7 @@ namespace Zep
                 sky.SetColor("_SunColor", L(a.disc, b.disc, t) * Mathf.Lerp(0.25f, 1f, daylight));
                 sky.SetFloat("_Exposure", 1f);
                 // Сколько тумана на куполе неба: купол веба — на ~400 м, туман там уже почти сплошной.
-                sky.SetColor("_Fog", RenderSettings.fogColor);
+                sky.SetColor("_Fog", fog);
                 sky.SetFloat("_FogMix", Mathf.Clamp01(Mathf.InverseLerp(RenderSettings.fogStartDistance, RenderSettings.fogEndDistance, 400f)) * 0.85f);
             }
             // Отражения неба в материалах: днём слабые, ночью почти нет (в вебе всё матовое).
