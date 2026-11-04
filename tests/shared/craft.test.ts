@@ -34,7 +34,7 @@ const have = (over: Partial<{ stock: CraftStock; gems: Record<string, number>; s
 test("шансы исходов: сумма 100 при любом методе, камне и уровне; скрытый рецепт — без провала и обычного", () => {
   for (const method of Object.keys(CRAFT_METHODS) as (keyof typeof CRAFT_METHODS)[]) {
     for (const cat of [null, "luc:1", "luc:9", "frost"]) {
-      for (const lv of [1, 5, SMITH.maxLv]) {
+      for (const lv of [1, 5, 100]) {
         const o = craftOdds({ method, cat }, lv);
         assert.equal(o.length, CRAFT_OUTCOMES.length);
         assert.ok(close(o.reduce((a, b) => a + b, 0), 100, 1e-9));
@@ -210,15 +210,14 @@ test("скрытые рецепты: точное совпадение, имен
 test("уровень кузнеца: опыт копится, методы открываются по уровням", () => {
   assert.deepEqual(smithLevel(0), { lv: 1, have: 0, need: SMITH.base, maxed: false });
   assert.equal(smithLevel(SMITH.base).lv, 2);
-  assert.equal(smithLevel(1e9).maxed, true);
+  assert.equal(smithLevel(1e9).maxed, false, "потолка уровня нет");
   let xp = 0;
-  let total = 0;
-  while (!smithLevel(xp).maxed) {
-    xp++;
-    total++;
+  for (let lv = 1; lv < 20; lv++) {
+    xp += smithLevel(xp).need;
+    assert.equal(smithLevel(xp).lv, lv + 1);
   }
-  assert.ok(total > 300, `до максимума ${total} опыта — прогрессия долгая`);
-  for (const m of Object.values(CRAFT_METHODS)) assert.ok(m.lv >= 1 && m.lv < SMITH.maxLv);
+  assert.ok(xp > 3000, `до 20 уровня ${xp} опыта — прогрессия долгая`);
+  for (const m of Object.values(CRAFT_METHODS)) assert.ok(m.lv >= 1);
   assert.equal(CRAFT_METHODS.forge.lv, 1, "ковка — с начала");
 });
 

@@ -1,5 +1,5 @@
 import { JEWEL_ACTS, jewelBonus, jewelsOf, pcInvJewels } from "#shared/jewels";
-import { CRAFT, pcInvCraft, pcInvCraftFor } from "#shared/craft";
+import { CRAFT, pcInvCraft, pcInvCraftFor, smithFightMul, smithLevel } from "#shared/craft";
 import { TRADE_ACTS, tradeViewOf } from "../trade";
 // colyseus 0.15 — CJS-пакет без ESM-exports, поэтому default-импорт (как в index.ts/ZoneRoom.ts).
 import { CLASSES2, classOf2, isClassId, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
@@ -243,8 +243,9 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     const off = rec.held?.[other] ? instIn(other) : undefined;
     const shield = off && off.id !== main?.id ? off : undefined;
     const mult = isWeaponClass(held?.cls) && isWeaponTier(held?.tier) ? weaponDef(held.cls, held.tier).mult : 1;
-    // Скрытый рецепт — ×CRAFT.recipeDmg, как rolledDmgMul на сервере.
-    const roll = (1 + handsRoll(main?.affixes, shield?.affixes, "dmgFlat", "dmgPct")) * attackPointBest(main, shield) * (main?.rc ? CRAFT.recipeDmg : 1);
+    // Скрытый рецепт — ×CRAFT.recipeDmg, как rolledDmgMul на сервере; кузнец даёт общий боевой бонус.
+    const smithMul = smithFightMul(smithLevel(rec.smithXp ?? 0).lv);
+    const roll = (1 + handsRoll(main?.affixes, shield?.affixes, "dmgFlat", "dmgPct")) * attackPointBest(main, shield) * (main?.rc ? CRAFT.recipeDmg : 1) * smithMul;
     const attrs = { str: rec.str, agi: rec.agi, int: rec.int, con: rec.con ?? 1, luc: rec.luc ?? 1, wis: rec.wis ?? 1, gb: jewelBonus(jewels) };
     const hand = { mult, tier: held?.tier ?? "", roll };
     strike = Math.round(skillStrike(strikeCls, rec.level, attrs, hand).dmg * 10) / 10;

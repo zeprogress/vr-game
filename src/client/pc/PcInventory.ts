@@ -39,6 +39,8 @@ import {
   recipeText,
   rollsFor,
   smithLevel,
+  smithFightMul,
+  smithLuck,
   type CraftInput,
   type CraftItemId,
   type CraftMatId,
@@ -2293,7 +2295,12 @@ export class PcInventory {
     fill.style.width = `${smith.maxed ? 100 : Math.round((smith.have / smith.need) * 100)}%`;
     bar.append(fill);
     const next = CRAFT_METHOD_IDS.map((k) => CRAFT_METHODS[k]).find((m) => m.lv > smith.lv);
-    sm.append(div("pcinv-fg-smlv", `⚒ Кузнец ${smith.lv} ур.`), bar, div("pcinv-small", smith.maxed ? "мастерство на максимуме" : `${smith.have} / ${smith.need} опыта${next ? ` · ${next.name} — с ${next.lv} ур.` : ""}`));
+    sm.append(
+      div("pcinv-fg-smlv", `⚒ Кузнец ${smith.lv} ур.`),
+      bar,
+      div("pcinv-small", smith.maxed ? "мастерство на максимуме" : `${smith.have} / ${smith.need} опыта${next ? ` · ${next.name} — с ${next.lv} ур.` : ""}`),
+      div("pcinv-small", `Боевая ковка +${Math.round((smithFightMul(smith.lv) - 1) * 100)}% · удача крафта +${Math.round(smithLuck(smith.lv) * 5)}%`),
+    );
     hint(sm, "Опыт кузнеца — за каждый крафт. С уровнем реже провал, чаще отличный и редкий исход, открываются новые методы.");
     // Основа выбирается в ячейке цепочки на сцене — слева только кузнец и найденные рецепты.
     left.append(sm);

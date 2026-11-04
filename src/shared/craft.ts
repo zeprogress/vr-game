@@ -163,28 +163,42 @@ export const CRAFT = {
 // ---------------------------------------------------------------- мастерство кузнеца
 
 export const SMITH = {
-  maxLv: 20,
-  /** Опыта до следующего уровня: base + step × (ур. − 1). */
-  base: 4,
-  step: 2,
+  /** Опыта до следующего уровня: base × lv^needPow × needGrowth^(lv−1). Рост бесконечный. */
+  base: 12,
+  needPow: 1.35,
+  needGrowth: 1.01,
   /** Опыт за крафт: 1 + индекс исхода (провал 1 … редкий 5); найденный рецепт — ещё столько. */
   foundXp: 10,
-  /** За каждый уровень сверх первого: провал −fail, отличный +great, редкий +rare (веса до нормировки). */
-  fail: 0.5,
-  great: 0.3,
-  rare: 0.2,
+  /** За уровень: провал −fail·√lv, отличный +great·√lv, редкий +rare·√lv (затухание). */
+  fail: 0.8,
+  great: 0.6,
+  rare: 0.5,
+  /** Боевая ковка: +% к урону крафтового оружия, с насыщением. */
+  fightMax: 0.2,
+  fightK: 45,
 } as const;
+
+/** Удача крафта от уровня: растёт как корень, без жёсткого потолка. */
+export function smithLuck(lv: number): number {
+  return Math.sqrt(Math.max(0, lv - 1));
+}
+
+/** Боевой бонус кузнеца к крафтовому оружию: +до 20%, с насыщением. */
+export function smithFightMul(lv: number): number {
+  return 1 + SMITH.fightMax * (1 - Math.exp(-Math.max(0, lv - 1) / SMITH.fightK));
+}
 
 /** Уровень кузнеца по опыту и сколько набрано/нужно до следующего. */
 export function smithLevel(xp: number): { lv: number; have: number; need: number; maxed: boolean } {
   let lv = 1;
   let left = Math.max(0, Math.floor(xp));
   for (;;) {
-    if (lv >= SMITH.maxLv) return { lv, have: 0, need: 0, maxed: true };
-    const need = SMITH.base + SMITH.step * (lv - 1);
+    // Бесконечная прогрессия: каждый следующий уровень дороже, но потолка нет.
+    const need = Math.max(1, Math.round(SMITH.base * Math.pow(lv, SMITH.needPow) * Math.pow(SMITH.needGrowth, lv - 1)));
     if (left < need) return { lv, have: left, need, maxed: false };
     left -= need;
     lv++;
+    if (lv > 100_000) return { lv, have: left, need, maxed: false };
   }
 }
 
@@ -282,10 +296,10 @@ export function matchRecipe(i: CraftInput): CraftRecipe | null {
 /** Шансы исходов в процентах (сумма 100) по методу, катализатору и уровню кузнеца; скрытый рецепт — без провала и обычного. */
 export function craftOdds(i: Pick<CraftInput, "method" | "cat">, smithLv = 1, recipe = false): number[] {
   const w = [...CRAFT_METHODS[i.method].odds];
-  const up = Math.max(0, Math.min(SMITH.maxLv, smithLv) - 1);
-  w[0] = Math.max(0, w[0] - SMITH.fail * up);
-  w[3] += SMITH.great * up;
-  w[4] += SMITH.rare * up;
+  const luck = smithLuck(smithLv);
+  w[0] = Math.max(0, w[0] - SMITH.fail * luck);
+  w[3] += SMITH.great * luck;
+  w[4] += SMITH.rare * luck;
   const gem = i.cat ? parseGem(i.cat) : null;
   if (gem) {
     const s = Math.min(CRAFT.gemLvCap, gem.lv);

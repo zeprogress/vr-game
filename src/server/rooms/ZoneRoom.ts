@@ -289,7 +289,7 @@ import { randomUUID } from "node:crypto";
 import { attrOf } from "#shared/attrs2";
 import { giveItems, parseTradeItem, parseTradeList, takeItems, takenName, tradeLog, tradeViewOf, TRADE_ACTS, type InvSnap, type Taken, type TradeAct, type TradeItem, type TradeSession, type TradeSide } from "../trade";
 import { KillRates } from "../sim/killRate";
-import { addStock, CRAFT, CRAFT_ITEMS, CRAFT_PROC, CRAFT_SMELT, craftStockOf, craftWeapon, parseCraftCode, pcInvCraft, recipeBookOf, rollCraftDrop, smithLevel } from "#shared/craft";
+import { addStock, CRAFT, CRAFT_ITEMS, CRAFT_PROC, CRAFT_SMELT, craftStockOf, craftWeapon, parseCraftCode, pcInvCraft, recipeBookOf, rollCraftDrop, smithFightMul, smithLevel } from "#shared/craft";
 import { applyJewelOp, gemName, JEWEL_ACTS, jewelBonus, jewelOpFrom, jewelPatch, jewelsOf, newNecklace, newRing, pcInvJewels, ringName, ringSkillBonusOf, rollJewelDrop, type JewelAct, type JewelSave, type RingInst } from "#shared/jewels";
 import { emptyRingSkillBonus, ringEnchant, ringEnchantRow, ringSkillMul, type RingSkillBonus } from "#shared/ringAffixes";
 import { NECK_TIER_NAME, neckEnchant, neckEnchantRow, neckLabel, type NeckInst } from "#shared/necklaces";
@@ -330,6 +330,8 @@ interface Runtime {
   /** За сколько секунд умение делает эти движения. */
   castSec?: number;
   token?: string;
+  /** Уровень кузнеца героя — боевой бонус крафтового оружия. */
+  smithLv?: number;
   /** Класс, по дереву которого сейчас посчитаны атрибуты (см. syncTree). */
   treeCls?: ClassId;
   /** Дерево прокачки: прибавки к умениям (★ и ключевые) и особые механики ключевых узлов (◆). */
@@ -1075,7 +1077,10 @@ function rolledDmgMul(p: PlayerState, hand: "left" | "right", rt: Runtime): numb
   // Точка атаки за лом — тоже лучшая из двух рук (как роллы «Урон»).
   // Оружие по скрытому рецепту — базовая атака ×CRAFT.recipeDmg (все пути атаки и каста, в т.ч. посох и боты).
   const recipe = main?.rc ? CRAFT.recipeDmg : 1;
-  return (1 + handsRoll(main?.affixes, other?.affixes, "dmgFlat", "dmgPct")) * attackPointBest(main, other) * recipe;
+  // Кузнец: высокий уровень даёт боевой бонус всему оружию героя (до +20%),
+  // поэтому крафтовое и рубиновое усиливаются одинаково и не ломают их сравнение.
+  const smith = smithFightMul(rt.smithLv ?? 1);
+  return (1 + handsRoll(main?.affixes, other?.affixes, "dmgFlat", "dmgPct")) * attackPointBest(main, other) * recipe * smith;
 }
 
 /** Доп. множитель скорости атаки/каста от ролла atkSpeedPct обеих рук: лучший из двух. */
@@ -6023,8 +6028,9 @@ export class ZoneRoom extends Room<ZoneState> {
       this.persistNick(norm);
       if (!t.id.startsWith("bot:")) this.syncWarehouse(t.id, t.rt);
     }
-    const lv0 = smithLevel(xp0).lv;
     const lv1 = smithLevel(xp0 + r.xp).lv;
+    if (t) t.rt.smithLv = lv1;
+    const lv0 = smithLevel(xp0).lv;
     const up = lv1 > lv0 ? ` · Кузнец ${lv1} ур.!` : "";
     console.log(`[craft] ${rec.nick || norm}: ${code} → исход ${r.outcome}${r.weapon ? ` (${r.weapon.id})` : ""}${r.found ? `, рецепт ${r.found.id}` : ""}`);
     return { ok: true, text: r.text + up, craft: { outcome: r.outcome, ...(r.weapon ? { id: r.weapon.id } : {}), ...(r.found ? { found: r.found.id } : {}) } };
@@ -7215,6 +7221,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
     const rt: Runtime = {
       token,
+      smithLv: smithLevel(rec?.smithXp ?? 0).lv,
       guard: noGuard(),
       lastHit: {},
       sinceHurt: PLAYER_HP.regenDelay,
@@ -13018,6 +13025,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.joinedAt.set(client.sessionId, Date.now());
     this.rt.set(client.sessionId, {
       token,
+      smithLv: smithLevel(rec?.smithXp ?? 0).lv,
       guard: noGuard(),
       lastHit: {},
       sinceHurt: PLAYER_HP.regenDelay,
