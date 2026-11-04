@@ -430,6 +430,8 @@ public static class SliceSetup
         terrain.materialTemplate = terrainMat;
         terrain.heightmapPixelError = 3;
         terrain.basemapDistance = 120;
+        terrain.detailObjectDistance = 90f;
+        terrain.detailObjectDensity = 1f;
 
         // Деревья — те же места, что на сервере
         var treesRoot = new GameObject("Trees").transform;
@@ -471,6 +473,25 @@ public static class SliceSetup
             if (!prefab) { Debug.LogWarning($"[slice] нет локации {name}.glb"); continue; }
             var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab, locRoot);
             go.name = name;
+            if (name == "world")
+            {
+                // В старом world.glb остались стойка оружия с навесом и колья,
+                // хотя в вебе они давно убраны. Не тащим их в новую сцену.
+                foreach (var t in go.GetComponentsInChildren<Transform>(true))
+                    if (t.name == "hubWeaponsCanopy" || t.name == "hubTrainStakes")
+                        UnityEngine.Object.DestroyImmediate(t.gameObject);
+                foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+                {
+                    if (r.name != "hubGround") continue;
+                    // Плоскость земли лагеря висела над поляной и бросала тень на стык.
+                    r.shadowCastingMode = ShadowCastingMode.Off;
+                    r.receiveShadows = false;
+                    r.transform.position -= new Vector3(0, 0.06f, 0);
+                    var m = new Material(r.sharedMaterial);
+                    m.SetColor("_EmissionColor", Color.black);
+                    r.sharedMaterial = m;
+                }
+            }
             foreach (var t in go.GetComponentsInChildren<Transform>())
                 if (!AnimatedInGame(t.name)) SetStatic(t.gameObject);
             FixUnlit(go);
@@ -499,6 +520,57 @@ public static class SliceSetup
 
         // Мелочь подземелья — модули набора по dunDress (без браузера).
         PropsBuilder.DungeonDress(locRoot, assets.litTemplate, SetStatic);
+
+        // Трава: как в вебе, но одним статичным мешем на чанк. Террейн-детали
+        // в URP-сборке не отрисовывались, поэтому ставим настоящие модели пучков.
+        var grassModel = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Nature/Grass_Common_Short.gltf");
+        if (grassModel)
+        {
+            var gm = grassModel.GetComponentInChildren<MeshFilter>();
+            var gr = grassModel.GetComponentInChildren<MeshRenderer>();
+            if (gm && gr)
+            {
+                var gmat = new Material(gr.sharedMaterial ?? assets.litTemplate);
+                gmat.name = "GrassFieldMat";
+                gmat.enableInstancing = true;
+                AssetDatabase.DeleteAsset($"{Root}/GrassFieldMat.mat");
+                AssetDatabase.CreateAsset(gmat, $"{Root}/GrassFieldMat.mat");
+                var grassRoot = new GameObject("Grass").transform;
+                var chunks = new Dictionary<Vector2Int, List<CombineInstance>>();
+                var rnd = new System.Random(20261105);
+                int made = 0;
+                for (int i = 0; i < 12000; i++)
+                {
+                    float x = info.x0 + (float)rnd.NextDouble() * info.size;
+                    float z = info.z0 + (float)rnd.NextDouble() * info.size;
+                    // Не залезаем на вытоптанный лагерь и на воду/дорогу у костра.
+                    if (Mathf.Sqrt((x + 55f) * (x + 55f) + (z + 55f) * (z + 55f)) < 23f) continue;
+                    float y = terrain.SampleHeight(new Vector3(x, 0, z)) + tgo.transform.position.y;
+                    var pos = new Vector3(x, y, z);
+                    var rot = Quaternion.Euler(0, (float)rnd.NextDouble() * 360f, 0);
+                    var sc = 0.65f + (float)rnd.NextDouble() * 0.9f;
+                    var key = new Vector2Int(Mathf.FloorToInt((x - info.x0) / (info.size / 6f)), Mathf.FloorToInt((z - info.z0) / (info.size / 6f)));
+                    if (!chunks.TryGetValue(key, out var list)) chunks[key] = list = new List<CombineInstance>();
+                    list.Add(new CombineInstance { mesh = gm.sharedMesh, transform = Matrix4x4.TRS(pos, rot, Vector3.one * sc) });
+                    made++;
+                }
+                foreach (var kv in chunks)
+                {
+                    var mesh = new Mesh { name = $"GrassChunk_{kv.Key.x}_{kv.Key.y}" };
+                    mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+                    mesh.CombineMeshes(kv.Value.ToArray(), true, true);
+                    var go = new GameObject(mesh.name);
+                    go.transform.SetParent(grassRoot, false);
+                    go.AddComponent<MeshFilter>().sharedMesh = mesh;
+                    var mr = go.AddComponent<MeshRenderer>();
+                    mr.sharedMaterial = gmat;
+                    mr.shadowCastingMode = ShadowCastingMode.Off;
+                    mr.receiveShadows = true;
+                    SetStatic(go);
+                }
+                Debug.Log($"[slice] трава: {made} пучков");
+            }
+        }
 
         // Солнце, небо, туман
         var sun = new GameObject("Sun").AddComponent<Light>();
