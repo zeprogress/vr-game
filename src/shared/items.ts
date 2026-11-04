@@ -1366,10 +1366,12 @@ export function enchantRoll(holder: { ench?: EnchantDeck }, chance: number, rnd:
  * Точить можно бесконечно: прибавка сходится к пределу, цена попытки растёт, шанс падает (без пола).
  */
 export const ATTACK_POINT = {
-  /** Прибавка к урону первой точки (доля: 0,03 = +3%). */
-  gain0: 0.03,
-  /** Каждая следующая прибавка — в столько раз меньше предыдущей. */
-  gainDecay: 0.9625,
+  /** До этой точки кривая разгоняется: +1 = 1%, +20 = 50%. */
+  knee: 20,
+  /** Суммарная прибавка на колене. */
+  kneeBonus: 0.5,
+  /** После колена — насыщение к общему пределу. */
+  tailK: 30,
   /** Шанс первой попытки и множитель на каждую следующую точку. */
   chance0: 0.9,
   chanceDecay: 0.8,
@@ -1380,12 +1382,19 @@ export const ATTACK_POINT = {
   costGrowth: 1.2,
 } as const;
 
-/** Предел суммарной прибавки к урону от точек (доля): gain0 / (1 − gainDecay) = +80%. */
-export const ATTACK_POINT_CAP = ATTACK_POINT.gain0 / (1 - ATTACK_POINT.gainDecay);
+/** Предел суммарной прибавки к урону от точек (доля): +80%. */
+export const ATTACK_POINT_CAP = 0.8;
 
-/** Точить можно уникальное, рубиновое и мастерское оружие; щит не атакует — нет. */
-export function attackPointEligible(w: { cls: string; tier: string }): boolean {
-  return w.cls !== "shield" && (w.tier === "legendary" || w.tier === "ruby" || w.tier === "craft");
+/**
+ * Прибавка к урону от n удачных точек. До +20 — разгон (1% на +1, 50% на +20),
+ * дальше — насыщение к 80%: каждый следующий успех даёт всё меньше.
+ */
+export function attackPointBonus(n: number): number {
+  const k = Math.max(0, Math.floor(n));
+  if (k <= ATTACK_POINT.knee) {
+    return ATTACK_POINT.kneeBonus * (k / ATTACK_POINT.knee) ** (Math.log(50) / Math.log(20));
+  }
+  return ATTACK_POINT.kneeBonus + (ATTACK_POINT_CAP - ATTACK_POINT.kneeBonus) * (1 - Math.exp(-(k - ATTACK_POINT.knee) / ATTACK_POINT.tailK));
 }
 
 /** «Мастерство» редкого исхода крафта (ровно рубиновое, +15% к уникальному) — по нему редкое мастерское узнают везде (рамка со свечением). */
@@ -1401,14 +1410,14 @@ export function craftPow(w: { tier: string; cp?: number } | null | undefined): n
   return w && w.tier === "craft" ? Math.max(0, Math.min(1, w.cp ?? 0)) : 0;
 }
 
+/** Точить можно уникальное, рубиновое и мастерское оружие; щит не атакует — нет. */
+export function attackPointEligible(w: { cls: string; tier: string }): boolean {
+  return w.cls !== "shield" && (w.tier === "legendary" || w.tier === "ruby" || w.tier === "craft");
+}
+
 /** Сколько удачных точек у экземпляра. */
 export function attackPoints(w: { sharp?: number }): number {
   return Math.max(0, Math.floor(w.sharp ?? 0));
-}
-
-/** Суммарная прибавка к урону от n точек (доля). */
-export function attackPointBonus(n: number): number {
-  return ATTACK_POINT_CAP * (1 - ATTACK_POINT.gainDecay ** n);
 }
 
 /** Прибавка от n точек в процентах (как в строке роллов и в подписях). */
@@ -1418,7 +1427,7 @@ export function sharpPctOfPoints(n: number): number {
 
 /**
  * Насколько свечение заточки выцвело к белому: 0 — цвет тира, 1 — чисто белый.
- * Отрезок — с +20 до +25 удачных точек атаки (42.75%…49.23% прибавки).
+ * Отрезок — с +20 до +25 удачных точек атаки (50%…54,6% прибавки).
  */
 export function sharpWhiten(pct: number): number {
   const from = sharpPctOfPoints(20);
@@ -1486,7 +1495,7 @@ export function attackPointNext(w: { cls: string; tier: string; sharp?: number }
   if (!attackPointEligible(w)) return null;
   const n = attackPoints(w);
   return {
-    gain: ATTACK_POINT.gain0 * ATTACK_POINT.gainDecay ** n,
+    gain: attackPointBonus(n + 1) - attackPointBonus(n),
     // Шанс падает с каждой точкой, но не ниже 1%: очередная попытка всегда имеет шанс.
     chance: Math.max(ATTACK_POINT.chanceMin, ATTACK_POINT.chance0 * ATTACK_POINT.chanceDecay ** n),
     // Цена — от уникального; рубиновое и мастерское — × ENCHANT_TIER_MUL (то же правило, что у роллов).
