@@ -80,7 +80,7 @@ export type WeaponTier = "base" | "gold" | "legendary" | "ruby" | "craft";
  * Рубиновое оружие. Заточка ролла — та же, что у обычного (шанс и прирост), цена — ENCHANT_TIER_MUL.
  */
 /** Оружие по скрытому рецепту крафта: базовая атака × (сервер — rolledDmgMul; таблица героя и «Атака» — тот же множитель). */
-export const RECIPE_DMG = 1.0;
+export const RECIPE_DMG = 1.25;
 
 export const RUBY = {
   /** Сила: × к уникальному того же класса (+15%, у меча 4.5 → ×5.2). */

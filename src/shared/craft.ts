@@ -55,7 +55,7 @@ export function isCraftItem(v: unknown): v is CraftItemId {
 }
 
 /** Переплавка: столько лома → один сплав. */
-export const CRAFT_SMELT = 100;
+export const CRAFT_SMELT = 300;
 
 /** Особый ролл катализатора. */
 const CAT_ROLL: Record<CraftCatId, AffixSub> = { frost: "chill", sting: "venom" };
@@ -443,7 +443,9 @@ export function craftWeapon(
     return { ok: true, outcome, weapon: null, cost: method.cost, refund, found, recipe, xp: smithXpFor(0, !!found), text: `Провал — материалы сгорели, лом вернулся наполовину (+${refund}). Катализатор цел.` };
   }
   const o = CRAFT_OUTCOMES[outcome];
-  const n = rollsFor(outcome, i.method);
+  // Скрытый рецепт — на один аффикс больше обычного: это его «особенность»,
+  // помимо звёздного ролла. Обычный крафт по-прежнему не больше 4.
+  const n = Math.min(recipe ? CRAFT.maxRolls + 1 : CRAFT.maxRolls, rollsFor(outcome, i.method) + (recipe ? 1 : 0));
   const floor = Math.min(POINTS_MAX, o.floor + method.floorAdd);
   const pts = (lo: number): number => {
     const l = Math.max(1, Math.min(POINTS_MAX, lo));
