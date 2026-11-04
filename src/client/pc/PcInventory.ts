@@ -2305,7 +2305,7 @@ export class PcInventory {
     const unknown = CRAFT_RECIPES.filter((r) => !c.book.includes(r.id));
     if (!c.hidden && unknown.length) {
       left.append(div("pcinv-fg-sub", "Слухи о скрытых рецептах"));
-      for (const rc of unknown) left.append(div("pcinv-small pcinv-fg-rumor", `«${rc.name}»: ${rc.hint}`));
+      for (const rc of unknown) left.append(div("pcinv-small pcinv-fg-rumor", `Слух: ${rc.hint}`));
     }
     for (const rc of found) {
       const row = div("pcinv-fg-row rec");

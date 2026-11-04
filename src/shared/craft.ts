@@ -215,12 +215,12 @@ export interface CraftRecipe {
 }
 
 export const CRAFT_RECIPES: readonly CraftRecipe[] = [
-  { id: "webweaver", name: "Ткач паутины", cls: "bow", mats: ["web", "web", "web", "bone", "bone", "bone"], cat: "sting", method: "temper", star: "atkSpeedPct", lore: "Тетива из паучьего шёлка поёт быстрее ветра.", hint: "Говорят, лук с паутиной и костью; тетиву закаляют и добавляют жало." },
-  { id: "frostguard", name: "Ледяной страж", cls: "hammer", mats: ["bone", "bone", "bone", "alloy", "alloy", "alloy"], cat: "frost", method: "age", star: "vamp", lore: "Холод сковывает врага, а сила его уходит к владельцу.", hint: "Молот, кость и сплав; холод раскрывается выдержкой." },
-  { id: "dragonblood", name: "Кровь дракона", cls: "dagger", mats: ["scale", "scale", "scale", "scale", "scale", "scale"], cat: "gem:luc", method: "temper", star: "critChance", lore: "Клинок из чешуи помнит, куда бить.", hint: "Кинжал из одной чешуи; закалка и камень удачи." },
-  { id: "ashstaff", name: "Посох пепла", cls: "staff", mats: ["bone", "bone", "bone", "scale", "scale", "scale"], cat: "gem:int", method: "carve", star: "critChance", lore: "Кость и пламя: каждый огнешар — как удар грома.", hint: "Посох из кости и чешуи; резьба и камень разума." },
-  { id: "stormfang", name: "Клык бури", cls: "spear", mats: ["web", "web", "scale", "scale", "alloy", "alloy"], cat: null, method: "forge", star: "dmgFlat", lore: "Наконечник, что пробивает ряды насквозь.", hint: "Копьё из паутины, чешуи и сплава; обычная ковка." },
-  { id: "crusher", name: "Сокрушитель", cls: "sword", mats: ["alloy", "alloy", "alloy", "alloy", "alloy", "alloy"], cat: "gem:str", method: "forge", star: "dmgFlat", lore: "Простая сталь в руке силы — тяжелее любого молота.", hint: "Меч из одного сплава; сила и ковка." },
+  { id: "webweaver", name: "Ткач паутины", cls: "bow", mats: ["web", "web", "web", "bone", "bone", "bone"], cat: "sting", method: "temper", star: "atkSpeedPct", lore: "Тетива из паучьего шёлка поёт быстрее ветра.", hint: "Нить, старая кость и капля яда. Чем сильнее натяжение, тем громче песня." },
+  { id: "frostguard", name: "Ледяной страж", cls: "hammer", mats: ["bone", "bone", "bone", "alloy", "alloy", "alloy"], cat: "frost", method: "age", star: "vamp", lore: "Холод сковывает врага, а сила его уходит к владельцу.", hint: "Кость и холодная сталь. Холод просыпается, если дать ему время." },
+  { id: "dragonblood", name: "Кровь дракона", cls: "dagger", mats: ["scale", "scale", "scale", "scale", "scale", "scale"], cat: "gem:luc", method: "temper", star: "critChance", lore: "Клинок из чешуи помнит, куда бить.", hint: "Одна чешуя, без примесей. Горячая рука и немного удачи." },
+  { id: "ashstaff", name: "Посох пепла", cls: "staff", mats: ["bone", "bone", "bone", "scale", "scale", "scale"], cat: "gem:int", method: "carve", star: "critChance", lore: "Кость и пламя: каждый огнешар — как удар грома.", hint: "Кость и пепел, а тонкую работу ведёт разум." },
+  { id: "stormfang", name: "Клык бури", cls: "spear", mats: ["web", "web", "scale", "scale", "alloy", "alloy"], cat: null, method: "forge", star: "dmgFlat", lore: "Наконечник, что пробивает ряды насквозь.", hint: "Три нити в одном острие: шёлк, чешуя и сталь." },
+  { id: "crusher", name: "Сокрушитель", cls: "sword", mats: ["alloy", "alloy", "alloy", "alloy", "alloy", "alloy"], cat: "gem:str", method: "forge", star: "dmgFlat", lore: "Простая сталь в руке силы — тяжелее любого молота.", hint: "Только сталь. Только сила." },
 ];
 
 /** Полный состав рецепта (для найденных). */
