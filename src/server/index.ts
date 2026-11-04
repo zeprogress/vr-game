@@ -1,6 +1,8 @@
 // colyseus 0.15 — это CJS-пакет без ESM-exports, поэтому default-импорт.
 import colyseus from "colyseus";
 import http from "node:http";
+import { createReadStream, statSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { NICK_MAX, isAdminNick } from "#shared/constants";
 import { ZoneRoom } from "./rooms/ZoneRoom";
@@ -23,6 +25,27 @@ const PORT = Number(process.env.GAME_SERVER_PORT ?? 2567);
  * статику/404 сам nginx.
  */
 const httpServer = http.createServer((req, res) => {
+  // TTS-файлы: на VPS их отдаёт nginx из dist/tts, но Unity-спектатор на
+  // домашнем стенде подключается к ws://127.0.0.1:2567 и строит из него же
+  // http://127.0.0.1:2567/tts/... — без этого роута озвучка не проигрывалась.
+  if (req.method === "GET" && req.url?.startsWith("/tts/")) {
+    const name = decodeURIComponent(req.url.slice("/tts/".length).split("?")[0] ?? "");
+    if (!/^[a-f0-9]{8,32}\.mp3$/.test(name)) {
+      res.writeHead(404, { "content-type": "text/plain" }).end("not found");
+      return;
+    }
+    const dir = resolve(process.cwd(), process.env.TTS_DIR || "dist/tts");
+    const file = resolve(dir, name);
+    try {
+      if (!statSync(file).isFile()) throw new Error("not a file");
+    } catch {
+      res.writeHead(404, { "content-type": "text/plain" }).end("not found");
+      return;
+    }
+    res.writeHead(200, { "content-type": "audio/mpeg", "cache-control": "no-cache" });
+    createReadStream(file).pipe(res);
+    return;
+  }
   if (req.method === "GET" && req.url?.startsWith("/api/chatlog")) {
     const token = new URL(req.url, "http://x").searchParams.get("token") ?? "";
     const want = process.env.CHATLOG_TOKEN || "";
