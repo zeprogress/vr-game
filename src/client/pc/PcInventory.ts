@@ -3485,7 +3485,7 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-fg-big.empty { color:#5d6f88; font:700 26px system-ui; }
 .pcinv-fg-mats { position:absolute; inset:6%; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); grid-template-rows:minmax(0,1.3fr) minmax(0,1fr); gap:4px; }
 .pcinv-fg-mcell { min-width:0; min-height:0; overflow:hidden; border:1px dashed #3a4f6b; display:flex; align-items:center; justify-content:center; }
-.pcinv-fg-rumor { display:block; padding:5px 7px; border-left:2px solid #6b5736; color:#b9c3cf; line-height:1.35; }
+.pcinv-fg-rumor { display:block; padding:5px 7px; border-left:2px solid #6b5736; color:#b9c3cf; line-height:1.35; font-style:italic; white-space:pre-line; }
 .pcinv-fg-mats.six { grid-template-rows:repeat(3,minmax(0,1fr)); }
 .pcinv-fg-mats.six .pcinv-fg-mcell:first-child { grid-column:auto; }
 .pcinv-fg-mcell:first-child { grid-column:1 / span 2; }
