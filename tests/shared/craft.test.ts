@@ -58,7 +58,7 @@ test("код крафта: туда и обратно; мусор — null", () 
   assert.deepEqual(parseCraftCode(craftCode(i)), i);
   assert.deepEqual(parseCraftCode(craftCode({ ...i, cat: "luc:3" })), { ...i, cat: "luc:3" });
   assert.deepEqual(parseCraftCode(craftCode({ ...i, cat: null })), { ...i, cat: null });
-  for (const bad of ["", "bow||sting|temper", "shield|web||forge", "bow|web,web,web,web||forge", "bow|frost||forge", "bow|web|zzz|forge", "bow|web||melt", 42]) {
+  for (const bad of ["", "bow||sting|temper", "shield|web||forge", "bow|web,web,web,web,web,web,web||forge", "bow|frost||forge", "bow|web|zzz|forge", "bow|web||melt", 42]) {
     assert.equal(parseCraftCode(bad), null, String(bad));
   }
 });
@@ -99,29 +99,27 @@ test("крафт: роллы от материалов, число роллов 
   assert.deepEqual([...seen].sort(), [0, 1, 2, 3, 4], "все исходы встречаются");
 });
 
-test("потолки роллов: копии материала поднимают свой, остальные платят поровну (сумма та же)", () => {
+test("потолки роллов: копии материалов больше не поднимают силу — они нужны для затрат", () => {
   const near = (a: number[], b: number[]): void => a.forEach((x, k) => assert.ok(close(x, b[k]), `${a} ≠ ${b}`));
-  near(craftCaps([3, 0, 0]), [1.3, 0.85, 0.85]);
-  near(craftCaps([2, 1, 0]), [1.15, 0.925, 0.925]);
-  near(craftCaps([3, 0]), [1.3, 0.7]);
-  near(craftCaps([3, 0, 0, 0]), [1.3, 0.9, 0.9, 0.9]);
+  near(craftCaps([3, 0, 0]), [1, 1, 1]);
+  near(craftCaps([2, 1, 0]), [1, 1, 1]);
+  near(craftCaps([3, 0]), [1, 1]);
+  near(craftCaps([3, 0, 0, 0]), [1, 1, 1, 1]);
   near(craftCaps([1, 1, 1]), [1, 1, 1]);
-  near(craftCaps([1, 1, 0]), [1, 1, 1]); // особый катализатор и разные материалы — без прибавки
+  near(craftCaps([1, 1, 0]), [1, 1, 1]);
 });
 
-test("3 одинаковых материала: ролл ▲ (заточка доводит до нового максимума), остальные ▼; закалка — минимум; резьба — ролл", () => {
+test("3 одинаковых материала: потолки обычные; закалка — минимум; резьба — ролл", () => {
   const rnd = seeded(11);
   for (let k = 0; k < 200; k++) {
     const r = craftWeapon({ cls: "dagger", mats: ["web", "web", "web"], cat: null, method: "temper" }, have(), "т", rnd);
     if (!r.ok || !r.weapon) continue;
     const w = r.weapon;
-    const n = w.affixes.length;
     const a = w.affixes.find((x) => x.sub === "atkSpeedPct")!;
-    assert.ok(close(a.cap ?? 1, 1.3), "свой ролл ×1.30");
-    for (const o of w.affixes) if (o !== a) assert.ok(close(o.cap ?? 1, 1 - 0.3 / (n - 1)), `${o.sub} ×${o.cap}`);
+    assert.ok(close(a.cap ?? 1, 1), "свой ролл без надбавки");
+    for (const o of w.affixes) assert.ok(close(o.cap ?? 1, 1), `${o.sub} ×${o.cap}`);
     // Очки — только от исхода и метода (копии их больше не поднимают).
     for (const o of w.affixes) assert.ok(affixPoints(o, w) >= Math.min(33, CRAFT_OUTCOMES[r.outcome].floor + CRAFT_METHODS.temper.floorAdd));
-    assert.match(affixLabel(a), /▲$/);
   }
   // Заточка до 33 очков — ровно новый потолок (Скорость 5–15% ×1.3 → 19.5%).
   let r = craftWeapon({ cls: "dagger", mats: ["web", "web", "web"], cat: null, method: "temper" }, have(), "т", rnd);
@@ -130,8 +128,8 @@ test("3 одинаковых материала: ролл ▲ (заточка д
   const idx = w.affixes.findIndex((x) => x.sub === "atkSpeedPct");
   enchantApply(w, idx, 33);
   assert.equal(affixPoints(w.affixes[idx], w), 33);
-  assert.ok(close(w.affixes[idx].value, affixRange("atkSpeedPct", w)[1] * 1.3));
-  assert.match(affixCapNote(w.affixes[idx], w), /макс 19\.5% \(▲ \+30%\)/);
+  assert.ok(close(w.affixes[idx].value, affixRange("atkSpeedPct", w)[1]));
+  assert.equal(affixCapNote(w.affixes[idx], w), "");
   for (let k = 0; k < 200; k++) {
     const r2 = craftWeapon({ cls: "spear", mats: ["bone"], cat: null, method: "carve" }, have(), "т", rnd);
     if (!r2.ok || !r2.weapon) continue;

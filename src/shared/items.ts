@@ -80,7 +80,7 @@ export type WeaponTier = "base" | "gold" | "legendary" | "ruby" | "craft";
  * Рубиновое оружие. Заточка ролла — та же, что у обычного (шанс и прирост), цена — ENCHANT_TIER_MUL.
  */
 /** Оружие по скрытому рецепту крафта: базовая атака × (сервер — rolledDmgMul; таблица героя и «Атака» — тот же множитель). */
-export const RECIPE_DMG = 1.15;
+export const RECIPE_DMG = 1.0;
 
 export const RUBY = {
   /** Сила: × к уникальному того же класса (+15%, у меча 4.5 → ×5.2). */
@@ -1388,8 +1388,8 @@ export function attackPointEligible(w: { cls: string; tier: string }): boolean {
   return w.cls !== "shield" && (w.tier === "legendary" || w.tier === "ruby" || w.tier === "craft");
 }
 
-/** «Мастерство» редкого исхода крафта (≈ рубиновое + 20%) — по нему редкое мастерское узнают везде (рамка со свечением). */
-export const CRAFT_RARE_POW = 0.38;
+/** «Мастерство» редкого исхода крафта (ровно рубиновое, +15% к уникальному) — по нему редкое мастерское узнают везде (рамка со свечением). */
+export const CRAFT_RARE_POW = 0.15;
 
 /** Мастерское оружие редкого исхода крафта. */
 export function isCraftRare(w: { tier: string; cp?: number } | null | undefined): boolean {

@@ -105,10 +105,10 @@ export interface CraftMethodDef {
 }
 
 export const CRAFT_METHODS: Record<CraftMethodId, CraftMethodDef> = {
-  forge: { name: "Ковка", lv: 1, note: "надёжно: провал редко, но и редкий исход реже", cost: 150, odds: [5, 50, 30, 12, 3], floorAdd: 0, rollAdd: 0 },
-  temper: { name: "Закалка", lv: 3, note: "роллы крепче: +6 очков к каждому", cost: 250, odds: [15, 40, 25, 14, 6], floorAdd: 6, rollAdd: 0 },
-  carve: { name: "Резьба", lv: 5, note: "тоньше: +1 ролл к исходу (до 4)", cost: 250, odds: [15, 40, 25, 14, 6], floorAdd: 0, rollAdd: 1 },
-  age: { name: "Выдержка", lv: 8, note: "риск: провал чаще, отличный и редкий — вдвое чаще", cost: 400, odds: [25, 25, 22, 18, 10], floorAdd: 0, rollAdd: 0 },
+  forge: { name: "Ковка", lv: 1, note: "надёжно: провал редко, но и редкий исход реже", cost: 350, odds: [5, 50, 30, 12, 3], floorAdd: 0, rollAdd: 0 },
+  temper: { name: "Закалка", lv: 3, note: "роллы крепче: +6 очков к каждому", cost: 600, odds: [15, 40, 25, 14, 6], floorAdd: 6, rollAdd: 0 },
+  carve: { name: "Резьба", lv: 5, note: "тоньше: +1 ролл к исходу (до 4)", cost: 600, odds: [15, 40, 25, 14, 6], floorAdd: 0, rollAdd: 1 },
+  age: { name: "Выдержка", lv: 8, note: "риск: провал чаще, отличный и редкий — вдвое чаще", cost: 900, odds: [25, 25, 22, 18, 10], floorAdd: 0, rollAdd: 0 },
 };
 export const CRAFT_METHOD_IDS: readonly CraftMethodId[] = ["forge", "temper", "carve", "age"];
 
@@ -128,25 +128,25 @@ export interface CraftOutcomeDef {
   color: string;
 }
 
-/** Исходы по порядку: 0 — провал. Сила: обычный = уникальное, хороший ≈ рубиновое, редкий ≈ рубиновое + 20%. */
+/** Исходы по порядку: 0 — провал. Сила: обычный = уникальное; хороший/отличный/редкий — не выше рубинового (максимум +15% к уникальному). */
 export const CRAFT_OUTCOMES: readonly CraftOutcomeDef[] = [
   { name: "Провал", rolls: 0, pow: 0, floor: 0, color: "#ff6b6b" },
   { name: "Обычный", rolls: 2, pow: 0, floor: 1, color: "#e6e0d0" },
-  { name: "Хороший", rolls: 3, pow: 0.15, floor: 6, color: "#7fe08a" },
-  { name: "Отличный", rolls: 3, pow: 0.25, floor: 12, color: "#6fc3ff" },
+  { name: "Хороший", rolls: 3, pow: 0.05, floor: 6, color: "#7fe08a" },
+  { name: "Отличный", rolls: 3, pow: 0.10, floor: 12, color: "#6fc3ff" },
   { name: "Редкий", rolls: 4, pow: CRAFT_RARE_POW, floor: 18, color: "#ffb347" },
 ];
 
 export const CRAFT = {
   /** Материалов в одном крафте. */
-  maxMats: 3,
+  maxMats: 6,
   /** Роллов у оружия — не больше. */
   maxRolls: 4,
   /**
    * Каждая копия материала сверх первой — потолок его ролла +capStep (×1.15, ×1.30); эту прибавку
    * оплачивают остальные роллы поровну — сумма потолков на оружии та же (2026-10-19, вместо «+8 очков к минимуму»).
    */
-  capStep: 0.15,
+  capStep: 0,
   /** Камень-катализатор: уровни сверх этого шансы не улучшают. */
   gemLvCap: 5,
   /** Камень за уровень: −2 к провалу, +1 к отличному, +1 к редкому (веса до нормировки). */
@@ -213,12 +213,12 @@ export interface CraftRecipe {
 }
 
 export const CRAFT_RECIPES: readonly CraftRecipe[] = [
-  { id: "webweaver", name: "Ткач паутины", cls: "bow", mats: ["web", "web", "bone"], cat: "sting", method: "temper", star: "atkSpeedPct", lore: "Тетива из паучьего шёлка поёт быстрее ветра." },
-  { id: "frostguard", name: "Ледяной страж", cls: "hammer", mats: ["bone", "bone", "alloy"], cat: "frost", method: "age", star: "vamp", lore: "Холод сковывает врага, а сила его уходит к владельцу." },
-  { id: "dragonblood", name: "Кровь дракона", cls: "dagger", mats: ["scale", "scale", "scale"], cat: "gem:luc", method: "temper", star: "critChance", lore: "Клинок из чешуи помнит, куда бить." },
-  { id: "ashstaff", name: "Посох пепла", cls: "staff", mats: ["bone", "bone", "scale"], cat: "gem:int", method: "carve", star: "critChance", lore: "Кость и пламя: каждый огнешар — как удар грома." },
-  { id: "stormfang", name: "Клык бури", cls: "spear", mats: ["web", "scale", "alloy"], cat: null, method: "forge", star: "dmgFlat", lore: "Наконечник, что пробивает ряды насквозь." },
-  { id: "crusher", name: "Сокрушитель", cls: "sword", mats: ["alloy", "alloy", "alloy"], cat: "gem:str", method: "forge", star: "dmgFlat", lore: "Простая сталь в руке силы — тяжелее любого молота." },
+  { id: "webweaver", name: "Ткач паутины", cls: "bow", mats: ["web", "web", "web", "bone", "bone", "bone"], cat: "sting", method: "temper", star: "atkSpeedPct", lore: "Тетива из паучьего шёлка поёт быстрее ветра." },
+  { id: "frostguard", name: "Ледяной страж", cls: "hammer", mats: ["bone", "bone", "bone", "alloy", "alloy", "alloy"], cat: "frost", method: "age", star: "vamp", lore: "Холод сковывает врага, а сила его уходит к владельцу." },
+  { id: "dragonblood", name: "Кровь дракона", cls: "dagger", mats: ["scale", "scale", "scale", "scale", "scale", "scale"], cat: "gem:luc", method: "temper", star: "critChance", lore: "Клинок из чешуи помнит, куда бить." },
+  { id: "ashstaff", name: "Посох пепла", cls: "staff", mats: ["bone", "bone", "bone", "scale", "scale", "scale"], cat: "gem:int", method: "carve", star: "critChance", lore: "Кость и пламя: каждый огнешар — как удар грома." },
+  { id: "stormfang", name: "Клык бури", cls: "spear", mats: ["web", "web", "scale", "scale", "alloy", "alloy"], cat: null, method: "forge", star: "dmgFlat", lore: "Наконечник, что пробивает ряды насквозь." },
+  { id: "crusher", name: "Сокрушитель", cls: "sword", mats: ["alloy", "alloy", "alloy", "alloy", "alloy", "alloy"], cat: "gem:str", method: "forge", star: "dmgFlat", lore: "Простая сталь в руке силы — тяжелее любого молота." },
 ];
 
 /** Полный состав рецепта (для найденных). */

@@ -1129,6 +1129,21 @@ export const MOB_CAMPS: {
   { x: 15, z: 166, type: "stormSpirit", count: 4, spread: 12, ring: 0.85, jitter: 0.4 }, // север
   { x: 166, z: -117, type: "burrowBeast", count: 4, spread: 12 }, // восток-юго-восток
 ];
+// Порядок на поляне: сила лагеря задаёт радиус от лагеря. Слабые — в 42–70 м,
+// средние — 90–150, сильные — 180+, самые сильные — на краю карты (240 м).
+// Углы сохраняем от прежней раскладки, чтобы не залезть в озеро/гору.
+{
+  const cx = -55, cz = -55;
+  const minLv = 3, maxLv = 45;
+  for (const c of MOB_CAMPS) {
+    const lv = ELITE_MOBS[c.type]?.level ?? minLv;
+    const t = Math.max(0, Math.min(1, (lv - minLv) / (maxLv - minLv)));
+    const r = 42 + t * 198;
+    const a = Math.atan2(c.z - cz, c.x - cx);
+    c.x = Math.round((cx + Math.cos(a) * r) * 10) / 10;
+    c.z = Math.round((cz + Math.sin(a) * r) * 10) / 10;
+  }
+}
 
 /** Осколок босса: мелкий, быстрый, дохлый. */
 export const SLIME_CFG: MobConfig = {
