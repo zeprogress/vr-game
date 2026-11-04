@@ -23,6 +23,7 @@ export const TTS_VOICES: readonly TtsVoice[] = [
   { ref: "54076f8bfbc54979ad33764278e5e635", name: "Микки Маус" },
   { ref: "533f59d2feb543f1ba18b974bd88daad", name: "Китаец" },
   { ref: "3f64bf103dcb467bba29de69b792aeee", name: "Джавид" },
+  { ref: "74c6d46c3b7a48588f6a96e40803ae0e", name: "Макс Пейн" },
 ];
 
 export const TTS_DEFAULT_VOICE = TTS_VOICES[0].ref;

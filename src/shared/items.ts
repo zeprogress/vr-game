@@ -1363,15 +1363,14 @@ export function enchantRoll(holder: { ench?: EnchantDeck }, chance: number, rnd:
 
 /**
  * Точка атаки за лом — уникальное и рубиновое оружие (щит не атакует). Каждая удачная точка добавляет к урону.
- * Точить можно бесконечно: прибавка сходится к пределу, цена попытки растёт, шанс падает (без пола).
+ * Точить можно бесконечно: прибавка разгоняется, цена попытки растёт, шанс падает (без пола).
  */
 export const ATTACK_POINT = {
-  /** До этой точки кривая разгоняется: +1 = 1%, +20 = 50%. */
+  /** Прибавка на первой точке. */
+  first: 0.01,
+  /** Суммарная прибавка на +20. */
   knee: 20,
-  /** Суммарная прибавка на колене. */
   kneeBonus: 0.5,
-  /** После колена — насыщение к общему пределу. */
-  tailK: 30,
   /** Шанс первой попытки и множитель на каждую следующую точку. */
   chance0: 0.9,
   chanceDecay: 0.8,
@@ -1382,19 +1381,15 @@ export const ATTACK_POINT = {
   costGrowth: 1.2,
 } as const;
 
-/** Предел суммарной прибавки к урону от точек (доля): +80%. */
-export const ATTACK_POINT_CAP = 0.8;
-
 /**
- * Прибавка к урону от n удачных точек. До +20 — разгон (1% на +1, 50% на +20),
- * дальше — насыщение к 80%: каждый следующий успех даёт всё меньше.
+ * Прибавка к урону от n удачных точек. Кривая разгоняется: +1 = 1%, +20 = 50%,
+ * каждый следующий успех даёт больше предыдущего (без насыщения).
  */
 export function attackPointBonus(n: number): number {
   const k = Math.max(0, Math.floor(n));
-  if (k <= ATTACK_POINT.knee) {
-    return ATTACK_POINT.kneeBonus * (k / ATTACK_POINT.knee) ** (Math.log(50) / Math.log(20));
-  }
-  return ATTACK_POINT.kneeBonus + (ATTACK_POINT_CAP - ATTACK_POINT.kneeBonus) * (1 - Math.exp(-(k - ATTACK_POINT.knee) / ATTACK_POINT.tailK));
+  if (k === 0) return 0;
+  const power = Math.log(ATTACK_POINT.kneeBonus / ATTACK_POINT.first) / Math.log(ATTACK_POINT.knee);
+  return ATTACK_POINT.first * k ** power;
 }
 
 /** «Мастерство» редкого исхода крафта (ровно рубиновое, +15% к уникальному) — по нему редкое мастерское узнают везде (рамка со свечением). */
@@ -1427,7 +1422,7 @@ export function sharpPctOfPoints(n: number): number {
 
 /**
  * Насколько свечение заточки выцвело к белому: 0 — цвет тира, 1 — чисто белый.
- * Отрезок — с +20 до +25 удачных точек атаки (50%…54,6% прибавки).
+ * Отрезок — с +20 до +25 удачных точек атаки (50%…? прибавки, кривая разгоняется).
  */
 export function sharpWhiten(pct: number): number {
   const from = sharpPctOfPoints(20);
