@@ -205,7 +205,7 @@ import {
   type Progress,
   type StatName,
 } from "#shared/progression";
-import { canHoldTogether, equipHands, handsValid, unequipHand } from "#shared/hands";
+import { canHoldTogether, equipHands, handsValid, normalizeHands, unequipHand } from "#shared/hands";
 import { attrsFromTree, autoTree, canTake, cleanTaken, dropNode, skillModsFor, TREE_FX, treeBonusTotals, treeOf, treePointsAt, treeSkillState, type KeySpecial, type SkillMods } from "#shared/passiveTree";
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
 import { wallSlide } from "../sim/wallSlide";
@@ -2119,6 +2119,14 @@ export class ZoneRoom extends Room<ZoneState> {
       p.leftTier = l.tier;
       p.rightCls = r.cls;
       p.rightTier = r.tier;
+      {
+        const nh = { leftCls: p.leftCls, leftTier: p.leftTier, rightCls: p.rightCls, rightTier: p.rightTier };
+        normalizeHands(nh);
+        p.leftCls = nh.leftCls;
+        p.leftTier = nh.leftTier;
+        p.rightCls = nh.rightCls;
+        p.rightTier = nh.rightTier;
+      }
 
       // За спиной — только то, что игрок честно поднял (иначе уровень режем).
       rt.stowed = Array.isArray(msg.stowed)
@@ -13021,6 +13029,16 @@ export class ZoneRoom extends Room<ZoneState> {
     p.leftTier = savedHeld.left?.tier ?? "";
     p.rightCls = savedHeld.right?.cls ?? "";
     p.rightTier = savedHeld.right?.tier ?? "";
+    {
+      // Двуручное не занимает отдельный левый слот: старые сейвы могли
+      // сохранить его в обеих руках, из-за чего в левой появлялся «призрак».
+      const nh = { leftCls: p.leftCls, leftTier: p.leftTier, rightCls: p.rightCls, rightTier: p.rightTier };
+      normalizeHands(nh);
+      p.leftCls = nh.leftCls;
+      p.leftTier = nh.leftTier;
+      p.rightCls = nh.rightCls;
+      p.rightTier = nh.rightTier;
+    }
     this.heroCls(p);
     writeBag(p, restoreBag(rec?.bag));
     // Мёртвым в сейве не воскресаем в бою — входим с полным здоровьем.

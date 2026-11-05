@@ -1500,8 +1500,10 @@ export class PcInventory {
     const label = side === "left" ? (short ? "Левая" : "Левая рука") : short ? "Правая" : "Правая рука";
     // Двуручное (лук, посох, копьё, молот) — в правом слоте; левый — тусклой копией с пометкой.
     if (both && side === "left") {
+      // Двуручное не лежит отдельным предметом в левой руке — не рисуем
+      // там его «призрак». Слот просто занят, надеть сюда ничего нельзя.
       const c = div("pcinv-cell big locked");
-      setIcon(c, both.cls, undefined, both.tier);
+      c.textContent = "—";
       c.title = bothHandsNote(both.cls);
       // И сюда можно бросить оружие из сумки — наденется по своим правилам.
       c.addEventListener("dragover", (e) => {
