@@ -931,7 +931,7 @@ export const CHAIN = { jump: 7, falloff: 0.8 } as const;
 /** Аура исцеления: длительность и сколько «полных лечений» отдаёт за всё время. */
 export const HEAL_AURA = { duration: 6, totalMul: 1.6 } as const;
 /** Веер ножей: кровотечение — доля МАКС. HP цели в секунду (босс/осколки — в bossDiv раз меньше), bleedSec с. */
-export const FAN = { range: 9, halfAngle: 0.55, volleys: 3, dmgMult: 0.7, bleedHpFrac: 0.02, bleedSec: 5, bossDiv: 4 } as const;
+export const FAN = { range: 9, halfAngle: 0.55, volleys: 3, dmgMult: 0.7, bleedHpFrac: 0.05, bleedSec: 6, bossDiv: 2.5 } as const;
 
 /** Числа «Печати» (лечение — доля макс. HP в секунду; урон — у боевого мага). */
 export const SEAL = { duration: 6, healFracPerSec: 0.015, shield: 0.2, slow: 0.4, burnPerSec: 0.35 } as const;
