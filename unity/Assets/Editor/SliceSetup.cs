@@ -365,32 +365,25 @@ public static class SliceSetup
         return hi > lo ? hi - lo : 1f;
     }
 
-    /** Крест из двух вертикальных квадов — дешёвый дальний LOD травы. */
+    /** Дальний LOD: несколько тонких зелёных лезвий, без текстуры и UV. */
     static Mesh GrassCrossMesh()
     {
         var verts = new List<Vector3>();
-        var uvs = new List<Vector2>();
         var tris = new List<int>();
-        void Quad(float angle)
+        void Blade(float angle, float w)
         {
             float c = Mathf.Cos(angle), s = Mathf.Sin(angle);
             int b = verts.Count;
-            verts.Add(new Vector3(-0.5f * c, 0, -0.5f * s));
-            verts.Add(new Vector3(0.5f * c, 0, 0.5f * s));
-            verts.Add(new Vector3(0.5f * c, 1, 0.5f * s));
-            verts.Add(new Vector3(-0.5f * c, 1, -0.5f * s));
-            // Grass.png — узкая цветная полоса слева, остальное белый фон.
-            // Берём только полосу, иначе дальние квады выглядели белыми точками.
-            uvs.Add(new Vector2(0.01f, 0)); uvs.Add(new Vector2(0.19f, 0));
-            uvs.Add(new Vector2(0.19f, 1)); uvs.Add(new Vector2(0.01f, 1));
+            verts.Add(new Vector3(-w * c, 0, -w * s));
+            verts.Add(new Vector3(w * c, 0, w * s));
+            verts.Add(new Vector3(w * 0.35f * c, 1, w * 0.35f * s));
+            verts.Add(new Vector3(-w * 0.35f * c, 1, -w * 0.35f * s));
             tris.Add(b); tris.Add(b + 1); tris.Add(b + 2);
             tris.Add(b); tris.Add(b + 2); tris.Add(b + 3);
         }
-        Quad(0f);
-        Quad(Mathf.PI / 2f);
-        var mesh = new Mesh { name = "GrassFarCross" };
+        for (int i = 0; i < 4; i++) Blade(i * Mathf.PI / 4f, 0.09f);
+        var mesh = new Mesh { name = "GrassFarBlades" };
         mesh.SetVertices(verts);
-        mesh.SetUVs(0, uvs);
         mesh.SetTriangles(tris, 0);
         var normals = new Vector3[verts.Count];
         for (int i = 0; i < normals.Length; i++) normals[i] = Vector3.up;
@@ -575,15 +568,13 @@ public static class SliceSetup
 
                 Material farMat = null;
                 Mesh cross = null;
-                var grassTex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Models/Nature/Grass.png");
-                if (grassTex)
                 {
+                    // Дальний LOD — простые зелёные лезвия без текстуры. Текстура
+                    // Grass.png содержит белый фон, и на дальних квадах читалась
+                    // белыми квадратами; для дальней травы цвет важнее детали.
                     farMat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
                     farMat.name = "GrassFarMat";
-                    farMat.SetTexture("_BaseMap", grassTex);
-                    farMat.SetFloat("_AlphaClip", 1f);
-                    farMat.EnableKeyword("_ALPHATEST_ON");
-                    farMat.SetFloat("_Cutoff", 0.32f);
+                    farMat.SetColor("_BaseColor", new Color(0.38f, 0.55f, 0.22f));
                     farMat.SetFloat("_Cull", 0f);
                     farMat.SetFloat("_Smoothness", 0f);
                     farMat.SetFloat("_Metallic", 0f);
