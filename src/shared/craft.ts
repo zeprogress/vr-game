@@ -57,6 +57,9 @@ export function isCraftItem(v: unknown): v is CraftItemId {
 /** Переплавка: столько лома → один сплав. */
 export const CRAFT_SMELT = 300;
 
+/** Сколько единиц материала тратит одна ячейка крафта. */
+export const CRAFT_MAT_COST = 2;
+
 /** Особый ролл катализатора. */
 const CAT_ROLL: Record<CraftCatId, AffixSub> = { frost: "chill", sting: "venom" };
 
@@ -239,7 +242,7 @@ export const CRAFT_RECIPES: readonly CraftRecipe[] = [
 
 /** Полный состав рецепта (для найденных). */
 export function recipeText(r: CraftRecipe): string {
-  const mats = groupMats(r.mats).map(([m, n]) => (n > 1 ? `${CRAFT_ITEMS[m].name} ×${n}` : CRAFT_ITEMS[m].name)).join(" + ");
+  const mats = groupMats(r.mats).map(([m, n]) => `${CRAFT_ITEMS[m].name} ×${n * CRAFT_MAT_COST}`).join(" + ");
   const cat = r.cat === null ? "" : ` + ${catName(r.cat)}`;
   return `${WEAPON_NOUN[r.cls].name} + ${mats}${cat} · ${CRAFT_METHODS[r.method].name} · ★ ${AFFIX_NAME[r.star]} сверх предела`;
 }
@@ -428,7 +431,7 @@ export function craftWeapon(
   rnd: () => number = Math.random,
 ): CraftResult {
   const need = new Map<CraftMatId, number>();
-  for (const m of i.mats) need.set(m, (need.get(m) ?? 0) + 1);
+  for (const m of i.mats) need.set(m, (need.get(m) ?? 0) + CRAFT_MAT_COST);
   for (const [m, n] of need) {
     if ((have.stock[m] ?? 0) < n) return { ok: false, text: `Не хватает: ${CRAFT_ITEMS[m].name} (нужно ${n}, есть ${have.stock[m] ?? 0}).` };
   }

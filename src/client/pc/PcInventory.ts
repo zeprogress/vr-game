@@ -28,6 +28,7 @@ import {
   CRAFT_OUTCOMES,
   CRAFT_RECIPES,
   CRAFT_SMELT,
+  CRAFT_MAT_COST,
   craftCode,
   craftOdds,
   matchRecipe,
@@ -1378,7 +1379,7 @@ export class PcInventory {
       const acts: [string, () => void, boolean?][] = [];
       if (def.kind === "cat") {
         acts.push([`⚒ В крафт — катализатором`, () => this.toCraft(() => (sel.cat = id))]);
-      } else if (sel.mats.length < CRAFT.maxMats && used < n) {
+      } else if (sel.mats.length < CRAFT.maxMats && (used + 1) * CRAFT_MAT_COST <= n) {
         acts.push([`⚒ В крафт — материалом (${sel.mats.length + 1} из ${CRAFT.maxMats})`, () => this.toCraft(() => sel.mats.push(id as CraftMatId))]);
       } else acts.push(["⚒ Открыть крафт", () => this.toCraft(() => undefined)]);
       acts.push(["🎁 Подарить…", () => this.askGift(def.name, `m:${id}`, n)]);
@@ -2187,7 +2188,7 @@ export class PcInventory {
     if (CRAFT_METHODS[sel.method].lv > smith.lv) sel.method = "forge";
     if (sel.cat && !(stock.get(sel.cat as CraftItemId) ?? 0) && !gems.some(([k]) => k === sel.cat)) sel.cat = null;
     const used = (m: CraftMatId): number => sel.mats.filter((x) => x === m).length;
-    while (sel.mats.some((m) => used(m) > (stock.get(m) ?? 0))) sel.mats.splice(sel.mats.findIndex((m) => used(m) > (stock.get(m) ?? 0)), 1);
+    while (sel.mats.some((m) => used(m) * CRAFT_MAT_COST > (stock.get(m) ?? 0))) sel.mats.splice(sel.mats.findIndex((m) => used(m) * CRAFT_MAT_COST > (stock.get(m) ?? 0)), 1);
     const redraw = (): void => {
       this.craftRes = null;
       this.render();
@@ -2231,8 +2232,8 @@ export class PcInventory {
     const fillMats = (row: HTMLElement, after?: () => void): void => {
       for (const m of CRAFT_MATS) {
         const have = stock.get(m) ?? 0;
-        item(row, iconHtml(`m.${m}` as IconKey), CRAFT_ITEMS[m].name, String(have), have - used(m) > 0 && !full() ? (used(m) ? "on" : "") : "off",
-          `${CRAFT_ITEMS[m].name} → ${AFFIX_NAME[matRoll(m, sel.cls)]}. Есть ${have}. Откуда: ${CRAFT_ITEMS[m].src}.${m === "alloy" ? " Сплав делается из лома — «Переплавка лома» слева." : ""}${full() ? " Ячейки полны — убери материал." : ""}`,
+        item(row, iconHtml(`m.${m}` as IconKey), CRAFT_ITEMS[m].name, String(have), have - used(m) * CRAFT_MAT_COST >= CRAFT_MAT_COST && !full() ? (used(m) ? "on" : "") : "off",
+          `${CRAFT_ITEMS[m].name} → ${AFFIX_NAME[matRoll(m, sel.cls)]}. Есть ${have}; одна ячейка тратит ${CRAFT_MAT_COST}. Откуда: ${CRAFT_ITEMS[m].src}.${m === "alloy" ? " Сплав делается из лома — «Переплавка лома» слева." : ""}${full() ? " Ячейки полны — убери материал." : ""}`,
           () => {
             sel.mats.push(m);
             after?.();
@@ -2443,7 +2444,7 @@ export class PcInventory {
 
     // Проверка запасов: что есть и чего не хватает.
     const need = new Map<CraftMatId, number>();
-    for (const m of sel.mats) need.set(m, (need.get(m) ?? 0) + 1);
+    for (const m of sel.mats) need.set(m, (need.get(m) ?? 0) + CRAFT_MAT_COST);
     const lacks: string[] = [];
     for (const [m, n] of need) if ((stock.get(m) ?? 0) < n) lacks.push(CRAFT_ITEMS[m].name);
     if (d.scrap < meth.cost) lacks.push("лома");

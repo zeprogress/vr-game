@@ -289,7 +289,7 @@ import { randomUUID } from "node:crypto";
 import { attrOf } from "#shared/attrs2";
 import { giveItems, parseTradeItem, parseTradeList, takeItems, takenName, tradeLog, tradeViewOf, TRADE_ACTS, type InvSnap, type Taken, type TradeAct, type TradeItem, type TradeSession, type TradeSide } from "../trade";
 import { KillRates } from "../sim/killRate";
-import { addStock, CRAFT, CRAFT_ITEMS, CRAFT_PROC, CRAFT_SMELT, craftStockOf, craftWeapon, parseCraftCode, pcInvCraft, recipeBookOf, rollCraftDrop, smithFightMul, smithLevel } from "#shared/craft";
+import { addStock, CRAFT, CRAFT_ITEMS, CRAFT_MAT_COST, CRAFT_PROC, CRAFT_SMELT, craftStockOf, craftWeapon, parseCraftCode, pcInvCraft, recipeBookOf, rollCraftDrop, smithFightMul, smithLevel } from "#shared/craft";
 import { applyJewelOp, gemName, JEWEL_ACTS, jewelBonus, jewelOpFrom, jewelPatch, jewelsOf, newNecklace, newRing, pcInvJewels, ringName, ringSkillBonusOf, rollJewelDrop, type JewelAct, type JewelSave, type RingInst } from "#shared/jewels";
 import { emptyRingSkillBonus, ringEnchant, ringEnchantRow, ringSkillMul, type RingSkillBonus } from "#shared/ringAffixes";
 import { NECK_TIER_NAME, neckEnchant, neckEnchantRow, neckLabel, type NeckInst } from "#shared/necklaces";
@@ -6013,7 +6013,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const xp0 = rec.smithXp ?? 0;
     const r = craftWeapon(input, { stock, gems: jewelsOf(rec).gems, scrap: bagCount(bag, "scrap"), book, smithXp: xp0 }, t?.p.nick || rec.nick || norm);
     if (!r.ok) return r;
-    for (const m of input.mats) addStock(stock, m, -1);
+    for (const m of input.mats) addStock(stock, m, -CRAFT_MAT_COST);
     takeFromBag(bag, "scrap", r.cost);
     if (r.refund) addToBag(bag, "scrap", r.refund);
     const patch: Partial<PlayerRecord> = { mats: stock, smithXp: xp0 + r.xp };
