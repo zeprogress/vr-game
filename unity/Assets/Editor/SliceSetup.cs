@@ -13,6 +13,8 @@ using Zep;
 public static class SliceSetup
 {
     const string Root = "Assets/Slice";
+    /** Трава в Unity временно выключена: не создаём ни статичные чанки, ни GrassWeb/GrassNear. */
+    const bool GrassEnabled = false;
 
     /// После смены версии glTFast старые импорты ссылаются на шейдеры прошлой версии (розовые материалы).
     [MenuItem("Zep/Reimport Models")]
@@ -554,7 +556,7 @@ public static class SliceSetup
         // на всей карте стоили бы слишком много; LOD-чанки переключаются по
         // расстоянию до камеры, как трава с LOD в вебе.
         var grassModel = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Nature/Grass_Common_Short.gltf");
-        if (grassModel)
+        if (GrassEnabled && grassModel)
         {
             var gm = grassModel.GetComponentInChildren<MeshFilter>();
             var gr = grassModel.GetComponentInChildren<MeshRenderer>();
