@@ -13,6 +13,7 @@ namespace Zep
         public HeroRig Rig => rig;
         Vector3 lastPos;
         Nameplate plate;
+        StunStars stunStars;
         SliceAssets assets;
         bool isBot;
         /// Уровень голубым — у живых игроков и ботов одинаково (RemoteAvatar.ts).
@@ -28,6 +29,7 @@ namespace Zep
             plate.scaleMul = 1.5f;
             rig = gameObject.AddComponent<HeroRig>();
             rig.Init(assets);
+            stunStars = StunStars.Attach(transform);
             rig.Apply(s.skin, s.leftCls, s.leftTier, s.rightCls, s.rightTier);
             transform.position = Target();
             lastPos = transform.position;
@@ -89,6 +91,11 @@ namespace Zep
             string lvl = (string.IsNullOrEmpty(state.title) ? "" : state.title + " · ") + state.level + " ур.";
             plate.SetInfo(state.nick, Color.white, lvl, LevelColor, isBot ? 4 : state.plat, 0);
             plate.SetBars(state.dead != 0 ? 0 : state.maxHp > 0 ? Mathf.Clamp01(state.hp / state.maxHp) : 1, assets.XpFrac(state.level, state.xp));
+            if (stunStars)
+            {
+                stunStars.SetHeight(Mathf.Max(Hero.EyeHeight + 0.5f, rig.ModelHeight + 0.35f));
+                stunStars.SetOn(state.stunned != 0 && state.dead == 0);
+            }
         }
     }
 }

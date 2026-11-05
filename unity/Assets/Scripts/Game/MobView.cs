@@ -26,6 +26,7 @@ namespace Zep
         /// Цвет плашки: босс красный, стрелок оранжевый, остальные голубовато-белые (Mob.ts tagColor).
         Color tagColor;
         MaterialPropertyBlock mpb;
+        StunStars stunStars;
         static readonly int EmissionId = Shader.PropertyToID("_EmissionColor");
 
         /// Щит отражения (MobState.reflecting) — светящаяся сфера вокруг тела, как reflectShield в вебе
@@ -80,6 +81,7 @@ namespace Zep
             bodyRadius = assets.bodyRadius;
             tagColor = s.kind == "boss" ? new Color(1f, 0.3f, 0.3f) : s.kind == "spitter" ? new Color(1f, 0.6f, 0.25f) : new Color(0.85f, 0.9f, 1f);
             plate = Nameplates.Create(transform);
+            stunStars = StunStars.Attach(transform);
             // Пугало лагеря: над ним табло со счётом (MobState.info — сервер шлёт «ник\nDPS · макс. удар»).
             if (scare || s.model == "scarecrow")
                 dummyBoard = MobPlate.Create(transform, 2.5f); // над соломенной шляпой пугала, как табло в вебе
@@ -491,6 +493,11 @@ namespace Zep
             string lvl = state.kind == "boss" ? null : (state.mobLevel > 0 ? state.mobLevel : 1) + " ур.";
             plate.SetInfo(string.IsNullOrEmpty(state.mobName) ? "Слизень" : state.mobName, Color.white, lvl, tagColor, 0, state.armor);
             plate.SetBars(state.maxHp > 0 && state.hp < state.maxHp ? Mathf.Clamp01(state.hp / state.maxHp) : -1, -1);
+            if (stunStars)
+            {
+                stunStars.SetHeight(bodyRadius * 2f * sc + 0.55f, sc);
+                stunStars.SetOn(state.stunned != 0 && state.dead == 0);
+            }
 
             mpb.SetColor(EmissionId, Color.white * flash * 1.5f);
             foreach (var r in rends) if (r) r.SetPropertyBlock(mpb);
