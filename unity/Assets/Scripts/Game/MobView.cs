@@ -495,7 +495,7 @@ namespace Zep
             plate.SetBars(state.maxHp > 0 && state.hp < state.maxHp ? Mathf.Clamp01(state.hp / state.maxHp) : -1, -1);
             if (stunStars)
             {
-                stunStars.SetHeight(bodyRadius * 2f * sc + 0.55f, sc);
+                stunStars.SetHeight(bodyRadius * 2f * sc + 0.18f, sc);
                 stunStars.SetOn(state.stunned != 0 && state.dead == 0);
             }
 

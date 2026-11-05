@@ -23,7 +23,7 @@ namespace Zep
         {
             var template = ZoneNet.I != null && ZoneNet.I.Assets ? ZoneNet.I.Assets.unlitAdd : null;
             mat = template ? new Material(template) : new Material(Shader.Find("Universal Render Pipeline/Unlit"));
-            mat.SetColor("_BaseColor", new Color(1f, 0.92f, 0.4f, 1f));
+            mat.SetColor("_BaseColor", new Color(1f, 0.98f, 0.55f, 1f));
             mat.renderQueue = 3000;
 
             spin = new GameObject("spin").transform;
@@ -34,9 +34,9 @@ namespace Zep
                 cube.name = "stunStar" + i;
                 Destroy(cube.GetComponent<Collider>());
                 cube.transform.SetParent(spin, false);
-                cube.transform.localScale = Vector3.one * 0.13f;
+                cube.transform.localScale = Vector3.one * 0.2f;
                 float a = (i / 3f) * Mathf.PI * 2f;
-                cube.transform.localPosition = new Vector3(Mathf.Cos(a) * 0.32f, Mathf.Sin(a * 2f) * 0.05f, Mathf.Sin(a) * 0.32f);
+                cube.transform.localPosition = new Vector3(Mathf.Cos(a) * 0.45f, Mathf.Sin(a * 2f) * 0.06f, Mathf.Sin(a) * 0.45f);
                 cube.transform.localRotation = Quaternion.Euler(0.6f, a * Mathf.Rad2Deg, 0.4f);
                 var r = cube.GetComponent<Renderer>();
                 r.sharedMaterial = mat;
@@ -64,7 +64,7 @@ namespace Zep
             if (!spin || !spin.gameObject.activeSelf) return;
             spin.Rotate(0f, Time.deltaTime * 360f, 0f, Space.Self);
             pulse += Time.deltaTime * 6f;
-            if (mat) mat.SetColor("_BaseColor", new Color(1f, 0.92f, 0.4f, 0.72f + Mathf.Sin(pulse) * 0.18f));
+            if (mat) mat.SetColor("_BaseColor", new Color(1f, 0.98f, 0.55f, 0.9f + Mathf.Sin(pulse) * 0.1f));
         }
 
         void OnDestroy()

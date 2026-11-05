@@ -93,7 +93,7 @@ namespace Zep
             plate.SetBars(state.dead != 0 ? 0 : state.maxHp > 0 ? Mathf.Clamp01(state.hp / state.maxHp) : 1, assets.XpFrac(state.level, state.xp));
             if (stunStars)
             {
-                stunStars.SetHeight(Mathf.Max(Hero.EyeHeight + 0.5f, rig.ModelHeight + 0.35f));
+                stunStars.SetHeight(Mathf.Max(Hero.EyeHeight + 0.15f, rig.ModelHeight + 0.1f));
                 stunStars.SetOn(state.stunned != 0 && state.dead == 0);
             }
         }
