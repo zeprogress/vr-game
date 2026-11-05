@@ -5,7 +5,7 @@ import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { RAID } from "#shared/raid";
 import { MOB_MID_K, BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, WEB, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER, ICE_GIANT, MOB_SWING } from "#shared/mobs";
 import { DUN_MOB_CAMPS, DUN_X, DUN_Z, dunFloorLocal, dunProject, dunWorld, inDunRegion } from "#shared/dungeon";
-import { ARMOR_DROP, ARMOR_PARTS, armorBaseLevelMul, armorGoldDropChance, armorLegendaryDropChance, armorLevelMul, ARMOR_LEVEL_GATE, levelRampMul, levelRiseFallMul, levelWindowMul, rollArmor, type ArmorInstance } from "#shared/armor";
+import { ARMOR_DROP, ARMOR_PARTS, armorGoldDropChance, armorLegendaryDropChance, levelRampMul, levelRiseFallMul, levelWindowMul, rollArmor, type ArmorInstance } from "#shared/armor";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
 import { PLAGUE } from "#shared/classes2";
 import { catProject, inCatRegion } from "#shared/catacombs";
@@ -4518,18 +4518,18 @@ export class ZoneSim {
         }
       } else {
         // Обычный и элитный моб: обычная и золотая часть — два независимых шанса; золото реже в ARMOR_GOLD.dropDiv раз.
-        // Обычная часть: на 1-м уровне как есть, к 53-му падает до нуля (armorBaseLevelMul).
-        if (!m.bossFight && Math.random() < ARMOR_DROP[kind] * champMul * armorBaseLevelMul(m.eliteLevel)) {
+        // Обычная броня: 1–30, полный шанс на 1, к 30 затухает.
+        if (!m.bossFight && Math.random() < ARMOR_DROP[kind] * champMul * levelWindowMul(m.eliteLevel, 1, 30)) {
           const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
           rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "base", undefined, armorLvl) });
         }
-        // Золотая — с 1-го уровня растёт линейно, к 53-му — как было (ARMOR_LEVEL_GATE).
-        if (!m.bossFight && Math.random() < armorGoldDropChance(kind) * champMul * armorLevelMul(m.eliteLevel, ARMOR_LEVEL_GATE.gold)) {
+        // Золотая: 20–50, разгон 20→30, затухание 30→50.
+        if (!m.bossFight && Math.random() < armorGoldDropChance(kind) * champMul * levelRiseFallMul(m.eliteLevel, 20, 30, 50)) {
           const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
           rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "gold", undefined, armorLvl) });
         }
-        // Уникальная часть растёт с уровнем моба: с 1-го уровня — ноль, к 53-му — как было (ARMOR_LEVEL_GATE).
-        if (Math.random() < armorLegendaryDropChance(kind) * champMul * armorLevelMul(m.eliteLevel, ARMOR_LEVEL_GATE.legendary)) {
+        // Уникальная: 40–75, на 40 только начинается, к 75 — полный шанс.
+        if (Math.random() < armorLegendaryDropChance(kind) * champMul * levelRampMul(m.eliteLevel, 40, 75)) {
           const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
           rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid(), Math.random, "legendary", undefined, armorLvl) });
         }
