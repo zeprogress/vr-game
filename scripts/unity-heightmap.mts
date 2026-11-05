@@ -20,7 +20,7 @@ import { HUB, HUB_CENTER } from "../src/shared/hub.ts";
 import { CINE_PATHS, INTRO_PATH, ROTATION, ROTATION_IDLE } from "../src/client/spectator/cine.ts";
 
 const RES = 1025; // Unity: 2^n + 1
-const HALF = WORLD.size / 2 + 12;
+const HALF = WORLD.size / 2 + 160; // декоративный запас по периметру (Unity-поляна заметно шире)
 // Квадрат со сдвигом к югу: плато рейд-босса (PLAY_BOUNDS.z0) лежит за краем поляны — как кеш высот сервера.
 const size = HALF * 2 + Math.max(0, -HALF - (PLAY_BOUNDS.z0 - 8));
 const x0 = -size / 2;
