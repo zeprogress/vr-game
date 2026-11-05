@@ -1361,8 +1361,14 @@ export class Mob {
   /** Отбросить моба: сильный импульс от источника (рассекающий удар и т.п.). */
   shove(dx: number, dz: number, power: number): void {
     if (this.dead || this.kind === "boss" || this.iceGiant || this.scarecrow || this.practice) return; // босса, гиганта и пугало с места не сдвинуть
-    this.vx += dx * power;
-    this.vz += dz * power;
+    // Движение мобов каждый тик заново задаёт vx/vz, поэтому одного импульса
+    // скорости не хватало — отбрасывание тут же гасилось. Сдвигаем сразу и
+    // оставляем импульс для прыжка/доводки.
+    const dist = Math.min(3, Math.max(0, power) * 0.22);
+    this.x += dx * dist;
+    this.z += dz * dist;
+    this.vx += dx * power * 0.6;
+    this.vz += dz * power * 0.6;
     this.vy += power * 0.35;
     this.grounded = false;
   }

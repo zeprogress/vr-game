@@ -10925,7 +10925,7 @@ export class ZoneRoom extends Room<ZoneState> {
                   ? rollCritMult("sword", Math.random, false, swordCrit.chance, swordCrit.mult, SWORD_CRIT_MULT, attrOf(pp, "luc"))
                   : 1;
               this.skillHitMob(ownerId, m, mult * hitDmg * critM, dx, dz, false, false, hitMagic, critM > 1, hit);
-              if (spear) this.sim.shoveMob(m.id, dx, dz, 4);
+              if (spear) this.sim.shoveMob(m.id, dx, dz, 8);
               if (cls === "assassin") slow(m.id, ASSASSIN_WHIRL_SLOW.sec, ASSASSIN_WHIRL_SLOW.mul);
             }
             if (cls === "battlemage" && i === hits - 1) {
