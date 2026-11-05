@@ -2127,6 +2127,7 @@ export class ZoneRoom extends Room<ZoneState> {
         p.rightCls = nh.rightCls;
         p.rightTier = nh.rightTier;
       }
+      this.clearDualGhost(p, rt);
 
       // За спиной — только то, что игрок честно поднял (иначе уровень режем).
       rt.stowed = Array.isArray(msg.stowed)
@@ -5501,6 +5502,23 @@ export class ZoneRoom extends Room<ZoneState> {
     return w;
   }
 
+  /**
+   * У парного оружия (меч/кинжал) вторая рука допустима только если на складе
+   * есть ВТОРОЙ отдельный экземпляр, а не тот же самый. Иначе в левой руке
+   * появлялся призрак второго клинка, которого у игрока нет.
+   */
+  private clearDualGhost(p: PlayerState, rt: Runtime): void {
+    if (!p.leftCls || p.leftCls !== p.rightCls || p.leftTier !== p.rightTier) return;
+    if (p.leftCls !== "sword" && p.leftCls !== "dagger") return;
+    const insts = rt.weapons.filter((w) => w.cls === p.leftCls && w.tier === p.leftTier);
+    const l = rt.equippedWeaponId.left;
+    const r = rt.equippedWeaponId.right;
+    if (insts.length >= 2 && !(l && l === r)) return;
+    p.leftCls = "";
+    p.leftTier = "";
+    rt.equippedWeaponId.left = null;
+  }
+
   private ensureHeldInstance(p: PlayerState, rt: Runtime, side: "left" | "right"): void {
     const c = heldIn(p, side);
     if (!c) return;
@@ -7300,6 +7318,7 @@ export class ZoneRoom extends Room<ZoneState> {
       fishAuto: false,
     };
     this.rt.set(id, rt);
+    this.clearDualGhost(p, rt);
     this.ensureHeldInstance(p, rt, "left");
     this.ensureHeldInstance(p, rt, "right");
     for (const s of rt.stowed) this.ensureWeaponInstance(rt, s.cls, s.tier);
