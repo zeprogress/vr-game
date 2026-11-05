@@ -157,6 +157,9 @@ export class PcInventory {
   private bagFilter: BagFilter = "all";
   /** Ник и облик героя (страница !inv — картинка героя; в игре — ник в сведениях). */
   private hero = { nick: "", skin: 0 };
+  /** Портрет героя переиспользуем между перерисовками: новый <img> на каждое действие мигал. */
+  private heroImg: HTMLImageElement | null = null;
+  private heroImgSkin = -1;
   private drag: DragSrc | null = null;
   private confirmEl: HTMLDivElement | null = null;
   private forging = false;
@@ -1045,11 +1048,18 @@ export class PcInventory {
   /** Страница !inv: герой в полный рост (картинка облика) — стоит на камне фона. */
   private stage(): HTMLDivElement {
     const st = div("pcinv-stage");
-    const img = document.createElement("img");
-    img.className = "pcinv-heroimg";
-    img.src = skinPicture(this.hero.skin);
-    img.alt = "";
-    img.draggable = false;
+    let img = this.heroImg;
+    if (!img) {
+      img = document.createElement("img");
+      img.className = "pcinv-heroimg";
+      img.alt = "";
+      img.draggable = false;
+      this.heroImg = img;
+    }
+    if (this.heroImgSkin !== this.hero.skin) {
+      this.heroImgSkin = this.hero.skin;
+      img.src = skinPicture(this.hero.skin);
+    }
     st.append(div("pcinv-heroshadow"), img);
     // Выбор облика — под куклой героя (CSS-класс .pcinv-skinpick ждал этого блока).
     if (this.hooks.setSkin && BOT_SKIN_LABELS.length > 1) {
