@@ -206,8 +206,9 @@ export function skillShow(id: SkillId, cls: ClassId, s: ShowStage): ShowAct[] | 
         add(ASSASSIN_LEAP.time, "crit", { x: m.x, y: m.y + bodyH(m), z: m.z }, { dyn: true });
         return acts;
       }
-      add(0, "stunBash", feet, { d: sk.castTime, r: sk.radius * R });
-      add(sk.castTime, "stunHit", feet, { r: sk.radius * R });
+      const burstR = (cls === "spearman" ? sk.radius + 2 : sk.radius) * R;
+      add(0, "stunBash", feet, { d: sk.castTime, r: burstR });
+      add(sk.castTime, "stunHit", feet, { r: burstR });
       if (cls === "battlemage") {
         // Громовой удар: молнии ещё по 3 мобам подальше.
         const far = mobs.filter((m) => Math.hypot(m.x - s.x, m.z - s.z) > sk.radius * 0.6).slice(0, 3);

@@ -10685,7 +10685,9 @@ export class ZoneRoom extends Room<ZoneState> {
           if (!pp || pp.dead) return;
           const px = pp.head.x;
           const pz = pp.head.z;
-          for (const m of around(px, pz, sk.radius)) {
+          // Подсечка копейщика бьёт шире обычного оглушающего удара: 7 м вместо 5.
+          const bashR = cls === "spearman" ? 7 * RAD + (tm.rad ?? 0) : sk.radius;
+          for (const m of around(px, pz, bashR)) {
             const [dx, dz] = dirTo(m, px, pz);
             const critM = bashCrit ? rollCritMult("sword", Math.random, false, bashCrit.chance, bashCrit.mult, SWORD_CRIT_MULT, attrOf(pp, "luc")) : 1;
             this.skillHitMob(ownerId, m, sk.dmgMult * pow.dmg * critM, dx, dz, false, false, pow.magic, critM > 1, hit);

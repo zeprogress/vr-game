@@ -239,7 +239,7 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   // Копьё: длинный выпад конусом перед собой, обе руки.
   // dmg 2.1 → 1.45 (2026-10-02: удары больше не пропадают в «окне» моба — копьё стало вдвое сильнее медианы).
   spear: {
-    name: WEAPON_NOUN.spear.name, dmg: 1.75 * 1.2, interval: 0.8, tempoSoft: 1, reach: 8, pierce: 3, // было 5 целей (2026-10-02); ×1.2 (2026-10-30)
+    name: WEAPON_NOUN.spear.name, dmg: 1.75 * 1.2, interval: 0.8, tempoSoft: 1, reach: 7, pierce: 3, // было 5 целей (2026-10-02); ×1.2 (2026-10-30)
     critBase: 0.05, critMult: 1.5, twoHanded: true, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Молот: тяжёлый физический удар + магическая волна вокруг цели (HAMMER). Удар +12% урона (2026-10-15).
@@ -695,7 +695,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     cooldown: 12, castTime: 0.5, radius: 5, dmgMult: 1, hits: 1, // 0.6 → 1 (2026-10-05)
     variants: {
       assassin: { name: "Смертельный прыжок", desc: "Прыжок на цель до {r:9} м: удар с гарантированным критом ×2 и оглушение {d:1.5} с" },
-      spearman: { name: "Подсечка", desc: "Древком по кругу: сбивает с ног всех рядом (оглушение {d:2} с) и замедляет на {d:6} с" },
+      spearman: { name: "Подсечка", desc: "Древком по кругу {r:7} м: сбивает с ног всех рядом (оглушение {d:2} с) и замедляет на {d:6} с" },
     },
   },
   arrowRain: {
