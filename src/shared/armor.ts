@@ -112,8 +112,8 @@ export const ARMOR_WEIGHT_BASE: Record<ArmorWeight, {
   heavy: { armor: 30, resist: 18, hp: 24, regen: 0.14, dodge: -0.005, move: -0.02, atk: -0.02 },
 };
 
-/** 2026-11-05: физ. и маг. защита с вещей сильно срезана (вдвое). */
-export const ARMOR_DEF_MUL = 0.5;
+/** 2026-11-05: физ. и маг. защита с вещей сильно срезана (до 30% от исходной). */
+export const ARMOR_DEF_MUL = 0.3;
 
 /** Вклад части в общий сет: нагрудник — 1.0, перчатки — 0.45. */
 export const ARMOR_SLOT_FACTOR: Record<ArmorPart, number> = {
