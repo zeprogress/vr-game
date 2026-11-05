@@ -5763,7 +5763,9 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     // Публичный адрес страницы: на домашнем сервере это адрес туннеля (PUBLIC_URL),
     // на VPS — обычный домен. Без переменной оставляем прежний прод-адрес.
-    const base = (process.env.PUBLIC_URL ?? "http://zepgame.duckdns.org").replace(/\/+$/, "");
+    const base = (process.env.PUBLIC_URL ?? "http://zepgame.duckdns.org")
+      .replace(/^https?:\/\//, "http://")
+      .replace(/\/+$/, "");
     this.reply(`@${nick} твой инвентарь: ${base}/inv?${encodeURIComponent(norm)}`);
   }
 
