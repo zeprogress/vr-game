@@ -173,6 +173,12 @@ export const BOSS_ADAPT = {
  */
 export function mobDamageLevelMul(level: number): number {
   const l = Math.max(1, Math.min(75, Math.floor(level) || 1));
+  return 1 + ((l - 1) / 74) * 1.5;
+}
+
+/** Множитель максимального HP моба: 1 ур. — ×1, 75 ур. — ×2 (только лагеря). */
+export function mobHpLevelMul(level: number): number {
+  const l = Math.max(1, Math.min(75, Math.floor(level) || 1));
   return 1 + (l - 1) / 74;
 }
 

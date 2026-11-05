@@ -3,7 +3,7 @@ import { QUEST } from "#shared/quests";
 import { AFFIX, BOW, COMBAT, DROP_CHANCE, EVENT, WEAPON_DROP_MUL, UNIQUE_DROP_MUL, goldDropMulForLevel, WORLD, PLAYER } from "#shared/constants";
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { RAID } from "#shared/raid";
-import { MOB_MID_K, BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, WEB, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER, ICE_GIANT, MOB_SWING } from "#shared/mobs";
+import { MOB_MID_K, BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, WEB, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER, ICE_GIANT, MOB_SWING, mobHpLevelMul } from "#shared/mobs";
 import { DUN_MOB_CAMPS, DUN_X, DUN_Z, dunFloorLocal, dunProject, dunWorld, inDunRegion } from "#shared/dungeon";
 import { ARMOR_DROP, ARMOR_PARTS, armorGoldDropChance, armorLegendaryDropChance, levelRampMul, levelRiseFallMul, levelWindowMul, rollArmor, type ArmorInstance } from "#shared/armor";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
@@ -3072,7 +3072,7 @@ export class ZoneSim {
           champ: !!champ,
           respawnSec: champ ? CHAMP_RESPAWN : def.respawnSec,
           name: champ ? `Вожак — ${def.name}` : def.name,
-          hp: def.hp * (champ?.hpMul ?? 1) * (def.champHpMul ?? 1),
+          hp: def.hp * (champ?.hpMul ?? 1) * (def.champHpMul ?? 1) * mobHpLevelMul(def.level),
           dmgMul: def.dmgMul * (champ?.dmgMul ?? 1) * (camp.dmgMul ?? 1),
           attackCooldown: (def.attackCooldown ?? MOB.attackCooldown) / (camp.atkMul ?? 1),
           scrapShared: camp.shareScrap === true,
