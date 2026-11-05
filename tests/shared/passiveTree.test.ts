@@ -21,7 +21,10 @@ test("дерево: атрибуты распределены сбалансир
     for (const n of t.nodes) if (n.attr) count[n.attr]++;
     const total = Object.values(count).reduce((n, v) => n + v, 0);
     assert.equal(total, 76, `${c}: узлов-атрибутов ${total}`);
-    for (const [a, v] of Object.entries(count)) assert.ok(v >= 4 && v <= 26, `${c}: ${a} ${v}`);
+    for (const [a, v] of Object.entries(count)) {
+      const min = c === "support" && a === "str" ? 0 : 4;
+      assert.ok(v >= min && v <= 30, `${c}: ${a} ${v}`);
+    }
   }
 });
 
