@@ -56,7 +56,7 @@ namespace Zep
             {
                 float yy = x * 0.34f + x * x * 0.07f;
                 float along = Mathf.Abs(x);
-                float width = 0.19f * (1f - along * 0.55f);
+                float width = 0.12f * (1f - along * 0.55f);
                 float d = Mathf.Abs(y - yy);
                 float body = Mathf.Clamp01((width - d) / width);
                 float core = Mathf.Clamp01((width * 0.38f - d) / (width * 0.38f));
@@ -217,7 +217,7 @@ namespace Zep
             var a = cam.WorldToScreenPoint(src);
             var b = cam.WorldToScreenPoint(p + Vector3.up * 0.55f);
             float angle = Mathf.Atan2(b.y - a.y, b.x - a.x) * Mathf.Rad2Deg;
-            I.Add(Kind.Claw, p + Vector3.up * 0.55f, 0.3f, new Color(1f, 0.94f, 0.68f), 1.05f, new Vector3(0, 0.2f, 0), null, angle);
+            I.Add(Kind.Claw, p + Vector3.up * 0.55f, 0.3f, new Color(1f, 0.94f, 0.68f), 0.95f, new Vector3(0, 0.2f, 0), null, angle);
         }
 
         void Add(Kind k, Vector3 p, float life, Color c, float size, Vector3 drift, string text = null, float forcedRot = float.NaN)

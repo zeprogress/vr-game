@@ -193,7 +193,7 @@ export interface SpecCamMsg {
 /** Числа урона по мобам за тик — батчем (см. MSG.dmgHits), только для спектатора. */
 export interface DmgHitsMsg {
   /** by — кто ударил (sessionId), mob — по кому: для журнала урона у ПК-игрока. */
-  hits: { x: number; y: number; z: number; dmg: number; by?: string; mob?: string; c?: DmgHitColor }[];
+  hits: { x: number; y: number; z: number; dmg: number; by?: string; mob?: string; c?: DmgHitColor; crit?: boolean }[];
 }
 
 /** Цвет числа урона: яд — зелёный, лечение — светло-зелёный (без поля — обычный белый). */

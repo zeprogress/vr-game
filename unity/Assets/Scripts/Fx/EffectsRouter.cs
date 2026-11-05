@@ -122,9 +122,10 @@ namespace Zep
                 if (cam && Vector2.Distance(new Vector2(p.x, p.z), new Vector2(cam.transform.position.x, cam.transform.position.z)) > Range) continue;
                 var color = h.Contains("c") ? h["c"] as string : null;
                 var by = h.Contains("by") ? h["by"] as string : null;
+                bool crit = h.Contains("crit") && h["crit"] is bool cb && cb;
                 Popups.Damage(p, F(h, "dmg", 0), color);
-                // Цветные числа — яд/кровь/огонь/лечение; когти рисуем только на обычных ударах.
-                if (color == null) HitClaw(p, AttackerPos(by));
+                // Цветные числа — яд/кровь/огонь/лечение; на крите свой эффект, росчерк не рисуем.
+                if (color == null && !crit) HitClaw(p, AttackerPos(by));
             }
         }
 
@@ -156,7 +157,8 @@ namespace Zep
             if (Time.unscaledTime - lastHitSparkAt < 0.025f) return;
             lastHitSparkAt = Time.unscaledTime;
             Popups.Claw(p, from);
-            // Небольшой сноп искр делает удар мечом ярче, но без вспышки крита.
+            // Маленькая тёплая вспышка + сноп искр: ярче, но тише крита.
+            Popups.Puff(p + Vector3.up * 0.55f, 0.4f, new Color(1f, 0.9f, 0.62f), 0.14f);
             Vfx.I?.Burst(p + Vector3.up * 0.55f, new Color(1f, 0.76f, 0.34f), count: 5, speed: 3.2f, life: 0.22f, size: 0.1f, grav: 2.5f);
         }
 

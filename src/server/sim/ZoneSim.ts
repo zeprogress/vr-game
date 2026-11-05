@@ -3692,7 +3692,7 @@ export class ZoneSim {
   /** Криты снарядов за тик: где показать красный «X». Комната разошлёт и очистит. */
   readonly critHits: { x: number; y: number; z: number; owner: string }[] = [];
   /** Числа урона у спектатора (?dmgNumbers) — комната сама решает, слать ли (см. state.dmgNumbers). */
-  readonly dmgHits: { x: number; y: number; z: number; dmg: number; by?: string; mob?: string; c?: DmgHitColor }[] = [];
+  readonly dmgHits: { x: number; y: number; z: number; dmg: number; by?: string; mob?: string; c?: DmgHitColor; crit?: boolean }[] = [];
   /** Моб увернулся от удара героя (или неуязвим) — ZoneRoom покажет «MISS» над промахнувшимся героем. */
   /** Отражённый щитом урон — уходит в hits на следующем тике. */
   private readonly reflectHits: PlayerHit[] = [];
@@ -3887,6 +3887,7 @@ export class ZoneSim {
         dmg: Math.round(dealt),
         by: attacker || undefined,
         mob: id,
+        crit: crit || undefined,
       });
     }
 
