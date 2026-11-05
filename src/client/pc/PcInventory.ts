@@ -2207,6 +2207,8 @@ export class PcInventory {
 
   /** Собираемый крафт: класс, материалы, катализатор, метод (живёт между перерисовками). */
   private craftSel: CraftInput = { cls: "sword", mats: [], cat: null, method: "forge" };
+  /** Основа выбрана вручную (или из найденного рецепта). По умолчанию ячейка пустая. */
+  private craftBasePicked = false;
   /** Итог последнего крафта (исход крупно; есть оружие — «Посмотреть»); at — когда пришёл (вспышка на наковальне). */
   private craftRes: { outcome: number; id?: string; found?: string; text: string; at?: number } | null = null;
   /** Нажали «Создать» — удар молота по наковальне, пока не пришёл итог. */
@@ -2317,6 +2319,7 @@ export class PcInventory {
         setIcon(ic, cls, undefined, "craft");
         item(row, ic.innerHTML, WEAPON_NOUN[cls].name, "", sel.cls === cls ? "on" : "", `${WEAPON_NOUN[cls].name}: основа задаёт класс; роллы дают материалы (кость: ${AFFIX_NAME[matRoll("bone", cls)]}).`, () => {
           sel.cls = cls;
+          this.craftBasePicked = true;
           after?.();
           redraw();
         });
@@ -2365,6 +2368,7 @@ export class PcInventory {
         // Положить рецепт целиком: камень вида — старший из сумки.
         const gem = rc.cat?.startsWith("gem:") ? gems.find(([k]) => parseGem(k)?.attr === rc.cat!.slice(4))?.[0] ?? null : rc.cat;
         this.craftSel = { cls: rc.cls, mats: [...rc.mats], cat: gem, method: rc.method };
+        this.craftBasePicked = true;
         redraw();
       };
       hint(row, `${rc.name}: ${recipeText(rc)}`);
@@ -2401,9 +2405,11 @@ export class PcInventory {
       return s;
     };
     const arrow = (): HTMLDivElement => div("pcinv-fg-arrow", "›");
-    const baseIc = div("pcinv-fg-big");
-    setIcon(baseIc, sel.cls, undefined, "craft");
-    chain.append(slot("Основа", baseIc, WEAPON_NOUN[sel.cls].name, "мастерское", "Основа — какое оружие куём. Нажми — выбрать.", true, () => pickOpen("base")), arrow());
+    const hasBase = this.craftBasePicked;
+    const baseIc = div(`pcinv-fg-big${hasBase ? "" : " empty"}`);
+    if (hasBase) setIcon(baseIc, sel.cls, undefined, "craft");
+    else baseIc.textContent = "?";
+    chain.append(slot("Основа", baseIc, hasBase ? WEAPON_NOUN[sel.cls].name : "не выбрано", hasBase ? "мастерское" : "нажми — выбрать", "Основа — какое оружие куём. Нажми — выбрать.", hasBase, () => pickOpen("base")), arrow());
     const matBox = div(`pcinv-fg-mats${CRAFT.maxMats >= 6 ? " six" : ""}`);
     for (let i = 0; i < CRAFT.maxMats; i++) {
       const m = sel.mats[i];
@@ -2444,7 +2450,7 @@ export class PcInventory {
     const catBox = sel.cat ? div("pcinv-fg-big") : div("pcinv-fg-big empty", "—");
     if (sel.cat) catBox.innerHTML = catHtml(sel.cat);
     chain.append(
-      slot("Катализатор", catBox, sel.cat ? catName(sel.cat) : "без катализатора", sel.cat ? (isCraftItem(sel.cat) ? `→ ${AFFIX_NAME[sel.cat === "frost" ? "chill" : "venom"]}` : "шансы лучше") : "необязательно", "Катализатор возвращается. Камень улучшает шансы (сильнее с уровнем), особый даёт особый ролл. Нажми — выбрать.", !!sel.cat, () => pickOpen("cat")),
+      slot("Катализатор", catBox, sel.cat ? catName(sel.cat) : "без катализатора", sel.cat ? (isCraftItem(sel.cat) ? `×${CRAFT_SPECIAL_COST}, тратится` : "шансы лучше, не тратится") : "необязательно", "Камень улучшает шансы и не тратится; особый катализатор (лёд/яд) требует 5 штук и тратится. Нажми — выбрать.", !!sel.cat, () => pickOpen("cat")),
       arrow(),
     );
     const meth = CRAFT_METHODS[sel.method];
@@ -2488,7 +2494,7 @@ export class PcInventory {
     for (const [m, n] of need) if ((stock.get(m) ?? 0) < n) lacks.push(CRAFT_ITEMS[m].name);
     if (sel.cat && isCraftItem(sel.cat) && (stock.get(sel.cat) ?? 0) < CRAFT_SPECIAL_COST) lacks.push(`${CRAFT_ITEMS[sel.cat].name} ×${CRAFT_SPECIAL_COST}`);
     if (d.scrap < meth.cost) lacks.push("лома");
-    const ready = sel.mats.length > 0 && !lacks.length;
+    const ready = this.craftBasePicked && sel.mats.length > 0 && !lacks.length;
     const go = document.createElement("button");
     go.className = `pcinv-fg-go${since < 700 ? " busy" : ""}`;
     go.innerHTML = `<span class="pcinv-fg-goic">${iconHtml("cm.forge")}</span><span>Создать</span>`;
@@ -2582,7 +2588,7 @@ export class PcInventory {
     if (sel.cat) reqCell(catHtml(sel.cat), 1, 1, catName(sel.cat), "Катализатор вернётся после крафта.");
     reqCell(iconHtml("i.scrap"), d.scrap, meth.cost, "Лом", `${meth.name}: ${meth.cost} лома, у тебя ${d.scrap.toLocaleString("ru-RU")}.`);
     req.append(cells);
-    const status = div(`pcinv-fg-status${ready ? " ok" : ""}`, ready ? "✓ Готово к созданию" : sel.mats.length ? `Не хватает: ${lacks.join(", ")}` : "Добавь материал — с полки или «+» в ячейке");
+    const status = div(`pcinv-fg-status${ready ? " ok" : ""}`, ready ? "✓ Готово к созданию" : !this.craftBasePicked ? "Выбери основу" : sel.mats.length ? `Не хватает: ${lacks.join(", ")}` : "Добавь материал — с полки или «+» в ячейке");
     req.append(status);
     right.append(req);
 
@@ -3487,7 +3493,7 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-pts.on { color:#b9f5c2; border-color:#3f9a58; background:rgba(16,40,26,.75); box-shadow:0 0 10px rgba(80,200,110,.15); }
 .pcinv-attrs { display:flex; flex-direction:column; gap:8px; }
 /* ---------- «Крафт»: кузница (концепт «Кузница берсерка») ---------- */
-.pcinv-smithy { display:grid; grid-template-columns:270px minmax(0,1fr) 270px; grid-template-areas:"left stage right" "shelf shelf shelf"; gap:10px; align-items:start; }
+.pcinv-smithy { display:grid; grid-template-columns:270px minmax(0,1fr) 270px; grid-template-areas:"right stage left" "shelf shelf shelf"; gap:10px; align-items:start; }
 .pcinv-fg-side { position:relative; display:flex; flex-direction:column; gap:6px; padding:12px; border:1px solid #2f4664; background:linear-gradient(180deg,rgba(9,19,34,.92),rgba(5,11,21,.92)); box-shadow:inset 0 0 0 1px rgba(0,0,0,.6); clip-path:${CUT("9px")}; }
 .pcinv-fg-lcol { grid-area:left; display:flex; flex-direction:column; gap:10px; align-self:stretch; }
 .pcinv-fg-left { flex:1; }
@@ -3705,14 +3711,14 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-fg-hintt { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 /* узкое окно и телефон: одна колонка — кузница, итог, полки, кузнец и переплавка */
 @media (max-width: 900px) {
-  .pcinv-smithy { grid-template-columns:minmax(0,1fr); grid-template-areas:"stage" "right" "shelf" "left"; padding:0; background:none; box-shadow:none; }
+  .pcinv-smithy { grid-template-columns:minmax(0,1fr); grid-template-areas:"stage" "left" "shelf" "right"; padding:0; background:none; box-shadow:none; }
   .pcinv-fg-stage { max-width:560px; background:#120a05 url(/icons/craft/forge_hall.jpg) 50% 70%/cover no-repeat; border:1px solid #3a2a1a; }
   .pcinv-fg-lcol, .pcinv-fg-right { max-height:none; overflow:visible; }
   .pcinv-fg-shelf { flex-direction:column; }
   .pcinv-fg-grp + .pcinv-fg-grp { padding-left:0; border-left:none; padding-top:6px; border-top:1px solid #1d2d43; }
   .pcinv-fg-grp.cats { flex:none; }
 }
-.pcinv-root.touch .pcinv-smithy { grid-template-columns:minmax(0,1fr); grid-template-areas:"stage" "right" "shelf" "left"; }
+.pcinv-root.touch .pcinv-smithy { grid-template-columns:minmax(0,1fr); grid-template-areas:"stage" "left" "shelf" "right"; }
 .pcinv-root.touch .pcinv-smithy { padding:0; background:none; box-shadow:none; }
 .pcinv-root.touch .pcinv-fg-stage { max-width:560px; background:#120a05 url(/icons/craft/forge_hall.jpg) 50% 70%/cover no-repeat; border:1px solid #3a2a1a; }
 .pcinv-root.touch .pcinv-fg-lcol, .pcinv-root.touch .pcinv-fg-right { max-height:none; overflow:visible; }
