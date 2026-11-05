@@ -128,7 +128,7 @@ function gripsOf(k: ItemKind): { low: number; high: number } {
 function flatReachOf(k: ItemKind | ""): number {
   if (k === "sword") return MELEE.flatReach + 0.4;
   if (k === "dagger") return MELEE.flatReach + 0.15;
-  if (k === "spear") return MELEE.flatReach + 2.3;
+  if (k === "spear") return MELEE.flatReach + 5.3;
   if (k === "hammer") return MELEE.flatReach + 0.7;
   return MELEE.flatReach;
 }

@@ -600,7 +600,8 @@ function hasSkill(p: PlayerState, k: string): boolean {
 
 /** Во сколько раз дальше бьёт бот этим оружием (копьё — длинный выпад). */
 function botReachMul(cls: string): number {
-  return cls === "spear" ? 2.2 : cls === "hammer" ? 1.2 : 1;
+  // Копьё: +3 м к обычной атаке (1.7 м базового attackRange ⇒ +3/1.7 к множителю).
+  return cls === "spear" ? 2.2 + 3 / 1.7 : cls === "hammer" ? 1.2 : 1;
 }
 
 const TIER_RANK: Record<WeaponTier, number> = { base: 0, gold: 1, legendary: 2, craft: 3, ruby: 3 };
