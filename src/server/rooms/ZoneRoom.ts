@@ -10697,7 +10697,7 @@ export class ZoneRoom extends Room<ZoneState> {
               stun(m.id, 2);
               slow(m.id, 6, 0.6);
             } else {
-              stun(m.id, cls === "battlemage" ? 2 : 3);
+              stun(m.id, 2);
             }
           }
           if (cls === "battlemage") {

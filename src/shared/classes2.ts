@@ -691,7 +691,7 @@ const pctR = (v: number): string => `${Math.round(v * 100)}%`;
 
 export const SKILLS2: Record<SkillId, SkillDef> = {
   stunBash: {
-    name: "Оглушающий удар", icon: glyph("s.stunBash"), desc: "Удар по кругу: оглушает всех рядом на {d:3} с; с мечом каждый удар может критовать",
+    name: "Оглушающий удар", icon: glyph("s.stunBash"), desc: "Удар по кругу: оглушает всех рядом на {d:2} с; с мечом каждый удар может критовать",
     cooldown: 12, castTime: 0.5, radius: 5, dmgMult: 1, hits: 1, // 0.6 → 1 (2026-10-05)
     variants: {
       assassin: { name: "Смертельный прыжок", desc: "Прыжок на цель до {r:9} м: удар с гарантированным критом ×2 и оглушение {d:1.5} с" },
