@@ -1331,6 +1331,8 @@ export class Mob {
   bleedDps = 0;
   bleedT = 0;
   bleedBy = "";
+  /** Яд ассасина: тики красить ядовито-зелёным, а не красным кровотечением. */
+  bleedVenom = false;
   bleedShown = 0;
   bleedShowT = 0;
 
@@ -1407,6 +1409,7 @@ export class Mob {
       this.venom.stacks = 0;
       this.venom.t = 0;
       this.bleedT = 0;
+      this.bleedVenom = false;
       this.raging = false;
       this.respawnIn = this.kind === "boss" ? BOSS.respawn : this.respawnSec;
       return true;
@@ -2645,6 +2648,7 @@ export class Mob {
     this.venom.stacks = 0;
     this.venom.t = 0;
     this.bleedT = 0;
+    this.bleedVenom = false;
     this.stunnedT = 0;
     this.rootedT = 0;
     this.raging = false;
@@ -3748,7 +3752,7 @@ export class ZoneSim {
       m.bleedShown += Math.max(0, hp0 - (m.dead ? 0 : m.hp));
       m.bleedShowT += dt;
       if (m.bleedShowT >= 1 || m.dead || m.bleedT <= 0) {
-        if (m.bleedShown >= 1) this.dmgHits.push({ x, y, z, dmg: Math.round(m.bleedShown), by: m.bleedBy || undefined, mob: m.id, c: "bleed" });
+        if (m.bleedShown >= 1) this.dmgHits.push({ x, y, z, dmg: Math.round(m.bleedShown), by: m.bleedBy || undefined, mob: m.id, c: m.bleedVenom ? "venom" : "bleed" });
         this.bleedTicks.push({ x, y: m.y, z, mobId: m.id, by: m.bleedBy });
         m.bleedShown = 0;
         m.bleedShowT = 0;
@@ -4041,12 +4045,13 @@ export class ZoneSim {
   readonly poisonFx: { x: number; y: number; z: number; mobId: string; by: string; stacks: number; burst: boolean; h?: number; venom: boolean }[] = [];
 
   /** Кровотечение (веер ножей): `dps` на `sec` с, берётся сильнейшее; не горение — свой эффект и красные цифры. */
-  bleedMob(id: string, dps: number, sec: number, by: string): void {
+  bleedMob(id: string, dps: number, sec: number, by: string, venom = false): void {
     const m = this.mobs.get(id);
     if (!m || m.dead) return;
     m.bleedDps = m.bleedT > 0 ? Math.max(m.bleedDps, dps) : dps;
     m.bleedT = Math.max(m.bleedT, sec);
     m.bleedBy = by;
+    m.bleedVenom = venom;
   }
   /** Капли крови за тик (раз в секунду на кровоточащего моба) — комната рассылает act "bleedTick". */
   readonly bleedTicks: { x: number; y: number; z: number; mobId: string; by: string }[] = [];

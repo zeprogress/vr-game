@@ -2629,7 +2629,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const killed = !!this.sim.hitMob(struck.id, dmg, dx, dz, heroId, weapon === "arrow", false, false, critM > 1);
     // Дерево: «Отрава» — удар отравляет (доля HP цели в секунду, 3 с); «Отталкивание» — шанс отбросить.
     const tk = rt.treeKey;
-    if (tk?.poisonHit && !struck.dead) this.sim.bleedMob(struck.id, struck.pctHpBase * tk.poisonHit * (1 + (tk.bleedMul ?? 0)), 3, heroId);
+    if (tk?.poisonHit && !struck.dead) this.sim.bleedMob(struck.id, struck.pctHpBase * tk.poisonHit * (1 + (tk.bleedMul ?? 0)), 3, heroId, true);
     if (tk?.shoveChance && !struck.dead && Math.random() < tk.shoveChance) this.sim.shoveMob(struck.id, dx, dz, 3);
     if (weapon === "dagger") this.afterDaggerHit(heroId, p, rt, struck);
     // Пронзание (ролл лука): стрела насквозь — моб позади цели получает долю урона.
