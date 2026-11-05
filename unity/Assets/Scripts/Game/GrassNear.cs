@@ -39,13 +39,18 @@ namespace Zep
             if (!terrain) { count = 0; return; }
             var tp = terrain.transform.position;
             count = 0;
+            // Сетка привязана к МИРОВЫМ координатам, а не к камере: иначе при
+            // каждом сдвиге камеры все пучки переезжали вместе с ней (мигание
+            // и «прыгающая» трава). Ячейка с одним индексом всегда стоит на месте.
             int n = Mathf.CeilToInt(radius / cell);
-            for (int ix = -n; ix <= n; ix++)
-                for (int iz = -n; iz <= n; iz++)
+            int cx = Mathf.FloorToInt(center.x / cell);
+            int cz = Mathf.FloorToInt(center.z / cell);
+            for (int ix = cx - n; ix <= cx + n; ix++)
+                for (int iz = cz - n; iz <= cz + n; iz++)
                 {
                     if (count >= maxInstances) break;
-                    float x = center.x + ix * cell + Hash(ix, iz, 1) * cell * 0.7f;
-                    float z = center.z + iz * cell + Hash(ix, iz, 2) * cell * 0.7f;
+                    float x = (ix + Hash(ix, iz, 1) * 0.7f) * cell;
+                    float z = (iz + Hash(ix, iz, 2) * 0.7f) * cell;
                     float dx = x - center.x, dz = z - center.z;
                     if (dx * dx + dz * dz > radius * radius) continue;
                     if (Mathf.Sqrt((x - hub.x) * (x - hub.x) + (z - hub.y) * (z - hub.y)) < 23f) continue;
