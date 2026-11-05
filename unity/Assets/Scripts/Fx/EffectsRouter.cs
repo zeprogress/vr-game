@@ -25,6 +25,8 @@ namespace Zep
 
         /// Сколько раз уже писали в лог про приём (не спамим на каждом ударе).
         int castLogged;
+        /** Общий кулдаун искр, чтобы AoE-удары не забивали экран. */
+        static float lastHitSparkAt = -10f;
 
         void Start()
         {
@@ -119,7 +121,33 @@ namespace Zep
                 var p = new Vector3(F(h, "x", 0), F(h, "y", 0), F(h, "z", 0));
                 if (cam && Vector2.Distance(new Vector2(p.x, p.z), new Vector2(cam.transform.position.x, cam.transform.position.z)) > Range) continue;
                 Popups.Damage(p, F(h, "dmg", 0), h.Contains("c") ? h["c"] as string : null);
+                HitSparks(p, h.Contains("c"));
             }
+        }
+
+        /**
+         * Короткие полосы искр в точке попадания — как в WoW, но приглушённые:
+         * без вспышки крита, тонкие линии и немного мелких искр.
+         * OnDmg приходит на любой урон, поэтому работают обе стороны боя:
+         * и удары героев по мобам, и удары мобов по героям.
+         */
+        static void HitSparks(Vector3 p, bool crit)
+        {
+            if (Time.unscaledTime - lastHitSparkAt < 0.025f) return;
+            lastHitSparkAt = Time.unscaledTime;
+            var fx = Vfx.I;
+            if (!fx) return;
+            var warm = new Color(1f, 0.74f, 0.34f);
+            var dim = new Color(0.85f, 0.55f, 0.2f);
+            int lines = crit ? 4 : 3;
+            for (int i = 0; i < lines; i++)
+            {
+                float a = UnityEngine.Random.value * Mathf.PI * 2f;
+                float len = (crit ? 0.55f : 0.42f) * (0.55f + UnityEngine.Random.value * 0.65f);
+                var b = p + new Vector3(Mathf.Cos(a) * len, 0.08f + UnityEngine.Random.value * 0.22f, Mathf.Sin(a) * len);
+                fx.Bolt(p, b, dim, 0.16f, 0.022f);
+            }
+            fx.Burst(p, warm, count: crit ? 5 : 4, speed: crit ? 3.0f : 2.4f, life: 0.22f, size: 0.09f, grav: 2.5f);
         }
 
         public void OnAct(string k, string id, Dictionary<string, object> m)
