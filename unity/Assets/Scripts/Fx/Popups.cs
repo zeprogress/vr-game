@@ -24,7 +24,7 @@ namespace Zep
         public static readonly Color CrossRed = new(1f, 0.2f, 0.25f);
         public static readonly Color Magic = new(0.62f, 0.35f, 1f);
 
-        enum Kind { Digits, Miss, Cross, Flash, Ring, Puff }
+        enum Kind { Digits, Miss, Cross, Flash, Ring, Puff, Claw }
 
         class Item
         {
@@ -38,7 +38,7 @@ namespace Zep
         readonly List<Item> live = new();
         readonly Stack<Text> texts = new();
         readonly Stack<Image> images = new();
-        Sprite cross, flash, ring, soft;
+        Sprite cross, flash, ring, soft, claw;
         RectTransform root;
 
         void Awake()
@@ -51,6 +51,19 @@ namespace Zep
             flash = CritFlash();
             ring = CritRing();
             soft = MakeSprite((x, y) => { float r = Mathf.Sqrt(x * x + y * y); return Mathf.Clamp01(1 - r) * Mathf.Clamp01(1 - r); });
+            // Три диагональные царапины: не молния и не крест, а след когтей.
+            claw = MakeSprite((x, y) =>
+            {
+                float best = 0f;
+                for (int i = -1; i <= 1; i++)
+                {
+                    float yy = x * 0.62f + i * 0.26f;
+                    float d = Mathf.Abs(y - yy);
+                    best = Mathf.Max(best, Mathf.Clamp01((0.075f - d) / 0.075f));
+                }
+                // Сужаем к краям, чтобы полосы не выглядели прямоугольниками.
+                return best * Mathf.Clamp01(1f - Mathf.Abs(x) * 1.15f);
+            });
         }
 
         static float H(int i) { float v = Mathf.Sin(i * 127.1f + 311.7f) * 43758.5453f; return v - Mathf.Floor(v); }
@@ -195,10 +208,23 @@ namespace Zep
         /// Дымка (призрак, магический удар): мягкий круг, раздувается и тает.
         public static void Puff(Vector3 p, float size, Color c, float life = 0.7f) => I.Add(Kind.Puff, p, life, c, size, new Vector3(0, 0.4f, 0));
 
-        void Add(Kind k, Vector3 p, float life, Color c, float size, Vector3 drift, string text = null)
+        /// След когтей в точке попадания. `from` — откуда пришёл удар;
+        /// полосы ориентируются по экранному направлению атакующий → цель.
+        public static void Claw(Vector3 p, Vector3? from = null)
+        {
+            var cam = Camera.main;
+            if (!cam) return;
+            Vector3 src = from ?? (p + (p - cam.transform.position).normalized * 1.2f);
+            var a = cam.WorldToScreenPoint(src);
+            var b = cam.WorldToScreenPoint(p + Vector3.up * 0.55f);
+            float angle = Mathf.Atan2(b.y - a.y, b.x - a.x) * Mathf.Rad2Deg;
+            I.Add(Kind.Claw, p + Vector3.up * 0.55f, 0.22f, new Color(1f, 0.82f, 0.5f), 0.85f, new Vector3(0, 0.18f, 0), null, angle);
+        }
+
+        void Add(Kind k, Vector3 p, float life, Color c, float size, Vector3 drift, string text = null, float forcedRot = float.NaN)
         {
             if (!FxCull.Near(p)) return;
-            var it = new Item { kind = k, pos = p, life = life, color = c, size = size, drift = drift, born = Time.time, rot = Random.value * 360 };
+            var it = new Item { kind = k, pos = p, life = life, color = c, size = size, drift = drift, born = Time.time, rot = float.IsNaN(forcedRot) ? Random.value * 360 : forcedRot };
             if (text != null)
             {
                 var t = texts.Count > 0 ? texts.Pop() : NewText();
@@ -209,7 +235,7 @@ namespace Zep
             else
             {
                 var img = images.Count > 0 ? images.Pop() : NewImage();
-                img.sprite = k == Kind.Cross ? cross : k == Kind.Ring ? ring : k == Kind.Flash ? flash : soft;
+                img.sprite = k == Kind.Cross ? cross : k == Kind.Ring ? ring : k == Kind.Flash ? flash : k == Kind.Claw ? claw : soft;
                 img.gameObject.SetActive(true);
                 it.g = img;
             }
@@ -288,6 +314,7 @@ namespace Zep
                         }
                     case Kind.Cross: scale = Mathf.Min(1f, age / 0.12f) * (1f - t * 0.25f); alpha *= 0.95f * it.color.a; break;
                     case Kind.Puff: scale = 0.6f + t * 0.8f; alpha = 0.7f * (1f - t); break;
+                    case Kind.Claw: scale = pop * (1f - t * 0.2f); alpha *= 0.9f; rot = it.rot; break;
                     case Kind.Miss: scale = pop * (1f - t * 0.15f); break;
                     default: scale = pop * (1f - t * 0.1f); break;
                 }

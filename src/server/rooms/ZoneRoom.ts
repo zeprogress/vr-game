@@ -12548,7 +12548,7 @@ export class ZoneRoom extends Room<ZoneState> {
       x: relayX,
       y: p.head.y,
       z: relayZ,
-      mobId: block.by === 3 ? h.byMob : undefined,
+      mobId: h.byMob,
     };
     // Наледь и аура «Стужа» (урона нет — только замедление) соседям не слышны.
     if (h.dmg > 0) this.broadcast(MSG.act, relay, { except: this.clientOf(h.target) });

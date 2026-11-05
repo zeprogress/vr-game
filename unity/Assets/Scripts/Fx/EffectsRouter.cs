@@ -120,37 +120,42 @@ namespace Zep
                 if (o is not IDictionary h) continue;
                 var p = new Vector3(F(h, "x", 0), F(h, "y", 0), F(h, "z", 0));
                 if (cam && Vector2.Distance(new Vector2(p.x, p.z), new Vector2(cam.transform.position.x, cam.transform.position.z)) > Range) continue;
-                Popups.Damage(p, F(h, "dmg", 0), h.Contains("c") ? h["c"] as string : null);
-                HitSparks(p, h.Contains("c"));
+                var color = h.Contains("c") ? h["c"] as string : null;
+                var by = h.Contains("by") ? h["by"] as string : null;
+                Popups.Damage(p, F(h, "dmg", 0), color);
+                // Цветные числа — яд/кровь/огонь/лечение; когти рисуем только на обычных ударах.
+                if (color == null) HitClaw(p, AttackerPos(by));
             }
         }
 
-        /**
-         * Короткие полосы искр в точке попадания — как в WoW, но приглушённые:
-         * без вспышки крита, тонкие линии и немного мелких искр.
-         * OnDmg приходит на любой урон, поэтому работают обе стороны боя:
-         * и удары героев по мобам, и удары мобов по героям.
-         */
-        static void HitSparks(Vector3 p, bool crit)
+        /** Позиция атакующего по id: живой герой, другой игрок или моб. */
+        static Vector3? AttackerPos(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return null;
+            var ws = FindAnyObjectByType<WorldSync>();
+            if (ws && ZoneNet.I?.Room != null && id == ZoneNet.I.Room.SessionId && ws.hero)
+                return ws.hero.transform.position + Vector3.up * 1.1f;
+            if (WorldSync.Players.TryGetValue(id, out var pv) && pv)
+                return pv.Head;
+            if (WorldSync.Mobs.TryGetValue(id, out var mv) && mv)
+                return mv.transform.position + Vector3.up * 0.8f;
+            return null;
+        }
+
+        static Vector3? MobPos(string id)
+        {
+            if (!string.IsNullOrEmpty(id) && WorldSync.Mobs.TryGetValue(id, out var mv) && mv)
+                return mv.transform.position + Vector3.up * 0.8f;
+            return null;
+        }
+
+        /// След когтей поверх модели: точка попадания поднимается выше центра,
+        /// а полосы идут со стороны атакующего.
+        static void HitClaw(Vector3 p, Vector3? from)
         {
             if (Time.unscaledTime - lastHitSparkAt < 0.025f) return;
             lastHitSparkAt = Time.unscaledTime;
-            var fx = Vfx.I;
-            if (!fx) return;
-            var warm = new Color(1f, 0.78f, 0.38f);
-            var dim = new Color(1f, 0.7f, 0.3f);
-            int lines = crit ? 6 : 5;
-            for (int i = 0; i < lines; i++)
-            {
-                float a = UnityEngine.Random.value * Mathf.PI * 2f;
-                float len = (crit ? 0.7f : 0.55f) * (0.55f + UnityEngine.Random.value * 0.65f);
-                var b = p + new Vector3(Mathf.Cos(a) * len, 0.12f + UnityEngine.Random.value * 0.3f, Mathf.Sin(a) * len);
-                fx.Bolt(p, b, dim, 0.38f, 0.075f);
-            }
-            fx.Burst(p, warm, count: crit ? 8 : 6, speed: crit ? 3.4f : 2.8f, life: 0.3f, size: 0.13f, grav: 2.5f);
-            // Страховка от «не видно» на слабом контрасте: пара маленьких
-            // экранных крестиков, всё ещё тише крита.
-            Popups.Burst(p, crit ? 3 : 2, Popups.CrossOrange, 0.5f);
+            Popups.Claw(p, from);
         }
 
         public void OnAct(string k, string id, Dictionary<string, object> m)
@@ -191,7 +196,10 @@ namespace Zep
                 case "bow": SoundBank.At(at, "bow-shot-" + UnityEngine.Random.Range(1, 6), 0.8f); break;
                 case "crit": Popups.Crit(p + Vector3.up * 0.4f); SoundBank.At(p, "arrow-crit"); break;
                 case "arrowHit": SoundBank.At(at, "arrowHitWood", 0.8f); break;
-                case "hurt": SoundBank.At(at, "playerHurt"); break;
+                case "hurt":
+                    SoundBank.At(at, "playerHurt");
+                    HitClaw(p, MobPos(mobId));
+                    break;
                 case "blockShield": SoundBank.At(at, "block"); break;
                 case "blockSword": SoundBank.At(at, "blockSoft"); break;
                 case "dodge": Popups.Miss(p + Vector3.down * 1f); break;
