@@ -365,6 +365,40 @@ public static class SliceSetup
         return hi > lo ? hi - lo : 1f;
     }
 
+    /** Крест из двух вертикальных квадов — дешёвый дальний LOD травы. */
+    static Mesh GrassCrossMesh()
+    {
+        var verts = new List<Vector3>();
+        var uvs = new List<Vector2>();
+        var tris = new List<int>();
+        void Quad(float angle)
+        {
+            float c = Mathf.Cos(angle), s = Mathf.Sin(angle);
+            int b = verts.Count;
+            verts.Add(new Vector3(-0.5f * c, 0, -0.5f * s));
+            verts.Add(new Vector3(0.5f * c, 0, 0.5f * s));
+            verts.Add(new Vector3(0.5f * c, 1, 0.5f * s));
+            verts.Add(new Vector3(-0.5f * c, 1, -0.5f * s));
+            // Grass.png — узкая цветная полоса слева, остальное белый фон.
+            // Берём только полосу, иначе дальние квады выглядели белыми точками.
+            uvs.Add(new Vector2(0.01f, 0)); uvs.Add(new Vector2(0.19f, 0));
+            uvs.Add(new Vector2(0.19f, 1)); uvs.Add(new Vector2(0.01f, 1));
+            tris.Add(b); tris.Add(b + 1); tris.Add(b + 2);
+            tris.Add(b); tris.Add(b + 2); tris.Add(b + 3);
+        }
+        Quad(0f);
+        Quad(Mathf.PI / 2f);
+        var mesh = new Mesh { name = "GrassFarCross" };
+        mesh.SetVertices(verts);
+        mesh.SetUVs(0, uvs);
+        mesh.SetTriangles(tris, 0);
+        var normals = new Vector3[verts.Count];
+        for (int i = 0; i < normals.Length; i++) normals[i] = Vector3.up;
+        mesh.normals = normals;
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
     // --- сцена ---
 
     [Serializable] class HeightInfo { public int res; public float size, x0, z0, minY, maxY; }
@@ -523,8 +557,9 @@ public static class SliceSetup
         // Мелочь подземелья — модули набора по dunDress (без браузера).
         PropsBuilder.DungeonDress(locRoot, assets.litTemplate, SetStatic);
 
-        // Трава: как в вебе, но одним статичным мешем на чанк. Террейн-детали
-        // в URP-сборке не отрисовывались, поэтому ставим настоящие модели пучков.
+        // Трава: густые пучки вблизи, дешёвые билборды вдали. Полные модели
+        // на всей карте стоили бы слишком много; LOD-чанки переключаются по
+        // расстоянию до камеры, как трава с LOD в вебе.
         var grassModel = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Nature/Grass_Common_Short.gltf");
         if (grassModel)
         {
@@ -537,40 +572,117 @@ public static class SliceSetup
                 gmat.enableInstancing = true;
                 AssetDatabase.DeleteAsset($"{Root}/GrassFieldMat.mat");
                 AssetDatabase.CreateAsset(gmat, $"{Root}/GrassFieldMat.mat");
-                var grassRoot = new GameObject("Grass").transform;
-                var chunks = new Dictionary<Vector2Int, List<CombineInstance>>();
-                var rnd = new System.Random(20261105);
-                int made = 0;
-                for (int i = 0; i < 20000; i++)
+
+                Material farMat = null;
+                Mesh cross = null;
+                var grassTex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Models/Nature/Grass.png");
+                if (grassTex)
                 {
-                    float x = info.x0 + (float)rnd.NextDouble() * info.size;
-                    float z = info.z0 + (float)rnd.NextDouble() * info.size;
-                    // Не залезаем на вытоптанный лагерь и на воду/дорогу у костра.
-                    if (Mathf.Sqrt((x + 55f) * (x + 55f) + (z + 55f) * (z + 55f)) < 23f) continue;
+                    farMat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+                    farMat.name = "GrassFarMat";
+                    farMat.SetTexture("_BaseMap", grassTex);
+                    farMat.SetFloat("_AlphaClip", 1f);
+                    farMat.EnableKeyword("_ALPHATEST_ON");
+                    farMat.SetFloat("_Cutoff", 0.32f);
+                    farMat.SetFloat("_Cull", 0f);
+                    farMat.SetFloat("_Smoothness", 0f);
+                    farMat.SetFloat("_Metallic", 0f);
+                    farMat.enableInstancing = true;
+                    AssetDatabase.DeleteAsset($"{Root}/GrassFarMat.mat");
+                    AssetDatabase.CreateAsset(farMat, $"{Root}/GrassFarMat.mat");
+                    cross = GrassCrossMesh();
+                }
+
+                var grassRoot = new GameObject("Grass").transform;
+                var nearChunks = new Dictionary<Vector2Int, List<CombineInstance>>();
+                var farChunks = new Dictionary<Vector2Int, List<CombineInstance>>();
+                var rnd = new System.Random(20261105);
+                const int count = 80000;
+                const float hubX = -55f, hubZ = -55f;
+                int made = 0;
+                for (int i = 0; i < count; i++)
+                {
+                    float x, z;
+                    if ((i & 3) != 0)
+                    {
+                        // Половина травы — плотным кольцом вокруг лагеря, где чаще
+                        // всего ходит камера; вторая — по всей поляне.
+                        double a = rnd.NextDouble() * Math.PI * 2;
+                        double r = Math.Sqrt(rnd.NextDouble()) * 115;
+                        x = hubX + (float)(Math.Cos(a) * r);
+                        z = hubZ + (float)(Math.Sin(a) * r);
+                    }
+                    else
+                    {
+                        x = info.x0 + (float)rnd.NextDouble() * info.size;
+                        z = info.z0 + (float)rnd.NextDouble() * info.size;
+                    }
+                    if (Mathf.Sqrt((x - hubX) * (x - hubX) + (z - hubZ) * (z - hubZ)) < 23f) continue;
                     float y = terrain.SampleHeight(new Vector3(x, 0, z)) + tgo.transform.position.y;
                     var pos = new Vector3(x, y, z);
                     var rot = Quaternion.Euler(0, (float)rnd.NextDouble() * 360f, 0);
                     var sc = 0.28f + (float)rnd.NextDouble() * 0.42f;
                     var key = new Vector2Int(Mathf.FloorToInt((x - info.x0) / (info.size / 6f)), Mathf.FloorToInt((z - info.z0) / (info.size / 6f)));
-                    if (!chunks.TryGetValue(key, out var list)) chunks[key] = list = new List<CombineInstance>();
-                    list.Add(new CombineInstance { mesh = gm.sharedMesh, transform = Matrix4x4.TRS(pos, rot, Vector3.one * sc) });
+                    if (!nearChunks.TryGetValue(key, out var near)) nearChunks[key] = near = new List<CombineInstance>();
+                    near.Add(new CombineInstance { mesh = gm.sharedMesh, transform = Matrix4x4.TRS(pos, rot, Vector3.one * sc) });
+                    if (cross && farMat)
+                    {
+                        if (!farChunks.TryGetValue(key, out var far)) farChunks[key] = far = new List<CombineInstance>();
+                        far.Add(new CombineInstance { mesh = cross, transform = Matrix4x4.TRS(pos, rot, Vector3.one * sc) });
+                    }
                     made++;
                 }
-                foreach (var kv in chunks)
+                foreach (var kv in nearChunks)
                 {
-                    var mesh = new Mesh { name = $"GrassChunk_{kv.Key.x}_{kv.Key.y}" };
-                    mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
-                    mesh.CombineMeshes(kv.Value.ToArray(), true, true);
-                    var go = new GameObject(mesh.name);
+                    var go = new GameObject($"GrassChunk_{kv.Key.x}_{kv.Key.y}");
                     go.transform.SetParent(grassRoot, false);
-                    go.AddComponent<MeshFilter>().sharedMesh = mesh;
-                    var mr = go.AddComponent<MeshRenderer>();
-                    mr.sharedMaterial = gmat;
-                    mr.shadowCastingMode = ShadowCastingMode.Off;
-                    mr.receiveShadows = true;
+
+                    var near = new GameObject("near");
+                    near.transform.SetParent(go.transform, false);
+                    var nearMesh = new Mesh { name = $"{go.name}_near" };
+                    nearMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+                    nearMesh.CombineMeshes(kv.Value.ToArray(), true, true);
+                    near.AddComponent<MeshFilter>().sharedMesh = nearMesh;
+                    var nearMr = near.AddComponent<MeshRenderer>();
+                    nearMr.sharedMaterial = gmat;
+                    nearMr.shadowCastingMode = ShadowCastingMode.Off;
+                    nearMr.receiveShadows = true;
+
+                    MeshRenderer farMr = null;
+                    if (farMat && cross && farChunks.TryGetValue(kv.Key, out var farList) && farList.Count > 0)
+                    {
+                        var far = new GameObject("far");
+                        far.transform.SetParent(go.transform, false);
+                        var farMesh = new Mesh { name = $"{go.name}_far" };
+                        farMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+                        farMesh.CombineMeshes(farList.ToArray(), true, true);
+                        far.AddComponent<MeshFilter>().sharedMesh = farMesh;
+                        farMr = far.AddComponent<MeshRenderer>();
+                        farMr.sharedMaterial = farMat;
+                        farMr.shadowCastingMode = ShadowCastingMode.Off;
+                        farMr.receiveShadows = true;
+                    }
+
+                    var lod = go.AddComponent<GrassLod>();
+                    lod.nearRenderer = nearMr;
+                    lod.farRenderer = farMr;
+                    lod.nearDistance = 42f;
+                    lod.farDistance = 170f;
+                    if (!farMr) lod.nearDistance = 1e9f;
                     SetStatic(go);
                 }
-                Debug.Log($"[slice] трава: {made} пучков");
+                // Плотный слой вокруг камеры: статичные чанки дают общий покров,
+                // а этот — густую траву вблизи, как в веб-версии.
+                var nearGo = new GameObject("GrassNear");
+                nearGo.transform.SetParent(grassRoot, false);
+                var nearField = nearGo.AddComponent<GrassNear>();
+                nearField.grassMesh = gm.sharedMesh;
+                nearField.grassMaterial = gmat;
+                nearField.radius = 42f;
+                nearField.cell = 0.85f;
+                nearField.maxInstances = 7000;
+
+                Debug.Log($"[slice] трава: {made} пучков, чанков {nearChunks.Count}, LOD {(farMat ? "вкл" : "нет")}");
             }
         }
 
