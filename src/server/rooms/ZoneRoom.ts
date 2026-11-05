@@ -5522,6 +5522,14 @@ export class ZoneRoom extends Room<ZoneState> {
   private ensureHeldInstance(p: PlayerState, rt: Runtime, side: "left" | "right"): void {
     const c = heldIn(p, side);
     if (!c) return;
+    // Уже закреплённый подходящий экземпляр не трогаем: иначе при каждом
+    // входе/респавне выбирался «лучший» из нескольких копий того же класса,
+    // и оружие в руке само менялось (например, копьё у michaelderel).
+    const pinned = rt.equippedWeaponId[side];
+    if (pinned) {
+      const w = rt.weapons.find((x) => x.id === pinned);
+      if (w && w.cls === c.cls && w.tier === c.tier) return;
+    }
     const w = this.ensureWeaponInstance(rt, c.cls, c.tier);
     if (w) rt.equippedWeaponId[side] = w.id;
   }
