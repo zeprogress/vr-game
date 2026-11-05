@@ -174,8 +174,10 @@ export function atMaxLevel(level: number): boolean {
 
 /** Начислить опыт. Мутирует `p`, возвращает число набранных уровней. */
 export function grantXp(p: Progress, amount: number): number {
-  if (atMaxLevel(p.level) || amount <= 0) return 0;
-  p.xp += amount;
+  if (atMaxLevel(p.level)) return 0;
+  // amount может быть 0: так нормализуем застрявший сейв, где xp уже
+  // накоплен до порога, но уровень ещё не поднят.
+  if (amount > 0) p.xp += amount;
   let gained = 0;
   while (!atMaxLevel(p.level) && p.xp >= xpToNext(p.level)) {
     p.xp -= xpToNext(p.level);

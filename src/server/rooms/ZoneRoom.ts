@@ -13003,6 +13003,12 @@ export class ZoneRoom extends Room<ZoneState> {
       rec?.skin && rec.skin >= 1 && rec.skin <= BOT.skins
         ? rec.skin
         : 1 + Math.floor(Math.random() * BOT.skins);
+    // Если сейв застрял с опытом на пороге, но без нового уровня — добираем
+    // уровни до входа в мир, иначе полоска навсегда стоит на 100%.
+    {
+      const prog = readProgress(p);
+      if (grantXp(prog, 0) > 0) writeProgress(p, prog);
+    }
     // Класс — по оружию в руках; отдельного выбора при создании больше нет.
     p.cls = "warrior";
     p.maxHp = maxHpFor(p.level, p);
