@@ -3752,7 +3752,9 @@ export class ZoneSim {
       m.bleedShown += Math.max(0, hp0 - (m.dead ? 0 : m.hp));
       m.bleedShowT += dt;
       if (m.bleedShowT >= 1 || m.dead || m.bleedT <= 0) {
-        if (m.bleedShown >= 1) this.dmgHits.push({ x, y, z, dmg: Math.round(m.bleedShown), by: m.bleedBy || undefined, mob: m.id, c: m.bleedVenom ? "venom" : "bleed" });
+        // Показываем число даже если за секунду накопилось меньше 1 HP:
+        // иначе слабое кровотечение вообще не давало красных цифр.
+        if (m.bleedShown > 0) this.dmgHits.push({ x, y, z, dmg: Math.max(1, Math.round(m.bleedShown)), by: m.bleedBy || undefined, mob: m.id, c: m.bleedVenom ? "venom" : "bleed" });
         this.bleedTicks.push({ x, y: m.y, z, mobId: m.id, by: m.bleedBy });
         m.bleedShown = 0;
         m.bleedShowT = 0;
