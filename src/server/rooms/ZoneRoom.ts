@@ -5606,7 +5606,7 @@ export class ZoneRoom extends Room<ZoneState> {
   private adminGive(nick: string, norm: string, args: string[]): void {
     const what = (args[0] ?? "").toLowerCase();
     if (!what) {
-      this.reply(`@${nick} формат: !give <предмет|all|resources> [сколько]; пример: !give scrap 99999, !give potion 99, !give all`);
+      this.reply(`@${nick} формат: !give <предмет|all|resources> [сколько]; пример: !give scrap 99999, !give potion 999, !give all`);
       return;
     }
     const t = this.adminHero(nick, norm);

@@ -282,7 +282,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     name: "Зелье лечения",
     short: "Зелье",
     hint: "восстановить здоровье",
-    stack: 99,
+    stack: 999,
     heal: 40,
     healFrac: 0.5,
     tint: [0.9, 0.2, 0.35],
@@ -497,7 +497,7 @@ export function addToBag(bag: Slot[], id: ItemId, count: number): number {
 }
 
 /** Максимум лечебных банок одного вида в сумке. */
-export const HEAL_CARRY_MAX = 99;
+export const HEAL_CARRY_MAX = 999;
 
 function fillBag(bag: Slot[], id: ItemId, count: number, max: number): number {
   let left = count;
