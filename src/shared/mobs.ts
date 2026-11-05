@@ -1095,7 +1095,7 @@ export const MOB_CAMPS: {
   { x: -64, z: -6, type: "bee", count: 12, spread: 4 }, // ~50 м, ур.3
   { x: -1, z: -62, type: "spikyBlob", count: 5, spread: 6 }, // ~54 м, ур.6
   { x: -95, z: 8, type: "frog", count: 4, spread: 5 }, // ~75 м, ур.7
-  { x: -8, z: -112, type: "cactoro", count: 3, spread: 6 }, // ~73 м, ур.9
+  { x: -8, z: -112, type: "cactoro", count: 6, spread: 6 }, // ~73 м, ур.9; 2026-11-05: ×2
   { x: 50, z: -40, type: "orcGunner", count: 5, spread: 8 }, // ~106 м, ур.15
   { x: -40, z: 82, type: "ruinMage", count: 4, spread: 7 }, // ~138 м, ур.20
   { x: 85, z: -118, type: "golem", count: 12, spread: 30 }, // ~154 м, ур.26 (было 24 — меньше по просьбе, 2026-10-02)
