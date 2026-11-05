@@ -23,6 +23,8 @@ namespace Zep
         MobPlate dummyBoard;
         string lastInfo = "";
         float bodyRadius;
+        /** Высота модели над корнем в её локальном масштабе (без state.scale). */
+        float modelHeight;
         /// Цвет плашки: босс красный, стрелок оранжевый, остальные голубовато-белые (Mob.ts tagColor).
         Color tagColor;
         MaterialPropertyBlock mpb;
@@ -78,6 +80,7 @@ namespace Zep
             lastHurt = s.hurtSeq;
             deathPlayed = s.dead != 0; // уже мёртв при появлении — смерть не озвучиваем
             transform.position = lastPos = new Vector3(s.x, s.y, s.z);
+            modelHeight = MeasureTop(body.gameObject, transform.position);
             bodyRadius = assets.bodyRadius;
             tagColor = s.kind == "boss" ? new Color(1f, 0.3f, 0.3f) : s.kind == "spitter" ? new Color(1f, 0.6f, 0.25f) : new Color(0.85f, 0.9f, 1f);
             plate = Nameplates.Create(transform);
@@ -412,6 +415,18 @@ namespace Zep
             if (reflectMat) Destroy(reflectMat);
         }
 
+        /// Верх всех видимых мешей модели относительно корня, в локальных метрах.
+        static float MeasureTop(GameObject go, Vector3 origin)
+        {
+            float top = 0f;
+            foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+            {
+                if (!r || !r.enabled) continue;
+                top = Mathf.Max(top, r.bounds.max.y - origin.y);
+            }
+            return top;
+        }
+
         void Update()
         {
             if (state == null) return;
@@ -487,15 +502,16 @@ namespace Zep
             float q = Squashes ? Mathf.Sin(squash * Mathf.PI) * 0.35f : 0f;
             if (state.dead == 0) holder.localScale = new Vector3(baseScale * (1 + q), baseScale * (1 - q), baseScale * (1 + q));
 
-            // Плашка: над телом с учётом масштаба; полоска HP — когда моб ранен (как бар моба в вебе).
-            plate.offset = bodyRadius * 2f * sc + 0.78f;
+            // Плашка: ровно над верхом меша, а не по среднему радиусу тела.
+            float top = (modelHeight > 0.05f ? modelHeight : bodyRadius * 2f) * sc;
+            plate.offset = top + 0.18f;
             plate.visible = state.dead == 0;
             string lvl = state.kind == "boss" ? null : (state.mobLevel > 0 ? state.mobLevel : 1) + " ур.";
             plate.SetInfo(string.IsNullOrEmpty(state.mobName) ? "Слизень" : state.mobName, Color.white, lvl, tagColor, 0, state.armor);
             plate.SetBars(state.maxHp > 0 && state.hp < state.maxHp ? Mathf.Clamp01(state.hp / state.maxHp) : -1, -1);
             if (stunStars)
             {
-                stunStars.SetHeight(bodyRadius * 2f * sc + 0.18f, sc);
+                stunStars.SetHeight(top + 0.08f, sc);
                 stunStars.SetOn(state.stunned != 0 && state.dead == 0);
             }
 

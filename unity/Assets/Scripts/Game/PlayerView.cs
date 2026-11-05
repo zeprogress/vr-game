@@ -74,7 +74,7 @@ namespace Zep
             if (state == null) return;
             rig.Apply(state.skin, state.leftCls, state.leftTier, state.rightCls, state.rightTier);
             // Плашка — над головой: у высокой модели (Человек) выше обычной.
-            plate.offset = Mathf.Max(Hero.EyeHeight + 0.42f, rig.ModelHeight + 0.3f);
+            plate.offset = Mathf.Max(Hero.EyeHeight + 0.42f, rig.ModelHeight + 0.12f);
             rig.SetSharp(WeaponGlow.PctOf(state.leftAffix), WeaponGlow.PctOf(state.rightAffix));
             transform.position = Vector3.Lerp(transform.position, Target(), 1f - Mathf.Exp(-12f * Time.deltaTime));
             var fwd = Forward;
@@ -93,7 +93,7 @@ namespace Zep
             plate.SetBars(state.dead != 0 ? 0 : state.maxHp > 0 ? Mathf.Clamp01(state.hp / state.maxHp) : 1, assets.XpFrac(state.level, state.xp));
             if (stunStars)
             {
-                stunStars.SetHeight(Mathf.Max(Hero.EyeHeight + 0.15f, rig.ModelHeight + 0.1f));
+                stunStars.SetHeight(Mathf.Max(Hero.EyeHeight + 0.15f, rig.ModelHeight + 0.03f));
                 stunStars.SetOn(state.stunned != 0 && state.dead == 0);
             }
         }
