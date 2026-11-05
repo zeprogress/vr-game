@@ -137,17 +137,20 @@ namespace Zep
             lastHitSparkAt = Time.unscaledTime;
             var fx = Vfx.I;
             if (!fx) return;
-            var warm = new Color(1f, 0.74f, 0.34f);
-            var dim = new Color(0.85f, 0.55f, 0.2f);
-            int lines = crit ? 4 : 3;
+            var warm = new Color(1f, 0.78f, 0.38f);
+            var dim = new Color(1f, 0.7f, 0.3f);
+            int lines = crit ? 6 : 5;
             for (int i = 0; i < lines; i++)
             {
                 float a = UnityEngine.Random.value * Mathf.PI * 2f;
-                float len = (crit ? 0.55f : 0.42f) * (0.55f + UnityEngine.Random.value * 0.65f);
-                var b = p + new Vector3(Mathf.Cos(a) * len, 0.08f + UnityEngine.Random.value * 0.22f, Mathf.Sin(a) * len);
-                fx.Bolt(p, b, dim, 0.16f, 0.022f);
+                float len = (crit ? 0.7f : 0.55f) * (0.55f + UnityEngine.Random.value * 0.65f);
+                var b = p + new Vector3(Mathf.Cos(a) * len, 0.12f + UnityEngine.Random.value * 0.3f, Mathf.Sin(a) * len);
+                fx.Bolt(p, b, dim, 0.38f, 0.075f);
             }
-            fx.Burst(p, warm, count: crit ? 5 : 4, speed: crit ? 3.0f : 2.4f, life: 0.22f, size: 0.09f, grav: 2.5f);
+            fx.Burst(p, warm, count: crit ? 8 : 6, speed: crit ? 3.4f : 2.8f, life: 0.3f, size: 0.13f, grav: 2.5f);
+            // Страховка от «не видно» на слабом контрасте: пара маленьких
+            // экранных крестиков, всё ещё тише крита.
+            Popups.Burst(p, crit ? 3 : 2, Popups.CrossOrange, 0.5f);
         }
 
         public void OnAct(string k, string id, Dictionary<string, object> m)
