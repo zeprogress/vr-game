@@ -114,8 +114,8 @@ export const ARMOR_WEIGHT_BASE: Record<ArmorWeight, {
 
 /** 2026-11-06: защита с вещей сильно срезана (до 15% от исходной). */
 export const ARMOR_DEF_MUL = 0.15;
-/** Чистая регенерация HP/с с брони: базовые значения и роллы усилены в 10 раз. */
-export const ARMOR_REGEN_MUL = 10;
+/** Чистая регенерация HP/с с брони: базовые значения и роллы усилены в 50 раз. */
+export const ARMOR_REGEN_MUL = 50;
 
 /** Вклад части в общий сет: нагрудник — 1.0, перчатки — 0.45. */
 export const ARMOR_SLOT_FACTOR: Record<ArmorPart, number> = {

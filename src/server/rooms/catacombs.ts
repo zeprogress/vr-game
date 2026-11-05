@@ -931,7 +931,8 @@ export class CatacombDirector {
         const group: CatWave[] = [];
         for (let i = 0; i < n; i++) group.push({ type: pick(b.adds.types), count: 1, perHero: 0 });
         this.host.swing(this.bossId, MOB_SWING.magic);
-        this.host.gateFx(gates);
+        // У супербоссов свита появляется без предварительных эффектов ворот.
+        if (!b.final) this.host.gateFx(gates);
         this.pendingAdds.push({ group, gates, at: now + 1300 });
       }
     }
@@ -940,6 +941,8 @@ export class CatacombDirector {
       const at = this.mechAt.get(m.name) ?? now + 4000;
       if (!this.mechAt.has(m.name)) this.mechAt.set(m.name, at);
       if (now < at || this.finalPhase === 2) continue;
+      // У супербоссов убираем «град стрел» (barrage) — остаются точечные приёмы.
+      if (b.final && m.kind === "barrage") continue;
       this.mechAt.set(m.name, now + m.every * k * 1000);
       this.castMech(m, info, party);
     }

@@ -2157,6 +2157,10 @@ export class ZoneRoom extends Room<ZoneState> {
       };
       if (rt.equippedWeaponId.left && !stillHeld(rt.equippedWeaponId.left)) rt.equippedWeaponId.left = null;
       if (rt.equippedWeaponId.right && !stillHeld(rt.equippedWeaponId.right)) rt.equippedWeaponId.right = null;
+      // Смена оружия в игре должна сразу закрепить инстанс за рукой: иначе
+      // после рестарта бот/вход брал «лучший» экземпляр того же типа.
+      this.ensureHeldInstance(p, rt, "left");
+      this.ensureHeldInstance(p, rt, "right");
       // Иначе rec.held в сторе (и веб-инвентарь "!inv") показывал бы то, что
       // было надето на момент последнего MSG.save, а не сейчас — обычная
       // смена оружия в игре персист не триггерила вообще.
