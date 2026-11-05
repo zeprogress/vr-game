@@ -289,7 +289,7 @@ import { randomUUID } from "node:crypto";
 import { attrOf } from "#shared/attrs2";
 import { giveItems, parseTradeItem, parseTradeList, takeItems, takenName, tradeLog, tradeViewOf, TRADE_ACTS, type InvSnap, type Taken, type TradeAct, type TradeItem, type TradeSession, type TradeSide } from "../trade";
 import { KillRates } from "../sim/killRate";
-import { addStock, CRAFT, CRAFT_ITEMS, CRAFT_MAT_COST, CRAFT_PROC, CRAFT_SMELT, craftStockOf, craftWeapon, parseCraftCode, pcInvCraft, recipeBookOf, rollCraftDrop, smithFightMul, smithLevel } from "#shared/craft";
+import { addStock, CRAFT, CRAFT_ITEMS, CRAFT_MAT_COST, CRAFT_SPECIAL_COST, CRAFT_PROC, CRAFT_SMELT, isCraftItem, rollLowMobCraftDrop, craftStockOf, craftWeapon, parseCraftCode, pcInvCraft, recipeBookOf, rollCraftDrop, smithFightMul, smithLevel } from "#shared/craft";
 import { applyJewelOp, gemName, JEWEL_ACTS, jewelBonus, jewelOpFrom, jewelPatch, jewelsOf, newNecklace, newRing, pcInvJewels, ringName, ringSkillBonusOf, rollJewelDrop, type JewelAct, type JewelSave, type RingInst } from "#shared/jewels";
 import { emptyRingSkillBonus, ringEnchant, ringEnchantRow, ringSkillMul, type RingSkillBonus } from "#shared/ringAffixes";
 import { NECK_TIER_NAME, neckEnchant, neckEnchantRow, neckLabel, type NeckInst } from "#shared/necklaces";
@@ -6014,6 +6014,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const r = craftWeapon(input, { stock, gems: jewelsOf(rec).gems, scrap: bagCount(bag, "scrap"), book, smithXp: xp0 }, t?.p.nick || rec.nick || norm);
     if (!r.ok) return r;
     for (const m of input.mats) addStock(stock, m, -CRAFT_MAT_COST);
+    if (input.cat && isCraftItem(input.cat)) addStock(stock, input.cat, -CRAFT_SPECIAL_COST);
     takeFromBag(bag, "scrap", r.cost);
     if (r.refund) addToBag(bag, "scrap", r.refund);
     const patch: Partial<PlayerRecord> = { mats: stock, smithXp: xp0 + r.xp };
@@ -6056,10 +6057,10 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** Материалы крафта с убитого элитного моба — убийце в запись (как камни). Лагерь — по campType, катакомбы — по имени. */
-  private craftDrop(owner: string, campType: string, name: string, champ: boolean): void {
+  private craftDrop(owner: string, campType: string, name: string, champ: boolean, mobLevel = 1): void {
     const key = campType || ELITE_KEY_BY_NAME.get(name.replace(/^Вожак — /, "")) || "";
-    if (!key) return;
-    const got = rollCraftDrop(key, champ);
+    if (!key && mobLevel > 20) return;
+    const got = [...rollCraftDrop(key, champ), ...rollLowMobCraftDrop(mobLevel, champ)];
     if (!got.length) return;
     const p = this.state.players.get(owner);
     const rt = this.rt.get(owner) ?? (owner.startsWith("bot:") ? this.bots.get(owner.slice(4))?.rt : undefined);
@@ -12110,7 +12111,7 @@ export class ZoneRoom extends Room<ZoneState> {
         if (k.pt) this.scrapShare(k.pt.length ? k.pt : [k.owner], k.jl, k.sc, boss);
         else this.scrapDrop(k.owner, k.jl, k.sc, boss);
       }
-      if (Math.random() < pen) this.craftDrop(k.owner, k.campType, k.name, k.champ);
+      if (Math.random() < pen) this.craftDrop(k.owner, k.campType, k.name, k.champ, k.jl);
       this.chatQuestKill(k.owner, k.champ);
       if (k.campType) {
         // Охота и вожаки — всем, кто нанёс мобу урон (как делится опыт), а не только добившему. Боссы — по bossXpShare ниже.

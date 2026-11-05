@@ -29,6 +29,7 @@ import {
   CRAFT_RECIPES,
   CRAFT_SMELT,
   CRAFT_MAT_COST,
+  CRAFT_SPECIAL_COST,
   craftCode,
   craftOdds,
   matchRecipe,
@@ -2186,6 +2187,7 @@ export class PcInventory {
     const smith = smithLevel(c.xp);
     // Метод, ещё не открытый уровнем (или пропавший катализатор/материал) — сбрасываем на доступное.
     if (CRAFT_METHODS[sel.method].lv > smith.lv) sel.method = "forge";
+    if (sel.cat && isCraftItem(sel.cat) && (stock.get(sel.cat) ?? 0) < CRAFT_SPECIAL_COST) sel.cat = null;
     if (sel.cat && !(stock.get(sel.cat as CraftItemId) ?? 0) && !gems.some(([k]) => k === sel.cat)) sel.cat = null;
     const used = (m: CraftMatId): number => sel.mats.filter((x) => x === m).length;
     while (sel.mats.some((m) => used(m) * CRAFT_MAT_COST > (stock.get(m) ?? 0))) sel.mats.splice(sel.mats.findIndex((m) => used(m) * CRAFT_MAT_COST > (stock.get(m) ?? 0)), 1);
@@ -2212,7 +2214,7 @@ export class PcInventory {
     const catHtml = (k: string): string => (isCraftItem(k) ? iconHtml(`m.${k}` as IconKey) : gemHtml(k));
     const catName = (k: string): string => (isCraftItem(k) ? CRAFT_ITEMS[k].name : gemName(k));
     const catNote = (k: string): string => {
-      if (isCraftItem(k)) return `особый ролл: ${AFFIX_NAME[k === "frost" ? "chill" : "venom"]}`;
+      if (isCraftItem(k)) return `особый ролл: ${AFFIX_NAME[k === "frost" ? "chill" : "venom"]}, тратится ×${CRAFT_SPECIAL_COST}`;
       const lv = Math.min(CRAFT.gemLvCap, parseGem(k)?.lv ?? 1);
       return `провал −${CRAFT.gemFail * lv}, отличный и редкий +${CRAFT.gemUp * lv}`;
     };
@@ -2252,7 +2254,8 @@ export class PcInventory {
       for (const k of CRAFT_CATS) {
         const have = stock.get(k) ?? 0;
         if (have <= 0) continue;
-        item(row, catHtml(k), CRAFT_ITEMS[k].name, String(have), sel.cat === k ? "on" : "", `${CRAFT_ITEMS[k].name}: ${catNote(k)}. Возвращается. Откуда: ${CRAFT_ITEMS[k].src}.`, () => set(k));
+        const enough = have >= CRAFT_SPECIAL_COST;
+        item(row, catHtml(k), CRAFT_ITEMS[k].name, String(have), enough ? (sel.cat === k ? "on" : "") : "off", `${CRAFT_ITEMS[k].name}: ${catNote(k)}. Нужно ${CRAFT_SPECIAL_COST}, тратится. Есть ${have}. Откуда: ${CRAFT_ITEMS[k].src}.`, () => set(k));
       }
       for (const [k, n] of gems) {
         const g = parseGem(k);
@@ -2447,6 +2450,7 @@ export class PcInventory {
     for (const m of sel.mats) need.set(m, (need.get(m) ?? 0) + CRAFT_MAT_COST);
     const lacks: string[] = [];
     for (const [m, n] of need) if ((stock.get(m) ?? 0) < n) lacks.push(CRAFT_ITEMS[m].name);
+    if (sel.cat && isCraftItem(sel.cat) && (stock.get(sel.cat) ?? 0) < CRAFT_SPECIAL_COST) lacks.push(`${CRAFT_ITEMS[sel.cat].name} ×${CRAFT_SPECIAL_COST}`);
     if (d.scrap < meth.cost) lacks.push("лома");
     const ready = sel.mats.length > 0 && !lacks.length;
     const go = document.createElement("button");
@@ -2535,6 +2539,10 @@ export class PcInventory {
       cells.append(cell);
     };
     for (const [m, n] of need) reqCell(iconHtml(`m.${m}` as IconKey), stock.get(m) ?? 0, n, CRAFT_ITEMS[m].name, `${CRAFT_ITEMS[m].name}: нужно ${n}, есть ${stock.get(m) ?? 0}. Откуда: ${CRAFT_ITEMS[m].src}.`);
+    if (sel.cat && isCraftItem(sel.cat)) {
+      const have = stock.get(sel.cat) ?? 0;
+      reqCell(catHtml(sel.cat), have, CRAFT_SPECIAL_COST, CRAFT_ITEMS[sel.cat].name, `${CRAFT_ITEMS[sel.cat].name}: нужно ${CRAFT_SPECIAL_COST}, есть ${have}. Тратится при крафте.`);
+    }
     if (sel.cat) reqCell(catHtml(sel.cat), 1, 1, catName(sel.cat), "Катализатор вернётся после крафта.");
     reqCell(iconHtml("i.scrap"), d.scrap, meth.cost, "Лом", `${meth.name}: ${meth.cost} лома, у тебя ${d.scrap.toLocaleString("ru-RU")}.`);
     req.append(cells);

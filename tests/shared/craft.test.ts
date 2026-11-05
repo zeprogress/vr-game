@@ -21,7 +21,7 @@ import {
 import { STAR_CAP, affixCapNote, affixLabel, affixPoints, affixRange, attackPointMul, enchantApply, enchantInfo, heldAffixText, scrapValue, weaponQuality } from "../../src/shared/items";
 import { seeded, close } from "./rng";
 
-const RICH: CraftStock = { alloy: 99, web: 99, scale: 99, bone: 99, frost: 1, sting: 1 };
+const RICH: CraftStock = { alloy: 99, web: 99, scale: 99, bone: 99, frost: 5, sting: 5 };
 const have = (over: Partial<{ stock: CraftStock; gems: Record<string, number>; scrap: number; book: string[]; smithXp: number }> = {}) => ({
   stock: RICH,
   gems: { "luc:3": 1, "int:1": 1, "str:2": 1 },

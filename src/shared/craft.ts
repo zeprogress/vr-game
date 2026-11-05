@@ -6,8 +6,8 @@
  * Крафт = ОСНОВА (класс оружия) + 1–3 МАТЕРИАЛА + КАТАЛИЗАТОР (необязательно) + МЕТОД.
  *  - Материал задаёт ролл: разные материалы — разные роллы; одинаковые — потолок их ролла выше
  *    (+15% за копию), остальные роллы его оплачивают (craftCaps, сумма потолков та же).
- *  - Катализатор возвращается. Камень любого вида улучшает шансы (сильнее с уровнем); особый
- *    катализатор (Ледяное сердце, Ядовитое жало) даёт особый ролл, которого у обычного оружия нет.
+ *  - Камень любого вида улучшает шансы (сильнее с уровнем) и не тратится. Особый катализатор
+ *    (Ледяное сердце, Ядовитое жало) даёт особый ролл, но требует и тратит 5 штук.
  *  - Метод — лом и характер: ковка надёжна, закалка поднимает роллы, резьба добавляет ролл,
  *    выдержка рискованна, но чаще даёт отличный и редкий исход.
  *  - Исход случаен: провал / обычный / хороший / отличный / редкий. Сила: обычный — как уникальное,
@@ -31,7 +31,7 @@ export type CraftItemId = CraftMatId | CraftCatId;
 
 export interface CraftItemDef {
   name: string;
-  /** mat — тратится; cat — особый катализатор, возвращается. */
+  /** mat — тратится; cat — особый катализатор, тратится по CRAFT_SPECIAL_COST. */
   kind: "mat" | "cat";
   /** Откуда берётся — подпись в окне крафта. */
   src: string;
@@ -44,8 +44,8 @@ export const CRAFT_ITEMS: Record<CraftItemId, CraftItemDef> = {
   web: { name: "Паутина", kind: "mat", src: "пауки подземелья", color: "#e8eef5" },
   scale: { name: "Чешуя дракона", kind: "mat", src: "драконы: Огнекрылый (охота), Владыка Бездны (катакомбы)", color: "#ff7a3d" },
   bone: { name: "Кость", kind: "mat", src: "костяные мобы: жнец, призрак, вождь", color: "#efe3c4" },
-  frost: { name: "Ледяное сердце", kind: "cat", src: "Ледяной демон (редко)", color: "#7fd8ff" },
-  sting: { name: "Ядовитое жало", kind: "cat", src: "пауки подземелья (редко)", color: "#8cf05a" },
+  frost: { name: "Ледяное сердце", kind: "cat", src: "Ледяной демон (редко; нужно 5, тратится)", color: "#7fd8ff" },
+  sting: { name: "Ядовитое жало", kind: "cat", src: "пауки подземелья (редко; нужно 5, тратится)", color: "#8cf05a" },
 };
 export const CRAFT_MATS: readonly CraftMatId[] = ["alloy", "web", "scale", "bone"];
 export const CRAFT_CATS: readonly CraftCatId[] = ["frost", "sting"];
@@ -59,6 +59,9 @@ export const CRAFT_SMELT = 300;
 
 /** Сколько единиц материала тратит одна ячейка крафта. */
 export const CRAFT_MAT_COST = 2;
+
+/** Сколько особых катализаторов (лёд/яд) требует и тратит один крафт. */
+export const CRAFT_SPECIAL_COST = 5;
 
 /** Особый ролл катализатора. */
 const CAT_ROLL: Record<CraftCatId, AffixSub> = { frost: "chill", sting: "venom" };
@@ -243,7 +246,7 @@ export const CRAFT_RECIPES: readonly CraftRecipe[] = [
 /** Полный состав рецепта (для найденных). */
 export function recipeText(r: CraftRecipe): string {
   const mats = groupMats(r.mats).map(([m, n]) => `${CRAFT_ITEMS[m].name} ×${n * CRAFT_MAT_COST}`).join(" + ");
-  const cat = r.cat === null ? "" : ` + ${catName(r.cat)}`;
+  const cat = r.cat === null ? "" : ` + ${catName(r.cat)}${isCraftItem(r.cat) ? ` ×${CRAFT_SPECIAL_COST}` : ""}`;
   return `${WEAPON_NOUN[r.cls].name} + ${mats}${cat} · ${CRAFT_METHODS[r.method].name} · ★ ${AFFIX_NAME[r.star]} сверх предела`;
 }
 
@@ -437,7 +440,8 @@ export function craftWeapon(
   }
   if (i.cat) {
     if (isCraftItem(i.cat)) {
-      if (!((have.stock[i.cat] ?? 0) > 0)) return { ok: false, text: `Нет катализатора: ${CRAFT_ITEMS[i.cat].name}.` };
+      const n = have.stock[i.cat] ?? 0;
+      if (n < CRAFT_SPECIAL_COST) return { ok: false, text: `Нужно ${CRAFT_ITEMS[i.cat].name}: ${CRAFT_SPECIAL_COST} (есть ${n}).` };
     } else if (!((have.gems[i.cat] ?? 0) > 0)) return { ok: false, text: "Такого камня в сумке нет." };
   }
   const method = CRAFT_METHODS[i.method];
@@ -566,6 +570,22 @@ export function rollCraftDrop(eliteKey: string, champ: boolean, rnd: () => numbe
   const out: { id: CraftItemId; n: number }[] = [];
   for (const e of CRAFT_DROPS[eliteKey] ?? []) {
     if (rnd() < Math.min(1, e.chance * (champ ? CRAFT_DROP_CHAMP : 1))) out.push({ id: e.id, n: e.n ?? 1 });
+  }
+  return out;
+}
+
+/** Базовые материалы с мобов 1–20 уровня: чтобы крафт был доступен в начале. */
+export const LOW_MOB_CRAFT_DROPS = [
+  { id: "web" as const, chance: 0.08 },
+  { id: "bone" as const, chance: 0.08 },
+  { id: "scale" as const, chance: 0.04 },
+] as const;
+
+export function rollLowMobCraftDrop(level: number, champ: boolean, rnd: () => number = Math.random): { id: CraftItemId; n: number }[] {
+  if (level < 1 || level > 20) return [];
+  const out: { id: CraftItemId; n: number }[] = [];
+  for (const e of LOW_MOB_CRAFT_DROPS) {
+    if (rnd() < Math.min(1, e.chance * (champ ? CRAFT_DROP_CHAMP : 1))) out.push({ id: e.id, n: 1 });
   }
   return out;
 }
