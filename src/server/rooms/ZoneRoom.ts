@@ -990,7 +990,7 @@ function multIn(p: PlayerState, hand: "left" | "right"): number {
 }
 
 /** Башня испытаний открыта? Временно закрыта (2026-10-01) — событие не выпадает, очередь не принимает. */
-const TOWER_OPEN = false;
+const TOWER_OPEN = true;
 /** Бот по дороге подбирает всё, что лежит ближе этого (м, по горизонтали). */
 const BOT_GRAB_RADIUS = 5;
 /** Полуугол конуса удара копья, рад (~35° в каждую сторону). */
@@ -3310,10 +3310,10 @@ export class ZoneRoom extends Room<ZoneState> {
       this.activeEventKind = this.forcedEventKind;
     } else {
       const r = Math.random();
-      // Нашествие из ротации убрано (2026-10-26): остаток после башни — охота. Нашествие — только ручным !goevent.
-      this.activeEventKind = r < EVENT.towerChance ? 3 : 2;
+      // Ротация: башня → охота → нашествие (остаток).
+      this.activeEventKind = r < EVENT.towerChance ? 3 : r < EVENT.towerChance + EVENT.huntChance ? 2 : 1;
     }
-    // Башня временно закрыта (TOWER_OPEN) — вместо неё охота или нашествие.
+    // Башня включена в ротацию; флаг оставлен для быстрого отключения.
     if (this.activeEventKind === 3 && !TOWER_OPEN) {
       this.activeEventKind = 2;
     }
