@@ -10,9 +10,9 @@ test("Аура раскалённой стали: режим по оружию �
   assert.equal(steelModeOf("sword", ""), "sword");
 });
 
-test("Аура раскалённой стали: урон в секунду — 250% регенерации; дуалы не жгут", () => {
-  assert.equal(steelAuraTick("shield", 4).dmg, 10);
-  assert.equal(steelAuraTick("sword", 4).dmg, 10);
+test("Аура раскалённой стали: урон в секунду — 150% регенерации; дуалы не жгут", () => {
+  assert.equal(steelAuraTick("shield", 4).dmg, 6);
+  assert.equal(steelAuraTick("sword", 4).dmg, 6);
   assert.equal(steelAuraTick("dual", 4).dmg, 0);
 });
 

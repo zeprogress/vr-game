@@ -167,6 +167,15 @@ export const BOSS_ADAPT = {
 };
 
 /** Примерный опыт элитного моба лагеря на уровне L (аппроксимация таблицы ELITE_MOBS). */
+/**
+ * Множитель урона моба по его уровню: 1 ур. — ×1 (как было),
+ * 75 ур. — ×2. Рост линейный, уровни выше 75 не усиливаются дальше.
+ */
+export function mobDamageLevelMul(level: number): number {
+  const l = Math.max(1, Math.min(75, Math.floor(level) || 1));
+  return 1 + (l - 1) / 74;
+}
+
 export function eliteXpAt(level: number): number {
   return 1.4 * Math.pow(1.42, Math.max(1, level));
 }

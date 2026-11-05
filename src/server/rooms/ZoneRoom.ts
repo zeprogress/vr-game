@@ -82,7 +82,7 @@ import {
 } from "#shared/net/messages";
 import { isCamTuneKey, type CamTuneKey } from "#shared/camTune";
 import { NICK_MAX, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, huntPhaseFor, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL, STORM_COUNTER, PROGRESSION } from "#shared/constants";
-import { MOB_MID_K, SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, ICE_GIANT, reflectCapped, mobArmorBits, type CatDefense, CAT_SOULS_KNOCK } from "#shared/mobs";
+import { MOB_MID_K, SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE, WEB, ICE_GIANT, reflectCapped, mobArmorBits, mobDamageLevelMul, type CatDefense, CAT_SOULS_KNOCK } from "#shared/mobs";
 import { DragonFight, type DragonHost } from "./dragonFight";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
 import { hammerPhysStrike, skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
@@ -12320,8 +12320,13 @@ export class ZoneRoom extends Room<ZoneState> {
       rt.ultCancelled = true;
       rt.ultCastUntil = 0;
     }
-    // Урон мобов и боссов (не PvP с ником, не тик кровотечения — он уже от усиленного удара) — общий множитель MOB.dmgMul.
-    if (!h.byName && !h.dot) h = { ...h, dmg: h.dmg * MOB.dmgMul };
+    // Урон мобов и боссов (не PvP с ником, не тик кровотечения — он уже от усиленного удара).
+    // Базовый множитель MOB.dmgMul плюс рост по уровню моба: 1 ур. ×1, 75 ур. ×2.
+    if (!h.byName && !h.dot) {
+      const src = h.byMob ? this.sim.mobs.get(h.byMob) : undefined;
+      const lvl = src ? Math.max(1, src.eliteLevel || 1) : 1;
+      h = { ...h, dmg: h.dmg * MOB.dmgMul * mobDamageLevelMul(lvl) };
+    }
     // Отражение щитом моба: не больше доли МАКС. HP героя за удар. Урон героев на высоких
     // уровнях кратно больше их здоровья, и без потолка отражение убивало с одного своего крита.
     if (h.byReflect) h = { ...h, dmg: reflectCapped(h.dmg, p.maxHp) };
