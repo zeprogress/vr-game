@@ -941,8 +941,9 @@ export class CatacombDirector {
       const at = this.mechAt.get(m.name) ?? now + 4000;
       if (!this.mechAt.has(m.name)) this.mechAt.set(m.name, at);
       if (now < at || this.finalPhase === 2) continue;
-      // У супербоссов убираем «град стрел» (barrage) — остаются точечные приёмы.
-      if (b.final && m.kind === "barrage") continue;
+      // В катакомбах убираем «град» (barrage) у всех стражей и супербоссов —
+      // остаются точечные приёмы.
+      if (m.kind === "barrage") continue;
       this.mechAt.set(m.name, now + m.every * k * 1000);
       this.castMech(m, info, party);
     }

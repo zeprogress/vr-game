@@ -101,7 +101,9 @@ namespace Zep
         public void Apply(float hour, Vector3 camPos)
         {
             Load();
-            string r = camPos.z > 240 && Mathf.Abs(camPos.x) < 100 ? "cat"
+            // Катакомбы занимают юг карты (z > 240); проверка по одному z надёжнее,
+            // чем узкое |x| < 100 — камера в боковых залах иначе не включала огни.
+            string r = camPos.z > 240 ? "cat"
                 : Mathf.Abs(camPos.x - DunOrigin.x) < 220 && Mathf.Abs(camPos.z - DunOrigin.z) < 220 ? "dun" : "world";
             if (r != region) { region = r; OnRegion(); }
             if (r == "dun") { Underground(DunAmbient, DunFog, 8f, 150f); SetAmbient(DunAmbient * 1.1f, DunAmbient * 0.8f, new Color(0.02f, 0.025f, 0.04f)); CaveFill(true); Flicker(dunAll); ShadowNearest(dunAll, 6); return; }
