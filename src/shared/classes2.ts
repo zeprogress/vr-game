@@ -613,7 +613,7 @@ export interface SkillDef {
  */
 export const STORM_CRUSH = {
   /** Лечение — доля макс. HP: база + за каждое очко мудрости сверх старта. Союзники — то же, в allyRadius. */
-  healBase: 0.09, healPerWis: 0.003, allyRadius: 12, // лечение база 6% → 9% (2026-10-15)
+  healBase: 0.06, healPerWis: 0.0015, allyRadius: 12, // 2026-11-05: отхил снижен с 9% / 0.3% за МДР
   /** Замедление мобов в волне: секунд и множитель скорости (0.5 — вдвое медленнее). */
   slowSec: 5, slowMul: 0.5,
 } as const;

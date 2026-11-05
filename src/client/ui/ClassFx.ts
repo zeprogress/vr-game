@@ -903,7 +903,11 @@ export function playClassAct(
         // и угол удара (сервер шлёт конец оси x2/z2 и полуугол r).
         const ddx = x2 - x;
         const ddz = z2 - z;
-        vfx.cone(x, y - 1.5, z, Math.hypot(ddx, ddz), ddx, ddz, r ?? 0.6, ATK, 0.32, 0.75);
+        const len = Math.hypot(ddx, ddz);
+        // Дальность берём ровно из серверного конца выпада: после +3 м конус
+        // должен доходить до 8 м, а не рисоваться старым радиусом.
+        vfx.cone(x, y - 1.42, z, len, ddx, ddz, r ?? 0.6, ATK, 0.44, 0.95);
+        vfx.cone(x, y - 1.41, z, len * 0.72, ddx, ddz, (r ?? 0.6) * 0.55, ATK, 0.32, 0.55);
       }
       return true;
     case "shadowStep":
