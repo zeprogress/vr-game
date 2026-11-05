@@ -215,6 +215,9 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
   const rec = store.get(`nick:${norm}`);
   if (!rec) return { ok: false, error: `У «${norm}» ещё нет героя — напиши !play в чате.` };
   const authed = invHub.isAuthed(sid, norm);
+  // До кода из чата страница не получает НИЧЕГО, кроме своего ника и кода:
+  // ни оружия, ни брони, ни характеристик, ни прогресса.
+  if (!authed) return { ok: true, nick: rec.nick || norm, authed: false, code: invHub.code(sid, norm) };
   const weaponsList = rec.weapons ?? [];
   // Экземпляр в руке: закреплённый, иначе лучший того же вида/тира (как считает игра).
   const instIn = (side: "left" | "right"): WeaponInstance | undefined => {

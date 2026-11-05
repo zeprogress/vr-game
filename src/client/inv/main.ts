@@ -217,7 +217,7 @@ function renderInv(msg: InvMsg): void {
   topEl.hidden = !!msg.authed && !!msg.pc;
   listEl.innerHTML = msg.authed
     ? ""
-    : `<div class="auth">Чтобы надевать и разбирать предметы, напиши в чат Twitch с ника <b>${escapeHtml(msg.nick ?? "")}</b> код:` +
+    : `<div class="auth">Инвентарь закрыт. Чтобы открыть и менять его, напиши в чат Twitch с ника <b>${escapeHtml(msg.nick ?? "")}</b> код:` +
       `<div class="code">${escapeHtml(msg.code ?? "----")}</div>` +
       `<div class="auth-note">Страница откроется сама. Код действует 10 минут, вход запоминается в этом браузере.</div></div>`;
   // Окно как в игре (то же PcInventory): снаряжение, атрибуты, заточка — с иконками и подсказками.
