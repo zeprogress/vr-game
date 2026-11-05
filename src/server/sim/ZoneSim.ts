@@ -5,7 +5,7 @@ import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { RAID } from "#shared/raid";
 import { MOB_MID_K, BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, WEB, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER, ICE_GIANT, MOB_SWING } from "#shared/mobs";
 import { DUN_MOB_CAMPS, DUN_X, DUN_Z, dunFloorLocal, dunProject, dunWorld, inDunRegion } from "#shared/dungeon";
-import { ARMOR_DROP, ARMOR_PARTS, armorBaseLevelMul, armorGoldDropChance, armorLegendaryDropChance, armorLevelMul, ARMOR_LEVEL_GATE, levelWindowMul, rollArmor, type ArmorInstance } from "#shared/armor";
+import { ARMOR_DROP, ARMOR_PARTS, armorBaseLevelMul, armorGoldDropChance, armorLegendaryDropChance, armorLevelMul, ARMOR_LEVEL_GATE, levelRampMul, levelRiseFallMul, levelWindowMul, rollArmor, type ArmorInstance } from "#shared/armor";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
 import { PLAGUE } from "#shared/classes2";
 import { catProject, inCatRegion } from "#shared/catacombs";
@@ -4475,11 +4475,12 @@ export class ZoneSim {
       }
     } else if (m.kind !== "shard") {
       const elite = m.eliteName !== "";
-      // Тир оружия — по уровню моба: обычное 1–20, золото 15–30, уникальное 25–50.
-      // В каждом окне шанс стартует полным и затухает к верхней границе.
-      const goldMul = levelWindowMul(m.eliteLevel, 15, 30);
-      const baseMul = levelWindowMul(m.eliteLevel, 1, 20);
-      const legendaryMul = levelWindowMul(m.eliteLevel, 25, 50);
+      // Тир оружия — по уровню моба: обычное 1–30 (полный на 1, к 30 ноль),
+      // золото 20–50 (разгон 20→30, затухание 30→50), уникальное 40–75
+      // (на 40 только начинается, к 75 — полный).
+      const goldMul = levelRiseFallMul(m.eliteLevel, 20, 30, 50);
+      const baseMul = levelWindowMul(m.eliteLevel, 1, 30);
+      const legendaryMul = levelRampMul(m.eliteLevel, 40, 75);
       // Вожак — шанс оружия выше в QUEST.champ.dropMul раз (уникальное — только у вожаков лагерей).
       const champMul = m.champ ? QUEST.champ.dropMul : 1;
       // В катакомбах золотого оружия из мобов нет (только легендарное у элитных).

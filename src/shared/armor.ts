@@ -197,6 +197,20 @@ export function levelWindowMul(level: number, from: number, to: number): number 
   return 1 - (level - from) / (to - from);
 }
 
+/** Разгон: до from — 0, от from до full растёт 0→1, после full — 1. */
+export function levelRampMul(level: number, from: number, full: number): number {
+  if (level < from) return 0;
+  if (level >= full) return 1;
+  return (level - from) / (full - from);
+}
+
+/** Горб: 0 до from, разгон до 1 на peak, затухание к 0 на to и после. */
+export function levelRiseFallMul(level: number, from: number, peak: number, to: number): number {
+  if (level < from || level >= to) return 0;
+  if (level < peak) return (level - from) / (peak - from);
+  return 1 - (level - peak) / (to - peak);
+}
+
 export function armorBaseLevelMul(level: number): number {
   return 1 - armorLevelMul(level, { from: 1, full: 53 });
 }
