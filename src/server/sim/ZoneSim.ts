@@ -2438,7 +2438,8 @@ export class Mob {
         // Далеко от дома — возвращается быстрее, бродит у дома — медленнее.
         const [wx, wz] = this.wanderDir(isBoss ? BOSS.wanderRadius : MOB.wanderRadius);
         const [hx, hz] = steerAroundTrees(this.x, this.z, wx, wz);
-        const spd = this.returningHome ? MOB.idleHopSpeed : MOB.idleHopSpeed * 0.3;
+        // За пределами своего радиуса моб не «стоит» у края, а быстро бежит домой.
+        const spd = this.returningHome ? MOB.hopSpeed : MOB.idleHopSpeed * 0.3;
         const acc = Math.min(1, dt * 4);
         this.vx += (hx * spd - this.vx) * acc;
         this.vz += (hz * spd - this.vz) * acc;
