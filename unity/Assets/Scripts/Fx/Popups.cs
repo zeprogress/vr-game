@@ -51,18 +51,17 @@ namespace Zep
             flash = CritFlash();
             ring = CritRing();
             soft = MakeSprite((x, y) => { float r = Mathf.Sqrt(x * x + y * y); return Mathf.Clamp01(1 - r) * Mathf.Clamp01(1 - r); });
-            // Три диагональные царапины: не молния и не крест, а след когтей.
+            // Один широкий диагональный росчерк меча с ярким ядром — не когти.
             claw = MakeSprite((x, y) =>
             {
-                float best = 0f;
-                for (int i = -1; i <= 1; i++)
-                {
-                    float yy = x * 0.62f + i * 0.26f;
-                    float d = Mathf.Abs(y - yy);
-                    best = Mathf.Max(best, Mathf.Clamp01((0.075f - d) / 0.075f));
-                }
-                // Сужаем к краям, чтобы полосы не выглядели прямоугольниками.
-                return best * Mathf.Clamp01(1f - Mathf.Abs(x) * 1.15f);
+                float yy = x * 0.34f + x * x * 0.07f;
+                float along = Mathf.Abs(x);
+                float width = 0.19f * (1f - along * 0.55f);
+                float d = Mathf.Abs(y - yy);
+                float body = Mathf.Clamp01((width - d) / width);
+                float core = Mathf.Clamp01((width * 0.38f - d) / (width * 0.38f));
+                // Края сходят на нет, в центре — яркая белая сердцевина.
+                return Mathf.Clamp01(1f - (along - 0.55f) * 1.7f) * (body * 0.8f + core * 0.35f);
             });
         }
 
@@ -218,7 +217,7 @@ namespace Zep
             var a = cam.WorldToScreenPoint(src);
             var b = cam.WorldToScreenPoint(p + Vector3.up * 0.55f);
             float angle = Mathf.Atan2(b.y - a.y, b.x - a.x) * Mathf.Rad2Deg;
-            I.Add(Kind.Claw, p + Vector3.up * 0.55f, 0.22f, new Color(1f, 0.82f, 0.5f), 0.85f, new Vector3(0, 0.18f, 0), null, angle);
+            I.Add(Kind.Claw, p + Vector3.up * 0.55f, 0.3f, new Color(1f, 0.94f, 0.68f), 1.05f, new Vector3(0, 0.2f, 0), null, angle);
         }
 
         void Add(Kind k, Vector3 p, float life, Color c, float size, Vector3 drift, string text = null, float forcedRot = float.NaN)

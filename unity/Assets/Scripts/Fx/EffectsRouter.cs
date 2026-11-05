@@ -156,6 +156,8 @@ namespace Zep
             if (Time.unscaledTime - lastHitSparkAt < 0.025f) return;
             lastHitSparkAt = Time.unscaledTime;
             Popups.Claw(p, from);
+            // Небольшой сноп искр делает удар мечом ярче, но без вспышки крита.
+            Vfx.I?.Burst(p + Vector3.up * 0.55f, new Color(1f, 0.76f, 0.34f), count: 5, speed: 3.2f, life: 0.22f, size: 0.1f, grav: 2.5f);
         }
 
         public void OnAct(string k, string id, Dictionary<string, object> m)
