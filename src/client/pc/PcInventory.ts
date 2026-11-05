@@ -2592,7 +2592,7 @@ export class PcInventory {
     req.append(status);
     right.append(req);
 
-    // Переплавка лома в сплав — отдельная карточка в левой колонке (под «Кузницей»): формула «лом → сплав» и кнопки количества.
+    // Переплавка лома в сплав — отдельная карточка в левой колонке, под результатом и требованиями.
     const sg = div("pcinv-fg-side pcinv-fg-smelt");
     sg.append(div("pcinv-fg-sub2", "Переплавка лома"));
     const eq = div("pcinv-fg-eq");
@@ -2629,8 +2629,10 @@ export class PcInventory {
     fillCats(group("Катализаторы", "cats"));
     fillMeths(group("Методы обработки"));
 
+    // Карточка результата, требования и переплавка — левая колонка (grid-area right после swap).
+    right.append(sg);
     const lcol = div("pcinv-fg-lcol");
-    lcol.append(left, sg);
+    lcol.append(left);
     // Подсказки — внутри кузницы, внизу под наковальней.
     stage.append(hintEl);
     root.append(lcol, stage, right, shelf);
