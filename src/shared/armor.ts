@@ -112,6 +112,9 @@ export const ARMOR_WEIGHT_BASE: Record<ArmorWeight, {
   heavy: { armor: 30, resist: 18, hp: 24, regen: 0.14, dodge: -0.005, move: -0.02, atk: -0.02 },
 };
 
+/** 2026-11-05: физ. и маг. защита с вещей сильно срезана (вдвое). */
+export const ARMOR_DEF_MUL = 0.5;
+
 /** Вклад части в общий сет: нагрудник — 1.0, перчатки — 0.45. */
 export const ARMOR_SLOT_FACTOR: Record<ArmorPart, number> = {
   chest: 1.0,
@@ -229,8 +232,8 @@ export function armorBaseStats(a: ArmorInstance): ArmorBonus {
   const k = ARMOR_SLOT_FACTOR[a.part] * ARMOR_TIER_MUL[a.tier] * armorLevelScale(a.lvl);
   return {
     hp: w.hp * k,
-    physDef: w.armor * k,
-    magDef: w.resist * k,
+    physDef: w.armor * k * ARMOR_DEF_MUL,
+    magDef: w.resist * k * ARMOR_DEF_MUL,
     regen: w.regen * k,
     // Уворот не растёт от уровня: это фиксированный характер веса.
     dodge: w.dodge * ARMOR_TIER_MUL[a.tier],
@@ -248,7 +251,8 @@ export function armorValue(stat: ArmorStat, pts: number): number {
 /** Значение одного ролла с учётом грейда/уровня. */
 export function armorRollValue(a: Pick<ArmorInstance, "tier"> & Partial<Pick<ArmorInstance, "lvl">>, r: ArmorRoll): number {
   const scale = r.stat === "dodge" ? 1 : ARMOR_TIER_MUL[a.tier] * armorLevelScale(a.lvl ?? 1);
-  return armorValue(r.stat, r.pts) * scale;
+  const defMul = r.stat === "physDef" || r.stat === "magDef" ? ARMOR_DEF_MUL : 1;
+  return armorValue(r.stat, r.pts) * scale * defMul;
 }
 
 function valueText(stat: ArmorStat, value: number): string {
