@@ -154,6 +154,7 @@ import {
   shieldRegen,
   shieldPhysDef,
   shieldMagDef,
+  shieldDefFrac,
   weaponQuality,
   affixSum,
   BAG,
@@ -11004,7 +11005,7 @@ export class ZoneRoom extends Room<ZoneState> {
       case "steelAura": {
         // Аура раскалённой стали: режим — по оружию (щит / один меч / дуалы); регенерация — на момент каста.
         const mode = steelModeOf(p.leftCls, p.rightCls);
-        const regen = maxHpFor(p.level, p) * (hpRegenFrac(p) + shieldRegen(shieldOf(p, rt)?.inst)) + armorRegenFlat(p);
+        const regen = maxHpFor(p.level, p) * hpRegenFrac(p) + armorRegenFlat(p) + shieldRegen(shieldOf(p, rt)?.inst);
         const tick0 = steelAuraTick(mode, regen);
         // Дерево: «урон ауры +N%».
         const tick = { ...tick0, dmg: tick0.dmg * (1 + (tm.dmg ?? 0)) * (tm.dmgMul ?? 1) };
@@ -12445,7 +12446,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Ролл щита: Физ. защита гасит физический удар, Маг. защита (круглый щит) — магию и снаряды.
     const heldShield = h.dot ? null : shieldOf(p, rt);
     if (heldShield?.inst) {
-      dmg *= 1 - (magicMob || magicShot ? shieldMagDef(heldShield.inst) : shieldPhysDef(heldShield.inst));
+      dmg *= 1 - shieldDefFrac(heldShield.inst, p.level, magicMob || magicShot);
     }
     if (magicMob && dmg > 0 && !h.dot && !this.sim.mobs.get(h.byMob ?? "")?.quietMagic) {
       this.broadcast(MSG.act, { k: "magicHit", id: h.target, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay);
@@ -12746,8 +12747,8 @@ export class ZoneRoom extends Room<ZoneState> {
       const inCamp = inHubSafeZone(p.head.x, p.head.z);
       // Регенерация от ТЕЛ и ролла щита — доля макс. HP в секунду, работает и в бою.
       if (p.hp > 0 && p.hp < p.maxHp && p.towerFloor === 0) {
-        const frac = hpRegenFrac(p) + shieldRegen(shieldOf(p, rt)?.inst);
-        const flatRegen = armorRegenFlat(p);
+        const frac = hpRegenFrac(p);
+        const flatRegen = armorRegenFlat(p) + shieldRegen(shieldOf(p, rt)?.inst);
         if (frac > 0 || flatRegen > 0) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * frac * dt + flatRegen * dt);
       }
       if (p.hp > 0 && p.hp < p.maxHp && (inCamp || rt.sinceHurt > regenDelay)) {

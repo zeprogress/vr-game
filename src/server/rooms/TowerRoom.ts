@@ -24,6 +24,7 @@ import {
   rollWeaponInstance,
   WEAPONS,
   shieldBlockChance,
+  flatDefFrac,
   isMeleeClass,
   weaponKey,
   type WeaponClass,
@@ -270,6 +271,7 @@ export class TowerRoom extends Room<TowerState> {
   private heroAegisHeal = 0;
   private heroPhysDef = 0;
   private heroMagDef = 0;
+  private heroLevel = 1;
   /** Отражённый щитом урон — применяется после хода мобов (смерть моба посреди перебора ломала бы цикл). */
   private reflectQueue: { m: LiveMob; dmg: number }[] = [];
   /** Один предмет в руках (лук/посох) — вдвое подвижнее, как и в основном мире. */
@@ -368,6 +370,7 @@ export class TowerRoom extends Room<TowerState> {
     this.heroAegisHeal = options.rolled?.aegisHeal ?? 0;
     this.heroPhysDef = options.rolled?.physDef ?? 0;
     this.heroMagDef = options.rolled?.magDef ?? 0;
+    this.heroLevel = options.level;
     // Одна рука занята луком/посохом (обе руки на нём) — вдвое подвижнее второй свободной руки.
     this.heroOneHanded = holdsOneItem(options.leftCls, options.rightCls);
     this.heroDagger = options.leftCls === "dagger" || options.rightCls === "dagger";
@@ -950,7 +953,7 @@ export class TowerRoom extends Room<TowerState> {
     // Общий множитель урона мобов (как в мире, MOB.dmgMul).
     let real = dmg * MOB.dmgMul * block.mult * (1 - armorFrac(this.heroAttrs));
     if (projectile) real *= 1 - magicResistFrac(this.heroAttrs);
-    real *= 1 - (projectile ? this.heroMagDef : this.heroPhysDef);
+    real *= 1 - (projectile ? flatDefFrac(this.heroMagDef, this.heroLevel) : flatDefFrac(this.heroPhysDef, this.heroLevel));
     this.state.heroHp = Math.max(0, this.state.heroHp - real);
     // Уникальный щит — отражение (и при блоке), Эгида — блок лечит (как ZoneRoom.hurtPlayer).
     if (block.by !== 3 && from && this.heroReflect > 0) this.reflectQueue.push({ m: from, dmg: dmg * this.heroReflect });

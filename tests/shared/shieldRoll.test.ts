@@ -10,9 +10,9 @@ test("регенерация брони: плоские 0.004–0.12 HP/с за 
   assert.ok(close(armorValue("regen", ARMOR_POINTS_MAX), 0.12));
 });
 
-test("регенерация щита ×2, отражение Эгиды до 35%: новые роллы — регенерация до 2%, отражение до 35%", () => {
-  assert.ok(close(affixAtPoints("regen", 33).value, 0.02));
-  assert.ok(close(affixAtPoints("regen", 1).value, 0.006));
+test("регенерация щита — плоские HP/с, отражение Эгиды до 35%", () => {
+  assert.ok(close(affixAtPoints("regen", 33).value, 1.5));
+  assert.ok(close(affixAtPoints("regen", 1).value, 0.05));
   assert.ok(close(affixAtPoints("reflect", 33).value, 0.35));
   assert.ok(close(affixAtPoints("reflect", 1).value, 0.14));
 });
@@ -26,10 +26,10 @@ test("выпавшие щиты (lv 11) пересчитываются на но
   const ref = shield(0.1, "reflect");
   assert.equal(migrateLoot(hi), true);
   assert.equal(hi.lv, LOOT_VER);
-  assert.ok(close(shieldRegen(hi), 0.02));
+  assert.ok(close(shieldRegen(hi), 1.5));
   assert.equal(affixPoints(hi.affixes[0], hi), 33, "старый максимум (33 очка) остаётся максимумом");
   migrateLoot(lo);
-  assert.ok(close(shieldRegen(lo), 0.006));
+  assert.ok(close(shieldRegen(lo), 0.05));
   migrateLoot(ref);
   assert.ok(close(shieldReflect(ref), 0.35));
 });

@@ -600,7 +600,7 @@ export interface WeaponInstance {
 // ★ Избранное — без лимита (2026-10-20; было FAV_MAX = 24 на оружие, кольца и броню вместе).
 
 /** Текущая версия формата роллов (WeaponInstance.lv). */
-export const LOOT_VER = 15;
+export const LOOT_VER = 16;
 
 /** Оружие ближнего боя — только на нём выпадает вампиризм. */
 export function isMeleeClass(cls: string): boolean {
@@ -662,10 +662,11 @@ const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
   block: [0.07, 0.2],
   /** Отражение щита: 3.5–10% → 14–35% (2026-10-20, максимум — ровно 35%); выпавшие роллы пересчитывает migrateLoot (lv 12). */
   reflect: [0.14, 0.35],
-  physDef: [0.07, 0.2],
-  magDef: [0.07, 0.2],
-  /** Регенерация щита: доля МАКС. HP в секунду (и в бою). ×2 (2026-10-20); выпавшие роллы — migrateLoot (lv 12). */
-  regen: [0.006, 0.02],
+  // Физ./маг. защита щита — ПЛОСКИЕ числа, как у брони, а не проценты.
+  physDef: [2, 18],
+  magDef: [2, 18],
+  /** Регенерация щита — плоские HP/с (как у брони), не доля макс. HP. */
+  regen: [0.05, 1.5],
   /** Пронзание (лук): шанс, что стрела пройдёт насквозь и ранит моба позади цели (BOW.pierceDmg урона). 2026-10-06: максимум 15% → 25%. */
   pierce: [0.05, 0.4], // 2026-10-07: потолок шанса 25% → 40%
   /** Поджог (посох): шанс поджечь цель огнешаром (горение — от ИНТ, как прежний врождённый поджог). */
@@ -677,7 +678,7 @@ const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
 };
 /** Диапазоны роллов Эгиды, где они свои (макс.: Блок 20% — как у щита, Отражение 35%, Физ. защита 15%). */
 const AEGIS_RANGES: Partial<Record<AffixSub, readonly [number, number]>> = {
-  physDef: [0.05, 0.15],
+  physDef: [2, 18],
 };
 /** Диапазоны до lv 7 (2026-10-02, до повышения максимумов) — для пересчёта выпавших щитов. */
 const V6_RANGES = {
@@ -797,7 +798,7 @@ export function affixCapNote(a: RolledAffix, w: Pick<WeaponInstance, "cls" | "nm
   const c = a.cap ?? 1;
   if (Math.abs(c - 1) < 0.0005) return "";
   const hi = affixRange(a.sub, w, c)[1];
-  const max = a.sub === "critMult" ? `${Math.round(hi * 100) / 100}` : a.sub === "regen" ? `${Math.round(hi * 10000) / 100}%` : `${Math.round(hi * 1000) / 10}%`;
+  const max = a.sub === "critMult" ? `${Math.round(hi * 100) / 100}` : a.sub === "regen" ? `${hi.toFixed(2)} HP/с` : a.sub === "physDef" || a.sub === "magDef" ? `${Math.round(hi)}` : `${Math.round(hi * 1000) / 10}%`;
   const d = Math.round((c - 1) * 100);
   return `макс ${max} (${c >= STAR_CAP - 1e-6 ? "★" : d > 0 ? "▲" : "▼"} ${d > 0 ? "+" : "−"}${Math.abs(d)}%)`;
 }
@@ -807,7 +808,9 @@ function affixLabelBare(a: RolledAffix): string {
   // заточка не меняла бы подпись. Хвостовые нули срезаем: 12.0% → 12%.
   if (a.sub === "critMult") return `Крит, сила +${Math.round(a.value * 100) / 100}`;
   // Регенерация — доля макс. здоровья в секунду (точнее: шаг заточки здесь ~0.02%).
-  if (a.sub === "regen") return `Регенерация +${Math.round(a.value * 10000) / 100}% HP/с`;
+  if (a.sub === "regen") return `Регенерация +${a.value.toFixed(2)} HP/с`;
+  if (a.sub === "physDef") return `Физ. защита +${Math.round(a.value)}`;
+  if (a.sub === "magDef") return `Маг. защита +${Math.round(a.value)}`;
   // Вампиризм — доля МАКС. HP за удар (а не урона): понятнее и не растёт с уроном.
   if (a.sub === "vamp") return `Вампиризм +${Math.round(a.value * 10000) / 100}% макс. HP за удар`;
   if (a.sub === "pierce") return `Пронзание ${Math.round(a.value * 1000) / 10}%`;
@@ -1057,19 +1060,30 @@ export function shieldReflect(inst?: Pick<WeaponInstance, "affixes"> | null): nu
   return inst ? affixSum(inst.affixes, "reflect") : 0;
 }
 
-/** Доля физ. урона, гасимая щитом (ролл Физ. защита). */
+/** Плоская физ. защита щита (ролл Физ. защита). */
 export function shieldPhysDef(inst?: Pick<WeaponInstance, "affixes"> | null): number {
   return inst ? affixSum(inst.affixes, "physDef") : 0;
 }
 
-/** Регенерация от щита — доля макс. HP в секунду (ролл Регенерация). */
+/** Плоская регенерация щита, HP/с (ролл Регенерация). */
 export function shieldRegen(inst?: Pick<WeaponInstance, "affixes"> | null): number {
   return inst ? affixSum(inst.affixes, "regen") : 0;
 }
 
-/** Доля магического урона, гасимая круглым щитом (ролл Маг. защита). */
+/** Плоская магическая защита щита (ролл Маг. защита). */
 export function shieldMagDef(inst?: Pick<WeaponInstance, "affixes"> | null): number {
   return inst ? affixSum(inst.affixes, "magDef") : 0;
+}
+
+/** Доля урона, которую гасит плоская защита (та же формула, что у брони). */
+export function flatDefFrac(flat: number, level: number): number {
+  const l = Math.max(1, Math.floor(level) || 1);
+  return flat > 0 ? flat / (flat + 100 + 4 * l) : 0;
+}
+
+/** Доля урона, которую гасит защита щита: magic — магическая, иначе физическая. */
+export function shieldDefFrac(inst: Pick<WeaponInstance, "affixes"> | null | undefined, level: number, magic = false): number {
+  return flatDefFrac(magic ? shieldMagDef(inst) : shieldPhysDef(inst), level);
 }
 
 /** Эгида — старый уникальный щит с особым свойством «Оплот». */
@@ -1312,6 +1326,21 @@ export function migrateLoot(w: WeaponInstance): boolean {
       if (a.value <= hi + 1e-9) continue; // уже в новых пределах — не трогаем
       const t = Math.max(0, Math.min(1, (a.value - OLD_VAMP_RANGE[0]) / (OLD_VAMP_RANGE[1] - OLD_VAMP_RANGE[0])));
       a.value = atT("vamp", Math.round(t * 32) / 32, isAegis(w), cap, w.cls);
+    }
+  }
+  // lv 16 (2026-11-06): физ./маг. защита и регенерация щита стали ПЛОСКИМИ
+  // числами, как у брони. Старые процентные роллы переводим по их качеству.
+  if (ver < 16 && w.cls === "shield") {
+    for (const a of w.affixes) {
+      if (a.sub === "physDef" || a.sub === "magDef") {
+        if (a.value > 1) continue; // уже плоское
+        const t = Math.max(0, Math.min(1, (a.value - 0.03) / (0.2 - 0.03)));
+        a.value = atT(a.sub, Math.round(t * 32) / 32, isAegis(w), a.cap ?? 1);
+      } else if (a.sub === "regen") {
+        if (a.value > 0.02) continue;
+        const t = Math.max(0, Math.min(1, a.value / 0.02));
+        a.value = atT("regen", Math.round(t * 32) / 32, isAegis(w), a.cap ?? 1);
+      }
     }
   }
   w.lv = LOOT_VER;
