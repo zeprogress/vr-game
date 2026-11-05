@@ -145,6 +145,26 @@ function loadoutWriter(): Plugin {
 }
 
 /**
+ * Значки/иконки — стабильные файлы без хэша в имени. Без явного Cache-Control
+ * Vite отдаёт их с коротким/эвристическим кэшем, и после каждого действия
+ * страница заново тянет все картинки. Долгий immutable-кэш работает и на
+ * http-, и на https-адресе (у каждого origin свой кэш, но оба сохраняют файлы).
+ */
+function iconCacheHeaders(): Plugin {
+  return {
+    name: "icon-cache-headers",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if ((req.url ?? "").split("?")[0].startsWith("/icons/")) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        }
+        next();
+      });
+    },
+  };
+}
+
+/**
  * Дев-эндпоинт лаборатории: POST /__model-seats с посадками оружия под модель (подобраны ползунками в
  * lab.html?s=classes) — плагин переписывает блок MODEL_SEATS между маркерами в src/client/entities/botGear.ts.
  * Только у дев-сервера.
@@ -272,7 +292,7 @@ const devPort = portArg > 0 ? process.argv[portArg + 1] : "";
 
 export default defineConfig({
   cacheDir: devPort && devPort !== "5173" ? `node_modules/.vite-${devPort}` : "node_modules/.vite",
-  plugins: [loadoutWriter(), modelSeatsWriter(), shortInvPath(), unityExportWriter(), ...(vr ? [basicSsl()] : [])],
+  plugins: [iconCacheHeaders(), loadoutWriter(), modelSeatsWriter(), shortInvPath(), unityExportWriter(), ...(vr ? [basicSsl()] : [])],
   server: {
     host: true, // доступ по локальной сети
     port: 5173,
