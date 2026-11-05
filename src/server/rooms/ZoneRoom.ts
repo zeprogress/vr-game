@@ -5761,12 +5761,22 @@ export class ZoneRoom extends Room<ZoneState> {
       if (this.hintOk(norm)) this.reply(`@${nick} у тебя ещё нет героя — сначала !play.`);
       return;
     }
-    // Публичный адрес страницы: на домашнем сервере это адрес туннеля (PUBLIC_URL),
-    // на VPS — обычный домен. Без переменной оставляем прежний прод-адрес.
-    const base = (process.env.PUBLIC_URL ?? "http://zepgame.duckdns.org")
-      .replace(/^https?:\/\//, "http://")
-      .replace(/\/+$/, "");
-    this.reply(`@${nick} твой инвентарь: ${base}/inv?${encodeURIComponent(norm)}`);
+    // Публичный адрес страницы. По просьбе — именно http; на домашнем
+    // сервере обычный http-порт 80 не слушается, поэтому без порта в PUBLIC_URL
+    // ведём на Vite :5173, иначе ссылка открывает пустоту и страница циклически
+    // перезагружается.
+    let u: URL;
+    try {
+      u = new URL(process.env.PUBLIC_URL ?? "http://zepgame.duckdns.org");
+    } catch {
+      u = new URL("http://zepgame.duckdns.org");
+    }
+    u.protocol = "http:";
+    if (!u.port) u.port = "5173";
+    u.pathname = "/inv";
+    u.search = encodeURIComponent(norm);
+    u.hash = "";
+    this.reply(`@${nick} твой инвентарь: ${u.toString()}`);
   }
 
   /** Сохранить живого героя этого ника в store (бот или подключённый игрок). */
