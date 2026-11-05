@@ -149,6 +149,8 @@ export class PcInventory {
   private data: PcInvData | null = null;
   /** Слепок последних данных: одинаковый не вызывает перерисовку. */
   private dataSig = "";
+  /** Отложенная перерисовка результата действия: данные с сервера обычно приходят следом. */
+  private resultRenderTimer: number | null = null;
   private tab: InvTab = "gear";
   /** Открытая карточка предмета (тот же адрес, что у перетаскивания); null — закрыта. */
   private card: DragSrc | null = null;
@@ -415,7 +417,11 @@ export class PcInventory {
     }
     // Пока печатают ник или открыт выбор игрока — не перерисовываем (сбросило бы фокус); данные уже в this.data.
     if (same) return; // слепок тот же — окно уже показывает эти данные
-    if (this.isOpen && !this.forging && !this.tradeTyping()) this.render();
+    if (this.isOpen && !this.forging && !this.tradeTyping()) {
+      // Свежие данные уже содержат итог действия — отдельная отложенная перерисовка не нужна.
+      this.cancelResultRender();
+      this.render();
+    }
   }
 
   /** Есть ли ещё предмет, на который указывает адрес (руки есть всегда). */
@@ -482,7 +488,7 @@ export class PcInventory {
     // Крафт — свой итог во вкладке (исход крупно, кнопка «Посмотреть»).
     if (r.craft) {
       this.craftRes = { ...r.craft, text: r.text, at: Date.now() };
-      if (this.isOpen) this.render();
+      this.queueResultRender();
       // Вспышка итога на наковальне гаснет сама — снять класс следующей перерисовкой.
       window.setTimeout(() => this.isOpen && this.tab === "craft" && this.render(), 1550);
       return;
@@ -491,11 +497,31 @@ export class PcInventory {
       const res = { text: r.text, up: r.up ?? r.ok };
       this.lastResult = res;
       this.armResultTimer(res);
-      if (this.isOpen) this.render();
+      this.queueResultRender();
       return;
     }
     this.pendingResult = r;
     if (this.hammerDone) this.reveal();
+  }
+
+  /**
+   * Показать итог действия, но не перерисовывать окно дважды: сервер следом присылает
+   * свежие данные, и один setData уже перерисует всё с результатом. Небольшая задержка
+   * склеивает эти два события в одну перерисовку.
+   */
+  private queueResultRender(): void {
+    if (!this.isOpen) return;
+    if (this.resultRenderTimer !== null) clearTimeout(this.resultRenderTimer);
+    this.resultRenderTimer = window.setTimeout(() => {
+      this.resultRenderTimer = null;
+      if (this.isOpen && !this.forging) this.render();
+    }, 80);
+  }
+
+  private cancelResultRender(): void {
+    if (this.resultRenderTimer === null) return;
+    clearTimeout(this.resultRenderTimer);
+    this.resultRenderTimer = null;
   }
 
   /** Итог в сумке (соединение камней, разбор…) — всплывашка, гаснет сама; в открытой карточке итог остаётся. */
