@@ -600,7 +600,7 @@ export interface WeaponInstance {
 // ★ Избранное — без лимита (2026-10-20; было FAV_MAX = 24 на оружие, кольца и броню вместе).
 
 /** Текущая версия формата роллов (WeaponInstance.lv). */
-export const LOOT_VER = 16;
+export const LOOT_VER = 17;
 
 /** Оружие ближнего боя — только на нём выпадает вампиризм. */
 export function isMeleeClass(cls: string): boolean {
@@ -666,7 +666,7 @@ const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
   physDef: [2, 18],
   magDef: [2, 18],
   /** Регенерация щита — плоские HP/с (как у брони), не доля макс. HP. */
-  regen: [0.05, 1.5],
+  regen: [0.5, 15],
   /** Пронзание (лук): шанс, что стрела пройдёт насквозь и ранит моба позади цели (BOW.pierceDmg урона). 2026-10-06: максимум 15% → 25%. */
   pierce: [0.05, 0.4], // 2026-10-07: потолок шанса 25% → 40%
   /** Поджог (посох): шанс поджечь цель огнешаром (горение — от ИНТ, как прежний врождённый поджог). */
@@ -1341,6 +1341,15 @@ export function migrateLoot(w: WeaponInstance): boolean {
         const t = Math.max(0, Math.min(1, a.value / 0.02));
         a.value = atT("regen", Math.round(t * 32) / 32, isAegis(w), a.cap ?? 1);
       }
+    }
+  }
+  // lv 17 (2026-11-06): регенерация щитов ещё ×10 — старые дробные
+  // значения (доля макс. HP) переводим в новые плоские 0.5–15 HP/с.
+  if (ver < 17 && w.cls === "shield") {
+    for (const a of w.affixes) {
+      if (a.sub !== "regen" || a.value > 0.02) continue;
+      const t = Math.max(0, Math.min(1, (a.value - 0.006) / (0.02 - 0.006)));
+      a.value = atT("regen", Math.round(t * 32) / 32, isAegis(w), a.cap ?? 1);
     }
   }
   w.lv = LOOT_VER;
