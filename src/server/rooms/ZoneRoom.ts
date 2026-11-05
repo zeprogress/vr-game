@@ -10757,7 +10757,7 @@ export class ZoneRoom extends Room<ZoneState> {
                 for (const m of around(cx, cz, radius)) {
                   const [dx, dz] = dirTo(m, cx, cz);
                   this.skillHitMob(ownerId, m, spearRainDamage(pow.dmg), dx, dz, true, false, false, false, hit);
-                  stun(m.id, 1);
+                  stun(m.id, 0.5);
                 }
               }, (0.4 + i * 0.8) * 1000);
             }
