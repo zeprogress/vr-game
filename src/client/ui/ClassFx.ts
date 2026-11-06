@@ -988,8 +988,8 @@ export function playClassAct(
       if (x2 !== undefined && z2 !== undefined) vfx.lightning(x, y + 1.1, z, x2, y + 1.1, z2, null, 0.38);
       return true;
     case "pierceShot":
-      
-      c.sample(at, "arrow-whistle");// Пронзание: стрела прошла насквозь и летит ко второму мобу — светлый след и искры у него.
+      // Звук пронзания убран — остаётся только след стрелы.
+      // Пронзание: стрела прошла насквозь и летит ко второму мобу — светлый след и искры у него.
       if (x2 !== undefined && z2 !== undefined) {
         c.fx.streak(x, y + 1.1, z, x2, z2, FXC.gold, 0.25, 0.3);
         vfx.burst(x2, y + 1.1, z2, FXC.gold, { count: 10, speed: 4, life: 0.35, grav: 6, size: 0.15 });

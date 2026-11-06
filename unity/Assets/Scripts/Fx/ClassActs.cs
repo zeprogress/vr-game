@@ -219,8 +219,7 @@ namespace Zep
                     if (x2.HasValue && z2.HasValue) vfx.Lightning(P(x, y + 1.1f, z), P(x2.Value, y + 1.1f, z2.Value), null, 0.38f);
                     return true;
                 case "pierceShot":
-                    
-                    Sample(at, "arrow-whistle");
+                    // Звук пронзания убран — остаётся только след стрелы.
                     if (x2.HasValue && z2.HasValue)
                     {
                         C.Streak(x, y + 1.1f, z, x2.Value, z2.Value, Gold, 0.25f, 0.3f);
