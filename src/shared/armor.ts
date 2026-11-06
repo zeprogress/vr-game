@@ -112,8 +112,8 @@ export const ARMOR_WEIGHT_BASE: Record<ArmorWeight, {
   heavy: { armor: 30, resist: 18, hp: 24, regen: 0.14, dodge: -0.005, move: -0.02, atk: -0.02 },
 };
 
-/** 2026-11-06: защита с вещей сильно срезана (до 15% от исходной). */
-export const ARMOR_DEF_MUL = 0.15;
+/** Защита с вещей: физ. и маг. защита всей брони удвоены (2026-11-07; было 15% от исходной). */
+export const ARMOR_DEF_MUL = 0.3;
 /** Чистая регенерация HP/с с брони: базовые значения и роллы усилены в 25 раз. */
 export const ARMOR_REGEN_MUL = 25;
 
