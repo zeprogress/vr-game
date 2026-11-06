@@ -4946,6 +4946,17 @@ export class ZoneRoom extends Room<ZoneState> {
     const token = `nick:${normNick(p.nick)}`;
     if (!this.tavernNear(p)) return this.sendShop(client, "Подойди к трактирщику");
     const tokens = store.get(token)?.tokens ?? 0;
+    if (item.scrapCost) {
+      const bag = readBag(p);
+      const have = bagCount(bag, "scrap");
+      if (have < item.scrapCost) return this.sendShop(client, `Нужно ${item.scrapCost} лома, у тебя ${have}`);
+      if (!item.item) return this.sendShop(client, "Этого товара больше нет");
+      takeFromBag(bag, "scrap", item.scrapCost);
+      if (addToBag(bag, item.item, item.count ?? 1) > 0) return this.sendShop(client, "Сумка полна");
+      writeBag(p, bag);
+      this.sendShop(client, `Куплено: ${item.name} (−${item.scrapCost} лома)`);
+      return;
+    }
     if (item.fishCost) {
       // Обмен рыбы на жетоны: рыба из сумки → tokensGet ◈.
       const gain = item.tokensGet ?? 1;
@@ -4986,7 +4997,14 @@ export class ZoneRoom extends Room<ZoneState> {
     const tokens = rec.tokens ?? 0;
     const patch: Partial<PlayerRecord> = {};
     let note: string;
-    if (item.fishCost) {
+    if (item.scrapCost) {
+      const have = bagCount(bag, "scrap");
+      if (have < item.scrapCost) return { ok: false, text: `Нужно ${item.scrapCost} лома, у тебя ${have}` };
+      if (!item.item) return { ok: false, text: "Такого товара в лавке нет." };
+      takeFromBag(bag, "scrap", item.scrapCost);
+      if (addToBag(bag, item.item, item.count ?? 1) > 0) return { ok: false, text: "Сумка полна" };
+      note = `Куплено: ${item.name} · −${item.scrapCost} лома`;
+    } else if (item.fishCost) {
       // Обмен рыбы на жетоны: рыба из сумки → tokensGet ◈.
       const gain = item.tokensGet ?? 1;
       if (!takeFromBag(bag, "fish", item.fishCost)) return { ok: false, text: `Нужно ${item.fishCost} рыб, у тебя ${bagCount(bag, "fish")}` };

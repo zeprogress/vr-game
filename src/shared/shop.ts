@@ -14,7 +14,7 @@ export const SCROLL = {
   windMul: 1.2,
 } as const;
 
-export type ShopId = "potions" | "scrap" | "scroll_wind" | "scroll_xp" | "fish_trade";
+export type ShopId = "potions" | "scrap" | "scroll_wind" | "scroll_xp" | "save_scroll" | "fish_trade";
 
 export interface ShopItem {
   id: ShopId;
@@ -24,6 +24,8 @@ export interface ShopItem {
   /** Что кладём в сумку (нет — особая выдача, напр. сундук). */
   item?: ItemId;
   count?: number;
+  /** Цена в ломе вместо жетонов (свиток сохранения). */
+  scrapCost?: number;
   /** Обмен: платим рыбой (столько штук), а не жетонами — и получаем tokensGet ◈ (по умолчанию 1). */
   fishCost?: number;
   tokensGet?: number;
@@ -34,6 +36,7 @@ export const SHOP: readonly ShopItem[] = [
   { id: "scrap", name: "Лом ×300", desc: "на заточку роллов", price: 2, item: "scrap", count: 300 },
   { id: "scroll_wind", name: "Свиток ветра ×10", desc: "+20% скорости бега на 15 мин", price: 1, item: "scroll_wind", count: 10 },
   { id: "scroll_xp", name: "Свиток мудрости ×10", desc: "×2 опыта на 15 мин (с благословением ×3)", price: 1, item: "scroll_xp", count: 10 },
+  { id: "save_scroll", name: "Свиток сохранения", desc: "не даёт оружию сломаться при заточке", price: 0, scrapCost: 70_000, item: "save_scroll", count: 1 },
   { id: "fish_trade", name: "Обмен рыбы на жетоны", desc: "25 рыб → 5 ◈", price: 0, fishCost: 25, tokensGet: 5 },
 ];
 

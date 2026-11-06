@@ -671,6 +671,7 @@ export class PcInventory {
       scrap: "i.scrap",
       scroll_wind: "i.scroll_wind",
       scroll_xp: "i.scroll_xp",
+      save_scroll: "i.save_scroll",
       fish_trade: "i.fish",
     };
     const box = div("pcinv-shop");
@@ -681,6 +682,7 @@ export class PcInventory {
     );
     const purse = div("pcinv-shop-purse");
     purse.append(this.shopChip(iconHtml("i.token"), tokens, "жетонов"), this.shopChip(iconHtml("i.fish"), fish, "рыб"));
+    purse.append(this.shopChip(iconHtml("i.scrap"), d.scrap, "лома"));
     head.append(purse);
     box.append(head);
     const list = div("pcinv-shop-list");
@@ -690,8 +692,8 @@ export class PcInventory {
       ic.innerHTML = iconHtml(icon[it.id]);
       const info = div("pcinv-shop-info");
       info.append(div("pcinv-shop-name", it.name), div("pcinv-shop-desc", it.desc));
-      const enough = it.fishCost ? fish >= it.fishCost : tokens >= it.price;
-      const buy = button(it.fishCost ? `Обменять · ${it.fishCost} рыб` : `Купить · ${it.price} ◈`, () => this.hooks.act({ act: "shop", id: it.id, idx: 0 }));
+      const enough = it.fishCost ? fish >= it.fishCost : it.scrapCost ? d.scrap >= it.scrapCost : tokens >= it.price;
+      const buy = button(it.fishCost ? `Обменять · ${it.fishCost} рыб` : it.scrapCost ? `Купить · ${it.scrapCost.toLocaleString("ru-RU")} лома` : `Купить · ${it.price} ◈`, () => this.hooks.act({ act: "shop", id: it.id, idx: 0 }));
       buy.disabled = !enough;
       row.append(ic, info, buy);
       list.append(row);
