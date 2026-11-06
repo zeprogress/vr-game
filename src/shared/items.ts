@@ -606,6 +606,8 @@ export interface WeaponInstance {
   brokenAt?: number;
   /** Накопитель неудач со свитком: 0..5 (каждая +2% к шансу, сбрасывается успехом). */
   sharpFails?: number;
+  /** Сколько лома вложено в заточку/восстановление этого экземпляра. */
+  scrapSpent?: number;
   /** Мастерское (крафт): «Мастерство» — прибавка к урону от исхода крафта (доля: 0.15 = +15%), см. CRAFT_OUTCOMES. */
   cp?: number;
   /** Мастерское: кто создал (ник) — строка «Создал: …» в карточке. */
@@ -994,6 +996,9 @@ export function affixSum(affixes: RolledAffix[], sub: AffixSub): number {
  * Рубиновое — × RUBY.scrapMul (×100): оценка 50 → 5000, 132 → 13200.
  */
 export function scrapValue(w: WeaponInstance): number {
+  const invested = Math.max(0, Math.floor(w.scrapSpent ?? 0));
+  // Если в оружие вкладывали лом — при разборе возвращается половина вложенного.
+  if (invested > 0) return Math.max(1, Math.round(invested * 0.5));
   // Мастерское — как уникальное (×1): иначе крафт рубинового уровня стал бы «печатным станком» лома.
   const tierMul = w.tier === "ruby" ? RUBY.scrapMul : 1;
   // Сломанное — 40% обычной цены (можно разобрать или восстановить).

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ATTACK_POINT, attackPointBonus, attackPointNext, attackPointTry, restoreCost, restoreSharp, type WeaponInstance } from "../../src/shared/items";
+import { ATTACK_POINT, attackPointBonus, attackPointNext, attackPointTry, restoreCost, restoreSharp, scrapValue, type WeaponInstance } from "../../src/shared/items";
 
 const wpn = (sharp: number, extra: Partial<WeaponInstance> = {}): WeaponInstance =>
   ({ id: "t", cls: "sword", tier: "legendary", affixes: [], sharp, ...extra }) as WeaponInstance;
@@ -76,4 +76,11 @@ test("восстановление: цена зависит от уровня п
   assert.equal(restoreSharp(5), 5);
   assert.equal(restoreSharp(6), 3);
   assert.equal(restoreSharp(15), 3);
+});
+
+test("разбор возвращает 50% вложенного лома", () => {
+  const w = wpn(5, { scrapSpent: 10_000 });
+  assert.equal(scrapValue(w), 5_000);
+  const noInvest = wpn(5);
+  assert.ok(scrapValue(noInvest) > 0);
 });

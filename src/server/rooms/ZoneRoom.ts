@@ -1210,6 +1210,7 @@ function sharpenTry(w: WeaponInstance, bag: Slot[], useScroll = false): InvActRe
     return { ok: false, text: `Не хватает лома: нужно ${"need" in r ? r.need : 0}, есть ${have}.`, spent: false };
   }
   takeFromBag(bag, "scrap", r.cost);
+  w.scrapSpent = (w.scrapSpent ?? 0) + r.cost;
   if (useScroll) takeFromBag(bag, "save_scroll", 1);
   const text = r.up
     ? `Заточка +${r.points}: +${fmtPct(attackPointBonus(r.points) * 100)}% к урону`
@@ -6663,6 +6664,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const stock = craftStockOf(rec?.mats);
       if (cost.scale > (stock.scale ?? 0)) return { ok: false, text: `Нужно ${cost.scale} чешуи дракона.` };
       takeFromBag(bag, "scrap", cost.scrap);
+      w.scrapSpent = (w.scrapSpent ?? 0) + cost.scrap;
       if (cost.scale > 0) {
         const mats = { ...(rec?.mats ?? {}) } as Record<string, number>;
         mats.scale = Math.max(0, (mats.scale ?? 0) - cost.scale);
