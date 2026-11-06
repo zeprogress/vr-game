@@ -46,6 +46,24 @@ let frameAt = 0;
 let subj: { type: string; id: string; shot: string } | null = null;
 let subjAt = 0;
 let live = false;
+/** Когда последний раз реально приходили данные комнаты: по этому ловим «тихий» обрыв. */
+let lastSeen = performance.now();
+let reloading = false;
+
+/** Перезагрузить страницу один раз. OBS Browser Source сам её не перезапустит. */
+function hardReload(reason: string): void {
+  if (reloading) return;
+  reloading = true;
+  console.warn(`[overlay] перезагрузка: ${reason}`);
+  location.reload();
+}
+
+/** Переподписка на изменения состояния — на первом входе и после реконнекта. */
+function watchRoom(room: { onStateChange?: (cb: () => void) => void } | null | undefined): void {
+  lastSeen = performance.now();
+  // Colyseus Room.onStateChange есть в рантайме; в типах NetClient комнаты он не обязателен.
+  room?.onStateChange?.(() => { lastSeen = performance.now(); });
+}
 
 const net = new NetClient();
 net.onSpecCmd = (cmd: SpecCmd) => {
@@ -106,12 +124,20 @@ net.onConnectionLost = () => {
   lostAt = performance.now();
   ov.setShown(false);
 };
+// «Тихий» обрыв: WebSocket формально открыт, но state перестал обновляться.
+// Раньше в этом случае помогал только ручной Reload источника в OBS.
 setInterval(() => {
-  if (!live && lostAt && performance.now() - lostAt > 45_000) location.reload();
+  const now = performance.now();
+  if (!live) {
+    if (lostAt && now - lostAt > 15_000) hardReload("нет соединения");
+    return;
+  }
+  if (now - lastSeen > 15_000) hardReload("нет данных от сервера");
 }, 5000);
-net.onReconnected = () => {
+net.onReconnected = (room) => {
   live = true;
   lostAt = 0;
+  watchRoom(room);
   ov.setShown(true);
 };
 
@@ -191,6 +217,10 @@ setInterval(async () => {
   }
 }, 60_000);
 
+// Упавший скрипт/необработанная ошибка в OBS оставляют застывший кадр — сами перезагружаемся.
+window.addEventListener("error", (e) => hardReload(`ошибка: ${e.message}`));
+window.addEventListener("unhandledrejection", () => hardReload("необработанная ошибка"));
+
 if (!key) {
   console.error("[overlay] нужен ?spectator=КЛЮЧ");
 } else {
@@ -201,6 +231,7 @@ if (!key) {
     }
     else {
       live = true;
+      watchRoom(net.room);
       ov.setShown(true);
     }
   });
