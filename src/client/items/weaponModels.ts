@@ -12,7 +12,7 @@ import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 import { containerFor, recolorFlat } from "../world/models";
 import { flattenToVertexColors } from "./flatMerge";
-import { sharpGlowMul, sharpWhiten, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { sharpGlowLook, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { radialGlowTexture } from "../ui/GlowSprite";
 import { sharpGlowTune, sharpGlowVersion } from "./sharpGlowTune";
 
@@ -164,20 +164,18 @@ export function applySharpGlow(root: TransformNode, pct: number, rc = false): vo
   const done = sharpApplied.get(root);
   if (done && done.pct === pct && done.ver === ver && done.rc === rc) return;
   sharpApplied.set(root, { pct, ver, rc });
-  const strength = sharpGlowMul(pct, sharpGlowTune.strength);
-  const radius = sharpGlowMul(pct, sharpGlowTune.radius);
+  const look = sharpGlowLook(pct);
+  const strength = look.intensity * sharpGlowTune.strength;
+  const radius = look.scale;
   for (const c of root.getChildMeshes(false, (n) => glowBase.has(n as Mesh))) {
     const g = c as Mesh;
     const base = glowBase.get(g)!;
     g.isVisible = pct > 0;
     if (pct <= 0) continue;
-    // Скрытый рецепт: аура шире и перелив сильнее (только у мастерского — у него и есть перелив).
     const recipe = rc && base.shim;
     g.scaling.setAll(radius * (recipe ? RECIPE_GLOW.size : 1));
-    // Точки атаки +20…+30: свечение выцветает к белому (перелив тоже гаснет — он даёт цвет).
-    const w = sharpWhiten(pct);
-    const col = w > 0 ? Color3.Lerp(base.col, Color3.White(), w) : base.col;
-    const shim = w > 0 ? 0 : recipe ? 2 : base.shim ? 1 : 0;
+    const col = new Color3(look.color[0], look.color[1], look.color[2]);
+    const shim = recipe ? 2 : base.shim ? 1 : 0;
     g.material = glowMaterial(g.getScene(), Math.round(base.amp * strength * 1000) / 1000, col, shim);
   }
 }

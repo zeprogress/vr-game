@@ -8,13 +8,27 @@ namespace Zep
     /// мягкий круг лицом к камере, пульсирует. Видна только при заточке; сила ∝ прибавке, размер ∝ √прибавки.
     public class WeaponGlow : MonoBehaviour
     {
-        /// Точка отсчёта: +10 удачных точек заточки (SHARP_GLOW_REF_PCT).
-        const float RefPct = 25.41f;
-        /// С +20 до +25 точек свечение выцветает к белому (sharpWhiten в shared/items.ts):
-        /// +20 точек — 42.75%, +25 — 49.23% прибавки (ATTACK_POINT: 3% × 0.9625^n).
-        const float WhiteFrom = 42.75f, WhiteTo = 49.23f;
+        // Те же цветовые диапазоны, что SHARP_GLOW_TIERS в shared/items.ts:
+        // +1…5 — голубой, +6…9 — зелёный, +10…12 — золотой, +13…15 — алый.
+        static readonly Color Blue = new(0.35f, 0.8f, 1f), Green = new(0.35f, 1f, 0.45f);
+        static readonly Color Gold = new(1f, 0.72f, 0.15f), Red = new(1f, 0.2f, 0.18f);
         static readonly Color Legendary = new(0.6f, 0.22f, 1f), Ruby = new(1f, 0.1f, 0.22f), Craft = new(1f, 0.38f, 0.02f);
-        static readonly Color Shimmer = new(1f, 0.82f, 0.36f);
+        /// Порог процента для уровней +1…+15 (attackPointBonus в shared/items.ts).
+        static readonly float[] LevelPct = { 0f, 5f, 10f, 15f, 20f, 25f, 40f, 55f, 70f, 85f, 105f, 125f, 145f, 170f, 195f, 245f };
+        static int LevelOfPct(float pct)
+        {
+            if (pct <= 0f) return 0;
+            int best = 0; float diff = float.MaxValue;
+            for (int i = 1; i <= 15; i++)
+            {
+                float d = Mathf.Abs(LevelPct[i] - pct);
+                if (d < diff) { diff = d; best = i; }
+            }
+            return best;
+        }
+        static Color TierColor(int level) => level <= 5 ? Blue : level <= 9 ? Green : level <= 12 ? Gold : Red;
+        static float Brightness(int level) => 0.45f + Mathf.Max(0, level - 1) / 14f * 1.9f;
+        static float GlowSize(int level) => 0.45f + Mathf.Max(0, level - 1) / 14f * 0.9f;
         static Material mat;
         static Mesh quad;
         Light light;
@@ -36,7 +50,7 @@ namespace Zep
         MaterialPropertyBlock mpb;
         Color col;
         float amp, baseScale, pct = -1;
-        bool shim;
+        int level;
         static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
 
         /// Прибавка заточки из строки роллов оружия (sharpPctOfText).
@@ -94,7 +108,6 @@ namespace Zep
                 g.light = l;
                 g.col = col;
                 g.amp = amp;
-                g.shim = tier == "craft";
                 g.baseScale = r.transform.localScale.x;
                 g.SetPct(0);
             }
@@ -105,10 +118,10 @@ namespace Zep
         {
             if (Mathf.Approximately(p, pct)) return;
             pct = p;
-            rend.enabled = p > 0;
-            if (light) light.enabled = p > 0;
-            // Радиус линейно от прибавки (как web radius=1): +5 мельче, +20 шире.
-            if (p > 0) transform.localScale = Vector3.one * baseScale * (p / RefPct);
+            level = LevelOfPct(p);
+            rend.enabled = level > 0;
+            if (light) light.enabled = level > 0;
+            if (level > 0) transform.localScale = Vector3.one * baseScale * GlowSize(level);
         }
 
         void LateUpdate()
@@ -118,15 +131,15 @@ namespace Zep
             if (cam) transform.rotation = Quaternion.LookRotation(transform.position - cam.transform.position);
             float t = Time.time;
             float p = 0.5f + 0.5f * Mathf.Sin(t * 3.1f + transform.position.x);
-            // +20…+30 точек: сначала выцветаем к белому, и только потом (если осталось) играем переливом.
-            float w = Mathf.Clamp01((pct - WhiteFrom) / (WhiteTo - WhiteFrom));
-            var baseCol = w > 0 ? Color.Lerp(col, Color.white, w) : col;
-            var c = shim && w < 1 ? Color.Lerp(baseCol, Shimmer, (0.5f + 0.5f * Mathf.Sin(t * 1.7f)) * (1f - w)) : baseCol;
-            float k = (0.36f + p * 0.36f) * amp * (pct / RefPct);
-            // HDR под bloom: ядро ярче единицы — ореол вокруг клинка; прозрачность по силе заточки.
-            c = c * (1.6f + 1.4f * p);
-            c.a = Mathf.Clamp01(k);
-            if (light) light.intensity = 0.6f * k * (0.8f + 0.4f * p);
+            float b = Brightness(level);
+            // Цвет зависит от диапазона заточки, яркость плавно растёт от +1 к +15.
+            var c = TierColor(level) * (0.75f + b * 0.75f) * (1f + 0.3f * p);
+            c.a = Mathf.Clamp01(0.24f + b * 0.26f);
+            if (light)
+            {
+                light.color = TierColor(level);
+                light.intensity = 0.35f * b * (0.8f + 0.4f * p);
+            }
             mpb ??= new MaterialPropertyBlock();
             mpb.SetColor(BaseColor, c);
             rend.SetPropertyBlock(mpb);

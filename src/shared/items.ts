@@ -1451,6 +1451,44 @@ export function restoreCost(brokenAt: number): { scrap: number; scale: number } 
   return { scrap: 125_000, scale: 2 };
 }
 
+/**
+ * Вид свечения заточки: четыре цветовых диапазона и плавная яркость 1→15.
+ * Цвета: +1…5 — голубой, +6…9 — зелёный, +10…12 — золотой, +13…15 — алый.
+ */
+export const SHARP_GLOW_TIERS = [
+  { from: 1, to: 5, color: [0.35, 0.8, 1] },
+  { from: 6, to: 9, color: [0.35, 1, 0.45] },
+  { from: 10, to: 12, color: [1, 0.72, 0.15] },
+  { from: 13, to: 15, color: [1, 0.2, 0.18] },
+] as const;
+
+/** Уровень заточки (0..15) по проценту из строки «Точка атаки». */
+export function sharpLevelOfPct(pct: number): number {
+  if (!(pct > 0)) return 0;
+  let best = 0, diff = Infinity;
+  for (let n = 1; n <= 15; n++) {
+    const d = Math.abs(sharpPctOfPoints(n) - pct);
+    if (d < diff) { diff = d; best = n; }
+  }
+  return best;
+}
+
+export interface SharpGlowLook {
+  level: number;
+  color: [number, number, number];
+  /** Яркость/сила свечения, плавно 0.45 → 2.35. */
+  intensity: number;
+  /** Размер оболочки, плавно 0.45 → 1.35. */
+  scale: number;
+}
+
+export function sharpGlowLook(pct: number): SharpGlowLook {
+  const level = sharpLevelOfPct(pct);
+  const tier = SHARP_GLOW_TIERS.find((t) => level >= t.from && level <= t.to) ?? SHARP_GLOW_TIERS[0];
+  const k = level > 0 ? (level - 1) / 14 : 0;
+  return { level, color: [...tier.color] as [number, number, number], intensity: 0.45 + k * 1.9, scale: 0.45 + k * 0.9 };
+}
+
 /** На какой уровень возвращается восстановленное оружие: +4→+4, +5 и выше→+5. */
 export function restoreSharp(brokenAt: number): number {
   return Math.max(1, Math.min(5, Math.floor(brokenAt) || 5));
