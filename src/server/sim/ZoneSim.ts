@@ -3041,16 +3041,18 @@ export class ZoneSim {
   }[] = [];
 
   constructor() {
-    for (let i = 0; i < MOB.count; i++) {
-      const a = (i / MOB.count) * Math.PI * 2 + 0.4;
+    const slimeCount = MOB.count * MOB.countMul;
+    for (let i = 0; i < slimeCount; i++) {
+      const a = (i / slimeCount) * Math.PI * 2 + 0.4;
       const r = 22 + Math.random() * 12;
       const [x, z] = awayFromHub(Math.cos(a) * r, Math.sin(a) * r - 4);
       const m = new Mob("slime", x, z);
       this.mobs.set(m.id, m);
     }
     const [rMin, rMax] = SPITTER.spawnRadius;
-    for (let i = 0; i < SPITTER.count; i++) {
-      const a = (i / SPITTER.count) * Math.PI * 2 + 1.1;
+    const spitterCount = SPITTER.count * MOB.countMul;
+    for (let i = 0; i < spitterCount; i++) {
+      const a = (i / spitterCount) * Math.PI * 2 + 1.1;
       const r = rMin + Math.random() * (rMax - rMin);
       const [x, z] = awayFromHub(Math.cos(a) * r, Math.sin(a) * r - 4);
       const m = new Mob("spitter", x, z);
@@ -3064,11 +3066,12 @@ export class ZoneSim {
     });
     for (const camp of [...MOB_CAMPS, ...dunCamps]) {
       const def = ELITE_MOBS[camp.type];
-      for (let i = 0; i < camp.count; i++) {
+      const campCount = camp.count * MOB.countMul;
+      for (let i = 0; i < campCount; i++) {
         // jitter — кольцо «неровное»: сдвиг по углу (доля шага между соседями)
         // и по радиусу, чтобы мобы не стояли идеальным кругом.
         const j = camp.jitter ?? 0;
-        const a = ((i + (Math.random() - 0.5) * j) / camp.count) * Math.PI * 2 + camp.x;
+        const a = ((i + (Math.random() - 0.5) * j) / campCount) * Math.PI * 2 + camp.x;
         const r = camp.ring !== undefined
           ? camp.spread * (camp.ring * (1 + (Math.random() - 0.5) * j) + (Math.random() - 0.5) * 0.1)
           : camp.spread * (0.35 + Math.random() * 0.65);
