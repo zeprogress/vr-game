@@ -55,6 +55,8 @@ namespace Zep
         /// каждая свеча и факел катакомб. Тёплые мерцают.
         readonly List<(Light l, float full)> dunAll = new();
         readonly List<(Light l, float full)> catFlameLights = new();
+        /** Мягкий тёплый заполняющий свет у камеры: страховка, если огни факелов не зажглись. */
+        Light catFill;
         /// Яркость всех огней катакомб — как CAT_LIGHT в вебе (world/Catacombs.ts), 2026-10-28: ярче по просьбе.
         const float CatBright = 1.4f;
         float time;
@@ -111,7 +113,22 @@ namespace Zep
             // Катакомбы: в вебе пол ровно-оранжевый от факелов (линейное затухание Babylon) — даём тёплую
             // заливку, а факелам — пятна у стен.
             // Заливка ослаблена и почти нейтральна (была 0.22, 0.11, 0.05 — пол целиком оранжевый); тепло дают огни.
-            if (r == "cat") { Underground(new Color(0.095f, 0.09f, 0.085f), Color.black, 30f, 140f); Flicker(catFlameLights); return; }
+            if (r == "cat")
+            {
+                Underground(new Color(0.095f, 0.09f, 0.085f), Color.black, 30f, 140f);
+                Flicker(catFlameLights);
+                // Страховка от «чёрных» катакомб: небольшой тёплый свет у камеры,
+                // чтобы зал читался, даже если огни свечей/факелов не создались.
+                if (!catFill)
+                {
+                    catFill = MakePoint("catFill", new Color(1f, 0.68f, 0.38f), 11f);
+                    catFill.intensity = 1.15f;
+                }
+                catFill.enabled = true;
+                catFill.transform.position = camPos + Vector3.up * 1.2f;
+                return;
+            }
+            if (catFill) catFill.enabled = false;
 
             var a = Row(hour, out var b, out float t);
             var dir = Vector3.Lerp(new Vector3(a.sunDir[0], a.sunDir[1], a.sunDir[2]), new Vector3(b.sunDir[0], b.sunDir[1], b.sunDir[2]), t);
