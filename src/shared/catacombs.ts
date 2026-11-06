@@ -503,15 +503,17 @@ export const CAT_SHRINE = { chance: 0.65, reach: 3.5, holdSec: 2.1, buffSec: 30,
 /** Доля уровня героя за полный заход по кривой CATACOMBS.xpCurve (лог-линейно между точками). */
 export function catXpFrac(level: number): number {
   const c = CATACOMBS.xpCurve;
-  if (level <= c[0][0]) return c[0][1];
+  // 2026-11-06: опыт катакомб уменьшен в 5 раз.
+  const xpMul = 0.2;
+  if (level <= c[0][0]) return c[0][1] * xpMul;
   for (let i = 1; i < c.length; i++) {
     const [l1, f1] = c[i];
     if (level <= l1) {
       const [l0, f0] = c[i - 1];
-      return f0 * Math.pow(f1 / f0, (level - l0) / (l1 - l0));
+      return f0 * Math.pow(f1 / f0, (level - l0) / (l1 - l0)) * xpMul;
     }
   }
-  return c[c.length - 1][1];
+  return c[c.length - 1][1] * xpMul;
 }
 
 /** Фазы забега (RoomState.catPhase). */
