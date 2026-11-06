@@ -1490,9 +1490,10 @@ export function sharpGlowLook(pct: number): SharpGlowLook {
   return { level, color: [...tier.color] as [number, number, number], intensity: 0.45 + k * 1.9, scale: 0.45 + k * 0.9 };
 }
 
-/** На какой уровень возвращается восстановленное оружие: +4→+4, +5 и выше→+5. */
+/** Восстановление: +4/+5 возвращаются на свой уровень, +6 и выше — на +3. */
 export function restoreSharp(brokenAt: number): number {
-  return Math.max(1, Math.min(5, Math.floor(brokenAt) || 5));
+  const l = Math.max(1, Math.floor(brokenAt) || 3);
+  return l <= 5 ? l : 3;
 }
 
 /** Свиток сохранения: цена у трактирщика и шанс с мирового босса. */

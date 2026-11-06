@@ -39,7 +39,7 @@ test("заточка: безопасные +1…+5 и поломка/защит�
   assert.equal(r1.ok && r1.broke, true);
   assert.equal(broke.broken, true);
   assert.equal(broke.brokenAt, 6);
-  assert.equal(broke.sharp, 5);
+  assert.equal(broke.sharp, 3);
 
   const saved = wpn(5);
   const r2 = attackPointTry(saved, 1e9, true, () => 0.999);
@@ -59,5 +59,6 @@ test("восстановление: цена зависит от уровня п
   assert.equal(ATTACK_POINT.max, 15);
   assert.equal(restoreSharp(4), 4);
   assert.equal(restoreSharp(5), 5);
-  assert.equal(restoreSharp(6), 5);
+  assert.equal(restoreSharp(6), 3);
+  assert.equal(restoreSharp(15), 3);
 });
