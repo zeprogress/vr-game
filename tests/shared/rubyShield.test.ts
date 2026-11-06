@@ -40,5 +40,5 @@ test("рубиновая Эгида: Оплот сильнее уникальн�
   assert.ok(instanceEffects(aegis).some((t) => t.startsWith("Оплот")));
   assert.ok(instanceEffects(round).includes(RUBY_ROUND_LABEL));
   assert.equal(aegisTier("shield", "ruby", "Оплот: блок удара вблизи лечит 8% HP"), "rubyAegis");
-  assert.equal(aegisTier("shield", "legendary", "Оплот: блок удара вблизи лечит 2% HP"), "aegis");
+  assert.equal(aegisTier("shield", "legendary", "Оплот: блок удара вблизи лечит 1% HP"), "aegis");
 });
