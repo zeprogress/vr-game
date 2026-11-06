@@ -1444,11 +1444,12 @@ export const ATTACK_POINT = {
 
 /** Цена восстановления сломанного оружия: scrap + чешуя дракона (scale). */
 export function restoreCost(brokenAt: number): { scrap: number; scale: number } {
-  const l = Math.max(6, Math.min(15, Math.floor(brokenAt) || 6));
-  if (l <= 8) return { scrap: 18_000, scale: 0 };
-  if (l <= 11) return { scrap: 45_000, scale: 1 };
-  if (l <= 13) return { scrap: 90_000, scale: 1 };
-  return { scrap: 125_000, scale: 2 };
+  const l = Math.max(4, Math.min(15, Math.floor(brokenAt) || 4));
+  // Цена растёт на каждом уровне поломки, а не только на границах диапазонов.
+  const n = l - 4;
+  const scrap = Math.round((12_000 + n * 5_500 + n * n * 700) / 100) * 100;
+  const scale = l <= 8 ? 0 : l <= 13 ? 1 : 2;
+  return { scrap, scale };
 }
 
 /**

@@ -50,9 +50,12 @@ test("заточка: безопасные +1…+5 и поломка/защит�
 });
 
 test("восстановление: цена зависит от уровня поломки", () => {
-  assert.deepEqual(restoreCost(6), { scrap: 18_000, scale: 0 });
-  assert.deepEqual(restoreCost(9), { scrap: 45_000, scale: 1 });
-  assert.deepEqual(restoreCost(14), { scrap: 125_000, scale: 2 });
+  assert.deepEqual(restoreCost(4), { scrap: 12_000, scale: 0 });
+  assert.deepEqual(restoreCost(6), { scrap: 25_800, scale: 0 });
+  assert.deepEqual(restoreCost(9), { scrap: 57_000, scale: 1 });
+  assert.deepEqual(restoreCost(14), { scrap: 137_000, scale: 2 });
+  assert.ok(restoreCost(7).scrap > restoreCost(6).scrap);
+  assert.ok(restoreCost(15).scrap > restoreCost(14).scrap);
   assert.equal(ATTACK_POINT.max, 15);
   assert.equal(restoreSharp(4), 4);
   assert.equal(restoreSharp(5), 5);
