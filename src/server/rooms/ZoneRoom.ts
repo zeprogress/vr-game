@@ -10071,7 +10071,13 @@ export class ZoneRoom extends Room<ZoneState> {
       bot.retreat = false;
       return;
     }
-    if (p.hp < p.maxHp * 0.35) bot.retreat = true;
+    // Не убегаем к костру/пугалу посреди боя: там бот просто бросал цель,
+    // добегал до лагеря и возвращался. Отход — только когда рядом нет боя.
+    const target = bot.target ? this.sim.mobs.get(bot.target) : undefined;
+    const nearFight = !!target && !target.dead && Math.hypot(target.x - p.head.x, target.z - p.head.z) < BOT.closeThreat * 2;
+    const hurtRecently = !!bot.hurtByMob && Date.now() - bot.hurtByMobAt < 5000;
+    const inCombat = nearFight || hurtRecently;
+    if (p.hp < p.maxHp * 0.35 && !inCombat) bot.retreat = true;
     else if (p.hp > p.maxHp * 0.7) bot.retreat = false;
   }
 
