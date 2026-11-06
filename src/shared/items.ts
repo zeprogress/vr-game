@@ -1434,6 +1434,9 @@ export const ATTACK_POINT = {
   chances: [0.65, 0.55, 0.45, 0.35, 0.25, 0.18, 0.12, 0.08, 0.05],
   /** На +15 фиксированный шанс. */
   maxChance: 0.03,
+  /** С +13 свиток защищает не гарантированно: 20% — всё равно поломка. */
+  scrollBreakFrom: 13,
+  scrollBreakChance: 0.2,
   /** Накопитель: +2% за неудачу со свитком, не больше +10%. */
   failBonus: 0.02,
   failBonusMax: 0.1,
@@ -1642,6 +1645,14 @@ export function attackPointTry(w: WeaponInstance, scrapHave: number, useScroll =
     return { ok: true, cost: info.cost, up: false, gain: 0, points: info.points, broke: false, protected: false, fails: w.sharpFails ?? 0 };
   }
   if (useScroll) {
+    // С +13 свиток уже не гарантирует сохранность: 20% провалов всё равно ломают.
+    if (info.points >= ATTACK_POINT.scrollBreakFrom && rnd() < ATTACK_POINT.scrollBreakChance) {
+      w.broken = true;
+      w.brokenAt = info.target;
+      w.sharp = restoreSharp(info.target);
+      w.sharpFails = 0;
+      return { ok: true, cost: info.cost, up: false, gain: 0, points: w.sharp, broke: true, brokeAt: info.target, protected: false, fails: 0 };
+    }
     w.sharpFails = Math.min(5, Math.max(0, w.sharpFails ?? 0) + 1);
     return { ok: true, cost: info.cost, up: false, gain: 0, points: info.points, broke: false, protected: true, fails: w.sharpFails };
   }

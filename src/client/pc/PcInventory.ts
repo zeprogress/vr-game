@@ -2019,6 +2019,7 @@ export class PcInventory {
       txt.append(div("pcinv-small", chance
         ? `Шанс ${fmtPct(next.chance * 100)}%${next.bonus ? ` (накопитель +${fmtPct(next.bonus * 100)}%)` : ""} · провал ${deadly ? next.target >= 15 ? "разрушает" : "ломает в хлам" : "без поломки"}`
         : "Гарантированная заточка до +3"));
+      if (deadly && n >= 13) txt.append(div("pcinv-small", "Со свитком: 80% — уровень сохранится, 20% — оружие всё равно сломается"));
       box.append(txt);
       const row = div("pcinv-ap-row");
       const bt = document.createElement("button");

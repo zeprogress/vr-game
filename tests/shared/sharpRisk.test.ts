@@ -49,6 +49,21 @@ test("заточка: безопасные +1…+5 и поломка/защит�
   assert.equal(saved.sharpFails, 1);
 });
 
+
+test("со свитком с +13: 20% поломки, 80% сохранения", () => {
+  const broke = wpn(13);
+  const rb = attackPointTry(broke, 1e9, true, (() => { const v = [0.99, 0.1]; return () => v.shift()!; })());
+  assert.equal(rb.ok && rb.broke, true);
+  assert.equal(broke.broken, true);
+
+  const kept = wpn(13);
+  const rk = attackPointTry(kept, 1e9, true, (() => { const v = [0.99, 0.9]; return () => v.shift()!; })());
+  assert.equal(rk.ok && rk.protected, true);
+  assert.equal(kept.broken, undefined);
+  assert.equal(kept.sharp, 13);
+  assert.equal(kept.sharpFails, 1);
+});
+
 test("восстановление: цена зависит от уровня поломки", () => {
   assert.deepEqual(restoreCost(4), { scrap: 12_000, scale: 0 });
   assert.deepEqual(restoreCost(6), { scrap: 25_800, scale: 0 });
