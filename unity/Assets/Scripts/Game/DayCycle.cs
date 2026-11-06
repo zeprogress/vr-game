@@ -49,6 +49,9 @@ namespace Zep
         CatLight[] cat;
         float shownHour = float.NaN;
         string region = "";
+        /** Комната, для которой посчитан текущий регион: после реконнекта сервера
+         *  огни надо включить заново, даже если камера стоит на месте. */
+        object lastRoom;
         Light campfire;
         readonly List<Light> catLights = new();
         /// Каждый огонь — настоящий источник (Forward+ держит сотни): все жаровни и кристаллы подземелья,
@@ -92,6 +95,11 @@ namespace Zep
         {
             time += Time.deltaTime;
             var room = ZoneNet.I ? ZoneNet.I.Room : null;
+            if (!ReferenceEquals(room, lastRoom))
+            {
+                lastRoom = room;
+                region = ""; // следующий Apply заново включит огни текущего региона
+            }
             float target = !float.IsNaN(overrideHour) ? overrideHour : room != null ? room.State.hour : fallbackHour;
             if (!float.IsNaN(overrideHour)) shownHour = overrideHour;
             // Часы идут сами, сервер лишь сверяет — сглаживаем, чтобы свет не прыгал (как shown в Zone.ts).
