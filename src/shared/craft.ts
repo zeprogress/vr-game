@@ -552,6 +552,8 @@ export const CRAFT_DROPS: Partial<Record<string, readonly { id: CraftItemId; cha
     { id: "web", chance: 0.002 }, // 2026-10-21: было 0.01 (в 5 раз реже); раньше 0.25, потом 0.03
     { id: "sting", chance: 0.0001 }, // 2026-10-21: было 0.001 (в 10 раз реже); раньше 0.004
   ],
+  // Шипобрюхи тоже носят ядовитое жало (2026-11-06): 0.5% за убийство, у вожака ×4.
+  spikyBlob: [{ id: "sting", chance: 0.005 }],
   // 2026-10-19: кость было 0.25/0.2/0.2 — стало 1%, как паутина.
   skeletonReaver: [{ id: "bone", chance: 0.01 }],
   boneWraith: [{ id: "bone", chance: 0.01 }],
