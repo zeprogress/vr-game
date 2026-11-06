@@ -165,6 +165,7 @@ import {
   isWeaponClass,
   isWeaponTier,
   restoreCost,
+  restoreSharp,
   SAVE_SCROLL,
   ITEMS,
   plainWeaponInstance,
@@ -6667,9 +6668,10 @@ export class ZoneRoom extends Room<ZoneState> {
         mats.scale = Math.max(0, (mats.scale ?? 0) - cost.scale);
         store.put(token, { mats });
       }
+      const back = restoreSharp(w.brokenAt ?? 5);
       w.broken = false;
       delete w.brokenAt;
-      w.sharp = 5;
+      w.sharp = back;
       w.sharpFails = 0;
       if (t) { writeBag(t.p, bag); this.clearBrokenHands(t.p, t.rt, w); this.persistNick(norm); }
       else store.put(token, { bag });

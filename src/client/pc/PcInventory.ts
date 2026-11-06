@@ -7,7 +7,7 @@ import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
 import { ensureIconCss, iconHtml, preloadIconImages, setIconEl } from "../ui/icons";
 import type { IconKey } from "#shared/icons";
-import { AEGIS_NAME, AFFIX_NAME, craftPow, isCraftRare, weaponName, ATTACK_CLASSES, WEAPON_NOUN, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, qualityStarsShort, restoreCost, SAVE_SCROLL, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, AFFIX_NAME, craftPow, isCraftRare, weaponName, ATTACK_CLASSES, WEAPON_NOUN, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, qualityStarsShort, restoreCost, restoreSharp, SAVE_SCROLL, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcEnchRow, PcInvActMsg, PcInvArmor, PcInvData, PcInvResult, PcInvWeapon, TradeItemView } from "#shared/net/messages";
 import { skinPicture } from "#shared/skins";
 import { BOT_SKIN_LABELS } from "../world/models";
@@ -1999,7 +1999,7 @@ export class PcInventory {
       const cost = restoreCost(w.brokenAt ?? 6);
       txt.append(
         div("pcinv-ap-name", `Хлам · сломано на +${w.brokenAt ?? 6}`),
-        div("pcinv-small", `Восстановление: ${cost.scrap} лома${cost.scale ? ` + ${cost.scale} чешуи` : ""} · вернётся на +5`),
+        div("pcinv-small", `Восстановление: ${cost.scrap} лома${cost.scale ? ` + ${cost.scale} чешуи` : ""} · вернётся на +${restoreSharp(w.brokenAt ?? 5)}`),
         div("pcinv-small", `Разбор даст ${w.scrap} лома.`),
       );
       box.append(txt);

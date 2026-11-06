@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ATTACK_POINT, attackPointBonus, attackPointNext, attackPointTry, restoreCost, type WeaponInstance } from "../../src/shared/items";
+import { ATTACK_POINT, attackPointBonus, attackPointNext, attackPointTry, restoreCost, restoreSharp, type WeaponInstance } from "../../src/shared/items";
 
 const wpn = (sharp: number, extra: Partial<WeaponInstance> = {}): WeaponInstance =>
   ({ id: "t", cls: "sword", tier: "legendary", affixes: [], sharp, ...extra }) as WeaponInstance;
@@ -53,4 +53,7 @@ test("восстановление: цена зависит от уровня п
   assert.deepEqual(restoreCost(9), { scrap: 45_000, scale: 1 });
   assert.deepEqual(restoreCost(14), { scrap: 125_000, scale: 2 });
   assert.equal(ATTACK_POINT.max, 15);
+  assert.equal(restoreSharp(4), 4);
+  assert.equal(restoreSharp(5), 5);
+  assert.equal(restoreSharp(6), 5);
 });

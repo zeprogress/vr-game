@@ -1451,6 +1451,11 @@ export function restoreCost(brokenAt: number): { scrap: number; scale: number } 
   return { scrap: 125_000, scale: 2 };
 }
 
+/** На какой уровень возвращается восстановленное оружие: +4→+4, +5 и выше→+5. */
+export function restoreSharp(brokenAt: number): number {
+  return Math.max(1, Math.min(5, Math.floor(brokenAt) || 5));
+}
+
 /** Свиток сохранения: цена у трактирщика и шанс с мирового босса. */
 export const SAVE_SCROLL = { costScrap: 70_000, bossChance: 0.08 } as const;
 
@@ -1601,10 +1606,10 @@ export function attackPointTry(w: WeaponInstance, scrapHave: number, useScroll =
   }
   w.broken = true;
   w.brokenAt = info.target;
-  // Восстановленное оружие возвращается на +5 (даже если +4/+5 теперь с шансом).
-  w.sharp = 5;
+  // Восстановление вернёт тот уровень, на котором сломались (+4→+4, выше→+5).
+  w.sharp = restoreSharp(info.target);
   w.sharpFails = 0;
-  return { ok: true, cost: info.cost, up: false, gain: 0, points: 5, broke: true, brokeAt: info.target, protected: false, fails: 0 };
+  return { ok: true, cost: info.cost, up: false, gain: 0, points: w.sharp, broke: true, brokeAt: info.target, protected: false, fails: 0 };
 }
 
 /** Проценты для подписей: 2,13% (с запятой, как в остальном тексте). */
