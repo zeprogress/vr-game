@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { STEEL_AURA, SKILLS2, CLASSES2, steelAuraTick, steelModeOf } from "../../src/shared/classes2";
+import { STEEL_AURA, SKILLS2, CLASSES2, steelAuraSelfDamage, steelAuraTick, steelModeOf } from "../../src/shared/classes2";
 
 test("Аура раскалённой стали: режим по оружию — щит, один меч, дуалы", () => {
   assert.equal(steelModeOf("shield", "sword"), "shield");
@@ -33,4 +33,11 @@ test("Аура раскалённой стали: радиус 6 м, откат 
   assert.equal(sk.cooldown, 15);
   assert.equal(STEEL_AURA.duration, 6);
   assert.ok(CLASSES2.warrior.skills.includes("steelAura"));
+});
+
+test("Аура раскалённой стали: самосожжение 10% макс. HP, к 20% HP — ноль", () => {
+  assert.ok(Math.abs(steelAuraSelfDamage(1000, 1000) - 100) < 1e-9);
+  assert.ok(Math.abs(steelAuraSelfDamage(1000, 600) - 50) < 1e-9);
+  assert.equal(steelAuraSelfDamage(1000, 200), 0);
+  assert.equal(steelAuraSelfDamage(1000, 100), 0);
 });

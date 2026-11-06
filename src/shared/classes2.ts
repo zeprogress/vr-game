@@ -1019,6 +1019,13 @@ export const SOUL_STEAL = { transfer: 0.5, healthy: 0.85, reach: 6 } as const;
 export const STEEL_AURA = {
   duration: 6, dmgPerRegen: 3, slowMul: 0.8, slowSec: 1.2, dualDef: 0.1,
 } as const;
+/** Самосожжение ауры: 10% макс. HP за тик на полном HP, линейно до 0 к 20% HP. */
+export const STEEL_AURA_SELF = { frac: 0.1, lowHp: 0.2 } as const;
+/** Урон герою от тика ауры; ниже lowHp не опускает. */
+export function steelAuraSelfDamage(maxHp: number, hp: number): number {
+  const frac = Math.max(0, Math.min(1, (hp / Math.max(1, maxHp) - STEEL_AURA_SELF.lowHp) / (1 - STEEL_AURA_SELF.lowHp)));
+  return maxHp * STEEL_AURA_SELF.frac * frac;
+}
 export type SteelMode = "shield" | "sword" | "dual";
 /** Режим ауры по оружию воина: щит в руке → лечение; два меча → дуалы; иначе — один меч (замедление). */
 export function steelModeOf(left: string, right: string): SteelMode {
