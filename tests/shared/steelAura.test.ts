@@ -35,9 +35,9 @@ test("Аура раскалённой стали: радиус 6 м, откат 
   assert.ok(CLASSES2.warrior.skills.includes("steelAura"));
 });
 
-test("Аура раскалённой стали: самосожжение 10% макс. HP, к 20% HP — ноль", () => {
+test("Аура раскалённой стали: самосожжение 10% макс. HP, к 30% HP — ноль", () => {
   assert.ok(Math.abs(steelAuraSelfDamage(1000, 1000) - 100) < 1e-9);
-  assert.ok(Math.abs(steelAuraSelfDamage(1000, 600) - 50) < 1e-9);
-  assert.equal(steelAuraSelfDamage(1000, 200), 0);
+  assert.ok(Math.abs(steelAuraSelfDamage(1000, 650) - 50) < 1e-9);
+  assert.equal(steelAuraSelfDamage(1000, 300), 0);
   assert.equal(steelAuraSelfDamage(1000, 100), 0);
 });

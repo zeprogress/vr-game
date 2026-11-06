@@ -783,7 +783,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   steelAura: {
     name: "Аура раскалённой стали", icon: glyph("s.steelAura"), test: true,
-    desc: "Аура 6 м на 6 с, ходит за тобой: каждую секунду жжёт врагов в ней на 300% твоей регенерации HP. Аура жжёт и тебя: 10% макс. HP за тик, к 20% HP этот урон падает до 0. С одним мечом — враги замедлены на 20%, а ты неуязвим к контролю и замедлению; с двумя — тебе +10% защиты, аура не жжёт врагов; со щитом — только жжёт",
+    desc: "Аура 6 м на 6 с, ходит за тобой: каждую секунду жжёт врагов в ней на 300% твоей регенерации HP. Аура жжёт и тебя: 10% макс. HP за тик, к 30% HP этот урон падает до 0. С одним мечом — враги замедлены на 20%, а ты неуязвим к контролю и замедлению; с двумя — тебе +10% защиты, аура не жжёт врагов; со щитом — только жжёт",
     cooldown: 15, castTime: 0, radius: 6, dmgMult: 0, hits: 1,
   },
   abyss: {
@@ -1019,8 +1019,8 @@ export const SOUL_STEAL = { transfer: 0.5, healthy: 0.85, reach: 6 } as const;
 export const STEEL_AURA = {
   duration: 6, dmgPerRegen: 3, slowMul: 0.8, slowSec: 1.2, dualDef: 0.1,
 } as const;
-/** Самосожжение ауры: 10% макс. HP за тик на полном HP, линейно до 0 к 20% HP. */
-export const STEEL_AURA_SELF = { frac: 0.1, lowHp: 0.2 } as const;
+/** Самосожжение ауры: 10% макс. HP за тик на полном HP, линейно до 0 к 30% HP. */
+export const STEEL_AURA_SELF = { frac: 0.1, lowHp: 0.3 } as const;
 /** Урон герою от тика ауры; ниже lowHp не опускает. */
 export function steelAuraSelfDamage(maxHp: number, hp: number): number {
   const frac = Math.max(0, Math.min(1, (hp / Math.max(1, maxHp) - STEEL_AURA_SELF.lowHp) / (1 - STEEL_AURA_SELF.lowHp)));
