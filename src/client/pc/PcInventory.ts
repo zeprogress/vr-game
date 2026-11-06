@@ -2412,7 +2412,7 @@ export class PcInventory {
     if (hasBase) setIcon(baseIc, sel.cls, undefined, "craft");
     else baseIc.textContent = "?";
     chain.append(slot("Основа", baseIc, hasBase ? WEAPON_NOUN[sel.cls].name : "не выбрано", hasBase ? "мастерское" : "нажми — выбрать", "Основа — какое оружие куём. Нажми — выбрать.", hasBase, () => pickOpen("base")), arrow());
-    const matBox = div(`pcinv-fg-mats${CRAFT.maxMats >= 6 ? " six" : ""}`);
+    const matBox = div(`pcinv-fg-mats${CRAFT.maxMats >= 6 ? " six" : CRAFT.maxMats === 3 ? " three" : ""}`);
     for (let i = 0; i < CRAFT.maxMats; i++) {
       const m = sel.mats[i];
       const cell = div(`pcinv-fg-mcell${m ? " full" : ""}`);
@@ -3550,6 +3550,8 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-fg-rumor { display:block; padding:5px 7px; border-left:2px solid #6b5736; color:#b9c3cf; line-height:1.35; font-style:italic; white-space:pre-line; }
 .pcinv-fg-mats.six { grid-template-rows:repeat(3,minmax(0,1fr)); }
 .pcinv-fg-mats.six .pcinv-fg-mcell:first-child { grid-column:auto; }
+.pcinv-fg-mats.three { grid-template-columns:repeat(3,minmax(0,1fr)); grid-template-rows:minmax(0,1fr); }
+.pcinv-fg-mats.three .pcinv-fg-mcell:first-child { grid-column:auto; }
 .pcinv-fg-mcell:first-child { grid-column:1 / span 2; }
 .pcinv-fg-mcell.full { border:1px solid #8a6a3a; cursor:pointer; background:rgba(60,36,12,.35); }
 .pcinv-fg-mcell .gico { max-width:86%; max-height:86%; width:auto; height:86%; aspect-ratio:1/1; object-fit:contain; }

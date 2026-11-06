@@ -58,7 +58,7 @@ export function isCraftItem(v: unknown): v is CraftItemId {
 export const CRAFT_SMELT = 300;
 
 /** Сколько единиц материала тратит одна ячейка крафта. */
-export const CRAFT_MAT_COST = 2;
+export const CRAFT_MAT_COST = 3;
 
 /** Сколько особых катализаторов (лёд/яд) требует и тратит один крафт. */
 export const CRAFT_SPECIAL_COST = 5;
@@ -144,8 +144,8 @@ export const CRAFT_OUTCOMES: readonly CraftOutcomeDef[] = [
 ];
 
 export const CRAFT = {
-  /** Материалов в одном крафте. */
-  maxMats: 6,
+  /** Материалов в одном крафте: 3 ячейки, каждая по CRAFT_MAT_COST одного вида. */
+  maxMats: 3,
   /** Роллов у оружия — не больше. */
   maxRolls: 4,
   /**
@@ -235,12 +235,12 @@ export interface CraftRecipe {
 }
 
 export const CRAFT_RECIPES: readonly CraftRecipe[] = [
-  { id: "webweaver", name: "Ткач паутины", cls: "bow", mats: ["web", "web", "web", "bone", "bone", "bone"], cat: "sting", method: "temper", star: "atkSpeedPct", lore: "Тетива из паучьего шёлка поёт быстрее ветра.", hint: "В тени звенит тугая нить,\nВ ней — дрожь древка и жадный яд.\nКто ждёт и целит — победит." },
-  { id: "frostguard", name: "Ледяной страж", cls: "hammer", mats: ["bone", "bone", "bone", "alloy", "alloy", "alloy"], cat: "frost", method: "age", star: "vamp", lore: "Холод сковывает врага, а сила его уходит к владельцу.", hint: "Кость и холодная руда\nСпят под тяжёлой головой.\nДай время им — и лёд восстанет." },
-  { id: "dragonblood", name: "Кровь дракона", cls: "dagger", mats: ["scale", "scale", "scale", "scale", "scale", "scale"], cat: "gem:luc", method: "temper", star: "critChance", lore: "Клинок из чешуи помнит, куда бить.", hint: "Шесть чешуин, один клинок,\nГорячий шёпот, лёгкий шаг.\nУдача любит дерзкий взгляд." },
-  { id: "ashstaff", name: "Посох пепла", cls: "staff", mats: ["bone", "bone", "bone", "scale", "scale", "scale"], cat: "gem:int", method: "carve", star: "critChance", lore: "Кость и пламя: каждый огнешар — как удар грома.", hint: "Костяной сосуд и пепел,\nТонкий резец ведёт ладонь.\nНе сила — разум здесь огонь." },
-  { id: "stormfang", name: "Клык бури", cls: "spear", mats: ["web", "web", "scale", "scale", "alloy", "alloy"], cat: null, method: "forge", star: "dmgFlat", lore: "Наконечник, что пробивает ряды насквозь.", hint: "Шёлк, чешуя и тёмный сплав\nСошлись в одном острие.\nОгонь простой, но буря в нём." },
-  { id: "crusher", name: "Сокрушитель", cls: "sword", mats: ["alloy", "alloy", "alloy", "alloy", "alloy", "alloy"], cat: "gem:str", method: "forge", star: "dmgFlat", lore: "Простая сталь в руке силы — тяжелее любого молота.", hint: "Шесть слитков, молот и жар,\nНикаких чудес — лишь сталь.\nКто прям, тот страшен." },
+  { id: "webweaver", name: "Ткач паутины", cls: "bow", mats: ["web", "web", "bone"], cat: "sting", method: "temper", star: "atkSpeedPct", lore: "Тетива из паучьего шёлка поёт быстрее ветра.", hint: "В тени звенит тугая нить,\nВ ней — дрожь древка и жадный яд.\nКто ждёт и целит — победит." },
+  { id: "frostguard", name: "Ледяной страж", cls: "hammer", mats: ["bone", "bone", "alloy"], cat: "frost", method: "age", star: "vamp", lore: "Холод сковывает врага, а сила его уходит к владельцу.", hint: "Кость и холодная руда\nСпят под тяжёлой головой.\nДай время им — и лёд восстанет." },
+  { id: "dragonblood", name: "Кровь дракона", cls: "dagger", mats: ["scale", "scale", "scale"], cat: "gem:luc", method: "temper", star: "critChance", lore: "Клинок из чешуи помнит, куда бить.", hint: "Три кучки чешуи, один клинок,\nГорячий шёпот, лёгкий шаг.\nУдача любит дерзкий взгляд." },
+  { id: "ashstaff", name: "Посох пепла", cls: "staff", mats: ["bone", "bone", "scale"], cat: "gem:int", method: "carve", star: "critChance", lore: "Кость и пламя: каждый огнешар — как удар грома.", hint: "Костяной сосуд и пепел,\nТонкий резец ведёт ладонь.\nНе сила — разум здесь огонь." },
+  { id: "stormfang", name: "Клык бури", cls: "spear", mats: ["web", "scale", "alloy"], cat: null, method: "forge", star: "dmgFlat", lore: "Наконечник, что пробивает ряды насквозь.", hint: "Шёлк, чешуя и тёмный сплав\nСошлись в одном острие.\nОгонь простой, но буря в нём." },
+  { id: "crusher", name: "Сокрушитель", cls: "sword", mats: ["alloy", "alloy", "alloy"], cat: "gem:str", method: "forge", star: "dmgFlat", lore: "Простая сталь в руке силы — тяжелее любого молота.", hint: "Три кучки слитков, молот и жар,\nНикаких чудес — лишь сталь.\nКто прям, тот страшен." },
 ];
 
 /** Полный состав рецепта (для найденных). */
