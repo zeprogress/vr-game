@@ -1126,7 +1126,9 @@ export class Mob {
           : kind === "shard"
             ? SHARD_CFG
             : SLIME_CFG;
-    this.hp = opts.hp ?? cfg.hp;
+    // Обычные мобы без явного hp — вдвое слабее; событийные с фиксированным hp
+    // (удары охоты/нашествия) сохраняют свою механику.
+    this.hp = opts.hp === undefined ? (opts.hp ?? cfg.hp) * MOB.hpMul : opts.hp;
     this.maxHp = this.hp;
     this.ranged = cfg.ranged;
     this.xp = opts.xp ?? cfg.xp;
@@ -3079,7 +3081,7 @@ export class ZoneSim {
           champ: !!champ,
           respawnSec: champ ? CHAMP_RESPAWN : def.respawnSec,
           name: champ ? `Вожак — ${def.name}` : def.name,
-          hp: def.hp * (champ?.hpMul ?? 1) * (def.champHpMul ?? 1) * mobHpLevelMul(def.level),
+          hp: def.hp * (champ?.hpMul ?? 1) * (def.champHpMul ?? 1) * mobHpLevelMul(def.level) * MOB.hpMul,
           dmgMul: def.dmgMul * (champ?.dmgMul ?? 1) * (camp.dmgMul ?? 1),
           attackCooldown: (def.attackCooldown ?? MOB.attackCooldown) / (camp.atkMul ?? 1),
           scrapShared: camp.shareScrap === true,
