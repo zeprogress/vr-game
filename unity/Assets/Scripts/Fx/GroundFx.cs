@@ -142,11 +142,38 @@ namespace Zep
             fx.tr.position += Vector3.up * 0.08f; // над землёй, без мерцания
         }
 
-        /// Град стрел: зона + падающие стрелы по всей площади, пока идёт действие.
+        /// Град стрел: только падающие сверху стрелы, без круга/рун на земле.
         public static void ArrowRain(Vector3 at, float r, float windup, float duration)
         {
-            Zone(at, r, windup, duration, Gold);
             I.StartCoroutine(I.Rain(at, r, windup, duration));
+        }
+
+        /// Огненный дождь мага поддержки: сверху падают раскалённые осколки, без кругов на земле.
+        public static void FireRain(Vector3 at, float r, float windup, float duration)
+        {
+            I.StartCoroutine(I.FireShards(at, r, windup, duration));
+        }
+
+        System.Collections.IEnumerator FireShards(Vector3 at, float r, float windup, float duration)
+        {
+            yield return new WaitForSeconds(windup);
+            float end = Time.time + duration;
+            while (Time.time < end && Lit)
+            {
+                for (int i = 0; i < 4; i++)
+                {
+                    float a = Random.value * Mathf.PI * 2, d = Mathf.Sqrt(Random.value) * r;
+                    var p = at + new Vector3(Mathf.Cos(a) * d, 8f, Mathf.Sin(a) * d);
+                    var (tr, rend) = Make(arrow, Add, "fireShard");
+                    tr.position = p;
+                    tr.localScale = new Vector3(0.13f, 0.13f, 0.28f);
+                    var vel = new Vector3(Random.Range(-1f, 1f), -20f, Random.Range(-1f, 1f));
+                    tr.rotation = Quaternion.LookRotation(vel);
+                    Tint(rend, FireC, 0.95f);
+                    live.Add(new Fx { kind = Kind.Arrow, tr = tr, rend = rend, born = Time.time, life = 8f / 20f, vel = vel, color = FireC });
+                }
+                yield return new WaitForSeconds(0.07f);
+            }
         }
 
         System.Collections.IEnumerator Rain(Vector3 at, float r, float windup, float duration)

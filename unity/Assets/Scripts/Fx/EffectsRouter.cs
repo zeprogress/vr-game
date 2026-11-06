@@ -248,9 +248,10 @@ namespace Zep
                 case "blinkOut": Popups.Puff(p, 1.4f, new Color(0.62f, 0.62f, 0.66f), Or(d, D.blinkFade)); break;
                 case "blinkIn": Popups.Puff(p, 1.4f, new Color(0.62f, 0.62f, 0.66f), 0.6f); SoundBank.At(p, "sword-hit"); break;
                 case "arrowRain":
-                    // Прицел героя: тонкий пунктир «сюда бей» + сама зона дождя.
-                    Vfx.I.Aim(p, Or(r, D.rainRadius), Or(d, D.rainCast), new Color(0.5f, 0.95f, 0.65f));
-                    GroundFx.ArrowRain(p, Or(r, D.rainRadius), Or(d, D.rainCast), D.rainDuration);
+                    // Никаких кругов и рун на земле — только падающие снаряды.
+                    // v=2 — маг поддержки: вместо стрел огненные осколки.
+                    if (Mathf.RoundToInt(Or(vv, 0)) == 2) GroundFx.FireRain(p, Or(r, D.rainRadius), Or(d, D.rainCast), D.rainDuration);
+                    else GroundFx.ArrowRain(p, Or(r, D.rainRadius), Or(d, D.rainCast), D.rainDuration);
                     SoundBank.At(p, "arrowVolley");
                     break;
                 case "rainTick": SoundBank.At(p, "arrowVolley"); break;

@@ -674,7 +674,7 @@ namespace Zep
                 case "arrowRain":
                     Sample(at, "arrow-whistle");
                     Later(Mathf.Max(0, d ?? 0.9f), () => Sample(at, "arrow-impact"));
-                    vfx.Decal(at, r ?? 6.5f, ATK, (d ?? 0.9f) + 3, 1, 0.8f);
+                    // Круг/руны на земле не рисуем: видно только падающие снаряды.
                     return false;
                 case "rainTick":
                     for (int i = 0; i < 3; i++)
