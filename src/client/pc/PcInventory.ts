@@ -1382,6 +1382,9 @@ export class PcInventory {
       c.addEventListener("click", () => (this.hooks.page ? this.open("shop") : this.textTipAt(c, `Жетоны заданий ${glyph("i.token")}`, tip)));
       out.push(c);
     }
+    if (d.saveScrolls) {
+      out.push(gift(info(countCell(iconHtml("i.save_scroll"), d.saveScrolls), "Свиток сохранения", "При рискованной заточке не даёт оружию сломаться. Тратится при попытке. Нажми — подарить."), "Свиток сохранения", "save_scroll", d.saveScrolls));
+    }
     // Свитки — клик: прочитать (бафф на 15 мин).
     const scrolls: [number | undefined, "scroll_xp" | "scroll_wind", IconKey, string, string][] = [
       [d.scrollXp, "scroll_xp", "i.scroll_xp", "Свиток мудрости", "×2 опыта на 15 мин (с благословением ×3). Нажми — прочитать."],

@@ -1140,15 +1140,15 @@ export const AEGIS_LABEL = `Оплот: блок удара вблизи леч�
 /** Свойства предмета помимо роллов — строки для инвентаря (сейчас у щитов: блок, отражение, «Оплот»). */
 export function instanceEffects(w: WeaponInstance): string[] {
   if (w.broken) return [`Хлам: сломано на +${w.brokenAt ?? 6}. Восстанови или разбери.`];
+  const out: string[] = [];
+  if (attackPoints(w) >= ATTACK_POINT.max) out.push("Предел +15: +245% урона и белое свечение");
   if (w.tier === "craft") {
-    const out: string[] = [];
     if (craftPow(w) > 0) out.push(`Мастерство +${Math.round(craftPow(w) * 100)}% к урону`);
     if (w.by) out.push(`Создал: ${w.by}`);
     return out;
   }
   if (w.cls !== "shield") return [];
   // Блок — только ролл (он и так в списке роллов): отдельной строкой не дублируем.
-  const out: string[] = [];
   if (isAegis(w)) out.push(aegisLabelOf(w));
   if (isRubyRound(w)) out.push(RUBY_ROUND_LABEL);
   return out;
