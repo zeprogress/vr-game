@@ -126,6 +126,7 @@ namespace Zep
                 Underground(DunAmbient, DunFog, 8f, 150f);
                 SetAmbient(DunAmbient * 1.1f, DunAmbient * 0.8f, new Color(0.02f, 0.025f, 0.04f));
                 CaveFill(true);
+                EnableNear(dunAll, camPos, 110f);
                 Flicker(dunAll);
                 if (!dunFill)
                 {
@@ -145,6 +146,7 @@ namespace Zep
             if (r == "cat")
             {
                 Underground(new Color(0.095f, 0.09f, 0.085f), Color.black, 30f, 140f);
+                EnableNear(catFlameLights, camPos, 70f);
                 Flicker(catFlameLights);
                 // Страховка от «чёрных» катакомб: небольшой тёплый свет у камеры,
                 // чтобы зал читался, даже если огни свечей/факелов не создались.
@@ -262,6 +264,15 @@ namespace Zep
             l.range = range;
             l.shadows = LightShadows.None;
             return l;
+        }
+
+        /// Включаем только ближайшие огни: в катакомбах сотни свечей, а Forward+
+        /// держит ограниченное число видимых источников — дальние душили ближние.
+        static void EnableNear(List<(Light l, float full)> list, Vector3 cam, float maxDist)
+        {
+            float maxSq = maxDist * maxDist;
+            foreach (var (l, _) in list)
+                if (l) l.enabled = (l.transform.position - cam).sqrMagnitude <= maxSq;
         }
 
         /// Вход/выход из подземелья и катакомб: свои огни включаем только там, где камера.
