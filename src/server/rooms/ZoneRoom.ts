@@ -10071,19 +10071,19 @@ export class ZoneRoom extends Room<ZoneState> {
       bot.retreat = false;
       return;
     }
-    // Не убегаем к костру/пугалу посреди боя: там бот просто бросал цель,
-    // добегал до лагеря и возвращался. Отход — только когда рядом нет боя.
-    const target = bot.target ? this.sim.mobs.get(bot.target) : undefined;
-    const nearFight = !!target && !target.dead && Math.hypot(target.x - p.head.x, target.z - p.head.z) < BOT.closeThreat * 2;
-    const hurtRecently = !!bot.hurtByMob && Date.now() - bot.hurtByMobAt < 5000;
-    const inCombat = nearFight || hurtRecently;
-    if (p.hp < p.maxHp * 0.35 && !inCombat) bot.retreat = true;
+    // В открытом мире в лагерь/к костру не отступаем вообще: бот бросал бой,
+    // бежал к пугалу лечиться и возвращался. Отход оставляем только в катакомбах
+    // (там он идёт ко входу зала, а не через полкарты в лагерь).
+    if (!this.cat.inRun(bot.id)) {
+      bot.retreat = false;
+      return;
+    }
+    if (p.hp < p.maxHp * 0.35) bot.retreat = true;
     else if (p.hp > p.maxHp * 0.7) bot.retreat = false;
   }
 
   private botLiveHome(bot: Bot, p: PlayerState): { x: number; z: number } {
-    // Осторожный отход вне катакомб — дом у костра в лагере (там лечение у костра и нет мобов).
-    if (bot.retreat && !this.cat.inRun(bot.id)) return { x: HUB_CENTER.x, z: HUB_CENTER.z };
+    // Осторожный отход вне катакомб отключён: в лагерь за лечением бот не бежит.
     const base = botHome(p.level, bot.campPref, bot.campRand, bot.campSpot);
     const i0 = CAMP_SPOTS.findIndex((c) => c.x === base.x && c.z === base.z);
     // Указанная зрителем стоянка — бот сидит там, даже если пусто (без подмены на другую).
