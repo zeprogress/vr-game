@@ -3064,9 +3064,14 @@ export class ZoneSim {
       // Вожак есть и в подземелье: первый моб каждой группы (как в лагерях мира).
       return { x: w.x, z: w.z, type: d.type, count: d.count, spread: d.spread, noChamp: d.noChamp, ring: d.ring, dmgMul: d.dmgMul, atkMul: d.atkMul, shareScrap: d.shareScrap };
     });
-    for (const camp of [...MOB_CAMPS, ...dunCamps]) {
+    const camps = [
+      ...MOB_CAMPS.map((camp) => ({ camp, countMul: MOB.countMul })),
+      // Подземелье не удваиваем — там остаётся исходное количество.
+      ...dunCamps.map((camp) => ({ camp, countMul: 1 })),
+    ];
+    for (const { camp, countMul } of camps) {
       const def = ELITE_MOBS[camp.type];
-      const campCount = camp.count * MOB.countMul;
+      const campCount = camp.count * countMul;
       for (let i = 0; i < campCount; i++) {
         // jitter — кольцо «неровное»: сдвиг по углу (доля шага между соседями)
         // и по радиусу, чтобы мобы не стояли идеальным кругом.
