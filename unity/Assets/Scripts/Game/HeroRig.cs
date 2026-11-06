@@ -424,20 +424,25 @@ namespace Zep
             // Цвет грейда — в цветах вершин; материал glTF их не рисует (щиты были серые) — свой шейдер.
             if (assets.bossSkin)
             {
-                gearMat ??= MakeGearMat(assets.bossSkin);
+                // Щиты в Gear.glb местами с обратной намоткой/тонкой геометрией:
+                // двусторонний материал показывает лицо, а не «изнанку».
+                var mat = cls == "shield"
+                    ? gearShieldMat ??= MakeGearMat(assets.bossSkin, false)
+                    : gearMat ??= MakeGearMat(assets.bossSkin, true);
                 foreach (var r in g.GetComponentsInChildren<Renderer>(true))
-                    if (!r.name.StartsWith("legGlow")) { var m = r.sharedMaterials; for (int i = 0; i < m.Length; i++) m[i] = gearMat; r.sharedMaterials = m; }
+                    if (!r.name.StartsWith("legGlow")) { var m = r.sharedMaterials; for (int i = 0; i < m.Length; i++) m[i] = mat; r.sharedMaterials = m; }
             }
             WeaponGlow.Attach(g, src.name.Substring(src.name.LastIndexOf('_') + 1), assets.unlitAdd);
             return g;
         }
 
-        static Material gearMat;
+        static Material gearMat, gearShieldMat;
 
-        static Material MakeGearMat(Material tpl)
+        static Material MakeGearMat(Material tpl, bool cullBack)
         {
             var m = new Material(tpl) { name = "gearVertexColor" };
             m.SetFloat("_Mode", 4);
+            m.SetFloat("_Cull", cullBack ? 2f : 0f);
             m.SetColor("_BaseColor", Color.white);
             return m;
         }

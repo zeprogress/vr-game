@@ -14,6 +14,7 @@ Shader "Zep/BossSkin"
         _Glow ("Glow strength", Float) = 3
         [Enum(UnityEngine.Rendering.BlendMode)] _SrcB ("Src", Float) = 1
         [Enum(UnityEngine.Rendering.BlendMode)] _DstB ("Dst", Float) = 0
+        [Enum(UnityEngine.Rendering.CullMode)] _Cull ("Cull", Float) = 2
     }
     SubShader
     {
@@ -23,6 +24,7 @@ Shader "Zep/BossSkin"
             Name "ForwardLit"
             Tags { "LightMode" = "UniversalForward" }
             Blend [_SrcB] [_DstB]
+            Cull [_Cull]
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
