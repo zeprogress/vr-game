@@ -57,6 +57,8 @@ namespace Zep
         readonly List<(Light l, float full)> catFlameLights = new();
         /** Мягкий тёплый заполняющий свет у камеры: страховка, если огни факелов не зажглись. */
         Light catFill;
+        /** Мягкий холодный заполняющий свет подземелья — страховка, если огни жаровен/кристаллов не зажглись. */
+        Light dunFill;
         /// Яркость всех огней катакомб — как CAT_LIGHT в вебе (world/Catacombs.ts), 2026-10-28: ярче по просьбе.
         const float CatBright = 1.4f;
         float time;
@@ -105,10 +107,29 @@ namespace Zep
             Load();
             // Катакомбы занимают юг карты (z > 240); проверка по одному z надёжнее,
             // чем узкое |x| < 100 — камера в боковых залах иначе не включала огни.
-            string r = camPos.z > 240 ? "cat"
+            // Высота — самый надёжный признак подземелья (DUN_Y0=-500): камера
+            // в шахтах не всегда попадает в прежний квадрат по X/Z.
+            string r = camPos.y < -120 ? "dun"
+                : camPos.z > 240 ? "cat"
                 : Mathf.Abs(camPos.x - DunOrigin.x) < 220 && Mathf.Abs(camPos.z - DunOrigin.z) < 220 ? "dun" : "world";
             if (r != region) { region = r; OnRegion(); }
-            if (r == "dun") { Underground(DunAmbient, DunFog, 8f, 150f); SetAmbient(DunAmbient * 1.1f, DunAmbient * 0.8f, new Color(0.02f, 0.025f, 0.04f)); CaveFill(true); Flicker(dunAll); ShadowNearest(dunAll, 6); return; }
+            if (r == "dun")
+            {
+                Underground(DunAmbient, DunFog, 8f, 150f);
+                SetAmbient(DunAmbient * 1.1f, DunAmbient * 0.8f, new Color(0.02f, 0.025f, 0.04f));
+                CaveFill(true);
+                Flicker(dunAll);
+                if (!dunFill)
+                {
+                    dunFill = MakePoint("dunFill", new Color(0.5f, 0.62f, 1f), 14f);
+                    dunFill.intensity = 1.1f;
+                }
+                dunFill.enabled = true;
+                dunFill.transform.position = camPos + Vector3.up * 1.2f;
+                ShadowNearest(dunAll, 6);
+                return;
+            }
+            if (dunFill) dunFill.enabled = false;
             CaveFill(false);
             // Катакомбы: в вебе пол ровно-оранжевый от факелов (линейное затухание Babylon) — даём тёплую
             // заливку, а факелам — пятна у стен.
