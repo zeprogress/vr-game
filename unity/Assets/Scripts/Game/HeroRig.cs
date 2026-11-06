@@ -51,6 +51,18 @@ namespace Zep
             return list.ToArray();
         }
 
+        const float HUMAN_HEIGHT = 1.8f;
+
+        /// Реальная высота мешей модели до масштабирования (для базового рыцаря без entry).
+        static float MeasureHeight(GameObject go)
+        {
+            var rs = go.GetComponentsInChildren<Renderer>(true);
+            if (rs.Length == 0) return 0f;
+            var b = rs[0].bounds;
+            foreach (var r in rs) if (r) b.Encapsulate(r.bounds);
+            return b.size.y;
+        }
+
         string lastAttack;
 
         /// Случайный вариант (не тот же, что прошлый) — как pickVariant в вебе.
@@ -352,7 +364,14 @@ namespace Zep
             if (model) Destroy(model);
             model = Instantiate(src, transform);
             own = entry != null && entry.keep;
-            model.transform.localScale = Vector3.one * RigScale * (entry != null && entry.scale > 0 ? entry.scale : 1f);
+            // Рост героя — 1.8 м, как HUMAN.height в вебе. Для скинов и базового
+            // рыцаря масштаб нормируем по реальной высоте мешей: раньше базовый
+            // рыцарь получал RigScale (0.52) и был почти вдвое ниже нормы.
+            float nativeH = entry != null && entry.height > 0.01f ? entry.height : MeasureHeight(model);
+            float scale = entry == null || entry.keep
+                ? (nativeH > 0.01f ? HUMAN_HEIGHT / nativeH : 1f)
+                : RigScale * (entry.scale > 0 ? entry.scale : 1f);
+            model.transform.localScale = Vector3.one * scale;
             // Своя модель — со своими текстурами (не перекрашиваем) и своими клипами боя (клипы классов рыцаря не нужны).
             if (!own) Recolor.Character(model);
             var animation = model.GetComponentInChildren<Animation>();
@@ -369,7 +388,7 @@ namespace Zep
             bool legsOnHips = hips && Find(hips, "UpperLeg.L") is Transform ul && ul.parent == hips;
             var upper = legsOnHips ? Find(hips, "Abdomen") : hips;
             if (upper) Anim.SetUpperRoot(upper);
-            ModelHeight = entry != null ? entry.height * model.transform.localScale.y : 0f;
+            ModelHeight = nativeH * model.transform.localScale.y;
             fistL = Find(model.transform, "Fist.L");
             fistR = Find(model.transform, "Fist.R");
             // Голова — в покое, пока клип выстрела из лука поворачивает корпус: иначе стрелок смотрит вбок.
