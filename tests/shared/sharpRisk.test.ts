@@ -14,6 +14,8 @@ test("заточка: урон по ступеням +25 / +85 / +145 / +195 / +
 });
 
 test("заточка: шансы +6…+14 и фиксированные 3% на +15", () => {
+  assert.equal(attackPointNext(wpn(3))!.chance, 0.8);
+  assert.equal(attackPointNext(wpn(4))!.chance, 0.7);
   assert.equal(attackPointNext(wpn(5))!.chance, 0.65);
   assert.equal(attackPointNext(wpn(9))!.chance, 0.25);
   assert.equal(attackPointNext(wpn(14))!.chance, 0.03);
@@ -21,10 +23,15 @@ test("заточка: шансы +6…+14 и фиксированные 3% на 
 });
 
 test("заточка: безопасные +1…+5 и поломка/защита свитком", () => {
-  const safe = wpn(4);
+  const safe = wpn(3);
   const rs = attackPointTry(safe, 1e9, false, () => 0.999);
   assert.equal(rs.ok && rs.broke, false);
-  assert.equal(safe.sharp, 5);
+  assert.equal(safe.sharp, 3);
+
+  const early = wpn(3);
+  const re = attackPointTry(early, 1e9, false, () => 0);
+  assert.equal(re.ok && re.up, true);
+  assert.equal(early.sharp, 4);
 
   const broke = wpn(5);
   const r1 = attackPointTry(broke, 1e9, false, () => 0.999);

@@ -2014,20 +2014,23 @@ export class PcInventory {
     const next = attackPointNext(w);
     txt.append(div("pcinv-ap-name", `Заточка атаки · +${n}/15`), div("pcinv-small", `+${fmtPct(attackPointBonus(n) * 100)}% урона${next ? ` · след. +${fmtPct(next.gain * 100, 2)}%` : ""}`));
     if (next) {
-      const risk = next.target > 5;
-      txt.append(div("pcinv-small", risk
-        ? `Шанс ${fmtPct(next.chance * 100)}%${next.bonus ? ` (накопитель +${fmtPct(next.bonus * 100)}%)` : ""} · провал ${next.target >= 15 ? "разрушает" : "ломает в хлам"}`
-        : "Безопасная заточка до +5"));
+      const chance = next.target >= 4;
+      const deadly = next.target >= 6;
+      txt.append(div("pcinv-small", chance
+        ? `Шанс ${fmtPct(next.chance * 100)}%${next.bonus ? ` (накопитель +${fmtPct(next.bonus * 100)}%)` : ""} · провал ${deadly ? next.target >= 15 ? "разрушает" : "ломает в хлам" : "без поломки"}`
+        : "Гарантированная заточка до +3"));
       box.append(txt);
       const row = div("pcinv-ap-row");
       const bt = document.createElement("button");
       bt.className = "pcinv-btn sm pcinv-forge";
       bt.innerHTML = `${iconHtml("i.scrap")}<span>${next.cost} · ${fmtPct(next.chance * 100)}%</span>`;
-      bt.title = risk ? `Риск: ${next.cost} лома, шанс ${fmtPct(next.chance * 100)}%. Провал без свитка сломает оружие.` : `Точить: ${next.cost} лома, 100%`;
+      bt.title = chance
+        ? `Риск: ${next.cost} лома, шанс ${fmtPct(next.chance * 100)}%. ${deadly ? "Провал без свитка сломает оружие." : "Провал без поломки — сгорит только лом."}`
+        : `Точить: ${next.cost} лома, 100%`;
       bt.disabled = d.scrap < next.cost || this.forging;
       bt.onclick = () => this.forge(w.id, 0, true);
       row.append(bt);
-      if (risk && (d.saveScrolls ?? 0) > 0) {
+      if (deadly && (d.saveScrolls ?? 0) > 0) {
         const sb = document.createElement("button");
         sb.className = "pcinv-btn sm";
         sb.textContent = `+ свиток (${d.saveScrolls})`;
@@ -2036,7 +2039,7 @@ export class PcInventory {
         row.append(sb);
       }
       box.append(row);
-      if (risk) {
+      if (deadly) {
         const buy = document.createElement("button");
         buy.className = "pcinv-btn sm";
         buy.textContent = `Купить свиток (${SAVE_SCROLL.costScrap} лома)`;

@@ -1426,7 +1426,10 @@ export function enchantRoll(holder: { ench?: EnchantDeck }, chance: number, rnd:
  */
 export const ATTACK_POINT = {
   max: 15,
-  safe: 5,
+  /** +1…+3 гарантированы. */
+  safe: 3,
+  /** +4 и +5 — уже с шансом, но ещё без поломки. */
+  early: { 4: 0.8, 5: 0.7 },
   /** Шансы для +6…+14. */
   chances: [0.65, 0.55, 0.45, 0.35, 0.25, 0.18, 0.12, 0.08, 0.05],
   /** На +15 фиксированный шанс. */
@@ -1549,7 +1552,13 @@ export function attackPointNext(w: { cls: string; tier: string; sharp?: number; 
   const n = attackPoints(w);
   if (n >= ATTACK_POINT.max) return null;
   const target = n + 1;
-  const base = target <= ATTACK_POINT.safe ? 1 : target >= ATTACK_POINT.max ? ATTACK_POINT.maxChance : ATTACK_POINT.chances[target - ATTACK_POINT.safe - 1];
+  const base = target <= ATTACK_POINT.safe
+    ? 1
+    : target === 4 || target === 5
+      ? ATTACK_POINT.early[target]
+      : target >= ATTACK_POINT.max
+        ? ATTACK_POINT.maxChance
+        : ATTACK_POINT.chances[target - 6];
   const bonus = target <= 14 ? Math.min(ATTACK_POINT.failBonusMax, Math.max(0, w.sharpFails ?? 0) * ATTACK_POINT.failBonus) : 0;
   return {
     gain: attackPointBonus(target) - attackPointBonus(n),
@@ -1582,8 +1591,8 @@ export function attackPointTry(w: WeaponInstance, scrapHave: number, useScroll =
     w.sharpFails = 0;
     return { ok: true, cost: info.cost, up: true, gain: info.gain, points: info.target, broke: false, protected: false, fails: 0 };
   }
-  if (info.target <= ATTACK_POINT.safe) {
-    // защищённая зона не может провалиться, но оставляем ветку для rnd() == 1
+  if (info.target < 6) {
+    // +4/+5: шанс уже есть, но поломки ещё нет — сгорает только лом.
     return { ok: true, cost: info.cost, up: false, gain: 0, points: info.points, broke: false, protected: false, fails: w.sharpFails ?? 0 };
   }
   if (useScroll) {
@@ -1592,9 +1601,10 @@ export function attackPointTry(w: WeaponInstance, scrapHave: number, useScroll =
   }
   w.broken = true;
   w.brokenAt = info.target;
-  w.sharp = ATTACK_POINT.safe;
+  // Восстановленное оружие возвращается на +5 (даже если +4/+5 теперь с шансом).
+  w.sharp = 5;
   w.sharpFails = 0;
-  return { ok: true, cost: info.cost, up: false, gain: 0, points: ATTACK_POINT.safe, broke: true, brokeAt: info.target, protected: false, fails: 0 };
+  return { ok: true, cost: info.cost, up: false, gain: 0, points: 5, broke: true, brokeAt: info.target, protected: false, fails: 0 };
 }
 
 /** Проценты для подписей: 2,13% (с запятой, как в остальном тексте). */
