@@ -2041,8 +2041,8 @@ export class PcInventory {
       box.append(row);
       if (deadly) {
         const buy = document.createElement("button");
-        buy.className = "pcinv-btn sm";
-        buy.textContent = `Купить свиток (${SAVE_SCROLL.costScrap} лома)`;
+        buy.className = "pcinv-btn sm pcinv-ap-buy";
+        buy.textContent = `Свиток · ${SAVE_SCROLL.costScrap.toLocaleString("ru-RU")}`;
         buy.disabled = d.scrap < SAVE_SCROLL.costScrap || this.forging;
         buy.onclick = () => { this.lastResult = null; this.hooks.act({ act: "buyScroll", id: "", idx: 0 }); };
         box.append(buy);
@@ -3476,8 +3476,10 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-forge { grid-column:2; grid-row:1 / span 2; min-width:92px; }
 .pcinv-forge .gico { width:15px; height:15px; }
 .pcinv-forge.max { color:#7e8da1; letter-spacing:.1em; }
-.pcinv-ap { margin-top:10px; padding:9px 11px; border:1px solid #233650; background:rgba(10,22,38,.7); display:flex; align-items:center; gap:10px; }
-.pcinv-ap-t { flex:1; min-width:0; }
+.pcinv-ap { margin-top:10px; padding:9px 11px; border:1px solid #233650; background:rgba(10,22,38,.7); display:flex; align-items:center; flex-wrap:wrap; gap:7px 10px; }
+.pcinv-ap-t { flex:1 1 170px; min-width:0; }
+.pcinv-ap-row { display:flex; flex-wrap:wrap; align-items:center; gap:6px; min-width:0; }
+.pcinv-ap-buy { flex:0 1 auto; max-width:105px; padding:4px 8px !important; font-size:10px !important; line-height:1.2; white-space:normal; }
 .pcinv-ap-name { font-size:13px; color:#ffb48f; font-weight:600; }
 .pcinv-sock { display:flex; gap:8px; align-items:center; padding:5px 0; --cw:40px; }
 .pcinv-sock-t { flex:1; font-size:12.5px; } .pcinv-sock-t.dim { color:#7d8b9e; }
