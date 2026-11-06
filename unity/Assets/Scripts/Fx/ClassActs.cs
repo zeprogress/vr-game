@@ -142,8 +142,7 @@ namespace Zep
                     vfx.Burst(at, Lightning, count: 10, speed: 4, life: 0.35f, grav: 6, size: 0.16f);
                     return true;
                 case "spearPierce":
-                    
-                    Sample(at, "spear-thrust");
+                    // Звук у пронзания убран — остаётся только визуальный конус.
                     if (x2.HasValue && z2.HasValue)
                     {
                         float ddx = x2.Value - x, ddz = z2.Value - z;

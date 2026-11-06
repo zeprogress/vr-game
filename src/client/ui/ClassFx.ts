@@ -897,8 +897,8 @@ export function playClassAct(
       vfx.burst(x, y, z, FXC.lightning, { count: 10, speed: 4, life: 0.35, grav: 6, size: 0.16 });
       return true;
     case "spearPierce":
-      
-      c.sample(at, "spear-thrust");if (x2 !== undefined && z2 !== undefined) {
+      // Звук у пронзания убран — только визуальный конус.
+      if (x2 !== undefined && z2 !== undefined) {
         // Обычный удар копья — малозаметная волна сектором вперёд на длину
         // и угол удара (сервер шлёт конец оси x2/z2 и полуугол r).
         const ddx = x2 - x;
