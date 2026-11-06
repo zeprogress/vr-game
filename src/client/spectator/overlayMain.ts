@@ -55,8 +55,18 @@ function hardReload(reason: string): void {
   if (reloading) return;
   reloading = true;
   console.warn(`[overlay] перезагрузка: ${reason}`);
-  location.reload();
+  // location.reload() в CEF OBS иногда игнорируется — уходим на новый URL.
+  const u = new URL(location.href);
+  u.searchParams.set("_r", String(Date.now()));
+  location.replace(u.toString());
 }
+
+// Последний рубеж: даже если JS-таймеры в Browser Source задушены,
+// CEF сам перезагрузит страницу по meta refresh.
+const autoRefresh = document.createElement("meta");
+autoRefresh.httpEquiv = "refresh";
+autoRefresh.content = "300";
+document.head.appendChild(autoRefresh);
 
 /** Переподписка на изменения состояния — на первом входе и после реконнекта. */
 function watchRoom(room: { onStateChange?: (cb: () => void) => void } | null | undefined): void {
@@ -129,10 +139,10 @@ net.onConnectionLost = () => {
 setInterval(() => {
   const now = performance.now();
   if (!live) {
-    if (lostAt && now - lostAt > 15_000) hardReload("нет соединения");
+    if (lostAt && now - lostAt > 10_000) hardReload("нет соединения");
     return;
   }
-  if (now - lastSeen > 15_000) hardReload("нет данных от сервера");
+  if (now - lastSeen > 12_000) hardReload("нет данных от сервера");
 }, 5000);
 net.onReconnected = (room) => {
   live = true;
