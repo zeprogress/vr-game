@@ -6658,7 +6658,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const rec = store.get(token);
       const w = t ? t.rt.weapons.find((x) => x.id === id) : rec?.weapons?.find((x) => x.id === id);
       if (!w || !w.broken) return { ok: false, text: "Это оружие не сломано." };
-      const cost = restoreCost(w.brokenAt ?? 6);
+      const cost = restoreCost(w.brokenAt ?? 6, w.tier);
       const bag = t ? readBag(t.p) : restoreBag(rec!.bag);
       if (bagCount(bag, "scrap") < cost.scrap) return { ok: false, text: `Нужно ${cost.scrap} лома.` };
       const stock = craftStockOf(rec?.mats);

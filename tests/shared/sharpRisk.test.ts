@@ -66,7 +66,10 @@ test("со свитком с +13: 20% поломки, 80% сохранения",
 
 test("восстановление: цена зависит от уровня поломки", () => {
   assert.deepEqual(restoreCost(4), { scrap: 12_000, scale: 0 });
+  assert.deepEqual(restoreCost(4, "craft"), { scrap: 8_400, scale: 0 });
+  assert.deepEqual(restoreCost(4, "legendary"), { scrap: 5_900, scale: 0 });
   assert.deepEqual(restoreCost(6), { scrap: 25_800, scale: 0 });
+  assert.deepEqual(restoreCost(6, "craft"), { scrap: 18_100, scale: 0 });
   assert.deepEqual(restoreCost(9), { scrap: 57_000, scale: 1 });
   assert.deepEqual(restoreCost(14), { scrap: 137_000, scale: 2 });
   assert.ok(restoreCost(7).scrap > restoreCost(6).scrap);

@@ -1996,7 +1996,7 @@ export class PcInventory {
     const n = attackPoints(w);
     const txt = div("pcinv-ap-t");
     if (w.broken) {
-      const cost = restoreCost(w.brokenAt ?? 6);
+      const cost = restoreCost(w.brokenAt ?? 6, w.tier);
       txt.append(
         div("pcinv-ap-name", `Хлам · сломано на +${w.brokenAt ?? 6}`),
         div("pcinv-small", `Восстановление: ${cost.scrap} лома${cost.scale ? ` + ${cost.scale} чешуи` : ""} · вернётся на +${restoreSharp(w.brokenAt ?? 5)}`),
