@@ -164,6 +164,8 @@ import {
   isItemId,
   isWeaponClass,
   isWeaponTier,
+  restoreCost,
+  SAVE_SCROLL,
   ITEMS,
   plainWeaponInstance,
   rollWeaponInstance,
@@ -1192,24 +1194,30 @@ function enchantTry(
 }
 
 /**
- * Точка атаки за лом (attackPointTry в items.ts): лом списывается и при неудаче. Мутирует w и bag.
+ * Заточка базовой атаки: лом (и свиток) списываются в любом случае.
+ * useScroll=true — при провале вещь не ломается, накопитель +2%.
  */
-function sharpenTry(w: WeaponInstance, bag: Slot[]): InvActResult & { spent: boolean } {
+function sharpenTry(w: WeaponInstance, bag: Slot[], useScroll = false): InvActResult & { spent: boolean; broke?: boolean; protected?: boolean } {
   const have = bagCount(bag, "scrap");
-  const r = attackPointTry(w, have);
+  if (useScroll && bagCount(bag, "save_scroll") < 1)
+    return { ok: false, text: "Нет свитка сохранения в сумке.", spent: false };
+  const r = attackPointTry(w, have, useScroll);
   if (!r.ok) {
-    if (r.reason === "not-eligible") return { ok: false, text: "Точка атаки — только у уникального и рубинового оружия (не щит).", spent: false };
-    return { ok: false, text: `Не хватает лома: нужно ${r.need}, есть ${have}.`, spent: false };
+    if (r.reason === "not-eligible") return { ok: false, text: "Точка атаки — только у уникального, рубинового и мастерского оружия (не щит).", spent: false };
+    if (r.reason === "max") return { ok: false, text: "Оружие уже на максимуме +15.", spent: false };
+    if (r.reason === "broken") return { ok: false, text: "Оружие сломано — сначала восстанови его.", spent: false };
+    return { ok: false, text: `Не хватает лома: нужно ${"need" in r ? r.need : 0}, есть ${have}.`, spent: false };
   }
   takeFromBag(bag, "scrap", r.cost);
-  return {
-    ok: true,
-    up: r.up,
-    spent: true,
-    text: r.up
-      ? `Точка атаки +${fmtPct(r.gain * 100, 2)}% · всего +${fmtPct(attackPointBonus(r.points) * 100)}% к урону`
-      : `Не вышло — лом сгорел (−${r.cost})`,
-  };
+  if (useScroll) takeFromBag(bag, "save_scroll", 1);
+  const text = r.up
+    ? `Заточка +${r.points}: +${fmtPct(attackPointBonus(r.points) * 100)}% к урону`
+    : r.broke
+      ? `Провал на +${r.brokeAt}! Оружие сломалось в хлам — восстанови или разбери.`
+      : r.protected
+        ? `Провал — свиток сохранения сработал, уровень сохранён (накопитель +2%).`
+        : "Не вышло — лом сгорел.";
+  return { ok: true, up: r.up, broke: r.broke, protected: r.protected, spent: true, text };
 }
 
 /**
@@ -2051,6 +2059,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const w = rt.weapons.find((x) => x.id === msg.id);
       if (!w) return;
       if (msg.act === "hand") {
+        if (w.broken) return;
         const hand = w.cls === "shield" ? "left" : msg.hand === "left" ? "left" : "right";
         rt.equippedWeaponId[hand] = w.id;
         rt.owned.add(weaponKey(w.cls, w.tier));
@@ -2336,7 +2345,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sendQuests(client);
         return;
       }
-      if (msg.act !== "enchant" && msg.act !== "sharpen" && msg.act !== "armorEnchant" && msg.act !== "neckEnchant" && msg.act !== "ringEnchant" && msg.act !== "stat" && msg.act !== "tree" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && msg.act !== "craft" && msg.act !== "smelt" && !(JEWEL_ACTS as readonly string[]).includes(msg.act) && !(TRADE_ACTS as readonly string[]).includes(msg.act)) return;
+      if (msg.act !== "enchant" && msg.act !== "sharpen" && msg.act !== "restore" && msg.act !== "buyScroll" && msg.act !== "armorEnchant" && msg.act !== "neckEnchant" && msg.act !== "ringEnchant" && msg.act !== "stat" && msg.act !== "tree" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && msg.act !== "craft" && msg.act !== "smelt" && !(JEWEL_ACTS as readonly string[]).includes(msg.act) && !(TRADE_ACTS as readonly string[]).includes(msg.act)) return;
       const norm = normNick(p.nick);
       if (!norm) return;
       const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(msg.act === "gift" ? 99999 : 99, Math.floor(Number(msg.idx) || 0))), typeof msg.fuel === "string" ? msg.fuel : undefined);
@@ -5342,6 +5351,8 @@ export class ZoneRoom extends Room<ZoneState> {
         scrap: scrapValue(w),
         ench: w.affixes.map((a, i) => ({ label: affixLabel(a), ...(affixCapNote(a, w) ? { capNote: affixCapNote(a, w) } : {}), ...enchantInfo(w, i)! })),
         sharp: attackPoints(w),
+        ...(w.broken ? { broken: true, brokenAt: w.brokenAt ?? 6 } : {}),
+        ...(w.sharpFails ? { sharpFails: w.sharpFails } : {}),
         ...(w.cp ? { cp: w.cp } : {}),
         ...(w.rc ? { rc: true } : {}),
         fav: !!w.fav,
@@ -5356,6 +5367,7 @@ export class ZoneRoom extends Room<ZoneState> {
       fish: bagCount(bag, "fish"),
       scrollXp: bagCount(bag, "scroll_xp"),
       scrollWind: bagCount(bag, "scroll_wind"),
+      saveScrolls: bagCount(bag, "save_scroll"),
       titles: rec?.titles ?? [],
       title: rec?.title ?? "",
       attrs: { unspent: p.unspent, str: p.str, agi: p.agi, int: p.int, con: p.con, luc: p.luc, wis: p.wis },
@@ -5477,6 +5489,16 @@ export class ZoneRoom extends Room<ZoneState> {
     p.leftCls = "";
     p.leftTier = "";
     rt.equippedWeaponId.left = null;
+  }
+
+  /** Снять сломанное оружие с рук, чтобы им нельзя было бить. */
+  private clearBrokenHands(p: PlayerState, rt: Runtime, w: WeaponInstance): void {
+    for (const side of ["left", "right"] as const) {
+      if (rt.equippedWeaponId[side] !== w.id) continue;
+      rt.equippedWeaponId[side] = null;
+      if (side === "left") { p.leftCls = ""; p.leftTier = ""; }
+      else { p.rightCls = ""; p.rightTier = ""; }
+    }
   }
 
   private ensureHeldInstance(p: PlayerState, rt: Runtime, side: "left" | "right"): void {
@@ -6599,14 +6621,51 @@ export class ZoneRoom extends Room<ZoneState> {
       store.put(`nick:${norm}`, { weapons: weapons.filter((w) => !ws.includes(w)), armor: armor.filter((x) => !as.includes(x)), armorWorn, bag });
       return { ok: true, text: `Разобрано ${ws.length + as.length + ringCount} — лом +${got}${ringCount ? ` (колец ${ringCount})` : ""}` };
     }
+    if (act === "buyScroll") {
+      if (t && !this.tavernNear(t.p)) return { ok: false, text: "Купи свиток у трактирщика в лагере." };
+      const token = t?.rt.token ?? `nick:${norm}`;
+      const rec = store.get(token);
+      if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
+      const bag = t ? readBag(t.p) : restoreBag(rec.bag);
+      if (bagCount(bag, "scrap") < SAVE_SCROLL.costScrap) return { ok: false, text: `Нужно ${SAVE_SCROLL.costScrap} лома.` };
+      takeFromBag(bag, "scrap", SAVE_SCROLL.costScrap);
+      addToBag(bag, "save_scroll", 1);
+      if (t) { writeBag(t.p, bag); this.persistNick(norm); } else store.put(token, { bag });
+      return { ok: true, text: `Куплен свиток сохранения (−${SAVE_SCROLL.costScrap} лома).` };
+    }
+    if (act === "restore") {
+      const token = t?.rt.token ?? `nick:${norm}`;
+      const rec = store.get(token);
+      const w = t ? t.rt.weapons.find((x) => x.id === id) : rec?.weapons?.find((x) => x.id === id);
+      if (!w || !w.broken) return { ok: false, text: "Это оружие не сломано." };
+      const cost = restoreCost(w.brokenAt ?? 6);
+      const bag = t ? readBag(t.p) : restoreBag(rec!.bag);
+      if (bagCount(bag, "scrap") < cost.scrap) return { ok: false, text: `Нужно ${cost.scrap} лома.` };
+      const stock = craftStockOf(rec?.mats);
+      if (cost.scale > (stock.scale ?? 0)) return { ok: false, text: `Нужно ${cost.scale} чешуи дракона.` };
+      takeFromBag(bag, "scrap", cost.scrap);
+      if (cost.scale > 0) {
+        const mats = { ...(rec?.mats ?? {}) } as Record<string, number>;
+        mats.scale = Math.max(0, (mats.scale ?? 0) - cost.scale);
+        store.put(token, { mats });
+      }
+      w.broken = false;
+      delete w.brokenAt;
+      w.sharp = 5;
+      w.sharpFails = 0;
+      if (t) { writeBag(t.p, bag); this.clearBrokenHands(t.p, t.rt, w); this.persistNick(norm); }
+      else store.put(token, { bag });
+      return { ok: true, text: `Оружие восстановлено на +5 (−${cost.scrap} лома${cost.scale ? `, −${cost.scale} чешуи` : ""}).` };
+    }
     if (act === "sharpen") {
       if (t) {
         const w = t.rt.weapons.find((x) => x.id === id);
         if (!w) return { ok: false, text: "Этого предмета уже нет на складе." };
         const bag = readBag(t.p);
-        const r = sharpenTry(w, bag);
+        const r = sharpenTry(w, bag, idx === 1);
         if (r.spent) {
           writeBag(t.p, bag);
+          if (r.broke) this.clearBrokenHands(t.p, t.rt, w);
           this.persistNick(norm);
           this.syncWarehouse(t.id, t.rt);
         }
@@ -6713,6 +6772,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (!w) return { ok: false, text: "Этого предмета уже нет на складе." };
       const name = instanceName(w);
       if (act === "equip") {
+        if (w.broken) return { ok: false, text: "Сломанное оружие нельзя надеть — сначала восстанови." };
         applyEquip(t.p, t.rt, w, idx === 1 ? "left" : "right");
         this.heroCls(t.p);
         this.syncSkills(t.p, t.rt);
@@ -12616,6 +12676,8 @@ export class ZoneRoom extends Room<ZoneState> {
         quality: weaponQuality(w),
         atkSpd: affixSum(w.affixes, "atkSpeedPct"),
         sharp: attackPoints(w),
+        ...(w.broken ? { broken: true, brokenAt: w.brokenAt ?? 6 } : {}),
+        ...(w.sharpFails ? { sharpFails: w.sharpFails } : {}),
         ...(w.cp ? { cp: w.cp } : {}),
         ...(w.rc ? { rc: true } : {}),
         fav: !!w.fav,

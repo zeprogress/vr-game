@@ -268,6 +268,11 @@ export interface PcInvWeapon {
   rc?: boolean;
   /** Удачных точек атаки за лом (уникальное, рубиновое и мастерское). */
   sharp?: number;
+  /** Сломано в хлам; уровень, на котором сломалось. */
+  broken?: boolean;
+  brokenAt?: number;
+  /** Накопитель неудач со свитком (0..5). */
+  sharpFails?: number;
   /** Мастерское (крафт): «Мастерство» — прибавка к урону (доля). */
   cp?: number;
   /** ★ Избранное — не разбирается. */
@@ -403,6 +408,8 @@ export interface PcInvData {
   titles?: string[];
   title?: string;
   scrollWind?: number;
+  /** Свитки сохранения для рискованной заточки. */
+  saveScrolls?: number;
   attrs: { unspent: number; str: number; agi: number; int: number; con: number; luc: number; wis: number };
   /** Дерево прокачки текущего класса (по оружию в руках): номера взятых узлов (shared/passiveTree.ts). */
   tree?: { cls: string; taken: number[] };
@@ -430,7 +437,7 @@ export interface PcInvData {
 
 export interface PcInvActMsg {
   /** title — надеть титул (id = название, "" — снять); fav — звёздочка «избранное» у оружия id; scrapAll — разобрать всё, кроме избранного и надетого. */
-  act: "enchant" | "armorEnchant" | "neckEnchant" | "ringEnchant" | "stat" | "tree" | "respec" | "title" | "skin" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | "tradeOpen" | "tradeAdd" | "tradeRemove" | "tradeConfirm" | "tradeCancel" | "sharpen" | "craft" | "smelt" | "shop" | JewelAct;
+  act: "enchant" | "armorEnchant" | "neckEnchant" | "ringEnchant" | "stat" | "tree" | "respec" | "title" | "skin" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | "tradeOpen" | "tradeAdd" | "tradeRemove" | "tradeConfirm" | "tradeCancel" | "sharpen" | "restore" | "buyScroll" | "craft" | "smelt" | "shop" | JewelAct;
   id: string;
   idx: number;
   /** Подарок — ник получателя; обмен — список предметов; крафт — состав (craftCode). */

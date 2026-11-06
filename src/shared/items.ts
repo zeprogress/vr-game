@@ -41,6 +41,7 @@ export type ItemId =
   | "fish"
   | "scroll_xp"
   | "scroll_wind"
+  | "save_scroll"
   | "armor";
 
 /**
@@ -352,6 +353,15 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     healFrac: 0,
     tint: [0.6, 1, 0.8],
   },
+  save_scroll: {
+    name: "Свиток сохранения",
+    short: "Сохр.",
+    hint: "не даёт оружию сломаться при неудачной заточке",
+    stack: 99,
+    heal: 0,
+    healFrac: 0,
+    tint: [1, 0.82, 0.3],
+  },
   fish: {
     name: "Рыба",
     short: "Рыба",
@@ -439,6 +449,7 @@ export const LOOT: Record<MobKind, LootEntry[]> = {
   // Легендарки с него больше не падают — только с события «Охота на элиту».
   boss: [
     { id: "potion", chance: 0.1, min: 2, max: 3 }, // 2026-10-12: ×0.1 (было 1)
+    { id: "save_scroll", chance: 0.08, min: 1, max: 1 },
     { id: "gold_sword", chance: 0.05, min: 1, max: 1 },
     { id: "gold_bow", chance: 0.05, min: 1, max: 1 },
     { id: "gold_staff", chance: 0.05, min: 1, max: 1 },
@@ -589,6 +600,12 @@ export interface WeaponInstance {
   fav?: boolean;
   /** Удачных точек атаки за лом (уникальное, рубиновое и мастерское; см. ATTACK_POINT). */
   sharp?: number;
+  /** Хлам: оружие сломалось при заточке, пока не восстановлено — не атакует. */
+  broken?: boolean;
+  /** Уровень, на котором оружие сломалось (для цены восстановления). */
+  brokenAt?: number;
+  /** Накопитель неудач со свитком: 0..5 (каждая +2% к шансу, сбрасывается успехом). */
+  sharpFails?: number;
   /** Мастерское (крафт): «Мастерство» — прибавка к урону от исхода крафта (доля: 0.15 = +15%), см. CRAFT_OUTCOMES. */
   cp?: number;
   /** Мастерское: кто создал (ник) — строка «Создал: …» в карточке. */
@@ -979,7 +996,9 @@ export function affixSum(affixes: RolledAffix[], sub: AffixSub): number {
 export function scrapValue(w: WeaponInstance): number {
   // Мастерское — как уникальное (×1): иначе крафт рубинового уровня стал бы «печатным станком» лома.
   const tierMul = w.tier === "ruby" ? RUBY.scrapMul : 1;
-  return Math.max(1, Math.round(weaponQuality(w) * tierMul));
+  // Сломанное — 40% обычной цены (можно разобрать или восстановить).
+  const mul = w.broken ? 0.4 : 1;
+  return Math.max(1, Math.round(weaponQuality(w) * tierMul * mul));
 }
 
 /** Среди инстансов игрока этого класса+тира — тот, что раскатан сильнее (по сумме величин роллов). */
@@ -991,7 +1010,7 @@ export function bestWeaponInstance(
   let best: WeaponInstance | null = null;
   let bestScore = -Infinity;
   for (const w of weapons) {
-    if (w.cls !== cls || w.tier !== tier) continue;
+    if (w.cls !== cls || w.tier !== tier || w.broken) continue;
     const score = w.affixes.reduce((s, a) => s + a.value, 0);
     if (score > bestScore) {
       bestScore = score;
@@ -1120,6 +1139,7 @@ export const AEGIS_LABEL = `Оплот: блок удара вблизи леч�
 
 /** Свойства предмета помимо роллов — строки для инвентаря (сейчас у щитов: блок, отражение, «Оплот»). */
 export function instanceEffects(w: WeaponInstance): string[] {
+  if (w.broken) return [`Хлам: сломано на +${w.brokenAt ?? 6}. Восстанови или разбери.`];
   if (w.tier === "craft") {
     const out: string[] = [];
     if (craftPow(w) > 0) out.push(`Мастерство +${Math.round(craftPow(w) * 100)}% к урону`);
@@ -1400,45 +1420,53 @@ export function enchantRoll(holder: { ench?: EnchantDeck }, chance: number, rnd:
 }
 
 /**
- * Точка атаки за лом — уникальное и рубиновое оружие (щит не атакует). Каждая удачная точка добавляет к урону.
- * Точить можно бесконечно: прибавка разгоняется, цена попытки растёт, шанс падает (без пола).
+ * Заточка базовой атаки (уникальное/рубиновое/мастерское): +1…+5 безопасно,
+ * дальше риск. Шансы и урон — единая таблица; хлам и восстановление — ниже.
  */
 export const ATTACK_POINT = {
-  /** Прибавка на первой точке. */
-  first: 0.01,
-  /** Суммарная прибавка на +20. */
-  knee: 20,
-  kneeBonus: 0.5,
-  /** Шанс первой попытки и множитель на каждую следующую точку. */
-  chance0: 0.9,
-  chanceDecay: 0.8,
-  /** Минимальный шанс точки атаки — ниже 1% не падает. */
-  chanceMin: 0.01,
-  /** Цена первой попытки в ломе (уникальное) и множитель на каждую следующую точку (2026-10-16: было 100, вдвое дешевле). */
-  cost0: 50,
-  costGrowth: 1.2,
+  max: 15,
+  safe: 5,
+  /** Шансы для +6…+14. */
+  chances: [0.65, 0.55, 0.45, 0.35, 0.25, 0.18, 0.12, 0.08, 0.05],
+  /** На +15 фиксированный шанс. */
+  maxChance: 0.03,
+  /** Накопитель: +2% за неудачу со свитком, не больше +10%. */
+  failBonus: 0.02,
+  failBonusMax: 0.1,
+  /** Цена первой попытки и рост; в разы дешевле старой (50 × 1.2^n). */
+  cost0: 8,
+  costGrowth: 1.22,
 } as const;
 
-/**
- * Прибавка к урону от n удачных точек. Кривая разгоняется: +1 = 1%, +20 = 50%,
- * каждый следующий успех даёт больше предыдущего (без насыщения).
- */
-export function attackPointBonus(n: number): number {
-  const k = Math.max(0, Math.floor(n));
-  if (k === 0) return 0;
-  const power = Math.log(ATTACK_POINT.kneeBonus / ATTACK_POINT.first) / Math.log(ATTACK_POINT.knee);
-  return ATTACK_POINT.first * k ** power;
+/** Цена восстановления сломанного оружия: scrap + чешуя дракона (scale). */
+export function restoreCost(brokenAt: number): { scrap: number; scale: number } {
+  const l = Math.max(6, Math.min(15, Math.floor(brokenAt) || 6));
+  if (l <= 8) return { scrap: 18_000, scale: 0 };
+  if (l <= 11) return { scrap: 45_000, scale: 1 };
+  if (l <= 13) return { scrap: 90_000, scale: 1 };
+  return { scrap: 125_000, scale: 2 };
 }
 
-/** «Мастерство» редкого исхода крафта (ровно рубиновое, +15% к уникальному) — по нему редкое мастерское узнают везде (рамка со свечением). */
+/** Свиток сохранения: цена у трактирщика и шанс с мирового босса. */
+export const SAVE_SCROLL = { costScrap: 70_000, bossChance: 0.08 } as const;
+
+/** Прибавка к урону от n точек; +15 даёт +245% (×3.45). */
+export function attackPointBonus(n: number): number {
+  const k = Math.max(0, Math.min(ATTACK_POINT.max, Math.floor(n)));
+  if (k <= 5) return 0.05 * k;
+  if (k <= 9) return 0.25 + 0.15 * (k - 5);
+  if (k <= 12) return 0.85 + 0.20 * (k - 9);
+  if (k <= 14) return 1.45 + 0.25 * (k - 12);
+  return 1.95 + 0.50;
+}
+
+/** «Мастерство» редкого исхода крафта (ровно рубиновое, +15% к уникальному). */
 export const CRAFT_RARE_POW = 0.15;
 
-/** Мастерское оружие редкого исхода крафта. */
 export function isCraftRare(w: { tier: string; cp?: number } | null | undefined): boolean {
   return !!w && w.tier === "craft" && (w.cp ?? 0) >= CRAFT_RARE_POW - 1e-9;
 }
 
-/** «Мастерство» крафтового экземпляра (доля, 0 — нет): прибавка к урону от исхода крафта. */
 export function craftPow(w: { tier: string; cp?: number } | null | undefined): number {
   return w && w.tier === "craft" ? Math.max(0, Math.min(1, w.cp ?? 0)) : 0;
 }
@@ -1448,66 +1476,53 @@ export function attackPointEligible(w: { cls: string; tier: string }): boolean {
   return w.cls !== "shield" && (w.tier === "legendary" || w.tier === "ruby" || w.tier === "craft");
 }
 
-/** Сколько удачных точек у экземпляра. */
-export function attackPoints(w: { sharp?: number }): number {
-  return Math.max(0, Math.floor(w.sharp ?? 0));
+export function attackPoints(w: { sharp?: number; broken?: boolean }): number {
+  return w.broken ? 0 : Math.max(0, Math.min(ATTACK_POINT.max, Math.floor(w.sharp ?? 0)));
 }
 
-/** Прибавка от n точек в процентах (как в строке роллов и в подписях). */
 export function sharpPctOfPoints(n: number): number {
   return attackPointBonus(n) * 100;
 }
 
-/**
- * Насколько свечение заточки выцвело к белому: 0 — цвет тира, 1 — чисто белый.
- * Отрезок — с +20 до +25 удачных точек атаки (50%…? прибавки, кривая разгоняется).
- */
+export function sharpPctOf(w: { cls: string; tier: string; sharp?: number; broken?: boolean }): number {
+  return attackPointEligible(w) && !w.broken ? sharpPctOfPoints(attackPoints(w)) : 0;
+}
+
+/** Свечение заточки к белому на последних уровнях (+13…+15). */
 export function sharpWhiten(pct: number): number {
-  const from = sharpPctOfPoints(20);
-  const to = sharpPctOfPoints(25);
+  const from = sharpPctOfPoints(13);
+  const to = sharpPctOfPoints(15);
   return Math.max(0, Math.min(1, (pct - from) / (to - from)));
 }
 
-/** Прибавка в процентах у экземпляра: 0 — щит, не точёное или не уникальное/рубиновое. */
-export function sharpPctOf(w: { cls: string; tier: string; sharp?: number }): number {
-  return attackPointEligible(w) ? sharpPctOfPoints(attackPoints(w)) : 0;
-}
-
-/** Прибавка в процентах из строки роллов в руке («… Точка атаки +25.4%»); строки нет — 0. */
 export function sharpPctOfText(text: string | undefined): number {
   const m = text?.match(/Точка атаки \+([\d.]+)%/);
   return m ? Number(m[1]) : 0;
 }
 
-/** Точка отсчёта свечения: +10 удачных точек (≈25,4%) — свечение как раньше. */
 export const SHARP_GLOW_REF_PCT = sharpPctOfPoints(10);
 
-/** Множитель свечения от прибавки: доля от точки отсчёта в степени k (k=1 — пропорционально). Без прибавки — 0. */
 export function sharpGlowMul(pct: number, k: number): number {
   return pct > 0 ? (pct / SHARP_GLOW_REF_PCT) ** k : 0;
 }
 
-/** Множитель урона экземпляра сверх тира: точки атаки × «Мастерство» крафта (1 — ничего нет). */
-export function attackPointMul(w: { cls: string; tier: string; sharp?: number; cp?: number } | null | undefined): number {
-  return w && attackPointEligible(w) ? (1 + attackPointBonus(attackPoints(w))) * (1 + craftPow(w)) : 1;
+export function attackPointMul(w: { cls: string; tier: string; sharp?: number; cp?: number; broken?: boolean } | null | undefined): number {
+  return w && attackPointEligible(w) && !w.broken ? (1 + attackPointBonus(attackPoints(w))) * (1 + craftPow(w)) : 1;
 }
 
-/** «Мастерство» в процентах из строки роллов в руке («… Мастерство +15%»); строки нет — 0. */
 export function craftPctOfText(text: string | undefined): number {
   const m = text?.match(/Мастерство \+([\d.]+)%/);
   return m ? Number(m[1]) : 0;
 }
 
-/** Множитель урона из строки роллов в руке: точка атаки × «Мастерство» (как attackPointMul на сервере). */
 export function powerMulOfText(text: string | undefined): number {
   const recipe = text?.match(/Скрытый рецепт \+([\d.]+)%/);
   return (1 + sharpPctOfText(text) / 100) * (1 + craftPctOfText(text) / 100) * (recipe ? 1 + Number(recipe[1]) / 100 : 1);
 }
 
-/** Лучший из двух рук — как роллы «Урон» (см. handsRoll). */
 export function attackPointBest(
-  a: { cls: string; tier: string; sharp?: number; cp?: number } | null | undefined,
-  b: { cls: string; tier: string; sharp?: number; cp?: number } | null | undefined,
+  a: { cls: string; tier: string; sharp?: number; cp?: number; broken?: boolean } | null | undefined,
+  b: { cls: string; tier: string; sharp?: number; cp?: number; broken?: boolean } | null | undefined,
 ): number {
   return Math.max(attackPointMul(a), attackPointMul(b));
 }
@@ -1521,38 +1536,64 @@ export interface AttackPointNext {
   cost: number;
   /** Сколько точек уже есть. */
   points: number;
+  /** Целевой уровень (+1). */
+  target: number;
+  /** Накопитель неудач даёт столько процентов. */
+  bonus: number;
 }
 
-/** Что даст следующая попытка; null — оружие не точится. */
-export function attackPointNext(w: { cls: string; tier: string; sharp?: number }): AttackPointNext | null {
-  if (!attackPointEligible(w)) return null;
+/** Что даст следующая попытка; null — оружие не точится/сломано/на максимуме. */
+export function attackPointNext(w: { cls: string; tier: string; sharp?: number; broken?: boolean; sharpFails?: number }): AttackPointNext | null {
+  if (!attackPointEligible(w) || w.broken) return null;
   const n = attackPoints(w);
+  if (n >= ATTACK_POINT.max) return null;
+  const target = n + 1;
+  const base = target <= ATTACK_POINT.safe ? 1 : target >= ATTACK_POINT.max ? ATTACK_POINT.maxChance : ATTACK_POINT.chances[target - ATTACK_POINT.safe - 1];
+  const bonus = target <= 14 ? Math.min(ATTACK_POINT.failBonusMax, Math.max(0, w.sharpFails ?? 0) * ATTACK_POINT.failBonus) : 0;
   return {
-    gain: attackPointBonus(n + 1) - attackPointBonus(n),
-    // Шанс падает с каждой точкой, но не ниже 1%: очередная попытка всегда имеет шанс.
-    chance: Math.max(ATTACK_POINT.chanceMin, ATTACK_POINT.chance0 * ATTACK_POINT.chanceDecay ** n),
-    // Цена — от уникального; рубиновое и мастерское — × ENCHANT_TIER_MUL (то же правило, что у роллов).
+    gain: attackPointBonus(target) - attackPointBonus(n),
+    chance: Math.min(1, base + bonus),
     cost: Math.round(ATTACK_POINT.cost0 * ATTACK_POINT.costGrowth ** n * (w.tier === "ruby" || w.tier === "craft" ? ENCHANT_TIER_MUL[w.tier] : 1)),
     points: n,
+    target,
+    bonus,
   };
 }
 
 export type AttackPointTry =
-  | { ok: false; reason: "not-eligible" }
+  | { ok: false; reason: "not-eligible" | "max" | "broken" }
   | { ok: false; reason: "no-scrap"; need: number }
-  | { ok: true; cost: number; up: boolean; gain: number; points: number };
+  | { ok: true; cost: number; up: boolean; gain: number; points: number; broke: boolean; brokeAt?: number; protected: boolean; fails: number };
 
 /**
- * Одна попытка точки атаки: проверка лома, бросок шанса, +1 точка при удаче. Лом списывает вызывающий —
- * и при неудаче тоже (лом сгорает, как у заточки). `rnd` — для проверок.
+ * Одна попытка. Свиток защищает при провале; без свитка на +6…+15 оружие
+ * ломается в хлам. Лом списывает вызывающий в любом случае.
  */
-export function attackPointTry(w: WeaponInstance, scrapHave: number, rnd: () => number = Math.random): AttackPointTry {
+export function attackPointTry(w: WeaponInstance, scrapHave: number, useScroll = false, rnd: () => number = Math.random): AttackPointTry {
   const info = attackPointNext(w);
-  if (!info) return { ok: false, reason: "not-eligible" };
+  if (!info) return { ok: false, reason: w.broken ? "broken" : attackPoints(w) >= ATTACK_POINT.max ? "max" : "not-eligible" };
   if (scrapHave < info.cost) return { ok: false, reason: "no-scrap", need: info.cost };
   const up = rnd() < info.chance;
-  if (up) w.sharp = info.points + 1;
-  return { ok: true, cost: info.cost, up, gain: info.gain, points: info.points + (up ? 1 : 0) };
+  if (up) {
+    w.sharp = info.target;
+    w.broken = false;
+    delete w.brokenAt;
+    w.sharpFails = 0;
+    return { ok: true, cost: info.cost, up: true, gain: info.gain, points: info.target, broke: false, protected: false, fails: 0 };
+  }
+  if (info.target <= ATTACK_POINT.safe) {
+    // защищённая зона не может провалиться, но оставляем ветку для rnd() == 1
+    return { ok: true, cost: info.cost, up: false, gain: 0, points: info.points, broke: false, protected: false, fails: w.sharpFails ?? 0 };
+  }
+  if (useScroll) {
+    w.sharpFails = Math.min(5, Math.max(0, w.sharpFails ?? 0) + 1);
+    return { ok: true, cost: info.cost, up: false, gain: 0, points: info.points, broke: false, protected: true, fails: w.sharpFails };
+  }
+  w.broken = true;
+  w.brokenAt = info.target;
+  w.sharp = ATTACK_POINT.safe;
+  w.sharpFails = 0;
+  return { ok: true, cost: info.cost, up: false, gain: 0, points: ATTACK_POINT.safe, broke: true, brokeAt: info.target, protected: false, fails: 0 };
 }
 
 /** Проценты для подписей: 2,13% (с запятой, как в остальном тексте). */

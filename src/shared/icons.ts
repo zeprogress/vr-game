@@ -108,6 +108,7 @@ export const ICONS = {
   "i.fish": { emoji: "🐟", img: "items/fish.png" },
   "i.scroll_xp": { emoji: "📜", img: "items/scroll_xp.png" },
   "i.scroll_wind": { emoji: "🪶", img: "items/scroll_wind.png" },
+  "i.save_scroll": { emoji: "🛡️" },
   /** Жетоны заданий. */
   "i.token": { emoji: "◈", img: "items/token.png" },
   // ---- крафт: материалы, особые катализаторы и методы (shared/craft.ts) — вырезаны из концепта кузницы, временные ----

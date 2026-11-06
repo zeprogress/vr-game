@@ -7,7 +7,7 @@ import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
 import { ensureIconCss, iconHtml, preloadIconImages, setIconEl } from "../ui/icons";
 import type { IconKey } from "#shared/icons";
-import { AEGIS_NAME, AFFIX_NAME, craftPow, isCraftRare, weaponName, ATTACK_CLASSES, WEAPON_NOUN, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, qualityStarsShort, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, AFFIX_NAME, craftPow, isCraftRare, weaponName, ATTACK_CLASSES, WEAPON_NOUN, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, qualityStarsShort, restoreCost, SAVE_SCROLL, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcEnchRow, PcInvActMsg, PcInvArmor, PcInvData, PcInvResult, PcInvWeapon, TradeItemView } from "#shared/net/messages";
 import { skinPicture } from "#shared/skins";
 import { BOT_SKIN_LABELS } from "../world/models";
@@ -1985,24 +1985,64 @@ export class PcInventory {
     return true;
   }
 
-  /** Точка атаки за лом (уникальное и рубиновое): сколько уже даёт и что будет дальше. */
+  /** Заточка базовой атаки: риск, хлам, свиток сохранения и накопитель. */
   private sharpBlock(w: PcInvWeapon, d: PcInvData): HTMLDivElement {
     const box = div("pcinv-ap");
     const n = attackPoints(w);
-    const next = attackPointNext(w);
     const txt = div("pcinv-ap-t");
-    txt.append(div("pcinv-ap-name", `Точка атаки · ${n}`), div("pcinv-small", `+${fmtPct(attackPointBonus(n) * 100)}% урона${next ? ` · след. +${fmtPct(next.gain * 100, 2)}%` : ""}`));
-    box.append(txt);
+    if (w.broken) {
+      const cost = restoreCost(w.brokenAt ?? 6);
+      txt.append(
+        div("pcinv-ap-name", `Хлам · сломано на +${w.brokenAt ?? 6}`),
+        div("pcinv-small", `Восстановление: ${cost.scrap} лома${cost.scale ? ` + ${cost.scale} чешуи` : ""} · вернётся на +5`),
+        div("pcinv-small", `Разбор даст ${w.scrap} лома.`),
+      );
+      box.append(txt);
+      const fix = document.createElement("button");
+      fix.className = "pcinv-btn sm";
+      fix.textContent = `Восстановить (${cost.scrap} лома${cost.scale ? ` + ${cost.scale} чеш.` : ""})`;
+      fix.disabled = d.scrap < cost.scrap || this.forging;
+      fix.onclick = () => { this.lastResult = null; this.hooks.act({ act: "restore", id: w.id, idx: 0 }); };
+      box.append(fix);
+      return box;
+    }
+    const next = attackPointNext(w);
+    txt.append(div("pcinv-ap-name", `Заточка атаки · +${n}/15`), div("pcinv-small", `+${fmtPct(attackPointBonus(n) * 100)}% урона${next ? ` · след. +${fmtPct(next.gain * 100, 2)}%` : ""}`));
     if (next) {
+      const risk = next.target > 5;
+      txt.append(div("pcinv-small", risk
+        ? `Шанс ${fmtPct(next.chance * 100)}%${next.bonus ? ` (накопитель +${fmtPct(next.bonus * 100)}%)` : ""} · провал ${next.target >= 15 ? "разрушает" : "ломает в хлам"}`
+        : "Безопасная заточка до +5"));
+      box.append(txt);
+      const row = div("pcinv-ap-row");
       const bt = document.createElement("button");
       bt.className = "pcinv-btn sm pcinv-forge";
       bt.innerHTML = `${iconHtml("i.scrap")}<span>${next.cost} · ${fmtPct(next.chance * 100)}%</span>`;
-      bt.title = `Точить: ${next.cost} лома, шанс ${fmtPct(next.chance * 100)}%`;
+      bt.title = risk ? `Риск: ${next.cost} лома, шанс ${fmtPct(next.chance * 100)}%. Провал без свитка сломает оружие.` : `Точить: ${next.cost} лома, 100%`;
       bt.disabled = d.scrap < next.cost || this.forging;
-      // Точка атаки — тот же молот и итог, что у заточки аффиксов (forge с sharpen).
       bt.onclick = () => this.forge(w.id, 0, true);
-      box.append(bt);
+      row.append(bt);
+      if (risk && (d.saveScrolls ?? 0) > 0) {
+        const sb = document.createElement("button");
+        sb.className = "pcinv-btn sm";
+        sb.textContent = `+ свиток (${d.saveScrolls})`;
+        sb.disabled = d.scrap < next.cost || this.forging;
+        sb.onclick = () => this.forge(w.id, 1, true);
+        row.append(sb);
+      }
+      box.append(row);
+      if (risk) {
+        const buy = document.createElement("button");
+        buy.className = "pcinv-btn sm";
+        buy.textContent = `Купить свиток (${SAVE_SCROLL.costScrap} лома)`;
+        buy.disabled = d.scrap < SAVE_SCROLL.costScrap || this.forging;
+        buy.onclick = () => { this.lastResult = null; this.hooks.act({ act: "buyScroll", id: "", idx: 0 }); };
+        box.append(buy);
+      }
+      return box;
     }
+    txt.append(div("pcinv-ap-name", `Заточка атаки · +${n}/15`), div("pcinv-small", `Максимум: +${fmtPct(attackPointBonus(n) * 100)}% урона`));
+    box.append(txt);
     return box;
   }
 
@@ -2014,7 +2054,7 @@ export class PcInventory {
     this.lastResult = null;
     this.render();
     this.hooks.act(
-      sharpen ? { act: "sharpen", id, idx: 0 }
+      sharpen ? { act: "sharpen", id, idx }
         : this.data?.armor?.some((x) => x.id === id) ? { act: "armorEnchant", id, idx }
           : this.data?.jewels?.necks.some((x) => x.id === id) ? { act: "neckEnchant", id, idx }
             : this.data?.jewels?.rings.some((x) => x.id === id) ? { act: "ringEnchant", id, idx } : { act: "enchant", id, idx },

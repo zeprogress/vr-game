@@ -84,7 +84,7 @@ export class InventoryRoom extends colyseus.Room {
         return;
       }
       const act =
-        m?.act === "equip" || m?.act === "unequip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "sharpen" || m?.act === "stat" || m?.act === "tree" || m?.act === "respec" || m?.act === "scroll" || m?.act === "title" || m?.act === "skin" || m?.act === "skills" || m?.act === "fav" || m?.act === "scrapAll" || m?.act === "gift" || m?.act === "giftSeen" || m?.act === "armorWear" || m?.act === "armorUnwear" || m?.act === "armorScrap" || m?.act === "armorFav" || m?.act === "armorEnchant" || m?.act === "neckEnchant" || m?.act === "ringEnchant" || m?.act === "craft" || m?.act === "smelt" || m?.act === "shop" || (JEWEL_ACTS as readonly unknown[]).includes(m?.act) || (TRADE_ACTS as readonly unknown[]).includes(m?.act)
+        m?.act === "equip" || m?.act === "unequip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "sharpen" || m?.act === "restore" || m?.act === "buyScroll" || m?.act === "stat" || m?.act === "tree" || m?.act === "respec" || m?.act === "scroll" || m?.act === "title" || m?.act === "skin" || m?.act === "skills" || m?.act === "fav" || m?.act === "scrapAll" || m?.act === "gift" || m?.act === "giftSeen" || m?.act === "armorWear" || m?.act === "armorUnwear" || m?.act === "armorScrap" || m?.act === "armorFav" || m?.act === "armorEnchant" || m?.act === "neckEnchant" || m?.act === "ringEnchant" || m?.act === "craft" || m?.act === "smelt" || m?.act === "shop" || (JEWEL_ACTS as readonly unknown[]).includes(m?.act) || (TRADE_ACTS as readonly unknown[]).includes(m?.act)
           ? m.act
           : null;
       const id = typeof m?.id === "string" ? m.id : act === "respec" ? "-" : "";
@@ -296,6 +296,8 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
       scrap: scrapValue(w),
       ench: enchDetails(w),
       sharp: attackPoints(w),
+      ...(w.broken ? { broken: true, brokenAt: w.brokenAt ?? 6 } : {}),
+      ...(w.sharpFails ? { sharpFails: w.sharpFails } : {}),
       ...(w.cp ? { cp: w.cp } : {}),
       ...(w.rc ? { rc: true } : {}),
       fav: !!w.fav,
@@ -306,6 +308,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     fish: bagCount(rec.bag ?? [], "fish"),
     scrollXp: bagCount(rec.bag ?? [], "scroll_xp"),
     scrollWind: bagCount(rec.bag ?? [], "scroll_wind"),
+    saveScrolls: bagCount(rec.bag ?? [], "save_scroll"),
     titles: rec.titles ?? [],
     title: rec.title ?? "",
     tokens: rec.tokens ?? 0,
