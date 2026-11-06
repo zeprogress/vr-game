@@ -74,7 +74,6 @@ import {
   type QuestActMsg,
   type ShopBuyMsg,
   type ShopData,
-  type ShopSwap,
   type FishWaitMsg,
   type QuestData,
   type PcInvData,
@@ -168,7 +167,6 @@ import {
   ITEMS,
   plainWeaponInstance,
   rollWeaponInstance,
-  swapRubyClass,
   scrapValue,
   isCraftRare,
   takeOne,
@@ -4916,67 +4914,24 @@ export class ZoneRoom extends Room<ZoneState> {
     const p = this.state.players.get(client.sessionId);
     if (!p) return;
     const norm = normNick(p.nick);
-    const rt = this.rt.get(client.sessionId);
     const data: ShopData = {
       items: SHOP.map((i) => ({ id: i.id, name: i.name, desc: i.desc, price: i.price, fishCost: i.fishCost })),
       tokens: store.get(`nick:${norm}`)?.tokens ?? 0,
       fish: bagCount(readBag(p), "fish"),
       near: this.tavernNear(p),
-      swaps: rt ? this.rubySwaps(rt) : [],
+      // Обмен рубинового оружия у трактирщика убран.
+      swaps: [],
       msg,
     };
     client.send(MSG.shopData, data);
-  }
-
-  /** Рубиновое на складе, которое можно обменять: не избранное. Надетое тоже — при обмене рука освобождается (см. rubySwap). */
-  private rubySwaps(rt: Runtime): ShopSwap[] {
-    return rt.weapons
-      .filter((w) => w.tier === "ruby" && !w.fav)
-      .map((w) => ({
-        wid: w.id,
-        name: `${instanceName(w)} · ${instanceStars(w)}`,
-        targets: ATTACK_CLASSES.filter((c) => c !== w.cls).map((c) => {
-          const hero = CLASS_IDS.find((id) => CLASSES2[id].main === c);
-          return { cls: c, label: hero ? CLASSES2[hero].name : c };
-        }),
-      }));
-  }
-
-  /** Обмен рубинового на другой класс: та же оценка и число роллов; старое рубиновое уходит. */
-  private rubySwap(client: Client, p: PlayerState, rt: Runtime, id: string): void {
-    if (!this.tavernNear(p)) return this.sendShop(client, "Подойди к трактирщику");
-    const [, wid, cls] = id.split(":");
-    const idx = rt.weapons.findIndex((w) => w.id === wid);
-    const w = rt.weapons[idx];
-    if (!w || w.tier !== "ruby") return this.sendShop(client, "Этого рубинового уже нет на складе");
-    if (w.fav) return this.sendShop(client, "Это оружие в избранном ★ — сними звёздочку, чтобы обменять");
-    if (!isWeaponClass(cls) || cls === "shield" || cls === w.cls) return this.sendShop(client, "Такой обмен не выйдет");
-    // Надето — рука освобождается, как при разборе: пустая; новое уходит на склад.
-    let freed = false;
-    for (const side of ["left", "right"] as const) {
-      if (rt.equippedWeaponId[side] !== w.id && rolledIn(p, side, rt)?.id !== w.id) continue;
-      rt.equippedWeaponId[side] = null;
-      if (side === "left") {
-        p.leftCls = "";
-        p.leftTier = "";
-      } else {
-        p.rightCls = "";
-        p.rightTier = "";
-      }
-      freed = true;
-    }
-    const nw = swapRubyClass(w, cls);
-    rt.weapons[idx] = nw;
-    this.persistNick(normNick(p.nick));
-    this.syncWarehouse(client.sessionId, rt);
-    this.sendShop(client, `Обмен: ${instanceName(w)} → ${instanceName(nw)} · ${instanceStars(nw)}${freed ? " · рука освобождена" : ""}`);
   }
 
   private shopBuy(client: Client, msg: ShopBuyMsg): void {
     const p = this.state.players.get(client.sessionId);
     const rt = this.rt.get(client.sessionId);
     if (!p || !rt || !msg) return;
-    if (msg.id.startsWith("swap:")) return this.rubySwap(client, p, rt, msg.id);
+    // Обмен рубинового оружия отключён: старые клиенты с swap: просто игнорируются.
+    if (msg.id.startsWith("swap:")) return;
     const item = SHOP.find((i) => i.id === msg.id);
     if (!item) return;
     const token = `nick:${normNick(p.nick)}`;
