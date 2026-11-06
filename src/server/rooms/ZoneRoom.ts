@@ -10066,20 +10066,10 @@ export class ZoneRoom extends Room<ZoneState> {
    * возрождается через 30 с). На новой стоянке остаётся, пока и она не опустеет; живых нет нигде — ждёт у своей.
    */
   /** Осторожный режим (везде): HP ниже 35% — отход, выше 70% — снова в бой. В катакомбах отход — ко входу зала (catTacticSpot). */
-  private botCareful(bot: Bot, p: PlayerState): void {
-    if (bot.mode !== "careful") {
-      bot.retreat = false;
-      return;
-    }
-    // В открытом мире в лагерь/к костру не отступаем вообще: бот бросал бой,
-    // бежал к пугалу лечиться и возвращался. Отход оставляем только в катакомбах
-    // (там он идёт ко входу зала, а не через полкарты в лагерь).
-    if (!this.cat.inRun(bot.id)) {
-      bot.retreat = false;
-      return;
-    }
-    if (p.hp < p.maxHp * 0.35) bot.retreat = true;
-    else if (p.hp > p.maxHp * 0.7) bot.retreat = false;
+  private botCareful(bot: Bot, _p: PlayerState): void {
+    // Отход в лагерь/ко входу зала отключён везде: бот не должен бросать бой
+    // и бежать лечиться. Режим «осторожно» больше не меняет движение.
+    bot.retreat = false;
   }
 
   private botLiveHome(bot: Bot, p: PlayerState): { x: number; z: number } {
