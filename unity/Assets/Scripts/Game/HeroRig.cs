@@ -51,7 +51,9 @@ namespace Zep
             return list.ToArray();
         }
 
-        const float HUMAN_HEIGHT = 1.8f;
+        // В спектаторе модели человека/эльфа читаются мельче веба при том же
+        // масштабе сцены — поднимаем их до 2.2 м (визуально ~рост крупного героя).
+        const float HUMAN_HEIGHT = 2.2f;
 
         /// Реальная высота мешей модели до масштабирования (для базового рыцаря без entry).
         static float MeasureHeight(GameObject go)
