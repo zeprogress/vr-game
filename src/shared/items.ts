@@ -1167,6 +1167,7 @@ export function aegisTier(cls: string, tier: string, affix: string | undefined):
 /** Текст «в руке» (PlayerState.left/rightAffix, таблица характеристик): свойство Эгиды + роллы. */
 export function heldAffixText(w: WeaponInstance | null | undefined): string {
   if (!w) return "";
+  if (w.broken) return `Хлам: сломано на +${w.brokenAt ?? 6}`;
   const sharp = attackPointEligible(w) ? attackPoints(w) : 0;
   const cp = craftPow(w);
   return [
