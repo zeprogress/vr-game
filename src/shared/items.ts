@@ -1564,7 +1564,8 @@ export function attackPointNext(w: { cls: string; tier: string; sharp?: number; 
       : target >= ATTACK_POINT.max
         ? ATTACK_POINT.maxChance
         : ATTACK_POINT.chances[target - 6];
-  const bonus = target <= 14 ? Math.min(ATTACK_POINT.failBonusMax, Math.max(0, w.sharpFails ?? 0) * ATTACK_POINT.failBonus) : 0;
+  // Накопитель работает и на попытке +15: 3% базовых + до 10% = до 13%.
+  const bonus = Math.min(ATTACK_POINT.failBonusMax, Math.max(0, w.sharpFails ?? 0) * ATTACK_POINT.failBonus);
   return {
     gain: attackPointBonus(target) - attackPointBonus(n),
     chance: Math.min(1, base + bonus),

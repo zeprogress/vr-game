@@ -19,6 +19,7 @@ test("заточка: шансы +6…+14 и фиксированные 3% на 
   assert.equal(attackPointNext(wpn(5))!.chance, 0.65);
   assert.equal(attackPointNext(wpn(9))!.chance, 0.25);
   assert.equal(attackPointNext(wpn(14))!.chance, 0.03);
+  assert.equal(attackPointNext(wpn(14, { sharpFails: 5 }))!.chance, 0.13);
   assert.equal(attackPointNext(wpn(5, { sharpFails: 3 }))!.chance, 0.71);
 });
 
