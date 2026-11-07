@@ -49,6 +49,8 @@ let live = false;
 /** Когда последний раз реально приходили данные комнаты: по этому ловим «тихий» обрыв. */
 let lastSeen = performance.now();
 let reloading = false;
+/** Повторный вход страницы, если первичный вход не удался (сервер ещё перезапускался). */
+let retrying = false;
 
 /** Перезагрузить страницу один раз. OBS Browser Source сам её не перезапустит. */
 function hardReload(reason: string): void {
@@ -65,7 +67,7 @@ function hardReload(reason: string): void {
 // CEF сам перезагрузит страницу по meta refresh.
 const autoRefresh = document.createElement("meta");
 autoRefresh.httpEquiv = "refresh";
-autoRefresh.content = "300";
+autoRefresh.content = "180";
 document.head.appendChild(autoRefresh);
 
 /** Переподписка на изменения состояния — на первом входе и после реконнекта. */
@@ -134,12 +136,32 @@ net.onConnectionLost = () => {
   lostAt = performance.now();
   ov.setShown(false);
 };
+
+/** Переподключить сам оверлей, не полагаясь на reload в CEF OBS. */
+async function retryBind(): Promise<void> {
+  if (!key || live || reloading || retrying || net.busyReconnecting) return;
+  retrying = true;
+  try {
+    const ok = await net.connectSpectator(key);
+    if (ok) {
+      live = true;
+      lostAt = 0;
+      watchRoom(net.room);
+      ov.setShown(true);
+    } else lostAt = performance.now();
+  } finally {
+    retrying = false;
+  }
+}
 // «Тихий» обрыв: WebSocket формально открыт, но state перестал обновляться.
 // Раньше в этом случае помогал только ручной Reload источника в OBS.
 setInterval(() => {
   const now = performance.now();
   if (!live) {
-    if (lostAt && now - lostAt > 10_000) hardReload("нет соединения");
+    // Сначала пробуем восстановить соединение внутри страницы: OBS CEF часто
+    // игнорирует location.reload/replace, из-за чего оверлей оставался чёрным.
+    if (lostAt && now - lostAt > 4_000) void retryBind();
+    if (lostAt && now - lostAt > 90_000) hardReload("нет соединения");
     return;
   }
   if (now - lastSeen > 12_000) hardReload("нет данных от сервера");
