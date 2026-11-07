@@ -716,8 +716,9 @@ export class PcInventory {
     const grid = div("pcinv-market-grid");
     for (const l of lots) {
       const c = div(`pcinv-market-card${this.marketLot === l.id ? " on" : ""}`);
-      c.append(this.tradeIcon(l.item), div("pcinv-market-name", l.item.name), div("pcinv-market-meta", `${l.seller} · ${l.price.toLocaleString("ru-RU")} лома`));
-      this.marketHover(c, l.item.name, l.item.tier, l.details, `${l.seller} · ${l.price.toLocaleString("ru-RU")} лома`);
+      const lotName = this.marketLotName(l);
+      c.append(this.tradeIcon(l.item), div("pcinv-market-name", lotName), div("pcinv-market-meta", `${l.seller} · ${l.price.toLocaleString("ru-RU")} лома`));
+      this.marketHover(c, lotName, l.item.tier, l.details, `${l.seller} · ${l.price.toLocaleString("ru-RU")} лома`);
       if (l.note) c.append(div("pcinv-small", l.note));
       if (l.mine) c.append(div("pcinv-small gold", "Мой лот"));
       c.onclick = () => { this.marketLot = l.id; this.marketListing = false; this.render(); };
@@ -732,12 +733,13 @@ export class PcInventory {
     const box = div("pcinv-market-detail");
     const x = button("×", () => { this.marketLot = null; this.render(); });
     x.className = "pcinv-tx";
-    box.append(x, div("pcinv-market-name", l.item.name), div("pcinv-small", `${l.seller} · ${l.price.toLocaleString("ru-RU")} лома`));
+    const lotName = this.marketLotName(l);
+    box.append(x, div("pcinv-market-name", lotName), div("pcinv-small", `${l.seller} · ${l.price.toLocaleString("ru-RU")} лома`));
     for (const line of l.details ?? []) if (line) box.append(div("pcinv-small", line));
     if (l.note) box.append(div("pcinv-market-note", l.note));
     const acts = div("pcinv-market-acts");
     if (l.mine) {
-      acts.append(button("Снять с продажи", () => this.askConfirm(`Снять «${l.item.name}» с продажи?`, "Снять", () => { this.marketLot = null; this.hooks.act({ act: "marketCancel", id: l.id, idx: 0 }); })));
+      acts.append(button("Снять с продажи", () => this.askConfirm(`Снять «${lotName}» с продажи?`, "Снять", () => { this.marketLot = null; this.hooks.act({ act: "marketCancel", id: l.id, idx: 0 }); })));
       for (const o of l.offers ?? []) {
         const row = div("pcinv-market-offer");
         row.append(div("pcinv-small", `Обмен от ${o.buyer}: ${o.items.map((v) => `${v.name} ×${v.n}`).join(", ")}`));
@@ -749,12 +751,21 @@ export class PcInventory {
       }
     } else {
       acts.append(
-        button(`Купить за ${l.price.toLocaleString("ru-RU")} лома`, () => this.askConfirm(`Купить «${l.item.name}» за ${l.price} лома?`, "Купить", () => { this.marketLot = null; this.hooks.act({ act: "marketBuy", id: l.id, idx: 0 }); })),
+        button(`Купить за ${l.price.toLocaleString("ru-RU")} лома`, () => this.askConfirm(`Купить «${lotName}» за ${l.price} лома?`, "Купить", () => { this.marketLot = null; this.hooks.act({ act: "marketBuy", id: l.id, idx: 0 }); })),
         button("Предложить обмен", () => { this.marketOfferLot = l.id; this.marketOfferPick.clear(); this.marketLot = null; this.render(); }),
       );
     }
     box.append(acts);
     return box;
+  }
+
+  /** Название лота без перечисления аффиксов: у ожерелий — только тир. */
+  private marketName(it: ReturnType<PcInventory["marketable"]>[number]): string {
+    return it.view.k === "neck" ? NECK_TIER_NAME[(it.view.tier ?? "base") as NeckTier] : it.label;
+  }
+
+  private marketLotName(l: MarketLotView): string {
+    return l.item.k === "neck" ? NECK_TIER_NAME[(l.item.tier ?? "base") as NeckTier] : l.item.name;
   }
 
   /** Ячейка рынка: ровно та же, что в сумке, включая камни, материалы и броню. */
@@ -774,7 +785,7 @@ export class PcInventory {
       const cell = this.marketCell(d, it.code, it.view, it.max);
       cell.classList.toggle("sel", selected.has(it.code));
       cell.onclick = () => onPick(it.code);
-      this.marketHoverLocal(cell, d, it.code, it.view.name, it.view.tier);
+      this.marketHoverLocal(cell, d, it.code, this.marketName(it), it.view.tier);
       grid.append(cell);
     }
     if (!grid.childElementCount) grid.append(div("pcinv-small", "Нечего выбрать: сними надетое и убери ★."));
@@ -857,7 +868,7 @@ export class PcInventory {
     const box = div("pcinv-market-detail");
     const head = div("pcinv-market-detailhead");
     // Значок — ровно ячейка сумки: броня, камень и материал без лишних рамок.
-    head.append(this.marketCell(d, it.code, it.view, it.max), div("pcinv-market-name", it.label));
+    head.append(this.marketCell(d, it.code, it.view, it.max), div("pcinv-market-name", this.marketName(it)));
     box.append(head);
     const score = this.marketLocalScore(d, it.code);
     if (score) {
@@ -962,7 +973,7 @@ export class PcInventory {
         const it = items.find((x) => x.code === code);
         if (!it) continue;
         const row = div("pcinv-market-pickqty");
-        row.append(div("pcinv-small", it.label));
+        row.append(div("pcinv-small", this.marketName(it)));
         if (it.stack && it.max > 1) {
           const q = document.createElement("input");
           q.className = "pcinv-input"; q.type = "number"; q.min = "1"; q.max = String(it.max); q.value = String(n);

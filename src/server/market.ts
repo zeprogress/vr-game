@@ -5,7 +5,7 @@ import { itemView, type Taken } from "./trade";
 import { armorLabel } from "#shared/armor";
 import { CRAFT_ITEMS } from "#shared/craft";
 import { instanceEffects, instanceLabels, instanceName, ITEMS, weaponQuality } from "#shared/items";
-import { neckLabel } from "#shared/necklaces";
+import { NECK_TIER_NAME, neckLabel } from "#shared/necklaces";
 import { ringLabel } from "#shared/jewels";
 import { MARKET, type MarketData, type MarketLotView, type MarketOfferOut, type MarketOutgoingView } from "#shared/market";
 
@@ -178,7 +178,7 @@ export function marketItemName(t: Taken): string {
   if (t.k === "weapon") return instanceName(t.w);
   if (t.k === "armor") return armorLabel(t.a);
   if (t.k === "ring") return ringLabel(t.r);
-  if (t.k === "neck") return neckLabel(t.n);
+  if (t.k === "neck") return NECK_TIER_NAME[t.n.tier];
   if (t.k === "gem") return "камень";
   if (t.k === "mat") return CRAFT_ITEMS[t.id].name;
   return ITEMS[t.item].name;
