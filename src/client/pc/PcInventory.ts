@@ -3617,7 +3617,8 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-market-acts { display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
 .pcinv-market-offer { display:flex; flex-wrap:wrap; gap:6px; align-items:center; border-top:1px solid #2a405d; padding-top:5px; }
 .pcinv-market-form { border:1px solid #2a405d; background:rgba(8,19,33,.85); padding:10px; display:flex; flex-direction:column; gap:8px; }
-.pcinv-market-form .pcinv-bagrid { flex:0 0 auto; min-height:0; max-height:min(420px,48vh); overflow-y:auto; grid-template-columns:repeat(var(--cols,7),minmax(0,1fr)); }
+.pcinv-market-form .pcinv-bagrid { flex:0 0 auto; min-height:0; max-height:min(420px,48vh); overflow-y:auto; grid-template-columns:repeat(auto-fill,52px); justify-content:start; gap:6px; }
+.pcinv-market-form .pcinv-bagrid > .pcinv-cell { width:52px; height:52px; aspect-ratio:auto; }
 .pcinv-market-pick { display:flex; gap:8px; align-items:center; border:1px solid #2a405d; padding:4px 7px; cursor:pointer; }
 .pcinv-market-pick.on { border-color:#d4a94e; background:rgba(90,65,24,.35); }
 .pcinv-market .pcinv-input { min-height:30px; padding:5px 8px; background:#081321; color:#f2e7d2; border:1px solid #3a5578; }
