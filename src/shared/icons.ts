@@ -108,7 +108,20 @@ export const ICONS = {
   "i.fish": { emoji: "🐟", img: "items/fish.png" },
   "i.scroll_xp": { emoji: "📜", img: "items/scroll_xp.png" },
   "i.scroll_wind": { emoji: "🪶", img: "items/scroll_wind.png" },
-  "i.save_scroll": { emoji: "🛡️" },
+  "i.save_scroll": {
+    emoji: "📜",
+    box: "0 0 24 24",
+    svg: g(
+      `stroke-linecap="round" stroke-linejoin="round"`,
+      `<path d="M6.6 4.2h10.8c.9 0 1.6.7 1.6 1.6v12.4c0 .9-.7 1.6-1.6 1.6H6.6c-.9 0-1.6-.7-1.6-1.6V5.8c0-.9.7-1.6 1.6-1.6z" fill="#ead7a2" stroke="#f7e6b6" stroke-width="1.1"/>` +
+        `<path d="M8 4.2c-1.8 0-3.2 1-3.2 2.5S6.2 9.2 8 9.2" fill="#c9a44a" stroke="#f7df9a" stroke-width="1.1"/>` +
+        `<path d="M8 19.8c-1.8 0-3.2-1-3.2-2.5s1.4-2.5 3.2-2.5" fill="#c9a44a" stroke="#f7df9a" stroke-width="1.1"/>` +
+        `<path d="M8.4 8.3h7.2M8.4 11h7.2M8.4 13.7h4.5" stroke="#8a6330" stroke-width="1.1" opacity=".85"/>` +
+        `<circle cx="15.4" cy="16.1" r="2.5" fill="#7a3fb4" stroke="#f3c85b" stroke-width="1.1"/>` +
+        `<path d="M15.4 14.9v2.4M14.2 16.1h2.4" stroke="#f3c85b" stroke-width=".8" opacity=".9"/>` +
+        `<path d="M6.3 4.8c1.4-.6 2.7-.6 4.1-.2M6.3 19.2c1.4.6 2.7.6 4.1.2" stroke="#fff3c8" stroke-width=".8" opacity=".55"/>`,
+    ),
+  },
   /** Жетоны заданий. */
   "i.token": { emoji: "◈", img: "items/token.png" },
   // ---- крафт: материалы, особые катализаторы и методы (shared/craft.ts) — вырезаны из концепта кузницы, временные ----

@@ -8115,6 +8115,14 @@ export class ZoneRoom extends Room<ZoneState> {
         writeBag(p, bag);
         loot.push({ id: scroll, count: 1 });
       }
+      // Супербосс катакомб: очень редкий свиток сохранения.
+      if (Math.random() < SAVE_SCROLL.catBossChance) {
+        const bagSave = readBag(p);
+        if (addToBag(bagSave, "save_scroll", 1) === 0) {
+          writeBag(p, bagSave);
+          loot.push({ id: "save_scroll", count: 1 });
+        }
+      }
       store.put(token, { tokens: (store.get(token)?.tokens ?? 0) + CATACOMBS.finalTokens });
       // Лом супербосса — каждому в отряде (CATACOMBS.finalScrap).
       const bagS = readBag(p);
