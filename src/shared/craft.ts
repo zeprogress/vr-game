@@ -550,7 +550,7 @@ export function pcInvCraftFor(craft: PcInvCraft, owner: boolean): PcInvCraft {
 export const CRAFT_DROPS: Partial<Record<string, readonly { id: CraftItemId; chance: number; n?: number }[]>> = {
   spider: [
     { id: "web", chance: 0.002 }, // 2026-10-21: было 0.01 (в 5 раз реже); раньше 0.25, потом 0.03
-    { id: "sting", chance: 0.0001 }, // 2026-10-21: было 0.001 (в 10 раз реже); раньше 0.004
+    { id: "sting", chance: 0.0005 }, // 2026-11-07: ×5 (было 0.0001); до этого 0.001 и 0.004
   ],
   // Шипобрюхи и шипохвосты носят ядовитое жало (2026-11-06): 0.5% за убийство, у вожака ×4.
   spikyBlob: [{ id: "sting", chance: 0.005 }],
