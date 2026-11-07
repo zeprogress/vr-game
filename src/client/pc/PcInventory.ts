@@ -853,7 +853,9 @@ export class PcInventory {
   private marketLocalCard(d: PcInvData, it: ReturnType<PcInventory["marketable"]>[number]): HTMLElement {
     const box = div("pcinv-market-detail");
     const head = div("pcinv-market-detailhead");
-    head.append(this.tradeIcon(it.view), div("pcinv-market-name", it.label));
+    // Значок — ровно ячейка сумки: у брони видна её картинка и вес, а не заглушка.
+    const entry = this.marketEntry(d, it.code);
+    head.append(entry ? this.entryCell(entry).cloneNode(true) as HTMLDivElement : this.tradeIcon(it.view), div("pcinv-market-name", it.label));
     box.append(head, div("pcinv-small", TIER_LOOK[(it.view.tier ?? "base") as WeaponTier]?.name ?? it.view.tier ?? ""));
     const score = this.marketLocalScore(d, it.code);
     if (score) {
@@ -3695,6 +3697,7 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-market-meta { font-size:11px; color:#a9b8c9; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pcinv-market-detail { width:min(33%,300px); max-width:33%; margin:0 auto; align-self:center; border:1px solid #6b5736; background:rgba(15,25,40,.96); padding:10px; display:flex; flex-direction:column; gap:5px; }
 .pcinv-market-detailhead { display:flex; align-items:center; justify-content:center; gap:8px; }
+.pcinv-market-detailhead > .pcinv-cell { width:52px; height:52px; flex:none; }
 .pcinv-market-detailhead .pcinv-tic { width:48px; height:48px; }
 .pcinv-market-detailhead .pcinv-tic > *, .pcinv-market-detailhead .pcinv-tic img, .pcinv-market-detailhead .pcinv-tic svg { width:42px !important; height:42px !important; }
 .pcinv-market-picked { display:flex; flex-direction:column; gap:4px; }
