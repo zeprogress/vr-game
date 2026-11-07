@@ -1457,7 +1457,7 @@ export function restoreCost(brokenAt: number, tier: WeaponTier = "ruby"): { scra
   const n = l - 4;
   // Рубиновое — базовая цена; мастерское на 30% дешевле, уникальное ещё на 30% дешевле мастерского.
   const mul = tier === "craft" ? 0.7 : tier === "legendary" ? 0.49 : 1;
-  const scrap = Math.round(((8_000 + n * 6_000 + n * n * 700) * mul) / 100) * 100;
+  const scrap = Math.round(((6_000 + n * 4_000 + n * n * 1_000) * mul) / 100) * 100;
   const scale = l <= 8 ? 0 : l <= 13 ? 1 : 2;
   return { scrap, scale };
 }
