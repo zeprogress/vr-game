@@ -251,7 +251,7 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   // Лук: стрела 1.75 (как сейчас), но масштаб — от СИЛ, темп — от ЛОВ.
   bow: {
     // Стрела +10% (2026-10-19): 2 → 2.2.
-    name: WEAPON_NOUN.bow.name, dmg: 2.2 * 1.05 * 2, interval: 1.6, tempoSoft: 1.8, reach: 30, pierce: 1, // 1.75 → 2 (2026-10-05); ×1.05 (2026-10-30)
+    name: WEAPON_NOUN.bow.name, dmg: 2.2 * 1.05, interval: 1.6, tempoSoft: 1.8, reach: 30, pierce: 1, // 1.75 → 2 (2026-10-05); ×1.05 (2026-10-30)
     critBase: BOW.critChance, critMult: BOW.critMult, twoHanded: true, dmgType: "phys", tiers: [1.2, 3.6, 4.1],
   },
   // Посох: огнешар (средний заряд 0.7), темп — от МДР. Тир теперь множит и магию.
@@ -804,8 +804,8 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   arrowStorm: {
     name: "Шквал стрел", icon: glyph("s.arrowStorm"), test: true,
-    desc: `${ARROW_STORM.waves} волны стрел по всем врагам в {r:${ARROW_STORM.radius}} м вокруг тебя: ×0.375 каждому за волну (свой крит), задетые замедлены на ${pctR(ARROW_STORM.slow)} на ${ARROW_STORM.slowSec} с; за каждого задетого в волне (до ${ARROW_STORM.healTargets}) — лечение ${pctR(ARROW_STORM.healFrac)} здоровья за волну`,
-    cooldown: 16, castTime: 0.3, radius: ARROW_STORM.radius, dmgMult: 0.375, hits: ARROW_STORM.waves, // 1 → 0.75 (2026-10-23)
+    desc: `${ARROW_STORM.waves} волны стрел по всем врагам в {r:${ARROW_STORM.radius}} м вокруг тебя: ×0.1875 каждому за волну (свой крит), задетые замедлены на ${pctR(ARROW_STORM.slow)} на ${ARROW_STORM.slowSec} с; за каждого задетого в волне (до ${ARROW_STORM.healTargets}) — лечение ${pctR(ARROW_STORM.healFrac)} здоровья за волну`,
+    cooldown: 16, castTime: 0.3, radius: ARROW_STORM.radius, dmgMult: 0.1875, hits: ARROW_STORM.waves, // 1 → 0.75 (2026-10-23)
   },
   ghostArrow: {
     name: "Стрела-призрак", icon: glyph("s.ghostArrow"), test: true,
@@ -815,8 +815,8 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   swarmArrow: {
     name: "Стрела-рой", icon: glyph("s.swarmArrow"), test: true,
-    desc: `${SWARM_ARROW.volleys} залпа по ${SWARM_ARROW.arrows} стрел веером вперёд ({r:${SWARM_ARROW.range}} м): каждая ×0.3 и взрыв {r:${SWARM_ARROW.blastR}} м ×${SWARM_ARROW.blast}; задел ${SWARM_ARROW.bonusTargets}+ врагов — бег +${pctR(SWARM_ARROW.run)} на {d:${SWARM_ARROW.runSec}} с`,
-    cooldown: 10, castTime: 0.25, radius: SWARM_ARROW.range, dmgMult: 0.3, hits: SWARM_ARROW.arrows, // 0.8 → 0.6 (2026-10-23)
+    desc: `${SWARM_ARROW.volleys} залпа по ${SWARM_ARROW.arrows} стрел веером вперёд ({r:${SWARM_ARROW.range}} м): каждая ×0.15 и взрыв {r:${SWARM_ARROW.blastR}} м ×${SWARM_ARROW.blast}; задел ${SWARM_ARROW.bonusTargets}+ врагов — бег +${pctR(SWARM_ARROW.run)} на {d:${SWARM_ARROW.runSec}} с`,
+    cooldown: 10, castTime: 0.25, radius: SWARM_ARROW.range, dmgMult: 0.15, hits: SWARM_ARROW.arrows, // 0.8 → 0.6 (2026-10-23)
   },
   barrierArrow: {
     name: "Стрела-барьер", icon: glyph("s.barrierArrow"), test: true,
