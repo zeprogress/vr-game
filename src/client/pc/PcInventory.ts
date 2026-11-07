@@ -718,12 +718,13 @@ export class PcInventory {
     const rank: Record<string, number> = { base: 1, gold: 2, legendary: 3, craft: 4, ruby: 5 };
     lots = [...lots].sort((a, b) => this.marketSort === "priceAsc" ? a.price - b.price : this.marketSort === "priceDesc" ? b.price - a.price : this.marketSort === "tier" ? (rank[b.item.tier ?? ""] ?? 0) - (rank[a.item.tier ?? ""] ?? 0) : b.createdAt - a.createdAt);
     const sel = this.marketLot ? [...md.lots, ...md.mine].find((x) => x.id === this.marketLot) : undefined;
-    const grid = div("pcinv-grid pcinv-bagrid");
+    const grid = div("pcinv-grid pcinv-bagrid pcinv-market-gridbag");
     for (const l of lots) {
       const cell = div(`pcinv-cell pcinv-market-lot${this.marketLot === l.id ? " sel" : ""}`);
       cell.append(this.tradeIcon(l.item), div("pcinv-market-price", l.price.toLocaleString("ru-RU")));
       const lotName = this.marketLotName(l);
-      this.marketHover(cell, lotName, l.item.tier, l.details, `${l.seller} · ${l.price.toLocaleString("ru-RU")} лома`);
+      const hoverDetails = [...(l.affixes ?? []).map((a) => a.label), ...(l.details ?? [])];
+      this.marketHover(cell, lotName, l.item.tier, hoverDetails, `${l.seller} · ${l.price.toLocaleString("ru-RU")} лома`);
       if (l.note) cell.title = l.note;
       cell.onclick = () => { this.marketLot = l.id; this.marketListing = false; this.render(); };
       grid.append(cell);
@@ -3748,6 +3749,8 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-market-head { font:700 17px/1.2 system-ui; color:#f7fbff; }
 .pcinv-market-tabs, .pcinv-market-filters { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
 .pcinv-market-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:8px; }
+.pcinv-market-gridbag { grid-template-columns:repeat(auto-fill,52px); justify-content:start; }
+.pcinv-market-gridbag > .pcinv-cell { width:52px; height:52px; aspect-ratio:auto; }
 .pcinv-market-lot { position:relative; cursor:pointer; }
 .pcinv-market-lot > .pcinv-tic { position:absolute; inset:0; width:100% !important; height:100% !important; border:none; background:transparent; }
 .pcinv-market-lot > .pcinv-tic > * { width:84% !important; height:84% !important; }
