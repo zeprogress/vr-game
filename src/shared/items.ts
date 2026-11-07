@@ -1454,7 +1454,7 @@ export const ATTACK_POINT = {
 export function restoreCost(brokenAt: number, tier: WeaponTier = "ruby"): { scrap: number; scale: number } {
   const l = Math.max(4, Math.min(15, Math.floor(brokenAt) || 4));
   // +4…+6 — одинаковая цена 8 000; с +7 растёт до 150 000 на +15.
-  const base = l <= 6 ? 8_000 : 15_000 + ((l - 7) * 135_000) / 8;
+  const base = l <= 6 ? 8_000 : 15_000 + ((l - 7) * 235_000) / 8;
   // Рубиновое — базовая цена; мастерское на 30% дешевле, уникальное ещё на 30% дешевле мастерского.
   const mul = tier === "craft" ? 0.7 : tier === "legendary" ? 0.49 : 1;
   const scrap = Math.round((base * mul) / 100) * 100;
