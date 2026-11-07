@@ -1453,11 +1453,11 @@ export const ATTACK_POINT = {
 /** Цена восстановления сломанного оружия: scrap + чешуя дракона (scale). */
 export function restoreCost(brokenAt: number, tier: WeaponTier = "ruby"): { scrap: number; scale: number } {
   const l = Math.max(4, Math.min(15, Math.floor(brokenAt) || 4));
-  // Цена растёт на каждом уровне поломки, а не только на границах диапазонов.
+  // Цена растёт на каждом уровне поломки, но низкие уровни дешевле.
   const n = l - 4;
   // Рубиновое — базовая цена; мастерское на 30% дешевле, уникальное ещё на 30% дешевле мастерского.
   const mul = tier === "craft" ? 0.7 : tier === "legendary" ? 0.49 : 1;
-  const scrap = Math.round(((12_000 + n * 5_500 + n * n * 700) * mul) / 100) * 100;
+  const scrap = Math.round(((8_000 + n * 6_000 + n * n * 700) * mul) / 100) * 100;
   const scale = l <= 8 ? 0 : l <= 13 ? 1 : 2;
   return { scrap, scale };
 }
@@ -1500,10 +1500,10 @@ export function sharpGlowLook(pct: number): SharpGlowLook {
   return { level, color: [...tier.color] as [number, number, number], intensity: 0.45 + k * 1.9, scale: 0.45 + k * 0.9 };
 }
 
-/** Восстановление: +4/+5 возвращаются на свой уровень, +6 и выше — на +3. */
+/** Восстановление: +4…+6 → +3, с +7 — на три уровня ниже (7→4, 8→5, …, 14→11, 15→12). */
 export function restoreSharp(brokenAt: number): number {
   const l = Math.max(1, Math.floor(brokenAt) || 3);
-  return l <= 5 ? l : 3;
+  return l <= 6 ? 3 : Math.max(3, l - 3);
 }
 
 /** Свиток сохранения: цена у трактирщика и шанс с мирового босса. */
