@@ -771,7 +771,7 @@ export class PcInventory {
       }
       cell.classList.toggle("sel", selected.has(it.code));
       cell.onclick = () => onPick(it.code);
-      this.marketHover(cell, it.view.name, it.view.tier, this.marketLocalDetails(d, it.code), "Нажми, чтобы выбрать");
+      this.marketHoverLocal(cell, d, it.code, it.view.name, it.view.tier);
       grid.append(cell);
     }
     if (!grid.childElementCount) grid.append(div("pcinv-small", "Нечего выбрать: сними надетое и убери ★."));
@@ -802,29 +802,98 @@ export class PcInventory {
     anchor.addEventListener("mouseleave", () => this.hideTip());
   }
 
-  private marketLocalDetails(d: PcInvData, code: string): string[] {
+  private marketLocalRows(d: PcInvData, code: string): { label: string; points: number; of: number }[] {
     const i = code.indexOf(":");
     const k = code.slice(0, i), id = code.slice(i + 1);
     if (k === "w") {
       const w = this.weaponById(id);
-      if (!w) return [];
-      const atk = attackLabel(w.cls, w.tier, sharpPctOf(w), craftPow(w) * 100, !!w.rc);
-      return [atk, ...w.affixes, ...(w.effects ?? []), `Оценка ${w.quality}`, `В лом ${w.scrap}`];
+      return w ? w.affixes.map((label, n) => ({ label, points: w.ench[n]?.points ?? 0, of: w.ench[n]?.of ?? 33 })) : [];
     }
     if (k === "a") {
       const a = (d.armor ?? []).find((x) => x.id === id);
-      return a ? [a.label, ...(a.desc ? [a.desc] : []), `В лом ${a.scrap}`] : [];
+      return a ? a.ench.map((e) => ({ label: e.label, points: e.points, of: e.of })) : [];
     }
     if (k === "r") {
       const r = d.jewels?.rings.find((x) => x.id === id);
-      return r ? [...r.affs, `Оценка ${r.pts}`, `В лом ${r.scrap}`] : [];
+      return r ? r.ench.map((e) => ({ label: e.label, points: e.points, of: e.of })) : [];
     }
     if (k === "n") {
       const n = d.jewels?.necks.find((x) => x.id === id);
-      return n ? [n.label, ...n.affs, `В лом ${n.scrap}`] : [];
+      return n ? n.ench.map((e) => ({ label: e.label, points: e.points, of: e.of })) : [];
     }
-    if (k === "b") return [];
     return [];
+  }
+
+  /** Оценка и число роллов — как в карточке обычного инвентаря. */
+  private marketLocalScore(d: PcInvData, code: string): { pts: number; rolls: number } | null {
+    const i = code.indexOf(":");
+    const k = code.slice(0, i), id = code.slice(i + 1);
+    if (k === "w") { const w = this.weaponById(id); return w ? { pts: w.quality, rolls: w.affixes.length } : null; }
+    if (k === "a") { const a = (d.armor ?? []).find((x) => x.id === id); return a ? { pts: a.pts, rolls: a.rolls } : null; }
+    if (k === "r") { const r = d.jewels?.rings.find((x) => x.id === id); return r ? { pts: r.pts, rolls: r.nRolls } : null; }
+    if (k === "n") { const n = d.jewels?.necks.find((x) => x.id === id); return n ? { pts: n.pts, rolls: n.rolls } : null; }
+    return null;
+  }
+
+  /** Роллы с полосой — та же разметка, что у заточки в обычной карточке, но без кнопок. */
+  private marketAffixRows(d: PcInvData, code: string): HTMLElement[] {
+    return this.marketLocalRows(d, code).map((r) => {
+      const row = div("pcinv-erow");
+      const lab = div("pcinv-elabel");
+      lab.append(span(r.label), span(`${r.points} / ${r.of}`));
+      const bar = div("pcinv-ebar");
+      const fill = div("pcinv-efill");
+      fill.style.width = `${Math.round((r.points / Math.max(1, r.of)) * 100)}%`;
+      bar.append(fill);
+      row.append(lab, bar);
+      return row;
+    });
+  }
+
+  private marketLocalCard(d: PcInvData, it: ReturnType<PcInventory["marketable"]>[number]): HTMLElement {
+    const box = div("pcinv-market-detail");
+    const head = div("pcinv-market-detailhead");
+    head.append(this.tradeIcon(it.view), div("pcinv-market-name", it.label));
+    box.append(head, div("pcinv-small", TIER_LOOK[(it.view.tier ?? "base") as WeaponTier]?.name ?? it.view.tier ?? ""));
+    const score = this.marketLocalScore(d, it.code);
+    if (score) {
+      const sc = div("pcinv-score");
+      sc.innerHTML = `<small>оценка </small>${qualityStarsShort(score.pts, score.rolls)}`;
+      box.append(sc);
+    }
+    const i = it.code.indexOf(":");
+    const k = it.code.slice(0, i), id = it.code.slice(i + 1);
+    if (k === "w") {
+      const w = this.weaponById(id);
+      if (w) {
+        const atk = attackLabel(w.cls, w.tier, sharpPctOf(w), craftPow(w) * 100, !!w.rc);
+        if (atk) box.append(div("pcinv-tipatk", atk));
+        for (const e of w.effects ?? []) box.append(div("pcinv-tipeff", e));
+      }
+    }
+    const rows = this.marketAffixRows(d, it.code);
+    if (rows.length) box.append(...rows);
+    return box;
+  }
+
+  /** Всплывающая карточка локального предмета: роллы построчно, без лома. */
+  private marketHoverLocal(anchor: HTMLElement, d: PcInvData, code: string, name: string, tier: string | undefined): void {
+    if (this.hooks.touch) return;
+    const rows = this.marketLocalRows(d, code);
+    const score = this.marketLocalScore(d, code);
+    anchor.addEventListener("mouseenter", () => {
+      this.tip.innerHTML = "";
+      this.tip.append(div(`pcinv-name${tier ? ` t-${tier}` : ""}`, name));
+      if (tier) this.tip.append(div("pcinv-small", TIER_LOOK[tier as WeaponTier]?.name ?? tier));
+      if (score) {
+        const sc = div("pcinv-score");
+        sc.innerHTML = `<small>оценка </small>${qualityStarsShort(score.pts, score.rolls)}`;
+        this.tip.append(sc);
+      }
+      for (const r of rows) this.tip.append(div("pcinv-tipaff", r.label));
+      this.placeTip(anchor);
+    });
+    anchor.addEventListener("mouseleave", () => this.hideTip());
   }
 
   private marketListForm(d: PcInvData): HTMLElement {
@@ -838,12 +907,7 @@ export class PcInventory {
     }));
     if (this.marketListPick) {
       const it = items.find((x) => x.code === this.marketListPick);
-      if (it) {
-        const detail = div("pcinv-market-detail");
-        detail.append(this.tradeIcon(it.view), div("pcinv-market-name", it.label));
-        for (const line of this.marketLocalDetails(d, it.code)) detail.append(div("pcinv-small", line));
-        wrap.append(detail);
-      }
+      if (it) wrap.append(this.marketLocalCard(d, it));
     }
     const price = document.createElement("input"); price.className = "pcinv-input"; price.type = "number"; price.min = "1"; price.placeholder = "Цена в ломе";
     const note = document.createElement("input"); note.className = "pcinv-input"; note.maxLength = MARKET.maxNote; note.placeholder = "Описание для покупателей (необязательно)";
@@ -873,12 +937,7 @@ export class PcInventory {
     }));
     if (this.marketInspect) {
       const it = items.find((x) => x.code === this.marketInspect);
-      if (it) {
-        const detail = div("pcinv-market-detail");
-        detail.append(this.tradeIcon(it.view), div("pcinv-market-name", it.label));
-        for (const line of this.marketLocalDetails(d, it.code)) detail.append(div("pcinv-small", line));
-        wrap.append(detail);
-      }
+      if (it) wrap.append(this.marketLocalCard(d, it));
     }
     if (this.marketOfferPick.size) {
       const picked = [...this.marketOfferPick.keys()].map((c) => items.find((x) => x.code === c)?.label ?? c);
