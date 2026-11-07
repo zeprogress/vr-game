@@ -858,7 +858,7 @@ export class PcInventory {
     const head = div("pcinv-market-detailhead");
     // Значок — ровно ячейка сумки: броня, камень и материал без лишних рамок.
     head.append(this.marketCell(d, it.code, it.view, it.max), div("pcinv-market-name", it.label));
-    box.append(head, div("pcinv-small", TIER_LOOK[(it.view.tier ?? "base") as WeaponTier]?.name ?? it.view.tier ?? ""));
+    box.append(head);
     const score = this.marketLocalScore(d, it.code);
     if (score) {
       const sc = div("pcinv-score");
@@ -3707,7 +3707,7 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-market-box .pcinv-market-detail { width:100%; max-width:none; margin:0; border:none; background:transparent; padding:0; }
 .pcinv-market-center { text-align:center; }
 .pcinv-market-pickqty .pcinv-small { flex:1; }
-.pcinv-market-detailhead { display:flex; align-items:center; justify-content:center; gap:8px; }
+.pcinv-market-detailhead { display:flex; align-items:center; justify-content:flex-start; gap:8px; }
 .pcinv-market-detailhead > .pcinv-cell { width:52px; height:52px; flex:none; }
 .pcinv-market-detailhead .pcinv-tic { width:48px; height:48px; }
 .pcinv-market-detailhead .pcinv-tic > *, .pcinv-market-detailhead .pcinv-tic img, .pcinv-market-detailhead .pcinv-tic svg { width:42px !important; height:42px !important; }
