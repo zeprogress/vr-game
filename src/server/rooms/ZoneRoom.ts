@@ -2061,7 +2061,6 @@ export class ZoneRoom extends Room<ZoneState> {
       const w = rt.weapons.find((x) => x.id === msg.id);
       if (!w) return;
       if (msg.act === "hand") {
-        if (w.broken) return;
         const hand = w.cls === "shield" ? "left" : msg.hand === "left" ? "left" : "right";
         rt.equippedWeaponId[hand] = w.id;
         rt.owned.add(weaponKey(w.cls, w.tier));
@@ -5511,16 +5510,6 @@ export class ZoneRoom extends Room<ZoneState> {
     rt.equippedWeaponId.left = null;
   }
 
-  /** Снять сломанное оружие с рук, чтобы им нельзя было бить. */
-  private clearBrokenHands(p: PlayerState, rt: Runtime, w: WeaponInstance): void {
-    for (const side of ["left", "right"] as const) {
-      if (rt.equippedWeaponId[side] !== w.id) continue;
-      rt.equippedWeaponId[side] = null;
-      if (side === "left") { p.leftCls = ""; p.leftTier = ""; }
-      else { p.rightCls = ""; p.rightTier = ""; }
-    }
-  }
-
   private ensureHeldInstance(p: PlayerState, rt: Runtime, side: "left" | "right"): void {
     const c = heldIn(p, side);
     if (!c) return;
@@ -6675,7 +6664,7 @@ export class ZoneRoom extends Room<ZoneState> {
       delete w.brokenAt;
       w.sharp = back;
       w.sharpFails = 0;
-      if (t) { writeBag(t.p, bag); this.clearBrokenHands(t.p, t.rt, w); this.persistNick(norm); }
+      if (t) { writeBag(t.p, bag); this.persistNick(norm); }
       else store.put(token, { bag });
       return { ok: true, text: `Оружие восстановлено на +5 (−${cost.scrap} лома${cost.scale ? `, −${cost.scale} чешуи` : ""}).` };
     }
@@ -6687,7 +6676,6 @@ export class ZoneRoom extends Room<ZoneState> {
         const r = sharpenTry(w, bag, idx === 1);
         if (r.spent) {
           writeBag(t.p, bag);
-          if (r.broke) this.clearBrokenHands(t.p, t.rt, w);
           this.persistNick(norm);
           this.syncWarehouse(t.id, t.rt);
         }
@@ -6794,7 +6782,6 @@ export class ZoneRoom extends Room<ZoneState> {
       if (!w) return { ok: false, text: "Этого предмета уже нет на складе." };
       const name = instanceName(w);
       if (act === "equip") {
-        if (w.broken) return { ok: false, text: "Сломанное оружие нельзя надеть — сначала восстанови." };
         applyEquip(t.p, t.rt, w, idx === 1 ? "left" : "right");
         this.heroCls(t.p);
         this.syncSkills(t.p, t.rt);

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ATTACK_POINT, attackPointBonus, attackPointNext, attackPointTry, restoreCost, restoreSharp, scrapValue, type WeaponInstance } from "../../src/shared/items";
+import { ATTACK_POINT, attackPointBonus, attackPointMul, attackPointNext, attackPointTry, attackPoints, restoreCost, restoreSharp, scrapValue, type WeaponInstance } from "../../src/shared/items";
 
 const wpn = (sharp: number, extra: Partial<WeaponInstance> = {}): WeaponInstance =>
   ({ id: "t", cls: "sword", tier: "legendary", affixes: [], sharp, ...extra }) as WeaponInstance;
@@ -86,4 +86,10 @@ test("разбор возвращает 50% вложенного лома", () =
   assert.equal(scrapValue(w), 5_000);
   const noInvest = wpn(5);
   assert.ok(scrapValue(noInvest) > 0);
+});
+
+test("сломанное оружие бьёт как +3 и остаётся в руках", () => {
+  const b = wpn(0, { broken: true, brokenAt: 6 });
+  assert.equal(attackPoints(b), 3);
+  assert.ok(Math.abs(attackPointMul(b) - 1.15) < 1e-9);
 });

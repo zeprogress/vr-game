@@ -600,7 +600,7 @@ export interface WeaponInstance {
   fav?: boolean;
   /** Удачных точек атаки за лом (уникальное, рубиновое и мастерское; см. ATTACK_POINT). */
   sharp?: number;
-  /** Хлам: оружие сломалось при заточке, пока не восстановлено — не атакует. */
+  /** Хлам: оружие сломалось при заточке; пока не восстановлено, бьёт как +3. */
   broken?: boolean;
   /** Уровень, на котором оружие сломалось (для цены восстановления). */
   brokenAt?: number;
@@ -1144,7 +1144,7 @@ export const AEGIS_LABEL = `Оплот: блок удара вблизи леч�
 
 /** Свойства предмета помимо роллов — строки для инвентаря (сейчас у щитов: блок, отражение, «Оплот»). */
 export function instanceEffects(w: WeaponInstance): string[] {
-  if (w.broken) return [`Хлам: сломано на +${w.brokenAt ?? 6}. Восстанови или разбери.`];
+  if (w.broken) return [`Хлам: сломано на +${w.brokenAt ?? 6}. Работает как +3 (+15% урона).`];
   const out: string[] = [];
   if (attackPoints(w) >= ATTACK_POINT.max) out.push("Предел +15: +245% урона и белое свечение");
   if (w.tier === "craft") {
@@ -1172,7 +1172,7 @@ export function aegisTier(cls: string, tier: string, affix: string | undefined):
 /** Текст «в руке» (PlayerState.left/rightAffix, таблица характеристик): свойство Эгиды + роллы. */
 export function heldAffixText(w: WeaponInstance | null | undefined): string {
   if (!w) return "";
-  if (w.broken) return `Хлам: сломано на +${w.brokenAt ?? 6}`;
+  if (w.broken) return `Хлам: сломано на +${w.brokenAt ?? 6}, Точка атаки +${(attackPointBonus(3) * 100).toFixed(1)}%`;
   const sharp = attackPointEligible(w) ? attackPoints(w) : 0;
   const cp = craftPow(w);
   return [
@@ -1536,7 +1536,8 @@ export function attackPointEligible(w: { cls: string; tier: string }): boolean {
 }
 
 export function attackPoints(w: { sharp?: number; broken?: boolean }): number {
-  return w.broken ? 0 : Math.max(0, Math.min(ATTACK_POINT.max, Math.floor(w.sharp ?? 0)));
+  // Сломанное оружие остаётся в руках и бьёт с силой +3.
+  return w.broken ? 3 : Math.max(0, Math.min(ATTACK_POINT.max, Math.floor(w.sharp ?? 0)));
 }
 
 export function sharpPctOfPoints(n: number): number {
@@ -1544,7 +1545,7 @@ export function sharpPctOfPoints(n: number): number {
 }
 
 export function sharpPctOf(w: { cls: string; tier: string; sharp?: number; broken?: boolean }): number {
-  return attackPointEligible(w) && !w.broken ? sharpPctOfPoints(attackPoints(w)) : 0;
+  return attackPointEligible(w) ? sharpPctOfPoints(attackPoints(w)) : 0;
 }
 
 /** Свечение заточки к белому на последних уровнях (+13…+15). */
@@ -1566,7 +1567,7 @@ export function sharpGlowMul(pct: number, k: number): number {
 }
 
 export function attackPointMul(w: { cls: string; tier: string; sharp?: number; cp?: number; broken?: boolean } | null | undefined): number {
-  return w && attackPointEligible(w) && !w.broken ? (1 + attackPointBonus(attackPoints(w))) * (1 + craftPow(w)) : 1;
+  return w && attackPointEligible(w) ? (1 + attackPointBonus(attackPoints(w))) * (1 + craftPow(w)) : 1;
 }
 
 export function craftPctOfText(text: string | undefined): number {
