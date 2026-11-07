@@ -1165,6 +1165,7 @@ export class PcInventory {
     if (d.scrap) out.push({ code: "b:scrap", label: "Лом", max: d.scrap, stack: true, view: { k: "bag", name: "Лом", n: d.scrap, item: "scrap" } });
     if (d.potions) out.push({ code: "b:potion", label: "Зелья лечения", max: d.potions, stack: true, view: { k: "bag", name: "Зелья лечения", n: d.potions, item: "potion" } });
     if (d.fish) out.push({ code: "b:fish", label: "Рыба", max: d.fish, stack: true, view: { k: "bag", name: "Рыба", n: d.fish, item: "fish" } });
+    if (d.saveScrolls) out.push({ code: "b:save_scroll", label: "Свиток сохранения", max: d.saveScrolls, stack: true, view: { k: "bag", name: "Свиток сохранения", n: d.saveScrolls, item: "save_scroll" } });
     return out;
   }
 

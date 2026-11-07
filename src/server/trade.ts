@@ -28,7 +28,7 @@ export type TradeItem =
   | { k: "bag"; item: ItemId; n: number };
 
 /** Что из сумки можно передавать. */
-export const TRADE_BAG_ITEMS: readonly ItemId[] = ["scrap", "potion", "fish"];
+export const TRADE_BAG_ITEMS: readonly ItemId[] = ["scrap", "potion", "fish", "save_scroll"];
 
 /** Инвентарь героя для передачи. */
 export interface InvSnap {
