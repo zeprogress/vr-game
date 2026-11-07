@@ -811,7 +811,8 @@ export class PcInventory {
       const cell = this.marketCell(d, it.code, it.view, it.max);
       cell.classList.toggle("sel", selected.has(it.code));
       const qty = it.stack ? Math.max(0, Math.floor(qtyOf?.(it.code) ?? 0)) : 0;
-      if (qty > 1) cell.append(div("pcinv-market-count", String(qty)));
+      const shownQty = it.stack ? (qty > 0 ? qty : it.max) : 0;
+      if (shownQty > 0) cell.append(div("pcinv-market-count", String(shownQty)));
       cell.onclick = () => onPick(it.code);
       this.marketHoverLocal(cell, d, it.code, this.marketName(it), it.view.tier, it.stack ? qty || it.max : undefined);
       grid.append(cell);
