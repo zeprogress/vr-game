@@ -717,6 +717,7 @@ export class PcInventory {
     for (const l of lots) {
       const c = div(`pcinv-market-card${this.marketLot === l.id ? " on" : ""}`);
       c.append(this.tradeIcon(l.item), div("pcinv-market-name", l.item.name), div("pcinv-market-meta", `${l.seller} · ${l.price.toLocaleString("ru-RU")} лома`));
+      this.marketHover(c, l.item.name, l.item.tier, l.details, `${l.seller} · ${l.price.toLocaleString("ru-RU")} лома`);
       if (l.note) c.append(div("pcinv-small", l.note));
       if (l.mine) c.append(div("pcinv-small gold", "Мой лот"));
       c.onclick = () => { this.marketLot = l.id; this.marketListing = false; this.render(); };
@@ -756,18 +757,33 @@ export class PcInventory {
     return box;
   }
 
-  private marketItemCard(it: ReturnType<PcInventory["marketable"]>[number], on: boolean, onClick: () => void): HTMLElement {
+  private marketItemCard(d: PcInvData, it: ReturnType<PcInventory["marketable"]>[number], on: boolean, onClick: () => void): HTMLElement {
     const card = div(`pcinv-market-card${on ? " on" : ""}`);
     card.append(this.tradeIcon(it.view), div("pcinv-market-name", it.label), div("pcinv-market-meta", it.stack ? `есть ${it.max}` : "1 шт."));
+    this.marketHover(card, it.view.name, it.view.tier, this.marketLocalDetails(d, it.code), "Нажми, чтобы выбрать");
     card.onclick = onClick;
     return card;
   }
 
   private marketPickGrid(d: PcInvData, selected: Set<string>, onPick: (code: string) => void): HTMLElement {
     const grid = div("pcinv-market-grid");
-    for (const it of this.marketable(d)) grid.append(this.marketItemCard(it, selected.has(it.code), () => onPick(it.code)));
+    for (const it of this.marketable(d)) grid.append(this.marketItemCard(d, it, selected.has(it.code), () => onPick(it.code)));
     if (!grid.childElementCount) grid.append(div("pcinv-small", "Нечего выбрать: сними надетое и убери ★."));
     return grid;
+  }
+
+  /** Всплывающая карточка предмета при наведении — как в инвентаре. */
+  private marketHover(anchor: HTMLElement, name: string, tier: string | undefined, details: readonly string[], footer?: string): void {
+    if (this.hooks.touch) return;
+    anchor.addEventListener("mouseenter", () => {
+      this.tip.innerHTML = "";
+      this.tip.append(div(`pcinv-name${tier ? ` t-${tier}` : ""}`, name));
+      if (tier) this.tip.append(div("pcinv-small", TIER_LOOK[tier as WeaponTier]?.name ?? tier));
+      for (const line of details) if (line) this.tip.append(div("pcinv-tipaff", line));
+      if (footer) this.tip.append(div("pcinv-small dim", footer));
+      this.placeTip(anchor);
+    });
+    anchor.addEventListener("mouseleave", () => this.hideTip());
   }
 
   private marketLocalDetails(d: PcInvData, code: string): string[] {
@@ -776,7 +792,8 @@ export class PcInventory {
     if (k === "w") {
       const w = this.weaponById(id);
       if (!w) return [];
-      return [...w.affixes, ...(w.effects ?? []), `Оценка ${w.quality}`, `В лом ${w.scrap}`];
+      const atk = attackLabel(w.cls, w.tier, sharpPctOf(w), craftPow(w) * 100, !!w.rc);
+      return [atk, ...w.affixes, ...(w.effects ?? []), `Оценка ${w.quality}`, `В лом ${w.scrap}`];
     }
     if (k === "a") {
       const a = (d.armor ?? []).find((x) => x.id === id);
@@ -3572,7 +3589,10 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-market-head { font:700 17px/1.2 system-ui; color:#f7fbff; }
 .pcinv-market-tabs, .pcinv-market-filters { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
 .pcinv-market-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:8px; }
-.pcinv-market-card { border:1px solid #2a405d; background:rgba(8,19,33,.85); padding:8px; display:flex; flex-direction:column; gap:5px; cursor:pointer; min-width:0; }
+.pcinv-market-card { border:1px solid #2a405d; background:rgba(8,19,33,.85); padding:8px; display:flex; flex-direction:column; gap:5px; cursor:pointer; min-width:0; align-items:center; }
+.pcinv-market-card .pcinv-tic { width:58px; height:58px; }
+.pcinv-market-card .pcinv-tic > *, .pcinv-market-card .pcinv-tic img, .pcinv-market-card .pcinv-tic svg { width:50px !important; height:50px !important; }
+.pcinv-market-card .pcinv-market-name, .pcinv-market-card .pcinv-market-meta { width:100%; text-align:center; }
 .pcinv-market-card:hover, .pcinv-market-card.on { border-color:#d4a94e; background:rgba(29,43,62,.95); }
 .pcinv-market-name { font-size:13px; font-weight:700; color:#f2e7d2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pcinv-market-meta { font-size:11px; color:#a9b8c9; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
