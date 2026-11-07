@@ -194,7 +194,11 @@ function pageInv(): PcInventory {
     },
     useItem: (id) => act("scroll", id),
   });
-  document.getElementById("invMount")!.append(pcInv.element);
+  const invMountEl = document.getElementById("invMount")!;
+  // Всплывающие карточки внутри окна должны быть выше подвала страницы.
+  invMountEl.style.position = "relative";
+  invMountEl.style.zIndex = "10";
+  invMountEl.append(pcInv.element);
   // Ссылка …/inv?ник#shop — сразу на вкладке «Трактирщик» (жетоны на странице ведут туда же).
   if (location.hash === "#shop") pcInv.open("shop");
   return pcInv;
