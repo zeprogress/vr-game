@@ -87,7 +87,7 @@ namespace Zep
             // окна в OBS подтормаживал. Другой предел — ключ -fps N.
             var args = Environment.GetCommandLineArgs();
             int fi = Array.IndexOf(args, "-fps");
-            Application.targetFrameRate = fi >= 0 && fi + 1 < args.Length && int.TryParse(args[fi + 1], out var fps) && fps > 0 ? fps : 60;
+            Application.targetFrameRate = fi >= 0 && fi + 1 < args.Length && int.TryParse(args[fi + 1], out var fps) && fps > 0 ? fps : 30;
             QualitySettings.vSyncCount = 0;
             Physics.queriesHitBackfaces = true; // стены локаций односторонние — луч изнутри комнаты должен их видеть
             curBlend = S.blendTime;
