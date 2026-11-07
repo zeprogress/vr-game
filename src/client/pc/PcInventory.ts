@@ -3643,7 +3643,7 @@ function injectInvStyle(): void {
     ` --f:radial-gradient(ellipse 80% 75% at 50% 40%,var(--tier-${t}-bg) 0%,color-mix(in srgb,var(--tier-${t}-bg) 35%,#000) 85%); }`;
   const s = document.createElement("style");
   s.textContent = `
-.pcinv-root { position:fixed; inset:0; z-index:40; pointer-events:none; font:500 13px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif; color:#e8eef6;
+.pcinv-root { position:fixed; inset:0; z-index:10000; pointer-events:none; font:500 13px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif; color:#e8eef6;
   --line:#22354f; --muted:#9eabbb; --text2:#b8c3cf; --blue:#3cb2f2; -webkit-font-smoothing:antialiased; }
 .pcinv-root * { box-sizing:border-box; }
 .pcinv-catch { position:absolute; inset:0; display:none; pointer-events:auto; }
@@ -3965,7 +3965,7 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-btn .gico, .pcinv-ebtn .gico { width:15px; height:15px; }
 
 /* ---------- подсказка, меню, подтверждение ---------- */
-.pcinv-tip { position:fixed; display:none; max-width:250px; padding:9px 11px; pointer-events:none; z-index:61; background:rgba(5,12,22,.97); border:1px solid #3b4d66;
+.pcinv-tip { position:fixed; display:none; max-width:250px; padding:9px 11px; pointer-events:none; z-index:10001; background:rgba(5,12,22,.97); border:1px solid #3b4d66;
   box-shadow:0 8px 24px rgba(0,0,0,.6); }
 .pcinv-name { font-weight:700; margin-bottom:5px; color:#eaf0f7; }
 .pcinv-name.t-gold { color:var(--tier-gold); } .pcinv-name.t-legendary { color:var(--tier-legendary); } .pcinv-name.t-ruby { color:var(--tier-ruby); } .pcinv-name.t-craft { color:var(--tier-craft); } .pcinv-name.t-base { color:#dedede; }
@@ -4276,6 +4276,7 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-tic { width:40px; height:40px; flex:none; display:flex; align-items:center; justify-content:center; background:#08111e; border:1px solid #2d405a; overflow:hidden; }
 .pcinv-tic > * { width:34px !important; height:34px !important; }
 .pcinv-tic > .pcinv-w { width:auto !important; min-width:14px; height:14px !important; font:800 9px/14px system-ui; padding:0 3px; }
+.pcinv-market-form .pcinv-w, .pcinv-market-lot .pcinv-w, .pcinv-market-detailhead .pcinv-w { top:2px; right:3px; left:auto; bottom:auto; }
 .pcinv-tic img, .pcinv-tic svg { width:34px; height:34px; }
 .pcinv-tic > .gico-e { width:auto !important; height:auto !important; font-size:30px; line-height:1; display:flex; align-items:center; justify-content:center; }
 .pcinv-tname2 { flex:1; min-width:0; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
