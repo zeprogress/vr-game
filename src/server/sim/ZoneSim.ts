@@ -1128,11 +1128,12 @@ export class Mob {
             : SLIME_CFG;
     // Обычные мобы без явного hp — вдвое слабее; событийные с фиксированным hp
     // (удары охоты/нашествия) сохраняют свою механику.
-    this.hp = opts.hp === undefined ? (opts.hp ?? cfg.hp) * MOB.hpMul : opts.hp;
+    const dungeon = inDunRegion(hx, hz);
+    this.hp = (opts.hp === undefined ? (opts.hp ?? cfg.hp) * MOB.hpMul : opts.hp) * (dungeon ? MOB.dungeonHpMul : 1);
     this.maxHp = this.hp;
     this.ranged = cfg.ranged;
     this.xp = opts.xp ?? cfg.xp;
-    this.dmgMul = opts.dmgMul ?? 1;
+    this.dmgMul = (opts.dmgMul ?? 1) * (dungeon ? MOB.dungeonDmgMul : 1);
     this.rangedArmor = Math.max(0, Math.min(0.95, opts.rangedArmor ?? 0));
     this.physArmor = Math.max(0, Math.min(0.95, opts.physArmor ?? 0));
     this.magicArmor = Math.max(0, Math.min(0.95, opts.magicArmor ?? 0));
