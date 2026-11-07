@@ -744,9 +744,11 @@ export class PcInventory {
   private marketDetail(l: MarketLotView): HTMLElement {
     const box = div("pcinv-market-detail");
     const x = button("×", () => { this.marketLot = null; this.render(); });
-    x.className = "pcinv-tx";
+    x.className = "pcinv-tx pcinv-market-close";
     const lotName = this.marketLotName(l);
-    box.append(x, div("pcinv-market-name", lotName), div("pcinv-small", `${l.seller} · ${l.price.toLocaleString("ru-RU")} лома`));
+    const head = div("pcinv-market-detailhead");
+    head.append(this.tradeIcon(l.item), div("pcinv-market-name", lotName));
+    box.append(x, head, div("pcinv-small", `${l.seller} · ${l.price.toLocaleString("ru-RU")} лома`));
     if (l.score) {
       const sc = div("pcinv-score");
       sc.innerHTML = `<small>оценка </small>${qualityStarsShort(l.score.pts, l.score.rolls)}`;
@@ -3762,7 +3764,9 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-market-card:hover, .pcinv-market-card.on { border-color:#d4a94e; background:rgba(29,43,62,.95); }
 .pcinv-market-name { font-size:13px; font-weight:700; color:#f2e7d2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pcinv-market-meta { font-size:11px; color:#a9b8c9; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.pcinv-market-detail { width:min(33%,300px); max-width:33%; margin:0 auto; align-self:center; border:1px solid #6b5736; background:rgba(15,25,40,.96); padding:10px; display:flex; flex-direction:column; gap:5px; }
+.pcinv-market-detail { position:relative; width:min(33%,300px); max-width:33%; margin:0 auto; align-self:center; border:1px solid #6b5736; background:rgba(15,25,40,.96); padding:10px; display:flex; flex-direction:column; gap:5px; }
+.pcinv-market-close { position:absolute; right:6px; top:4px; z-index:4; }
+.pcinv-market-detail .pcinv-market-name { padding-right:18px; }
 .pcinv-market-layout { display:flex; gap:8px; align-items:flex-start; }
 .pcinv-market-left { min-width:0; flex:1 1 0; max-width:67%; }
 .pcinv-market-box { width:min(33%,300px); max-width:33%; margin:0 auto; padding:10px; border:1px solid #6b5736; background:rgba(15,25,40,.96); display:flex; flex-direction:column; gap:8px; align-items:stretch; }

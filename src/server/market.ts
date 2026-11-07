@@ -2,7 +2,6 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname } from "node:path";
 import { dataFile } from "./dataDir";
 import { itemView, type Taken } from "./trade";
-import { armorLabel } from "#shared/armor";
 import { CRAFT_ITEMS } from "#shared/craft";
 import { affixLabel, enchantInfo, instanceEffects, instanceName, ITEMS, weaponQuality } from "#shared/items";
 import { ARMOR_PART_NAME, armorEnchantRows, armorQuality } from "#shared/armor";
@@ -118,7 +117,7 @@ export function marketDetails(t: Taken): string[] {
     ].filter(Boolean);
   }
   // У брони, колец и ожерелий аффиксы идут отдельными полосами (marketAffixRows).
-  if (t.k === "armor") return [armorLabel(t.a)];
+  if (t.k === "armor") return [];
   if (t.k === "ring") return [];
   if (t.k === "neck") return [];
   if (t.k === "bag") return [ITEMS[t.item].name];

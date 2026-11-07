@@ -259,7 +259,7 @@ export function itemView(t: Taken): TradeItemView {
     return { k: "weapon", name: instanceName(t.w), n: 1, cls: t.w.cls, tier: t.w.tier, ...(sharp ? { sharp } : {}), ...(t.w.rc ? { rc: true } : {}) };
   }
   if (t.k === "ring") return { k: "ring", name: ringName(t.r), n: 1, tier: t.r.tier, gems: [...t.r.gems] };
-  if (t.k === "armor") return { k: "armor", name: armorLabel(t.a), n: 1, part: t.a.part, tier: t.a.tier };
+  if (t.k === "armor") return { k: "armor", name: armorLabel(t.a), n: 1, part: t.a.part, tier: t.a.tier, weight: t.a.weight };
   if (t.k === "neck") return { k: "neck", name: neckLabel(t.n), n: 1, tier: t.n.tier, gems: [...t.n.gems] };
   if (t.k === "gem") return { k: "gem", name: gemName(t.key), n: t.n, key: t.key };
   if (t.k === "mat") return { k: "mat", name: CRAFT_ITEMS[t.id].name, n: t.n, mat: t.id };
