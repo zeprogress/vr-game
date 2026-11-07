@@ -9,6 +9,7 @@ import { ensureIconCss, iconHtml, preloadIconImages, setIconEl } from "../ui/ico
 import type { IconKey } from "#shared/icons";
 import { AEGIS_NAME, AFFIX_NAME, craftPow, isCraftRare, weaponName, ATTACK_CLASSES, WEAPON_NOUN, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, qualityStarsShort, restoreCost, restoreSharp, SAVE_SCROLL, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcEnchRow, PcInvActMsg, PcInvArmor, PcInvData, PcInvResult, PcInvWeapon, TradeItemView } from "#shared/net/messages";
+import { MARKET, type MarketLotView } from "#shared/market";
 import { skinPicture } from "#shared/skins";
 import { BOT_SKIN_LABELS } from "../world/models";
 import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringSkillBonusOf, type PcInvJewels, type PcInvNeck, type PcInvRing, type RingTier } from "#shared/jewels";
@@ -63,7 +64,7 @@ import {
  */
 
 export type Side = "left" | "right";
-export type InvTab = "gear" | "attrs" | "skills" | "craft" | "trade" | "shop";
+export type InvTab = "gear" | "attrs" | "skills" | "craft" | "trade" | "shop" | "market";
 
 export interface HeldInfo {
   cls: string;
@@ -620,6 +621,7 @@ export class PcInventory {
       ["skills", "Умения", 0],
       ["craft", "Крафт", 0],
       ["trade", "Обмен", d?.trade?.sessions.filter((x) => x.theirs.ok && !x.mine.ok).length ?? 0],
+      ["market", "Рынок", 0],
     ];
     // Трактирщик — только на странице !inv (в игре лавка у стойки в лагере).
     if (this.hooks.page) tabs.push(["shop", "Трактирщик", 0]);
@@ -659,7 +661,155 @@ export class PcInventory {
     else if (this.tab === "trade") this.renderTrade(d);
     else if (this.tab === "craft") this.renderCraft(d);
     else if (this.tab === "shop") this.renderShop(d);
+    else if (this.tab === "market") this.renderMarket(d);
     else this.renderAttrs(d);
+  }
+
+  /** Рынок: заявки за лом, покупка и предложения обмена. */
+  private renderMarket(d: PcInvData): void {
+    const md = d.market;
+    if (!md) { this.body.append(div("pcinv-empty", "Рынок загружается…")); return; }
+    const wrap = div("pcinv-market");
+    wrap.append(div("pcinv-market-head", `Рынок · ${(md.scrap ?? 0).toLocaleString("ru-RU")} лома в сумке · комиссия ${Math.round((md.feePct ?? 0) * 100)}%`));
+    const tabs = div("pcinv-market-tabs");
+    const mk = (label: string, on: boolean, fn: () => void): HTMLButtonElement => {
+      const b = button(label, fn);
+      b.className = `pcinv-btn sm${on ? " gold" : ""}`;
+      return b;
+    };
+    tabs.append(
+      mk("Все лоты", !this.marketMine, () => { this.marketMine = false; this.marketLot = null; this.marketListing = false; this.render(); }),
+      mk("Мои лоты", this.marketMine, () => { this.marketMine = true; this.marketLot = null; this.marketListing = false; this.render(); }),
+      mk("Выставить предмет", this.marketListing, () => { this.marketListing = true; this.marketListPick = null; this.marketLot = null; this.render(); }),
+    );
+    wrap.append(tabs);
+    for (const o of md.outgoing ?? []) {
+      const row = div("pcinv-market-offer");
+      row.append(div("pcinv-small", `Ждёт ответа: «${o.lotName}» у ${o.seller} · ${o.items.map((x) => `${x.name} ×${x.n}`).join(", ")}`));
+      row.append(button("Отозвать", () => this.hooks.act({ act: "marketRetract", id: o.offerId, idx: 0 })));
+      wrap.append(row);
+    }
+    if (this.marketListing) { wrap.append(this.marketListForm(d)); this.body.append(wrap); return; }
+    if (this.marketOfferLot) {
+      const lot = [...md.lots, ...md.mine].find((x) => x.id === this.marketOfferLot);
+      if (lot) { wrap.append(this.marketOfferForm(d, lot)); this.body.append(wrap); return; }
+      this.marketOfferLot = null;
+    }
+    const frow = div("pcinv-market-filters");
+    for (const [id, label] of [["all", "Все"], ["weapon", "Оружие"], ["armor", "Броня"], ["jewel", "Украшения"], ["mat", "Материалы"], ["bag", "Прочее"]] as const) {
+      frow.append(mk(label, this.marketFilter === id, () => { this.marketFilter = id; this.render(); }));
+    }
+    const sort = document.createElement("select");
+    sort.className = "pcinv-select";
+    for (const [v, label] of [["new", "Новые"], ["priceAsc", "Цена ↑"], ["priceDesc", "Цена ↓"], ["tier", "Редкость"]] as const) {
+      const o = document.createElement("option"); o.value = v; o.textContent = label; o.selected = this.marketSort === v; sort.append(o);
+    }
+    sort.onchange = () => { this.marketSort = sort.value; this.render(); };
+    frow.append(sort);
+    wrap.append(frow);
+    const kind = (it: MarketLotView): string => it.item.k === "weapon" ? "weapon" : it.item.k === "armor" ? "armor" : it.item.k === "ring" || it.item.k === "neck" || it.item.k === "gem" ? "jewel" : it.item.k === "mat" ? "mat" : "bag";
+    let lots = (this.marketMine ? md.mine : md.lots).filter((l) => this.marketFilter === "all" || kind(l) === this.marketFilter);
+    const rank: Record<string, number> = { base: 1, gold: 2, legendary: 3, craft: 4, ruby: 5 };
+    lots = [...lots].sort((a, b) => this.marketSort === "priceAsc" ? a.price - b.price : this.marketSort === "priceDesc" ? b.price - a.price : this.marketSort === "tier" ? (rank[b.item.tier ?? ""] ?? 0) - (rank[a.item.tier ?? ""] ?? 0) : b.createdAt - a.createdAt);
+    const sel = this.marketLot ? [...md.lots, ...md.mine].find((x) => x.id === this.marketLot) : undefined;
+    if (sel) wrap.append(this.marketDetail(sel));
+    const grid = div("pcinv-market-grid");
+    for (const l of lots) {
+      const c = div(`pcinv-market-card${this.marketLot === l.id ? " on" : ""}`);
+      c.append(this.tradeIcon(l.item), div("pcinv-market-name", l.item.name), div("pcinv-market-meta", `${l.seller} · ${l.price.toLocaleString("ru-RU")} лома`));
+      if (l.note) c.append(div("pcinv-small", l.note));
+      if (l.mine) c.append(div("pcinv-small gold", "Мой лот"));
+      c.onclick = () => { this.marketLot = l.id; this.marketListing = false; this.render(); };
+      grid.append(c);
+    }
+    if (!lots.length) grid.append(div("pcinv-empty", this.marketMine ? "У тебя пока нет заявок." : "Заявок нет — загляни позже."));
+    wrap.append(grid);
+    this.body.append(wrap);
+  }
+
+  private marketDetail(l: MarketLotView): HTMLElement {
+    const box = div("pcinv-market-detail");
+    const x = button("×", () => { this.marketLot = null; this.render(); });
+    x.className = "pcinv-tx";
+    box.append(x, div("pcinv-market-name", l.item.name), div("pcinv-small", `${l.seller} · ${l.price.toLocaleString("ru-RU")} лома`));
+    for (const line of l.details ?? []) if (line) box.append(div("pcinv-small", line));
+    if (l.note) box.append(div("pcinv-market-note", l.note));
+    const acts = div("pcinv-market-acts");
+    if (l.mine) {
+      acts.append(button("Снять с продажи", () => this.askConfirm(`Снять «${l.item.name}» с продажи?`, "Снять", () => { this.marketLot = null; this.hooks.act({ act: "marketCancel", id: l.id, idx: 0 }); })));
+      for (const o of l.offers ?? []) {
+        const row = div("pcinv-market-offer");
+        row.append(div("pcinv-small", `Обмен от ${o.buyer}: ${o.items.map((v) => `${v.name} ×${v.n}`).join(", ")}`));
+        row.append(
+          button("Принять", () => this.askConfirm(`Принять обмен от ${o.buyer}?`, "Принять", () => { this.marketLot = null; this.hooks.act({ act: "marketAccept", id: o.id, idx: 0 }); })),
+          button("Отклонить", () => this.hooks.act({ act: "marketDecline", id: o.id, idx: 0 })),
+        );
+        acts.append(row);
+      }
+    } else {
+      acts.append(
+        button(`Купить за ${l.price.toLocaleString("ru-RU")} лома`, () => this.askConfirm(`Купить «${l.item.name}» за ${l.price} лома?`, "Купить", () => { this.marketLot = null; this.hooks.act({ act: "marketBuy", id: l.id, idx: 0 }); })),
+        button("Предложить обмен", () => { this.marketOfferLot = l.id; this.marketOfferPick.clear(); this.marketLot = null; this.render(); }),
+      );
+    }
+    box.append(acts);
+    return box;
+  }
+
+  private marketListForm(d: PcInvData): HTMLElement {
+    const wrap = div("pcinv-market-form");
+    wrap.append(div("pcinv-sub", "Выставить предмет"));
+    for (const it of this.marketable(d)) {
+      const row = div(`pcinv-market-pick${this.marketListPick === it.code ? " on" : ""}`);
+      row.append(this.tradeIcon(it.view), div("pcinv-small", it.label));
+      row.onclick = () => { this.marketListPick = it.code; this.render(); };
+      wrap.append(row);
+    }
+    if (!this.marketable(d).length) wrap.append(div("pcinv-small", "Нечего выставлять: сними надетое и убери ★."));
+    const price = document.createElement("input"); price.className = "pcinv-input"; price.type = "number"; price.min = "1"; price.placeholder = "Цена в ломе";
+    const note = document.createElement("input"); note.className = "pcinv-input"; note.maxLength = MARKET.maxNote; note.placeholder = "Описание (необязательно)";
+    wrap.append(price, note);
+    const submit = button("Выставить", () => {
+      const code = this.marketListPick;
+      const p = Math.floor(Number(price.value));
+      if (!code) return this.textTip(wrap, "Выбери предмет", "Нажми на предмет выше.");
+      if (!Number.isInteger(p) || p < 1) return this.textTip(wrap, "Цена", "Цена в ломе — целое число больше нуля.");
+      this.marketListing = false; this.marketListPick = null;
+      this.hooks.act({ act: "marketList", id: code, idx: p, fuel: note.value.slice(0, MARKET.maxNote) });
+    });
+    submit.className = "pcinv-btn gold";
+    wrap.append(submit, button("Отмена", () => { this.marketListing = false; this.render(); }));
+    return wrap;
+  }
+
+  private marketOfferForm(d: PcInvData, lot: MarketLotView): HTMLElement {
+    const wrap = div("pcinv-market-form");
+    wrap.append(div("pcinv-sub", `Обмен на «${lot.item.name}»`));
+    for (const it of this.marketable(d)) {
+      const on = this.marketOfferPick.has(it.code);
+      const row = div(`pcinv-market-pick${on ? " on" : ""}`);
+      row.append(this.tradeIcon(it.view), div("pcinv-small", it.label));
+      row.onclick = () => {
+        if (this.marketOfferPick.has(it.code)) this.marketOfferPick.delete(it.code);
+        else if (this.marketOfferPick.size < MARKET.maxOfferItems) this.marketOfferPick.set(it.code, 1);
+        this.render();
+      };
+      wrap.append(row);
+    }
+    const submit = button(`Предложить (${this.marketOfferPick.size}/${MARKET.maxOfferItems})`, () => {
+      const arr = [...this.marketOfferPick].map(([c, n]) => ({ c, n }));
+      if (!arr.length) return this.textTip(wrap, "Обмен", "Выбери хотя бы один предмет.");
+      this.marketOfferLot = null; this.marketOfferPick.clear();
+      this.hooks.act({ act: "marketOffer", id: lot.id, idx: 0, fuel: JSON.stringify(arr) });
+    });
+    submit.className = "pcinv-btn gold";
+    wrap.append(submit, button("Отмена", () => { this.marketOfferLot = null; this.marketOfferPick.clear(); this.render(); }));
+    return wrap;
+  }
+
+  /** Предметы, которые можно выставить/предложить: без надетого, ★ и зелий. */
+  private marketable(d: PcInvData): ReturnType<PcInventory["tradeable"]> {
+    return this.tradeable(d).filter((x) => !(x.view.k === "bag" && x.view.item === "potion"));
   }
 
   /** Трактирщик (только страница !inv): лавка за жетоны ◈ — те же товары, что в лагере; подходить к стойке не нужно. */
@@ -719,6 +869,14 @@ export class PcInventory {
   private tradeEditId: string | null = null;
   /** Открыт ли выбор предметов для нового обмена. */
   private tradeOpenPick = false;
+  private marketMine = false;
+  private marketFilter = "all";
+  private marketSort = "new";
+  private marketLot: string | null = null;
+  private marketListing = false;
+  private marketListPick: string | null = null;
+  private marketOfferLot: string | null = null;
+  private marketOfferPick = new Map<string, number>();
 
   /** Что можно отдать: оружие не в руках и не избранное, броня не надетая, кольца в сумке, камни, лом/зелья/рыба — с иконкой. */
   private tradeable(d: PcInvData): { code: string; label: string; max: number; stack: boolean; view: TradeItemView }[] {
@@ -3353,6 +3511,23 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-shop-ic { width:48px; height:48px; display:grid; place-items:center; background:#060d18; border:1px solid #2b4062; border-radius:8px; }
 .pcinv-shop-ic .gico { width:30px; height:30px; }
 .pcinv-shop-info { display:grid; gap:3px; min-width:0; }
+
+.pcinv-market { display:flex; flex-direction:column; gap:10px; padding:4px; }
+.pcinv-market-head { font:700 17px/1.2 system-ui; color:#f7fbff; }
+.pcinv-market-tabs, .pcinv-market-filters { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.pcinv-market-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:8px; }
+.pcinv-market-card { border:1px solid #2a405d; background:rgba(8,19,33,.85); padding:8px; display:flex; flex-direction:column; gap:5px; cursor:pointer; min-width:0; }
+.pcinv-market-card:hover, .pcinv-market-card.on { border-color:#d4a94e; background:rgba(29,43,62,.95); }
+.pcinv-market-name { font-size:13px; font-weight:700; color:#f2e7d2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pcinv-market-meta { font-size:11px; color:#a9b8c9; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pcinv-market-detail { border:1px solid #6b5736; background:rgba(15,25,40,.96); padding:10px; display:flex; flex-direction:column; gap:5px; }
+.pcinv-market-note { font-size:12px; color:#d8c7a4; font-style:italic; white-space:pre-line; }
+.pcinv-market-acts { display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
+.pcinv-market-offer { display:flex; flex-wrap:wrap; gap:6px; align-items:center; border-top:1px solid #2a405d; padding-top:5px; }
+.pcinv-market-form { border:1px solid #2a405d; background:rgba(8,19,33,.85); padding:10px; display:flex; flex-direction:column; gap:6px; }
+.pcinv-market-pick { display:flex; gap:8px; align-items:center; border:1px solid #2a405d; padding:4px 7px; cursor:pointer; }
+.pcinv-market-pick.on { border-color:#d4a94e; background:rgba(90,65,24,.35); }
+.pcinv-market .pcinv-input { min-height:30px; padding:5px 8px; background:#081321; color:#f2e7d2; border:1px solid #3a5578; }
 .pcinv-shop-name { font:700 16px/1.25 system-ui; color:#f7fbff; }
 .pcinv-shop-desc { font-size:14px; line-height:1.4; color:#c6d2e0; }
 .pcinv-shop-row .pcinv-ebtn { min-width:150px; padding:9px 12px; font:700 14px/1 system-ui; }

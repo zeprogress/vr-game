@@ -290,6 +290,8 @@ import { TOWER, TOWER_HIDE, TOWER_PROP_POS } from "#shared/tower";
 import { randomUUID } from "node:crypto";
 import { attrOf } from "#shared/attrs2";
 import { giveItems, parseTradeItem, parseTradeList, takeItems, takenName, tradeLog, tradeViewOf, TRADE_ACTS, type InvSnap, type Taken, type TradeAct, type TradeItem, type TradeSession, type TradeSide } from "../trade";
+import { market, marketItemName, marketViewFor, marketForbidden, type MarketListing } from "../market";
+import { MARKET, MARKET_ACTS, type MarketAct } from "#shared/market";
 import { KillRates } from "../sim/killRate";
 import { addStock, CRAFT, CRAFT_ITEMS, CRAFT_MAT_COST, CRAFT_SPECIAL_COST, CRAFT_PROC, CRAFT_SMELT, isCraftItem, rollLowMobCraftDrop, craftStockOf, craftWeapon, parseCraftCode, pcInvCraft, recipeBookOf, rollCraftDrop, smithFightMul, smithLevel } from "#shared/craft";
 import { applyJewelOp, gemName, JEWEL_ACTS, jewelBonus, jewelOpFrom, jewelPatch, jewelsOf, newNecklace, newRing, pcInvJewels, ringName, ringSkillBonusOf, rollJewelDrop, type JewelAct, type JewelSave, type RingInst } from "#shared/jewels";
@@ -2348,7 +2350,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sendQuests(client);
         return;
       }
-      if (msg.act !== "enchant" && msg.act !== "sharpen" && msg.act !== "restore" && msg.act !== "buyScroll" && msg.act !== "armorEnchant" && msg.act !== "neckEnchant" && msg.act !== "ringEnchant" && msg.act !== "stat" && msg.act !== "tree" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && msg.act !== "craft" && msg.act !== "smelt" && !(JEWEL_ACTS as readonly string[]).includes(msg.act) && !(TRADE_ACTS as readonly string[]).includes(msg.act)) return;
+      if (msg.act !== "enchant" && msg.act !== "sharpen" && msg.act !== "restore" && msg.act !== "buyScroll" && !(MARKET_ACTS as readonly string[]).includes(msg.act) && msg.act !== "armorEnchant" && msg.act !== "neckEnchant" && msg.act !== "ringEnchant" && msg.act !== "stat" && msg.act !== "tree" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && msg.act !== "craft" && msg.act !== "smelt" && !(JEWEL_ACTS as readonly string[]).includes(msg.act) && !(TRADE_ACTS as readonly string[]).includes(msg.act)) return;
       const norm = normNick(p.nick);
       if (!norm) return;
       const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(msg.act === "gift" ? 99999 : 99, Math.floor(Number(msg.idx) || 0))), typeof msg.fuel === "string" ? msg.fuel : undefined);
@@ -5410,6 +5412,7 @@ export class ZoneRoom extends Room<ZoneState> {
       },
       jewels: pcInvJewels(this.jewelsFor(rt.token ?? `nick:${normNick(p.nick)}`)),
       craft: pcInvCraft(store.get(rt.token ?? `nick:${normNick(p.nick)}`) ?? {}),
+      market: marketViewFor(rt.token ?? `nick:${normNick(p.nick)}`, bagCount(bag, "scrap")),
       giftNotes: store.get(rt.token ?? `nick:${normNick(p.nick)}`)?.giftNotes ?? [],
       trade: tradeViewOf(store.get(rt.token ?? `nick:${normNick(p.nick)}`), rt.token ?? `nick:${normNick(p.nick)}`),
       partners: this.exchangePartnerNicks(normNick(p.nick)),
@@ -6232,6 +6235,206 @@ export class ZoneRoom extends Room<ZoneState> {
     return { ok: true, text: `Подарено ${to.nick}: ${what}` };
   }
 
+  // ---------------------------------------------------------------- рынок (асинхронные заявки)
+
+  private marketSweepAt = 0;
+
+  /** Вернуть просроченные лоты и их предложения владельцам. */
+  private marketSweep(): void {
+    const now = Date.now();
+    for (const l of [...market.all()]) {
+      if (l.expiresAt > now) continue;
+      const snap = this.openInv(l.sellerToken);
+      if (!snap) continue;
+      giveItems(snap, [l.item]);
+      this.commitInv(l.sellerToken, snap);
+      market.remove(l.id);
+      this.marketReturnOffers(l, "срок заявки истёк");
+      this.marketNotify(l.sellerToken, `Заявка «${marketItemName(l.item)}» истекла — предмет возвращён.`);
+    }
+  }
+
+  private marketAct(norm: string, act: MarketAct, id: string, idx: number, fuel: string): InvActResult {
+    const t = this.findWeaponsTarget(norm);
+    const token = t?.rt.token ?? `nick:${norm}`;
+    const nick = t?.p.nick ?? store.get(`nick:${norm}`)?.nick ?? norm;
+    if (act === "marketList") return this.marketList(token, nick, id, idx, fuel);
+    if (act === "marketCancel") return this.marketCancel(token, id);
+    if (act === "marketBuy") return this.marketBuy(token, id);
+    if (act === "marketOffer") return this.marketOffer(token, nick, id, fuel);
+    if (act === "marketAccept") return this.marketAccept(token, id);
+    if (act === "marketDecline") return this.marketDecline(token, id);
+    return this.marketRetract(token, id);
+  }
+
+  private marketList(token: string, nick: string, code: string, price: number, note: string): InvActResult {
+    if (!Number.isInteger(price) || price < 1 || price > MARKET.maxPrice) return { ok: false, text: `Цена — целое число от 1 до ${MARKET.maxPrice} лома.` };
+    if (market.countBySeller(token) >= MARKET.maxListings) return { ok: false, text: `Не больше ${MARKET.maxListings} активных заявок.` };
+    const item = parseTradeItem(code, 1);
+    if (!item) return { ok: false, text: "Не понял, какой предмет выставить." };
+    const snap = this.openInv(token);
+    if (!snap) return { ok: false, text: "Героя нет — напиши !play в чате." };
+    const r = takeItems(snap, [item]);
+    if ("error" in r) return { ok: false, text: r.error };
+    if (marketForbidden(r.taken[0])) return { ok: false, text: "Зелья на рынок не выставляются." };
+    this.commitInv(token, snap);
+    const now = Date.now();
+    const l = {
+      id: Math.random().toString(36).slice(2, 10),
+      sellerToken: token,
+      sellerNick: nick,
+      item: r.taken[0],
+      price,
+      note: note.trim().slice(0, MARKET.maxNote),
+      createdAt: now,
+      expiresAt: now + MARKET.days * 24 * 3600_000,
+      offers: [],
+    };
+    market.add(l);
+    return { ok: true, text: `Выставлено: ${marketItemName(l.item)} за ${price} лома.` };
+  }
+
+  private marketCancel(token: string, id: string): InvActResult {
+    const l = market.get(id);
+    if (!l) return { ok: false, text: "Заявки уже нет." };
+    if (l.sellerToken !== token) return { ok: false, text: "Это не твоя заявка." };
+    const snap = this.openInv(token);
+    if (!snap) return { ok: false, text: "Героя нет — напиши !play в чате." };
+    giveItems(snap, [l.item]);
+    this.commitInv(token, snap);
+    market.remove(id);
+    this.marketReturnOffers(l, "заявка снята");
+    return { ok: true, text: `Снято с продажи: ${marketItemName(l.item)}.` };
+  }
+
+  private marketBuy(token: string, id: string): InvActResult {
+    const l = market.get(id);
+    if (!l) return { ok: false, text: "Заявки уже нет." };
+    if (l.sellerToken === token) return { ok: false, text: "Свой лот купить нельзя." };
+    const buyer = this.openInv(token);
+    const seller = this.openInv(l.sellerToken);
+    if (!buyer || !seller) return { ok: false, text: "Герой недоступен." };
+    if (bagCount(buyer.bag, "scrap") < l.price) return { ok: false, text: `Нужно ${l.price} лома.` };
+    if (l.item.k === "bag") {
+      const bag = buyer.bag.map((x) => ({ ...x }));
+      const left = addToBag(bag, l.item.item, l.item.n);
+      if (left > 0) return { ok: false, text: "В сумке покупателя не хватает места." };
+    }
+    const fee = Math.floor(l.price * MARKET.fee);
+    const sellerBag = seller.bag.map((x) => ({ ...x }));
+    if (addToBag(sellerBag, "scrap", l.price - fee) > 0) return { ok: false, text: "У продавца нет места для лома." };
+    takeItems(buyer, [{ k: "bag", item: "scrap", n: l.price }]);
+    giveItems(buyer, [l.item]);
+    addToBag(seller.bag, "scrap", l.price - fee);
+    this.commitInv(token, buyer);
+    this.commitInv(l.sellerToken, seller);
+    market.remove(id);
+    this.marketReturnOffers(l, "лот продан");
+    this.marketNotify(l.sellerToken, `Продан лот «${marketItemName(l.item)}» за ${l.price} лома (−${fee} комиссия).`);
+    return { ok: true, text: `Куплено: ${marketItemName(l.item)}.` };
+  }
+
+  private marketOffer(token: string, nick: string, id: string, fuel: string): InvActResult {
+    const l = market.get(id);
+    if (!l) return { ok: false, text: "Заявки уже нет." };
+    if (l.sellerToken === token) return { ok: false, text: "Своему лоту обмен не предложить." };
+    if (l.offers.some((o) => o.buyerToken === token)) return { ok: false, text: "Ты уже предлагал обмен по этому лоту." };
+    if (l.offers.length >= MARKET.maxOffers) return { ok: false, text: "По этому лоту уже слишком много предложений." };
+    const items = parseTradeList(fuel);
+    if (!items || items.length === 0 || items.length > MARKET.maxOfferItems) return { ok: false, text: `Нужно от 1 до ${MARKET.maxOfferItems} предметов.` };
+    const snap = this.openInv(token);
+    if (!snap) return { ok: false, text: "Героя нет — напиши !play в чате." };
+    const r = takeItems(snap, items);
+    if ("error" in r) return { ok: false, text: r.error };
+    if (r.taken.some(marketForbidden)) return { ok: false, text: "Зелья в обмен не предлагаются." };
+    this.commitInv(token, snap);
+    l.offers.push({ id: Math.random().toString(36).slice(2, 10), buyerToken: token, buyerNick: nick, items: r.taken, at: Date.now() });
+    market.update(l);
+    this.marketNotify(l.sellerToken, `${nick} предлагает обмен по лоту «${marketItemName(l.item)}».`);
+    return { ok: true, text: "Предложение обмена отправлено продавцу." };
+  }
+
+  private marketAccept(token: string, offerId: string): InvActResult {
+    let l: MarketListing | undefined;
+    for (const x of market.all()) {
+      if (x.offers.some((o) => o.id === offerId)) { l = x; break; }
+    }
+    if (!l) return { ok: false, text: "Предложения уже нет." };
+    if (l.sellerToken !== token) return { ok: false, text: "Это не твоя заявка." };
+    const chosen = l.offers.find((o) => o.id === offerId)!;
+    const seller = this.openInv(token);
+    const buyer = this.openInv(chosen.buyerToken);
+    if (!seller || !buyer) return { ok: false, text: "Герой недоступен." };
+    // Проверяем места под стопки: иначе остаток молча потерялся бы.
+    if (l.item.k === "bag") {
+      const b = buyer.bag.map((x) => ({ ...x }));
+      if (addToBag(b, l.item.item, l.item.n) > 0) return { ok: false, text: "У покупателя не хватает места в сумке." };
+    }
+    const sb = seller.bag.map((x) => ({ ...x }));
+    for (const it of chosen.items) if (it.k === "bag" && addToBag(sb, it.item, it.n) > 0) return { ok: false, text: "У продавца не хватает места в сумке." };
+    giveItems(seller, chosen.items);
+    giveItems(buyer, [l.item]);
+    this.commitInv(token, seller);
+    this.commitInv(chosen.buyerToken, buyer);
+    const listingId = l.id;
+    l.offers = l.offers.filter((o) => o.id !== chosen.id);
+    market.remove(listingId);
+    this.marketReturnOffers(l, "обмен не выбран");
+    this.marketNotify(chosen.buyerToken, `Твой обмен по лоту «${marketItemName(l.item)}» принят.`);
+    return { ok: true, text: `Обмен принят: ${marketItemName(l.item)}.` };
+  }
+
+  private marketRetract(token: string, offerId: string): InvActResult {
+    for (const l of market.all()) {
+      const offer = l.offers.find((o) => o.id === offerId && o.buyerToken === token);
+      if (!offer) continue;
+      l.offers = l.offers.filter((o) => o.id !== offer.id);
+      this.marketReturnOffer(l, offer, "предложение отозвано");
+      market.update(l);
+      return { ok: true, text: "Предложение отозвано." };
+    }
+    return { ok: false, text: "Предложения нет." };
+  }
+
+  private marketDecline(token: string, offerId: string): InvActResult {
+    for (const l of market.all()) {
+      const offer = l.offers.find((o) => o.id === offerId);
+      if (!offer) continue;
+      if (l.sellerToken !== token) return { ok: false, text: "Это не твоя заявка." };
+      l.offers = l.offers.filter((o) => o.id !== offer.id);
+      this.marketReturnOffer(l, offer, "предложение отклонено");
+      market.update(l);
+      return { ok: true, text: "Предложение отклонено." };
+    }
+    return { ok: false, text: "Предложения нет." };
+  }
+
+  private marketReturnOffer(l: { item: Taken }, offer: { buyerToken: string; buyerNick: string; items: Taken[] }, why: string): void {
+    const snap = this.openInv(offer.buyerToken);
+    if (!snap) return;
+    giveItems(snap, offer.items);
+    this.commitInv(offer.buyerToken, snap);
+    this.marketNotify(offer.buyerToken, `Обмен по лоту «${marketItemName(l.item)}» не состоялся: ${why}.`);
+  }
+
+  private marketReturnOffers(l: { item: Taken; offers: { buyerToken: string; buyerNick: string; items: Taken[]; id: string }[] }, why: string): void {
+    for (const o of l.offers) this.marketReturnOffer(l, o, why);
+    l.offers = [];
+    market.update(l as never);
+  }
+
+  private marketNotify(token: string, text: string): void {
+    const live = this.liveByToken(token);
+    const c = live ? this.clientOf(live.id) : undefined;
+    if (c) {
+      c.send(MSG.pcInvResult, { ok: true, text });
+      this.sendPcInv(c);
+    } else {
+      const norm = token.startsWith("nick:") ? token.slice(5) : "";
+      if (norm) invHub.notify(norm);
+    }
+  }
+
   // ---------------------------------------------------------------- обмен между героями (окно двух, подтверждают оба)
 
   /** Действия обмена: открыть, добавить или убрать свои предметы, подтвердить, отменить. */
@@ -6461,6 +6664,7 @@ export class ZoneRoom extends Room<ZoneState> {
    * герой выйдет уже с этим.
    */
   private invAct(norm: string, act: InvActKind, id: string, idx: number, fuel?: string): InvActResult {
+    if ((MARKET_ACTS as readonly string[]).includes(act)) return this.marketAct(norm, act as MarketAct, id, idx, fuel ?? "");
     if ((JEWEL_ACTS as readonly string[]).includes(act)) return this.jewelAct(norm, act as JewelAct, id, idx, fuel);
     if (act === "craft") return this.craftAct(norm, id);
     if (act === "shop") return this.shopAct(norm, id);
@@ -12716,6 +12920,10 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Реген, отсчёт до возрождения. */
   private tickPlayers(dt: number): void {
+    if (this.elapsed - this.marketSweepAt > 60) {
+      this.marketSweepAt = this.elapsed;
+      this.marketSweep();
+    }
     this.tickPlayerFishing();
     this.state.players.forEach((p, id) => {
       const rt = this.rt.get(id);
