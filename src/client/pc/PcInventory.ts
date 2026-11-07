@@ -757,23 +757,21 @@ export class PcInventory {
     return box;
   }
 
+  /** Ячейка рынка: ровно та же, что в сумке, включая камни, материалы и броню. */
+  private marketCell(d: PcInvData, code: string, view: TradeItemView, n = 1): HTMLDivElement {
+    const e = this.marketEntry(d, code);
+    if (e) return this.entryCell(e).cloneNode(true) as HTMLDivElement;
+    if (code.startsWith("g:")) return this.gemCell(code.slice(2), n, d).cloneNode(true) as HTMLDivElement;
+    if (code.startsWith("m:")) return this.matCell(code.slice(2) as CraftItemId, n).cloneNode(true) as HTMLDivElement;
+    const c = div("pcinv-cell");
+    c.append(this.tradeIcon(view));
+    return c;
+  }
+
   private marketPickGrid(d: PcInvData, selected: Set<string>, onPick: (code: string) => void): HTMLElement {
-    // Точь-в-точь сумка: те же ячейки, сетка, значки, заточка и оценки.
     const grid = div("pcinv-grid pcinv-bagrid");
     for (const it of this.marketable(d)) {
-      const e = this.marketEntry(d, it.code);
-      let cell: HTMLDivElement;
-      if (e) {
-        cell = this.entryCell(e).cloneNode(true) as HTMLDivElement;
-      } else if (it.code.startsWith("g:")) {
-        // Камень — ровно ячейка сумки, без вложенной «рамки в рамке».
-        cell = this.gemCell(it.code.slice(2), it.max, d).cloneNode(true) as HTMLDivElement;
-      } else if (it.code.startsWith("m:")) {
-        cell = this.matCell(it.code.slice(2) as CraftItemId, it.max).cloneNode(true) as HTMLDivElement;
-      } else {
-        cell = div("pcinv-cell");
-        cell.append(this.tradeIcon(it.view));
-      }
+      const cell = this.marketCell(d, it.code, it.view, it.max);
       cell.classList.toggle("sel", selected.has(it.code));
       cell.onclick = () => onPick(it.code);
       this.marketHoverLocal(cell, d, it.code, it.view.name, it.view.tier);
@@ -858,9 +856,8 @@ export class PcInventory {
   private marketLocalCard(d: PcInvData, it: ReturnType<PcInventory["marketable"]>[number]): HTMLElement {
     const box = div("pcinv-market-detail");
     const head = div("pcinv-market-detailhead");
-    // Значок — ровно ячейка сумки: у брони видна её картинка и вес, а не заглушка.
-    const entry = this.marketEntry(d, it.code);
-    head.append(entry ? this.entryCell(entry).cloneNode(true) as HTMLDivElement : this.tradeIcon(it.view), div("pcinv-market-name", it.label));
+    // Значок — ровно ячейка сумки: броня, камень и материал без лишних рамок.
+    head.append(this.marketCell(d, it.code, it.view, it.max), div("pcinv-market-name", it.label));
     box.append(head, div("pcinv-small", TIER_LOOK[(it.view.tier ?? "base") as WeaponTier]?.name ?? it.view.tier ?? ""));
     const score = this.marketLocalScore(d, it.code);
     if (score) {
@@ -912,17 +909,18 @@ export class PcInventory {
       this.marketInspect = code;
       this.render();
     }));
+    const panel = div("pcinv-market-box");
     const picked = this.marketListPick ? items.find((x) => x.code === this.marketListPick) : undefined;
-    if (picked) wrap.append(this.marketLocalCard(d, picked));
+    if (picked) panel.append(this.marketLocalCard(d, picked));
     const qty = document.createElement("input");
     qty.className = "pcinv-input"; qty.type = "number"; qty.min = "1"; qty.value = "1";
     if (picked?.stack && picked.max > 1) {
       qty.max = String(picked.max);
-      wrap.append(div("pcinv-small", `Количество в стопке (есть ${picked.max})`), qty);
+      panel.append(div("pcinv-small pcinv-market-center", `Количество в стопке · есть ${picked.max}`), qty);
     }
     const price = document.createElement("input"); price.className = "pcinv-input"; price.type = "number"; price.min = "1"; price.placeholder = "Цена в ломе";
-    const note = document.createElement("input"); note.className = "pcinv-input"; note.maxLength = MARKET.maxNote; note.placeholder = "Описание для покупателей (необязательно)";
-    wrap.append(price, note);
+    const note = document.createElement("input"); note.className = "pcinv-input"; note.maxLength = MARKET.maxNote; note.placeholder = "Описание для покупателей";
+    panel.append(price, note);
     const submit = button("Выставить на рынок", () => {
       const code = this.marketListPick;
       const p = Math.floor(Number(price.value));
@@ -934,7 +932,8 @@ export class PcInventory {
       this.hooks.act({ act: "marketList", id: code, idx: p, fuel: JSON.stringify({ n, note: note.value.slice(0, MARKET.maxNote) }) });
     });
     submit.className = "pcinv-btn gold";
-    wrap.append(submit, button("Отмена", () => { this.marketListing = false; this.marketListPick = null; this.marketInspect = null; this.render(); }));
+    panel.append(submit, button("Отмена", () => { this.marketListing = false; this.marketListPick = null; this.marketInspect = null; this.render(); }));
+    wrap.append(panel);
     return wrap;
   }
 
@@ -948,12 +947,13 @@ export class PcInventory {
       this.marketInspect = code;
       this.render();
     }));
+    const panel = div("pcinv-market-box");
     if (this.marketInspect) {
       const it = items.find((x) => x.code === this.marketInspect);
-      if (it) wrap.append(this.marketLocalCard(d, it));
+      if (it) panel.append(this.marketLocalCard(d, it));
     }
     if (this.marketOfferPick.size) {
-      const box = div("pcinv-market-picked");
+      const picked = div("pcinv-market-picked");
       for (const [code, n] of [...this.marketOfferPick]) {
         const it = items.find((x) => x.code === code);
         if (!it) continue;
@@ -968,9 +968,9 @@ export class PcInventory {
           };
           row.append(q, div("pcinv-small", `из ${it.max}`));
         }
-        box.append(row);
+        picked.append(row);
       }
-      wrap.append(box);
+      panel.append(picked);
     }
     const submit = button(`Предложить обмен (${this.marketOfferPick.size}/${MARKET.maxOfferItems})`, () => {
       const arr = [...this.marketOfferPick].map(([c, n]) => ({ c, n }));
@@ -979,7 +979,8 @@ export class PcInventory {
       this.hooks.act({ act: "marketOffer", id: lot.id, idx: 0, fuel: JSON.stringify(arr) });
     });
     submit.className = "pcinv-btn gold";
-    wrap.append(submit, button("Отмена", () => { this.marketOfferLot = null; this.marketOfferPick.clear(); this.marketInspect = null; this.render(); }));
+    panel.append(submit, button("Отмена", () => { this.marketOfferLot = null; this.marketOfferPick.clear(); this.marketInspect = null; this.render(); }));
+    wrap.append(panel);
     return wrap;
   }
 
@@ -3701,7 +3702,11 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-market-name { font-size:13px; font-weight:700; color:#f2e7d2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pcinv-market-meta { font-size:11px; color:#a9b8c9; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pcinv-market-detail { width:min(33%,300px); max-width:33%; margin:0 auto; align-self:center; border:1px solid #6b5736; background:rgba(15,25,40,.96); padding:10px; display:flex; flex-direction:column; gap:5px; }
-.pcinv-market-form > .pcinv-input, .pcinv-market-form > .pcinv-btn { width:min(33%,300px); max-width:33%; margin-left:auto; margin-right:auto; align-self:center; }
+.pcinv-market-box { width:min(33%,300px); max-width:33%; margin:0 auto; padding:10px; border:1px solid #6b5736; background:rgba(15,25,40,.96); display:flex; flex-direction:column; gap:8px; align-items:stretch; }
+.pcinv-market-box > .pcinv-input, .pcinv-market-box > .pcinv-btn { width:100%; }
+.pcinv-market-box .pcinv-market-detail { width:100%; max-width:none; margin:0; border:none; background:transparent; padding:0; }
+.pcinv-market-center { text-align:center; }
+.pcinv-market-pickqty .pcinv-small { flex:1; }
 .pcinv-market-detailhead { display:flex; align-items:center; justify-content:center; gap:8px; }
 .pcinv-market-detailhead > .pcinv-cell { width:52px; height:52px; flex:none; }
 .pcinv-market-detailhead .pcinv-tic { width:48px; height:48px; }
@@ -3718,7 +3723,7 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-market-pick { display:flex; gap:8px; align-items:center; border:1px solid #2a405d; padding:4px 7px; cursor:pointer; }
 .pcinv-market-pick.on { border-color:#d4a94e; background:rgba(90,65,24,.35); }
 .pcinv-market .pcinv-input { min-height:30px; padding:5px 8px; background:#081321; color:#f2e7d2; border:1px solid #3a5578; }
-@media (max-width:620px) { .pcinv-market-detail { width:100%; max-width:none; } .pcinv-market-form > .pcinv-input, .pcinv-market-form > .pcinv-btn { width:100%; max-width:none; } }
+@media (max-width:620px) { .pcinv-market-box, .pcinv-market-detail { width:100%; max-width:none; } }
 .pcinv-shop-name { font:700 16px/1.25 system-ui; color:#f7fbff; }
 .pcinv-shop-desc { font-size:14px; line-height:1.4; color:#c6d2e0; }
 .pcinv-shop-row .pcinv-ebtn { min-width:150px; padding:9px 12px; font:700 14px/1 system-ui; }
