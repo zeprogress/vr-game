@@ -757,19 +757,35 @@ export class PcInventory {
     return box;
   }
 
-  private marketItemCard(d: PcInvData, it: ReturnType<PcInventory["marketable"]>[number], on: boolean, onClick: () => void): HTMLElement {
-    const card = div(`pcinv-market-card${on ? " on" : ""}`);
-    card.append(this.tradeIcon(it.view), div("pcinv-market-name", it.label), div("pcinv-market-meta", it.stack ? `есть ${it.max}` : "1 шт."));
-    this.marketHover(card, it.view.name, it.view.tier, this.marketLocalDetails(d, it.code), "Нажми, чтобы выбрать");
-    card.onclick = onClick;
-    return card;
-  }
-
   private marketPickGrid(d: PcInvData, selected: Set<string>, onPick: (code: string) => void): HTMLElement {
-    const grid = div("pcinv-market-grid");
-    for (const it of this.marketable(d)) grid.append(this.marketItemCard(d, it, selected.has(it.code), () => onPick(it.code)));
+    // Точь-в-точь сумка: те же ячейки, сетка, значки, заточка и оценки.
+    const grid = div("pcinv-grid pcinv-bagrid");
+    for (const it of this.marketable(d)) {
+      const e = this.marketEntry(d, it.code);
+      let cell: HTMLDivElement;
+      if (e) {
+        cell = this.entryCell(e).cloneNode(true) as HTMLDivElement;
+      } else {
+        cell = div("pcinv-cell");
+        cell.append(this.tradeIcon(it.view));
+      }
+      cell.classList.toggle("sel", selected.has(it.code));
+      cell.onclick = () => onPick(it.code);
+      this.marketHover(cell, it.view.name, it.view.tier, this.marketLocalDetails(d, it.code), "Нажми, чтобы выбрать");
+      grid.append(cell);
+    }
     if (!grid.childElementCount) grid.append(div("pcinv-small", "Нечего выбрать: сними надетое и убери ★."));
     return grid;
+  }
+
+  private marketEntry(d: PcInvData, code: string): BagEntry | null {
+    const i = code.indexOf(":");
+    const k = code.slice(0, i), id = code.slice(i + 1);
+    if (k === "w") { const w = d.weapons.find((x) => x.id === id); return w ? { w } : null; }
+    if (k === "r") { const r = d.jewels?.rings.find((x) => x.id === id); return r ? { r } : null; }
+    if (k === "n") { const n = d.jewels?.necks.find((x) => x.id === id); return n ? { n } : null; }
+    if (k === "a") { const a = (d.armor ?? []).find((x) => x.id === id); return a ? { a } : null; }
+    return null;
   }
 
   /** Всплывающая карточка предмета при наведении — как в инвентаре. */
