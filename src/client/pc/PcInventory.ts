@@ -2045,7 +2045,16 @@ export class PcInventory {
         buy.className = "pcinv-btn sm pcinv-ap-buy";
         buy.textContent = `Свиток · ${SAVE_SCROLL.costScrap.toLocaleString("ru-RU")}`;
         buy.disabled = d.scrap < SAVE_SCROLL.costScrap || this.forging;
-        buy.onclick = () => { this.lastResult = null; this.hooks.act({ act: "buyScroll", id: "", idx: 0 }); };
+        buy.onclick = () => {
+          this.lastResult = null;
+          // Нет свитка в сумке — ведём к трактирщику, а не покупаем вслепую.
+          if ((d.saveScrolls ?? 0) <= 0) {
+            this.closeCard();
+            this.open("shop");
+            return;
+          }
+          this.hooks.act({ act: "buyScroll", id: "", idx: 0 });
+        };
         box.append(buy);
       }
       return box;
