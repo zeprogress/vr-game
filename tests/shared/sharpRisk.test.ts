@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ATTACK_POINT, attackPointBonus, attackPointMul, attackPointNext, attackPointTry, attackPoints, restoreCost, restoreSharp, scrapValue, type WeaponInstance } from "../../src/shared/items";
+import { ATTACK_POINT, attackPointBonus, attackPointMul, attackPointNext, attackPointTry, attackPoints, heldAffixText, powerMulOfText, restoreCost, restoreSharp, scrapValue, type WeaponInstance } from "../../src/shared/items";
 
 const wpn = (sharp: number, extra: Partial<WeaponInstance> = {}): WeaponInstance =>
   ({ id: "t", cls: "sword", tier: "legendary", affixes: [], sharp, ...extra }) as WeaponInstance;
@@ -92,4 +92,14 @@ test("сломанное оружие бьёт как +3 и остаётся в 
   const b = wpn(0, { broken: true, brokenAt: 6 });
   assert.equal(attackPoints(b), 3);
   assert.ok(Math.abs(attackPointMul(b) - 1.15) < 1e-9);
+});
+
+test("урон от точки совпадает с текстом и серверным множителем", () => {
+  for (const n of [1, 3, 4, 5, 6, 9, 10, 12, 13, 14, 15]) {
+    const w = wpn(n);
+    const mul = attackPointMul(w);
+    assert.ok(Math.abs(mul - (1 + attackPointBonus(n))) < 1e-9, `attackPointMul +${n}`);
+    assert.ok(Math.abs(powerMulOfText(heldAffixText(w)) - mul) < 1e-6, `текст +${n}`);
+  }
+  assert.ok(Math.abs(attackPointMul(wpn(15)) - 3.45) < 1e-9);
 });
