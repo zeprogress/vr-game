@@ -2353,7 +2353,8 @@ export class ZoneRoom extends Room<ZoneState> {
       if (msg.act !== "enchant" && msg.act !== "sharpen" && msg.act !== "restore" && msg.act !== "buyScroll" && !(MARKET_ACTS as readonly string[]).includes(msg.act) && msg.act !== "armorEnchant" && msg.act !== "neckEnchant" && msg.act !== "ringEnchant" && msg.act !== "stat" && msg.act !== "tree" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && msg.act !== "craft" && msg.act !== "smelt" && !(JEWEL_ACTS as readonly string[]).includes(msg.act) && !(TRADE_ACTS as readonly string[]).includes(msg.act)) return;
       const norm = normNick(p.nick);
       if (!norm) return;
-      const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(msg.act === "gift" ? 99999 : 99, Math.floor(Number(msg.idx) || 0))), typeof msg.fuel === "string" ? msg.fuel : undefined);
+      const idxMax = msg.act === "gift" ? 99999 : msg.act === "marketList" ? MARKET.maxPrice : 99;
+      const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(idxMax, Math.floor(Number(msg.idx) || 0))), typeof msg.fuel === "string" ? msg.fuel : undefined);
       console.log(`[inv] ${p.nick} ← ${msg.act} «${msg.id}» · ip ${this.ipBySession.get(client.sessionId) ?? "?"} → ${r.ok ? "ок" : "отказ"}: ${r.text}`);
       client.send(MSG.pcInvResult, r);
       this.sendPcInv(client);
