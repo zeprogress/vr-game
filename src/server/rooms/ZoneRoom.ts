@@ -344,6 +344,8 @@ interface Runtime {
   treeCasts?: number;
   /** «Неуловимый»: неуязвим до (elapsed). */
   treeInvulnUntil?: number;
+  /** «Тень»: следующий промах даст невидимость не раньше этого момента (elapsed). */
+  dodgeGhostCdUntil?: number;
   /** «Убийца из тени»: ещё столько гарантированных критов после рывка (кроме первого). */
   forceCritLeft?: number;
   guard: GuardState;
@@ -12409,7 +12411,11 @@ export class ZoneRoom extends Room<ZoneState> {
     // блок щитом снимает оглушение («Щит-стена», «Неприступный»).
     const tk = rt.treeKey;
     if (dodged && tk?.dodgeInvuln) rt.treeInvulnUntil = this.elapsed + tk.dodgeInvuln;
-    if (dodged && tk?.dodgeGhost) rt.ghostUntil = Math.max(rt.ghostUntil, this.elapsed + tk.dodgeGhost);
+    // «Тень»: 1 с невидимости после промаха, но не чаще раза в 5 с.
+    if (dodged && tk?.dodgeGhost && this.elapsed >= (rt.dodgeGhostCdUntil ?? 0)) {
+      rt.ghostUntil = Math.max(rt.ghostUntil, this.elapsed + tk.dodgeGhost);
+      rt.dodgeGhostCdUntil = this.elapsed + 5;
+    }
     const blocked = !dodged && !h.dot && block.by !== 0;
     if (blocked && tk?.blockClearsStun) rt.stunnedUntil = 0;
     // Разъярённый владыка события бьёт сильнее.
