@@ -765,6 +765,11 @@ export class PcInventory {
       let cell: HTMLDivElement;
       if (e) {
         cell = this.entryCell(e).cloneNode(true) as HTMLDivElement;
+      } else if (it.code.startsWith("g:")) {
+        // Камень — ровно ячейка сумки, без вложенной «рамки в рамке».
+        cell = this.gemCell(it.code.slice(2), it.max, d).cloneNode(true) as HTMLDivElement;
+      } else if (it.code.startsWith("m:")) {
+        cell = this.matCell(it.code.slice(2) as CraftItemId, it.max).cloneNode(true) as HTMLDivElement;
       } else {
         cell = div("pcinv-cell");
         cell.append(this.tradeIcon(it.view));
@@ -3696,6 +3701,7 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-market-name { font-size:13px; font-weight:700; color:#f2e7d2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pcinv-market-meta { font-size:11px; color:#a9b8c9; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pcinv-market-detail { width:min(33%,300px); max-width:33%; margin:0 auto; align-self:center; border:1px solid #6b5736; background:rgba(15,25,40,.96); padding:10px; display:flex; flex-direction:column; gap:5px; }
+.pcinv-market-form > .pcinv-input, .pcinv-market-form > .pcinv-btn { width:min(33%,300px); max-width:33%; margin-left:auto; margin-right:auto; align-self:center; }
 .pcinv-market-detailhead { display:flex; align-items:center; justify-content:center; gap:8px; }
 .pcinv-market-detailhead > .pcinv-cell { width:52px; height:52px; flex:none; }
 .pcinv-market-detailhead .pcinv-tic { width:48px; height:48px; }
