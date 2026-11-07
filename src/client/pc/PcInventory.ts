@@ -3711,9 +3711,9 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-market-meta { font-size:11px; color:#a9b8c9; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pcinv-market-detail { width:min(33%,300px); max-width:33%; margin:0 auto; align-self:center; border:1px solid #6b5736; background:rgba(15,25,40,.96); padding:10px; display:flex; flex-direction:column; gap:5px; }
 .pcinv-market-layout { display:flex; gap:8px; align-items:flex-start; }
-.pcinv-market-left { min-width:0; flex:0 1 auto; max-width:67%; }
+.pcinv-market-left { min-width:0; flex:1 1 0; max-width:67%; }
 .pcinv-market-box { width:min(33%,300px); max-width:33%; margin:0 auto; padding:10px; border:1px solid #6b5736; background:rgba(15,25,40,.96); display:flex; flex-direction:column; gap:8px; align-items:stretch; }
-.pcinv-market-layout .pcinv-market-box { width:auto; max-width:none; margin:0; flex:0 0 33%; }
+.pcinv-market-layout .pcinv-market-box { width:auto; max-width:none; margin:0; flex:0 0 calc(33% - 4px); }
 .pcinv-market-layout .pcinv-bagrid { max-height:none; overflow:visible; }
 .pcinv-market-box > .pcinv-input, .pcinv-market-box > .pcinv-btn { width:100%; }
 .pcinv-market-box .pcinv-market-detail { width:100%; max-width:none; margin:0; border:none; background:transparent; padding:0; }
