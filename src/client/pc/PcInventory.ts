@@ -3913,6 +3913,7 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-erow { display:grid; grid-template-columns:minmax(0,1fr) auto; column-gap:10px; align-items:center; padding:7px 0; border-bottom:1px solid #15243a; }
 .pcinv-elabel { display:flex; justify-content:space-between; gap:8px; font-size:12.5px; color:#d6dfea; min-width:0; }
 .pcinv-elabel > span:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pcinv-market-detail .pcinv-elabel > span:first-child { overflow:visible; text-overflow:clip; white-space:normal; overflow-wrap:anywhere; }
 .pcinv-elabel > span:last-child { color:#8b9aae; font-size:11.5px; font-variant-numeric:tabular-nums; flex:none; }
 .pcinv-ebar { grid-column:1; height:5px; margin-top:6px; background:#0d1a2b; border-radius:3px; overflow:hidden; }
 .pcinv-efill { height:100%; border-radius:3px; background:linear-gradient(90deg,#7c4ee6,#c79bff); }

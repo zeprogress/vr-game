@@ -4,9 +4,9 @@ import { dataFile } from "./dataDir";
 import { itemView, type Taken } from "./trade";
 import { armorLabel } from "#shared/armor";
 import { CRAFT_ITEMS } from "#shared/craft";
-import { affixLabel, enchantInfo, instanceEffects, instanceLabels, instanceName, ITEMS, weaponQuality } from "#shared/items";
+import { affixLabel, enchantInfo, instanceEffects, instanceName, ITEMS, weaponQuality } from "#shared/items";
 import { ARMOR_PART_NAME, armorEnchantRows, armorQuality } from "#shared/armor";
-import { NECK_TIER_NAME, neckEnchantRow, neckLabel, neckQuality } from "#shared/necklaces";
+import { NECK_TIER_NAME, neckEnchantRow, neckQuality } from "#shared/necklaces";
 import { ringLabel } from "#shared/jewels";
 import { ringEnchantRow, ringQuality } from "#shared/ringAffixes";
 import { MARKET, type MarketData, type MarketLotView, type MarketOfferOut, type MarketOutgoingView } from "#shared/market";
@@ -113,15 +113,14 @@ export function marketForbidden(t: Taken): boolean {
 export function marketDetails(t: Taken): string[] {
   if (t.k === "weapon") {
     return [
-      ...instanceLabels(t.w),
       ...instanceEffects(t.w),
-      `Оценка ${weaponQuality(t.w)}`,
       ...(t.w.sharp ? [`Заточка +${t.w.sharp}`] : []),
     ].filter(Boolean);
   }
+  // У брони, колец и ожерелий аффиксы идут отдельными полосами (marketAffixRows).
   if (t.k === "armor") return [armorLabel(t.a)];
-  if (t.k === "ring") return [ringLabel(t.r)];
-  if (t.k === "neck") return [neckLabel(t.n)];
+  if (t.k === "ring") return [];
+  if (t.k === "neck") return [];
   if (t.k === "bag") return [ITEMS[t.item].name];
   if (t.k === "mat") return [CRAFT_ITEMS[t.id].name];
   return ["Камень"];
