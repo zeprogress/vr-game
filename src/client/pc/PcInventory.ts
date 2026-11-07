@@ -779,11 +779,15 @@ export class PcInventory {
 
   /** Название лота без перечисления аффиксов: у ожерелий — только тир. */
   private marketName(it: ReturnType<PcInventory["marketable"]>[number]): string {
-    return it.view.k === "neck" ? NECK_TIER_NAME[(it.view.tier ?? "base") as NeckTier] : it.label;
+    if (it.view.k === "neck") return NECK_TIER_NAME[(it.view.tier ?? "base") as NeckTier];
+    if (it.view.k === "armor" && it.view.part) return ARMOR_PART_NAME[it.view.part];
+    return it.label;
   }
 
   private marketLotName(l: MarketLotView): string {
-    return l.item.k === "neck" ? NECK_TIER_NAME[(l.item.tier ?? "base") as NeckTier] : l.item.name;
+    if (l.item.k === "neck") return NECK_TIER_NAME[(l.item.tier ?? "base") as NeckTier];
+    if (l.item.k === "armor" && l.item.part) return ARMOR_PART_NAME[l.item.part];
+    return l.item.name;
   }
 
   /** Ячейка рынка: ровно та же, что в сумке, включая камни, материалы и броню. */
