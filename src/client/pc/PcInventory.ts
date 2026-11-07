@@ -905,9 +905,13 @@ export class PcInventory {
       this.marketInspect = code;
       this.render();
     }));
-    if (this.marketListPick) {
-      const it = items.find((x) => x.code === this.marketListPick);
-      if (it) wrap.append(this.marketLocalCard(d, it));
+    const picked = this.marketListPick ? items.find((x) => x.code === this.marketListPick) : undefined;
+    if (picked) wrap.append(this.marketLocalCard(d, picked));
+    const qty = document.createElement("input");
+    qty.className = "pcinv-input"; qty.type = "number"; qty.min = "1"; qty.value = "1";
+    if (picked?.stack && picked.max > 1) {
+      qty.max = String(picked.max);
+      wrap.append(div("pcinv-small", `Количество в стопке (есть ${picked.max})`), qty);
     }
     const price = document.createElement("input"); price.className = "pcinv-input"; price.type = "number"; price.min = "1"; price.placeholder = "Цена в ломе";
     const note = document.createElement("input"); note.className = "pcinv-input"; note.maxLength = MARKET.maxNote; note.placeholder = "Описание для покупателей (необязательно)";
@@ -917,8 +921,10 @@ export class PcInventory {
       const p = Math.floor(Number(price.value));
       if (!code) return this.textTip(wrap, "Выбери предмет", "Нажми на предмет выше.");
       if (!Number.isInteger(p) || p < 1) return this.textTip(wrap, "Цена", "Цена в ломе — целое число больше нуля.");
+      const n = Math.max(1, Math.floor(Number(qty.value) || 1));
+      if (picked?.stack && n > picked.max) return this.textTip(wrap, "Количество", `В стопке только ${picked.max}.`);
       this.marketListing = false; this.marketListPick = null; this.marketInspect = null;
-      this.hooks.act({ act: "marketList", id: code, idx: p, fuel: note.value.slice(0, MARKET.maxNote) });
+      this.hooks.act({ act: "marketList", id: code, idx: p, fuel: JSON.stringify({ n, note: note.value.slice(0, MARKET.maxNote) }) });
     });
     submit.className = "pcinv-btn gold";
     wrap.append(submit, button("Отмена", () => { this.marketListing = false; this.marketListPick = null; this.marketInspect = null; this.render(); }));
@@ -940,8 +946,24 @@ export class PcInventory {
       if (it) wrap.append(this.marketLocalCard(d, it));
     }
     if (this.marketOfferPick.size) {
-      const picked = [...this.marketOfferPick.keys()].map((c) => items.find((x) => x.code === c)?.label ?? c);
-      wrap.append(div("pcinv-small", `Выбрано: ${picked.join(", ")}`));
+      const box = div("pcinv-market-picked");
+      for (const [code, n] of [...this.marketOfferPick]) {
+        const it = items.find((x) => x.code === code);
+        if (!it) continue;
+        const row = div("pcinv-market-pickqty");
+        row.append(div("pcinv-small", it.label));
+        if (it.stack && it.max > 1) {
+          const q = document.createElement("input");
+          q.className = "pcinv-input"; q.type = "number"; q.min = "1"; q.max = String(it.max); q.value = String(n);
+          q.onchange = () => {
+            this.marketOfferPick.set(code, Math.max(1, Math.min(it.max, Math.floor(Number(q.value) || 1))));
+            this.render();
+          };
+          row.append(q, div("pcinv-small", `из ${it.max}`));
+        }
+        box.append(row);
+      }
+      wrap.append(box);
     }
     const submit = button(`Предложить обмен (${this.marketOfferPick.size}/${MARKET.maxOfferItems})`, () => {
       const arr = [...this.marketOfferPick].map(([c, n]) => ({ c, n }));
@@ -956,7 +978,7 @@ export class PcInventory {
 
   /** Предметы, которые можно выставить/предложить: без надетого, ★ и зелий. */
   private marketable(d: PcInvData): ReturnType<PcInventory["tradeable"]> {
-    return this.tradeable(d).filter((x) => !(x.view.k === "bag" && x.view.item === "potion"));
+    return this.tradeable(d).filter((x) => !(x.view.k === "bag" && (x.view.item === "potion" || x.view.item === "scrap")));
   }
 
   /** Трактирщик (только страница !inv): лавка за жетоны ◈ — те же товары, что в лагере; подходить к стойке не нужно. */
@@ -3671,7 +3693,13 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-market-card:hover, .pcinv-market-card.on { border-color:#d4a94e; background:rgba(29,43,62,.95); }
 .pcinv-market-name { font-size:13px; font-weight:700; color:#f2e7d2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pcinv-market-meta { font-size:11px; color:#a9b8c9; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.pcinv-market-detail { border:1px solid #6b5736; background:rgba(15,25,40,.96); padding:10px; display:flex; flex-direction:column; gap:5px; }
+.pcinv-market-detail { width:min(33%,300px); max-width:33%; margin:0 auto; align-self:center; border:1px solid #6b5736; background:rgba(15,25,40,.96); padding:10px; display:flex; flex-direction:column; gap:5px; }
+.pcinv-market-detailhead { display:flex; align-items:center; justify-content:center; gap:8px; }
+.pcinv-market-detailhead .pcinv-tic { width:48px; height:48px; }
+.pcinv-market-detailhead .pcinv-tic > *, .pcinv-market-detailhead .pcinv-tic img, .pcinv-market-detailhead .pcinv-tic svg { width:42px !important; height:42px !important; }
+.pcinv-market-picked { display:flex; flex-direction:column; gap:4px; }
+.pcinv-market-pickqty { display:flex; align-items:center; gap:6px; }
+.pcinv-market-pickqty .pcinv-input { width:76px; min-height:28px; padding:3px 6px; }
 .pcinv-market-note { font-size:12px; color:#d8c7a4; font-style:italic; white-space:pre-line; }
 .pcinv-market-acts { display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
 .pcinv-market-offer { display:flex; flex-wrap:wrap; gap:6px; align-items:center; border-top:1px solid #2a405d; padding-top:5px; }
@@ -3681,6 +3709,7 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-market-pick { display:flex; gap:8px; align-items:center; border:1px solid #2a405d; padding:4px 7px; cursor:pointer; }
 .pcinv-market-pick.on { border-color:#d4a94e; background:rgba(90,65,24,.35); }
 .pcinv-market .pcinv-input { min-height:30px; padding:5px 8px; background:#081321; color:#f2e7d2; border:1px solid #3a5578; }
+@media (max-width:620px) { .pcinv-market-detail { width:100%; max-width:none; } }
 .pcinv-shop-name { font:700 16px/1.25 system-ui; color:#f7fbff; }
 .pcinv-shop-desc { font-size:14px; line-height:1.4; color:#c6d2e0; }
 .pcinv-shop-row .pcinv-ebtn { min-width:150px; padding:9px 12px; font:700 14px/1 system-ui; }

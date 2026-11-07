@@ -6271,13 +6271,25 @@ export class ZoneRoom extends Room<ZoneState> {
   private marketList(token: string, nick: string, code: string, price: number, note: string): InvActResult {
     if (!Number.isInteger(price) || price < 1 || price > MARKET.maxPrice) return { ok: false, text: `Цена — целое число от 1 до ${MARKET.maxPrice} лома.` };
     if (market.countBySeller(token) >= MARKET.maxListings) return { ok: false, text: `Не больше ${MARKET.maxListings} активных заявок.` };
-    const item = parseTradeItem(code, 1);
+    // fuel: JSON { n, note } — количество для стопки + описание. Старый plain note тоже принимаем.
+    let qty = 1;
+    let noteText = note;
+    try {
+      const j = JSON.parse(note) as { n?: unknown; note?: unknown };
+      if (j && typeof j === "object") {
+        qty = Math.max(1, Math.min(99999, Math.floor(Number(j.n) || 1)));
+        noteText = typeof j.note === "string" ? j.note : "";
+      }
+    } catch { /* plain note */ }
+    const item = parseTradeItem(code, qty);
     if (!item) return { ok: false, text: "Не понял, какой предмет выставить." };
+    if (item.k === "bag" && item.item === "potion") return { ok: false, text: "Зелья на рынок не выставляются." };
+    if (item.k === "bag" && item.item === "scrap") return { ok: false, text: "Лом нельзя выставлять за лом." };
     const snap = this.openInv(token);
     if (!snap) return { ok: false, text: "Героя нет — напиши !play в чате." };
     const r = takeItems(snap, [item]);
     if ("error" in r) return { ok: false, text: r.error };
-    if (marketForbidden(r.taken[0])) return { ok: false, text: "Зелья на рынок не выставляются." };
+    if (marketForbidden(r.taken[0])) return { ok: false, text: "Этот предмет нельзя выставлять на рынок." };
     this.commitInv(token, snap);
     const now = Date.now();
     const l = {
@@ -6286,7 +6298,7 @@ export class ZoneRoom extends Room<ZoneState> {
       sellerNick: nick,
       item: r.taken[0],
       price,
-      note: note.trim().slice(0, MARKET.maxNote),
+      note: noteText.trim().slice(0, MARKET.maxNote),
       createdAt: now,
       expiresAt: now + MARKET.days * 24 * 3600_000,
       offers: [],

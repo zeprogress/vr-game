@@ -103,7 +103,8 @@ export const market = new MarketStore();
 
 /** «Банки» (зелья) на рынок не выставляются и в обмен не предлагаются. */
 export function marketForbidden(t: Taken): boolean {
-  return t.k === "bag" && t.item === "potion";
+  // Банки не продаются; лом нельзя выставлять за лом.
+  return t.k === "bag" && (t.item === "potion" || t.item === "scrap");
 }
 
 /** Полное описание предмета для карточки рынка. */
