@@ -421,7 +421,7 @@ export class PcInventory {
     }
     // Пока печатают ник или открыт выбор игрока — не перерисовываем (сбросило бы фокус); данные уже в this.data.
     if (same) return; // слепок тот же — окно уже показывает эти данные
-    if (this.isOpen && !this.forging && !this.tradeTyping()) {
+    if (this.isOpen && !this.forging && !this.tradeTyping() && !this.marketTyping()) {
       // Свежие данные уже содержат итог действия — отдельная отложенная перерисовка не нужна.
       this.cancelResultRender();
       this.render();
@@ -454,6 +454,12 @@ export class PcInventory {
   private tradeTyping(): boolean {
     const a = document.activeElement;
     return this.tab === "trade" && this.isOpen && this.win.contains(a) && (a instanceof HTMLInputElement || a instanceof HTMLSelectElement);
+  }
+
+  /** Печатают цену/описание/количество на рынке — не перерисовываем, иначе сбрасывался ввод. */
+  private marketTyping(): boolean {
+    const a = document.activeElement;
+    return this.tab === "market" && this.isOpen && this.win.contains(a) && (a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement || a instanceof HTMLSelectElement);
   }
 
   /** Опыт героя: сколько набрано и сколько нужно до следующего уровня (Game шлёт каждый кадр; перерисовка — только при изменении). */
@@ -680,7 +686,7 @@ export class PcInventory {
     tabs.append(
       mk("Все лоты", !this.marketMine, () => { this.marketMine = false; this.marketLot = null; this.marketListing = false; this.render(); }),
       mk("Мои лоты", this.marketMine, () => { this.marketMine = true; this.marketLot = null; this.marketListing = false; this.render(); }),
-      mk("Выставить предмет", this.marketListing, () => { this.marketListing = true; this.marketListPick = null; this.marketLot = null; this.render(); }),
+      mk("Выставить предмет", this.marketListing, () => { this.marketListing = true; this.marketListPick = null; this.marketLot = null; this.marketPriceText = ""; this.marketNoteText = ""; this.marketQtyText = "1"; this.render(); }),
     );
     wrap.append(tabs);
     for (const o of md.outgoing ?? []) {
@@ -918,19 +924,23 @@ export class PcInventory {
     const grid = this.marketPickGrid(d, new Set(this.marketListPick ? [this.marketListPick] : []), (code) => {
       this.marketListPick = code;
       this.marketInspect = code;
+      this.marketQtyText = "1";
       this.render();
     });
     const panel = div("pcinv-market-box");
     const picked = this.marketListPick ? items.find((x) => x.code === this.marketListPick) : undefined;
     if (picked) panel.append(this.marketLocalCard(d, picked));
     const qty = document.createElement("input");
-    qty.className = "pcinv-input"; qty.type = "number"; qty.min = "1"; qty.value = "1";
+    qty.className = "pcinv-input"; qty.type = "number"; qty.min = "1"; qty.value = this.marketQtyText;
+    qty.oninput = () => { this.marketQtyText = qty.value; };
     if (picked?.stack && picked.max > 1) {
       qty.max = String(picked.max);
       panel.append(div("pcinv-small pcinv-market-center", `Количество в стопке · есть ${picked.max}`), qty);
     }
-    const price = document.createElement("input"); price.className = "pcinv-input"; price.type = "number"; price.min = "1"; price.placeholder = "Цена в ломе";
-    const note = document.createElement("input"); note.className = "pcinv-input"; note.maxLength = MARKET.maxNote; note.placeholder = "Описание для покупателей";
+    const price = document.createElement("input"); price.className = "pcinv-input"; price.type = "number"; price.min = "1"; price.value = this.marketPriceText; price.placeholder = "Цена в ломе";
+    price.oninput = () => { this.marketPriceText = price.value; };
+    const note = document.createElement("input"); note.className = "pcinv-input"; note.maxLength = MARKET.maxNote; note.value = this.marketNoteText; note.placeholder = "Описание для покупателей";
+    note.oninput = () => { this.marketNoteText = note.value; };
     panel.append(price, note);
     const submit = button("Выставить на рынок", () => {
       const code = this.marketListPick;
@@ -940,10 +950,12 @@ export class PcInventory {
       const n = Math.max(1, Math.floor(Number(qty.value) || 1));
       if (picked?.stack && n > picked.max) return this.textTip(wrap, "Количество", `В стопке только ${picked.max}.`);
       this.marketListing = false; this.marketListPick = null; this.marketInspect = null;
-      this.hooks.act({ act: "marketList", id: code, idx: p, fuel: JSON.stringify({ n, note: note.value.slice(0, MARKET.maxNote) }) });
+      const noteValue = note.value.slice(0, MARKET.maxNote);
+      this.marketPriceText = ""; this.marketNoteText = ""; this.marketQtyText = "1";
+      this.hooks.act({ act: "marketList", id: code, idx: p, fuel: JSON.stringify({ n, note: noteValue }) });
     });
     submit.className = "pcinv-btn gold";
-    panel.append(submit, button("Отмена", () => { this.marketListing = false; this.marketListPick = null; this.marketInspect = null; this.render(); }));
+    panel.append(submit, button("Отмена", () => { this.marketListing = false; this.marketListPick = null; this.marketInspect = null; this.marketPriceText = ""; this.marketNoteText = ""; this.marketQtyText = "1"; this.render(); }));
     const layout = div("pcinv-market-layout");
     const left = div("pcinv-market-left");
     left.append(grid);
@@ -1074,6 +1086,9 @@ export class PcInventory {
   private marketInspect: string | null = null;
   private marketOfferLot: string | null = null;
   private marketOfferPick = new Map<string, number>();
+  private marketPriceText = "";
+  private marketNoteText = "";
+  private marketQtyText = "1";
 
   /** Что можно отдать: оружие не в руках и не избранное, броня не надетая, кольца в сумке, камни, лом/зелья/рыба — с иконкой. */
   private tradeable(d: PcInvData): { code: string; label: string; max: number; stack: boolean; view: TradeItemView }[] {
