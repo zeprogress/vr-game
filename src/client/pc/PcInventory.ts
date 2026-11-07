@@ -3750,7 +3750,7 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-market-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:8px; }
 .pcinv-market-lot { position:relative; cursor:pointer; }
 .pcinv-market-lot > .pcinv-tic { position:absolute; inset:0; width:100% !important; height:100% !important; border:none; background:transparent; }
-.pcinv-market-lot > .pcinv-tic > * { width:72% !important; height:72% !important; }
+.pcinv-market-lot > .pcinv-tic > * { width:84% !important; height:84% !important; }
 .pcinv-market-price { position:absolute; left:2px; right:2px; bottom:1px; text-align:center; font:800 9px/1.2 system-ui; color:#ffe3a0; background:rgba(4,10,19,.78); border-top:1px solid rgba(255,220,120,.22); z-index:2; pointer-events:none; }
 .pcinv-market-card { border:1px solid #2a405d; background:rgba(8,19,33,.85); padding:8px; display:flex; flex-direction:column; gap:5px; cursor:pointer; min-width:0; align-items:center; }
 .pcinv-market-card .pcinv-tic { width:58px; height:58px; }
