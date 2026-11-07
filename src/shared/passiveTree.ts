@@ -151,7 +151,7 @@ const KEY_FX: Record<string, KeyFx> = {
   "Ответная буря": { tb: { dmg: -0.05 }, special: { stormAoe: 4.5 } },
   "Святой страж": { skills: { "*": { cdAdd: 2 } }, special: { allyHealOnCast: 0.02 } },
   "Сотрясение": { skills: { stunBash: { cdAdd: 3 } }, special: { vsStunned: 0.15 } },
-  "Перегрев": { tb: { skill: 0.2 }, skills: { "*": { cdAdd: 3 } } },
+  "Перегрев": { tb: { skill: 0.5 }, skills: { "*": { cdAdd: 3 } } },
   "Охотничья сеть": { skills: { arrowRain: { durMul: 1.5, cdAdd: 3 }, webArrow: { durMul: 1.5, cdAdd: 3 } } },
   "Метка смерти": { skills: { mark: { durMul: 2, cdAdd: 4 } } },
   "Целитель леса": { skills: { lifeArrow: { healMul: 2, dmgMul: 0.8 } } },
@@ -287,7 +287,7 @@ const BODY_BATTLEMAGE = T("Телосложение · тело", "ТЕЛ", MIDD
 const WIS_DEF = T("Мудрость", "МДР", ALL, "Ясный разум: маг. защита +10%, HP −5%",
   "Оберег: +2% маг. защиты", "Стойкий дух: +2% маг. защиты");
 const EVADE = (key: string) => T("Телосложение · уход", "ТЕЛ", LEFT, key, "Отскок: +3% уворота", "Скрытность: +3% уворота");
-const OVERHEAT = "Перегрев: урон умений +20%, откат умений +3 с";
+const OVERHEAT = "Перегрев: урон умений +50%, откат умений +3 с";
 const SPIRIT = T("Дух", "МДР", ALL, "Святой страж: умения лечат союзников рядом на 2% HP, откат умений +2 с",
   "Стойкий дух: +2% маг. защиты", "Восстановление: каждое умение лечит тебя на 1% HP");
 const COUNTER = T("Контратака", ["УДЧ", "ТЕЛ"], ALL, "Возмездие: блок отражает 20% урона, урон атак −5%",
