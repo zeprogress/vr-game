@@ -4275,6 +4275,7 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-ttile { display:flex; align-items:center; gap:6px; padding:4px 6px; border:1px solid #22354f; background:rgba(7,16,29,.9); min-width:0; }
 .pcinv-tic { width:40px; height:40px; flex:none; display:flex; align-items:center; justify-content:center; background:#08111e; border:1px solid #2d405a; overflow:hidden; }
 .pcinv-tic > * { width:34px !important; height:34px !important; }
+.pcinv-tic > .pcinv-w { width:auto !important; min-width:14px; height:14px !important; font:800 9px/14px system-ui; padding:0 3px; }
 .pcinv-tic img, .pcinv-tic svg { width:34px; height:34px; }
 .pcinv-tic > .gico-e { width:auto !important; height:auto !important; font-size:30px; line-height:1; display:flex; align-items:center; justify-content:center; }
 .pcinv-tname2 { flex:1; min-width:0; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
