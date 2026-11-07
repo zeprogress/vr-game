@@ -9981,11 +9981,9 @@ export class ZoneRoom extends Room<ZoneState> {
     return Math.round(skillStrike(cls, p.level, p, this.strikeHandFor(p, cls, rt)).dmg * 10) / 10;
   }
 
-  /** База яда «Чумного клинка»: атака кинжала с заточкой вдвойне (plagueAtk), без уровня и силы. */
+  /** База яда «Чумного клинка»: атака кинжала (заточка входит в roll один раз), без уровня и силы. */
   private plagueAtkOf(p: PlayerState, rt: Runtime): number {
-    const hand = this.strikeHandFor(p, "assassin", rt);
-    const h: "left" | "right" = p.rightCls === "dagger" ? "right" : "left";
-    return plagueAtk(hand, attackPointBest(rolledIn(p, h, rt), shieldRolledIn(p, h, rt)));
+    return plagueAtk(this.strikeHandFor(p, "assassin", rt));
   }
 
   /**

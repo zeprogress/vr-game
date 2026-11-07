@@ -353,7 +353,7 @@ export async function build(ctx: LabCtx): Promise<void> {
     };
     const strike = skillStrike(cls, level, attrs, hand).dmg;
     if (cls === "battlemage") return { strike, phys: hammerPhysStrike(level, attrs, hand) };
-    if (cls === "assassin") return { strike, phys: plagueAtk({ mult: hand.mult, roll: 1 }, 1) };
+    if (cls === "assassin") return { strike, phys: plagueAtk({ mult: hand.mult, roll: 1 }) };
     return { strike };
   }
 
