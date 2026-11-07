@@ -65,14 +65,15 @@ test("со свитком с +13: 20% поломки, 80% сохранения",
 });
 
 test("восстановление: цена зависит от уровня поломки", () => {
-  assert.deepEqual(restoreCost(4), { scrap: 6_000, scale: 0 });
-  assert.deepEqual(restoreCost(4, "craft"), { scrap: 4_200, scale: 0 });
-  assert.deepEqual(restoreCost(4, "legendary"), { scrap: 2_900, scale: 0 });
-  assert.deepEqual(restoreCost(5), { scrap: 11_000, scale: 0 });
-  assert.deepEqual(restoreCost(6), { scrap: 18_000, scale: 0 });
-  assert.deepEqual(restoreCost(6, "craft"), { scrap: 12_600, scale: 0 });
-  assert.deepEqual(restoreCost(9), { scrap: 51_000, scale: 1 });
-  assert.deepEqual(restoreCost(14), { scrap: 146_000, scale: 2 });
+  assert.deepEqual(restoreCost(4), { scrap: 8_000, scale: 0 });
+  assert.deepEqual(restoreCost(5), { scrap: 8_000, scale: 0 });
+  assert.deepEqual(restoreCost(6), { scrap: 8_000, scale: 0 });
+  assert.deepEqual(restoreCost(4, "craft"), { scrap: 5_600, scale: 0 });
+  assert.deepEqual(restoreCost(4, "legendary"), { scrap: 3_900, scale: 0 });
+  assert.deepEqual(restoreCost(7), { scrap: 15_000, scale: 0 });
+  assert.deepEqual(restoreCost(9), { scrap: 48_800, scale: 1 });
+  assert.deepEqual(restoreCost(14), { scrap: 133_100, scale: 2 });
+  assert.deepEqual(restoreCost(15), { scrap: 150_000, scale: 2 });
   assert.ok(restoreCost(7).scrap > restoreCost(6).scrap);
   assert.ok(restoreCost(15).scrap > restoreCost(14).scrap);
   assert.equal(ATTACK_POINT.max, 15);

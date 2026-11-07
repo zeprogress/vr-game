@@ -1453,11 +1453,11 @@ export const ATTACK_POINT = {
 /** Цена восстановления сломанного оружия: scrap + чешуя дракона (scale). */
 export function restoreCost(brokenAt: number, tier: WeaponTier = "ruby"): { scrap: number; scale: number } {
   const l = Math.max(4, Math.min(15, Math.floor(brokenAt) || 4));
-  // Цена растёт на каждом уровне поломки, но низкие уровни дешевле.
-  const n = l - 4;
+  // +4…+6 — одинаковая цена 8 000; с +7 растёт до 150 000 на +15.
+  const base = l <= 6 ? 8_000 : 15_000 + ((l - 7) * 135_000) / 8;
   // Рубиновое — базовая цена; мастерское на 30% дешевле, уникальное ещё на 30% дешевле мастерского.
   const mul = tier === "craft" ? 0.7 : tier === "legendary" ? 0.49 : 1;
-  const scrap = Math.round(((6_000 + n * 4_000 + n * n * 1_000) * mul) / 100) * 100;
+  const scrap = Math.round((base * mul) / 100) * 100;
   const scale = l <= 8 ? 0 : l <= 13 ? 1 : 2;
   return { scrap, scale };
 }
