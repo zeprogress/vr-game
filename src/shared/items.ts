@@ -1146,7 +1146,7 @@ export const AEGIS_LABEL = `Оплот: блок удара вблизи леч�
 export function instanceEffects(w: WeaponInstance): string[] {
   if (w.broken) return [`Хлам: сломано на +${w.brokenAt ?? 6}. Работает как +3 (+15% урона).`];
   const out: string[] = [];
-  if (attackPoints(w) >= ATTACK_POINT.max) out.push("Предел +15: +245% урона и белое свечение");
+  if (attackPoints(w) >= ATTACK_POINT.max) out.push("Предел +15: +500% урона и белое свечение");
   if (w.tier === "craft") {
     if (craftPow(w) > 0) out.push(`Мастерство +${Math.round(craftPow(w) * 100)}% к урону`);
     if (w.by) out.push(`Создал: ${w.by}`);
@@ -1509,14 +1509,15 @@ export function restoreSharp(brokenAt: number): number {
 /** Свиток сохранения: цена у трактирщика и шанс с мирового босса. */
 export const SAVE_SCROLL = { costScrap: 70_000, bossChance: 0.08, catBossChance: 0.01 } as const;
 
-/** Прибавка к урону от n точек; +15 даёт +245% (×3.45). */
+/**
+ * Прибавка к урону от n точек; +15 даёт +500% (×6).
+ * После безопасных +5 кривая ускоряется: +6 45%, +9 135%, +10 175%,
+ * +12 275%, +14 410%, +15 500%.
+ */
+const ATTACK_BONUS = [0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.45, 0.70, 1.00, 1.35, 1.75, 2.20, 2.75, 3.35, 4.10, 5.00] as const;
 export function attackPointBonus(n: number): number {
   const k = Math.max(0, Math.min(ATTACK_POINT.max, Math.floor(n)));
-  if (k <= 5) return 0.05 * k;
-  if (k <= 9) return 0.25 + 0.15 * (k - 5);
-  if (k <= 12) return 0.85 + 0.20 * (k - 9);
-  if (k <= 14) return 1.45 + 0.25 * (k - 12);
-  return 1.95 + 0.50;
+  return ATTACK_BONUS[k];
 }
 
 /** «Мастерство» редкого исхода крафта (ровно рубиновое, +15% к уникальному). */

@@ -1,4 +1,4 @@
-import { HAMMER_SKILL, staffMagicTier, type Attr, type AttrsIn, type ClassId } from "./classes2";
+import { ARCHER_SKILL_MUL, HAMMER_SKILL, staffMagicTier, type Attr, type AttrsIn, type ClassId } from "./classes2";
 import { weaponDamage } from "./combat";
 import { fireboltDamage, magicLevelFor } from "./magic";
 import { attrOf, invested } from "./attrs2";
@@ -47,7 +47,7 @@ export function skillStrike(cls: ClassId, level: number, a: StrikeAttrs, hand: S
       // Умения молота: урон от ИНТЕЛЛЕКТА (HAMMER_SKILL.intPer за очко сверх старта), уровень — как у магии.
       return { dmg: 1.9 * magicLevelFor(level) * (1 + invested(attrOf(a, "int")) * HAMMER_SKILL.intPer) * hand.mult * hand.roll, magic: true };
     case "archer":
-      return { dmg: weaponDamage("arrow", level, a, hand.mult * hand.roll), magic: false };
+      return { dmg: weaponDamage("arrow", level, a, hand.mult * hand.roll) * ARCHER_SKILL_MUL, magic: false };
     default:
       return { dmg: weaponDamage(strikeKindOf(cls) as "sword" | "dagger" | "spear", level, a, hand.mult * hand.roll), magic: false };
   }

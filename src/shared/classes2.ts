@@ -263,6 +263,9 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   },
 };
 
+/** Урон умений лучника: базовые стрелы не трогаем, только скиллы. */
+export const ARCHER_SKILL_MUL = 1.1;
+
 /** Множитель магии от тира посоха (раньше тир посоха на огнешар не влиял — маг отставал). */
 export function staffMagicTier(tier: string): number {
   const t = WEAPONS2.staff.tiers;

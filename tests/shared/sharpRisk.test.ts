@@ -5,12 +5,12 @@ import { ATTACK_POINT, attackPointBonus, attackPointMul, attackPointNext, attack
 const wpn = (sharp: number, extra: Partial<WeaponInstance> = {}): WeaponInstance =>
   ({ id: "t", cls: "sword", tier: "legendary", affixes: [], sharp, ...extra }) as WeaponInstance;
 
-test("заточка: урон по ступеням +25 / +85 / +145 / +195 / +245%", () => {
+test("заточка: урон по ступеням +25 / +135 / +275 / +410 / +500%", () => {
   assert.ok(Math.abs(attackPointBonus(5) - 0.25) < 1e-9);
-  assert.ok(Math.abs(attackPointBonus(9) - 0.85) < 1e-9);
-  assert.ok(Math.abs(attackPointBonus(12) - 1.45) < 1e-9);
-  assert.ok(Math.abs(attackPointBonus(14) - 1.95) < 1e-9);
-  assert.ok(Math.abs(attackPointBonus(15) - 2.45) < 1e-9);
+  assert.ok(Math.abs(attackPointBonus(9) - 1.35) < 1e-9);
+  assert.ok(Math.abs(attackPointBonus(12) - 2.75) < 1e-9);
+  assert.ok(Math.abs(attackPointBonus(14) - 4.10) < 1e-9);
+  assert.ok(Math.abs(attackPointBonus(15) - 5.00) < 1e-9);
 });
 
 test("заточка: шансы +6…+14 и фиксированные 3% на +15", () => {
@@ -106,5 +106,5 @@ test("урон от точки совпадает с текстом и серв�
     assert.ok(Math.abs(mul - (1 + attackPointBonus(n))) < 1e-9, `attackPointMul +${n}`);
     assert.ok(Math.abs(powerMulOfText(heldAffixText(w)) - mul) < 1e-6, `текст +${n}`);
   }
-  assert.ok(Math.abs(attackPointMul(wpn(15)) - 3.45) < 1e-9);
+  assert.ok(Math.abs(attackPointMul(wpn(15)) - 6.00) < 1e-9);
 });
