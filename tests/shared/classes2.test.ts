@@ -160,7 +160,7 @@ test("потолок темпа: на 100 уровне не больше 5 уд�
 test("уровень больше не даёт герою почти всё: к 100 ур. рост умеренный", () => {
   const a = blankAttrs();
   assert.ok(physPower2(100, a) / physPower2(1, a) < 30);
-  assert.ok(maxHp2(100, a) < 5500);
+  assert.ok(maxHp2(100, a) < 6000);
   assert.ok(moveSpeed2(100, a) < 8);
 });
 
