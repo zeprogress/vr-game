@@ -283,7 +283,7 @@ export const PROGRESSION = {
    * Основная сила — атрибуты, дерево и снаряжение.
    */
   perLevel: {
-    hp: { perLevel: 14, accel: 0.4 },
+    hp: { perLevel: 21, accel: 0.6 }, // 2026-11-08: рост HP ×1.5 (было 14 / 0.4)
     mana: { perLevel: 2, accel: 0.15 },
     weaponDmg: { perLevel: 0.06, accel: 0.0035 }, // множитель урона оружия (старт 1)
     magicDmg: { perLevel: 0.06, accel: 0.0035 }, // множитель силы магии (старт 1)
