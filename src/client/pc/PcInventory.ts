@@ -812,8 +812,6 @@ export class PcInventory {
       const cell = this.marketCell(d, it.code, it.view, it.max);
       cell.classList.toggle("sel", selected.has(it.code));
       const qty = it.stack ? Math.max(0, Math.floor(qtyOf?.(it.code) ?? 0)) : 0;
-      const shownQty = it.stack ? (qty > 0 ? qty : it.max) : 0;
-      if (shownQty > 0) cell.append(div("pcinv-market-count", String(shownQty)));
       cell.onclick = () => onPick(it.code);
       this.marketHoverLocal(cell, d, it.code, this.marketName(it), it.view.tier, it.stack ? qty || it.max : undefined);
       grid.append(cell);
@@ -898,16 +896,6 @@ export class PcInventory {
     return this.marketBarRows(this.marketLocalRows(d, code));
   }
 
-  private syncMarketQtyBadge(): void {
-    const cell = document.querySelector(".pcinv-market-form .pcinv-cell.sel");
-    if (!cell) return;
-    let badge = cell.querySelector(".pcinv-market-count") as HTMLElement | null;
-    const n = Math.max(1, Math.floor(Number(this.marketQtyText) || 1));
-    if (n <= 1) { badge?.remove(); return; }
-    if (!badge) { badge = div("pcinv-market-count"); cell.append(badge); }
-    badge.textContent = String(n);
-  }
-
   private marketLocalCard(d: PcInvData, it: ReturnType<PcInventory["marketable"]>[number], n?: number): HTMLElement {
     const box = div("pcinv-market-detail");
     const head = div("pcinv-market-detailhead");
@@ -972,7 +960,7 @@ export class PcInventory {
     if (picked) panel.append(this.marketLocalCard(d, picked, Math.max(1, Math.floor(Number(this.marketQtyText) || 1))));
     const qty = document.createElement("input");
     qty.className = "pcinv-input"; qty.type = "number"; qty.min = "1"; qty.value = this.marketQtyText;
-    qty.oninput = () => { this.marketQtyText = qty.value; this.syncMarketQtyBadge(); };
+    qty.oninput = () => { this.marketQtyText = qty.value; };
     if (picked?.stack && picked.max > 1) {
       qty.max = String(picked.max);
       panel.append(div("pcinv-small pcinv-market-center", `Количество в стопке · есть ${picked.max}`), qty);
