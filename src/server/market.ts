@@ -119,7 +119,9 @@ export function marketDetails(t: Taken): string[] {
   if (t.k === "armor") return [armorLabel(t.a)];
   if (t.k === "ring") return [ringLabel(t.r)];
   if (t.k === "neck") return [neckLabel(t.n)];
-  return [`${ITEMS[t.k === "bag" ? t.item : "scrap"].name}`];
+  if (t.k === "bag") return [ITEMS[t.item].name];
+  if (t.k === "mat") return [CRAFT_ITEMS[t.id].name];
+  return ["Камень"];
 }
 
 /** Сетевое представление заявки для конкретного смотрящего. */
