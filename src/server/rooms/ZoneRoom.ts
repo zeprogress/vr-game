@@ -10992,7 +10992,9 @@ export class ZoneRoom extends Room<ZoneState> {
                 this.skillHitMob(ownerId, m, fanKnifeDamage(pow.dmg), dx / d, dz / d, true, false, false, false, hit);
                 // Кровотечение — доля здоровья цели (как поджог мага), у босса и осколков слабее.
                 const big = m.kind === "boss" || m.kind === "shard";
-                this.sim.bleedMob(m.id, ((m.pctHpBase * FAN.bleedHpFrac) / (big ? FAN.bossDiv : 1)) * (1 + (tk.bleedMul ?? 0)), FAN.bleedSec, ownerId);
+                const bleedBase = big ? Math.min(m.maxHp * FAN.bossFrac, FAN.bossCap) : m.pctHpBase * FAN.bleedHpFrac;
+                const bleedDps = big ? Math.min(bleedBase * (1 + (tk.bleedMul ?? 0)), FAN.bossCap) : bleedBase * (1 + (tk.bleedMul ?? 0));
+                this.sim.bleedMob(m.id, bleedDps, FAN.bleedSec, ownerId);
               }
             }, (0.15 + i * 0.18) * 1000);
           }

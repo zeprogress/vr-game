@@ -706,7 +706,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     cooldown: 14, castTime: 0.9, radius: 6.5, dmgMult: 1, hits: 5,
     variants: {
       support: { name: "Огненный дождь", desc: "Круг огня вдалеке: 5 волн магии, каждая поджигает (горение 6 с)" },
-      assassin: { name: "Отскок с веером", desc: "Отскок назад на {r:5} м и три веера ножей конусом вперёд ({r:9} м), каждый нож — кровотечение 5 с: 2% здоровья цели в секунду" },
+      assassin: { name: "Отскок с веером", desc: "Отскок назад на {r:5} м и три веера ножей конусом вперёд ({r:9} м), каждый нож — кровотечение 6 с: 3% здоровья цели в секунду (у боссов 1%, не больше 5000 в секунду)" },
       spearman: { name: "Ливень копий", desc: "Три тяжёлых копья с неба в круг {r:5} м: каждое бьёт ×1.6 и оглушает на 0.5 с" },
     },
   },
@@ -764,7 +764,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   plague: {
     name: "Чумной клинок", icon: glyph("s.plague"), test: true,
     desc: "8 с отравленных клинков: удар вешает стак яда (до 4); на 4 стаках взрыв заражает соседей (+1 стак) — яд ползёт по толпе. Яд — только от атаки кинжала (тир, ролл «Урон», заточка) и мудрости; уровень и сила на него не влияют",
-    cooldown: 16, castTime: 0, radius: 5, dmgMult: 0.288, hits: 1, // взрыв −20% (2026-10-15): было 0.36
+    cooldown: 16, castTime: 0, radius: 5, dmgMult: 0.20, hits: 1, // 2026-11-07: 20% силы атаки
     attr: { attr: "wis", per: 1, pow: 0.75, what: "сила яда" }, // 2026-10-27: (1 + вложено)^0.75 — МДР 17 ≈ ×8, 41 ≈ ×16, 200 ≈ ×53 // 2026-10-16: ×10 к зависимости от мудрости (было 0.1 = +10% за очко; ×20 откатили); раньше: 2% → 4.5% → 8% → 14% → 11.2% → 10%
   },
   smoke: {
@@ -934,7 +934,7 @@ export const CHAIN = { jump: 7, falloff: 0.8 } as const;
 /** Аура исцеления: длительность и сколько «полных лечений» отдаёт за всё время. */
 export const HEAL_AURA = { duration: 6, totalMul: 1.6 } as const;
 /** Веер ножей: кровотечение — доля МАКС. HP цели в секунду (босс/осколки — в bossDiv раз меньше), bleedSec с. */
-export const FAN = { range: 9, halfAngle: 0.55, volleys: 3, dmgMult: 0.7, bleedHpFrac: 0.05, bleedSec: 6, bossDiv: 2.5 } as const;
+export const FAN = { range: 9, halfAngle: 0.55, volleys: 3, dmgMult: 0.7, bleedHpFrac: 0.03, bleedSec: 6, bossFrac: 0.01, bossCap: 5000 } as const;
 
 /** Числа «Печати» (лечение — доля макс. HP в секунду; урон — у боевого мага). */
 export const SEAL = { duration: 6, healFracPerSec: 0.015, shield: 0.2, slow: 0.4, burnPerSec: 0.35 } as const;
@@ -1000,7 +1000,7 @@ export function plagueAtk(hand: { mult: number; roll: number }): number {
 export const PLAGUE = {
   /** Множитель базы яда (plagueAtk). */
   weaponK: 70,
-  duration: 8, stackSec: 3, maxStacks: 4, tickFrac: 0.024, burstRadius: 4, // яд −20% (2026-10-15): было 0.03; радиус взрыва 4 м (было 5)
+  duration: 8, stackSec: 3, maxStacks: 4, tickFrac: 0.02, burstRadius: 4, // 2026-11-07: 2% атаки в секунду за стак
   /** Взрыв на maxStacks стаках не сжигает их; следующий взрыв того же моба — не раньше чем через burstCd с. */
   burstCd: 3,
   /** Взрыв заражает соседей в burstRadius: +spread стаков (цепочкой — их взрывы заражают дальше). */
