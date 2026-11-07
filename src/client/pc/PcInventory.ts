@@ -801,6 +801,7 @@ export class PcInventory {
     if (e) return this.entryCell(e).cloneNode(true) as HTMLDivElement;
     if (code.startsWith("g:")) return this.gemCell(code.slice(2), n, d).cloneNode(true) as HTMLDivElement;
     if (code.startsWith("m:")) return this.matCell(code.slice(2) as CraftItemId, n).cloneNode(true) as HTMLDivElement;
+    if (code === "b:save_scroll") return countCell(iconHtml("i.save_scroll"), n);
     const c = div("pcinv-cell");
     c.append(this.tradeIcon(view));
     return c;
