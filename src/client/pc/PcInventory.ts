@@ -718,20 +718,25 @@ export class PcInventory {
     const rank: Record<string, number> = { base: 1, gold: 2, legendary: 3, craft: 4, ruby: 5 };
     lots = [...lots].sort((a, b) => this.marketSort === "priceAsc" ? a.price - b.price : this.marketSort === "priceDesc" ? b.price - a.price : this.marketSort === "tier" ? (rank[b.item.tier ?? ""] ?? 0) - (rank[a.item.tier ?? ""] ?? 0) : b.createdAt - a.createdAt);
     const sel = this.marketLot ? [...md.lots, ...md.mine].find((x) => x.id === this.marketLot) : undefined;
-    if (sel) wrap.append(this.marketDetail(sel));
-    const grid = div("pcinv-market-grid");
+    const grid = div("pcinv-grid pcinv-bagrid");
     for (const l of lots) {
-      const c = div(`pcinv-market-card${this.marketLot === l.id ? " on" : ""}`);
+      const cell = div(`pcinv-cell pcinv-market-lot${this.marketLot === l.id ? " sel" : ""}`);
+      cell.append(this.tradeIcon(l.item), div("pcinv-market-price", l.price.toLocaleString("ru-RU")));
       const lotName = this.marketLotName(l);
-      c.append(this.tradeIcon(l.item), div("pcinv-market-name", lotName), div("pcinv-market-meta", `${l.seller} · ${l.price.toLocaleString("ru-RU")} лома`));
-      this.marketHover(c, lotName, l.item.tier, l.details, `${l.seller} · ${l.price.toLocaleString("ru-RU")} лома`);
-      if (l.note) c.append(div("pcinv-small", l.note));
-      if (l.mine) c.append(div("pcinv-small gold", "Мой лот"));
-      c.onclick = () => { this.marketLot = l.id; this.marketListing = false; this.render(); };
-      grid.append(c);
+      this.marketHover(cell, lotName, l.item.tier, l.details, `${l.seller} · ${l.price.toLocaleString("ru-RU")} лома`);
+      if (l.note) cell.title = l.note;
+      cell.onclick = () => { this.marketLot = l.id; this.marketListing = false; this.render(); };
+      grid.append(cell);
     }
     if (!lots.length) grid.append(div("pcinv-empty", this.marketMine ? "У тебя пока нет заявок." : "Заявок нет — загляни позже."));
-    wrap.append(grid);
+    const right = div("pcinv-market-box");
+    if (sel) right.append(this.marketDetail(sel));
+    else right.append(div("pcinv-small pcinv-market-center", "Выбери лот слева — здесь будет карточка"));
+    const layout = div("pcinv-market-layout");
+    const left = div("pcinv-market-left");
+    left.append(grid);
+    layout.append(left, right);
+    wrap.append(layout);
     this.body.append(wrap);
   }
 
@@ -741,7 +746,14 @@ export class PcInventory {
     x.className = "pcinv-tx";
     const lotName = this.marketLotName(l);
     box.append(x, div("pcinv-market-name", lotName), div("pcinv-small", `${l.seller} · ${l.price.toLocaleString("ru-RU")} лома`));
-    for (const line of l.details ?? []) if (line) box.append(div("pcinv-small", line));
+    if (l.score) {
+      const sc = div("pcinv-score");
+      sc.innerHTML = `<small>оценка </small>${qualityStarsShort(l.score.pts, l.score.rolls)}`;
+      box.append(sc);
+    }
+    if (l.affixes?.length) box.append(...this.marketBarRows(l.affixes));
+    const affixLabels = new Set((l.affixes ?? []).map((a) => a.label));
+    for (const line of l.details ?? []) if (line && !affixLabels.has(line)) box.append(div("pcinv-small", line));
     if (l.note) box.append(div("pcinv-market-note", l.note));
     const acts = div("pcinv-market-acts");
     if (l.mine) {
@@ -856,8 +868,8 @@ export class PcInventory {
   }
 
   /** Роллы с полосой — та же разметка, что у заточки в обычной карточке, но без кнопок. */
-  private marketAffixRows(d: PcInvData, code: string): HTMLElement[] {
-    return this.marketLocalRows(d, code).map((r) => {
+  private marketBarRows(rows: readonly { label: string; points: number; of: number }[]): HTMLElement[] {
+    return rows.map((r) => {
       const row = div("pcinv-erow");
       const lab = div("pcinv-elabel");
       lab.append(span(r.label), span(`${r.points} / ${r.of}`));
@@ -868,6 +880,10 @@ export class PcInventory {
       row.append(lab, bar);
       return row;
     });
+  }
+
+  private marketAffixRows(d: PcInvData, code: string): HTMLElement[] {
+    return this.marketBarRows(this.marketLocalRows(d, code));
   }
 
   private marketLocalCard(d: PcInvData, it: ReturnType<PcInventory["marketable"]>[number]): HTMLElement {
@@ -3728,6 +3744,10 @@ ${["gold", "legendary", "ruby", "craft"].map(tier).join("\n")}
 .pcinv-market-head { font:700 17px/1.2 system-ui; color:#f7fbff; }
 .pcinv-market-tabs, .pcinv-market-filters { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
 .pcinv-market-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:8px; }
+.pcinv-market-lot { position:relative; cursor:pointer; }
+.pcinv-market-lot > .pcinv-tic { position:absolute; inset:0; width:100% !important; height:100% !important; border:none; background:transparent; }
+.pcinv-market-lot > .pcinv-tic > * { width:72% !important; height:72% !important; }
+.pcinv-market-price { position:absolute; left:2px; right:2px; bottom:1px; text-align:center; font:800 9px/1.2 system-ui; color:#ffe3a0; background:rgba(4,10,19,.78); border-top:1px solid rgba(255,220,120,.22); z-index:2; pointer-events:none; }
 .pcinv-market-card { border:1px solid #2a405d; background:rgba(8,19,33,.85); padding:8px; display:flex; flex-direction:column; gap:5px; cursor:pointer; min-width:0; align-items:center; }
 .pcinv-market-card .pcinv-tic { width:58px; height:58px; }
 .pcinv-market-card .pcinv-tic > *, .pcinv-market-card .pcinv-tic img, .pcinv-market-card .pcinv-tic svg { width:50px !important; height:50px !important; }

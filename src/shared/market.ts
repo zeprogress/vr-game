@@ -37,6 +37,9 @@ export interface MarketLotView {
   expiresAt: number;
   item: TradeItemView;
   details: string[];
+  /** Оценка и роллы — как в обычной карточке. */
+  score?: { pts: number; rolls: number };
+  affixes?: { label: string; points: number; of: number }[];
   mine: boolean;
   /** Только продавцу: входящие предложения. */
   offers?: MarketOfferOut[];

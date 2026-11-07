@@ -4,9 +4,11 @@ import { dataFile } from "./dataDir";
 import { itemView, type Taken } from "./trade";
 import { armorLabel } from "#shared/armor";
 import { CRAFT_ITEMS } from "#shared/craft";
-import { instanceEffects, instanceLabels, instanceName, ITEMS, weaponQuality } from "#shared/items";
-import { NECK_TIER_NAME, neckLabel } from "#shared/necklaces";
+import { affixLabel, enchantInfo, instanceEffects, instanceLabels, instanceName, ITEMS, weaponQuality } from "#shared/items";
+import { armorEnchantRows, armorQuality } from "#shared/armor";
+import { NECK_TIER_NAME, neckEnchantRow, neckLabel, neckQuality } from "#shared/necklaces";
 import { ringLabel } from "#shared/jewels";
+import { ringEnchantRow, ringQuality } from "#shared/ringAffixes";
 import { MARKET, type MarketData, type MarketLotView, type MarketOfferOut, type MarketOutgoingView } from "#shared/market";
 
 const FILE = dataFile("market.json");
@@ -125,6 +127,22 @@ export function marketDetails(t: Taken): string[] {
   return ["Камень"];
 }
 
+function marketAffixRows(t: Taken): { label: string; points: number; of: number }[] {
+  if (t.k === "weapon") return t.w.affixes.map((a, i) => { const e = enchantInfo(t.w, i); return { label: affixLabel(a), points: e?.points ?? 0, of: e?.of ?? 33 }; });
+  if (t.k === "armor") return armorEnchantRows(t.a).map((e) => ({ label: e.label, points: e.points, of: e.of }));
+  if (t.k === "ring") return t.r.rolls.map((_, i) => ringEnchantRow(t.r, i)).filter((e): e is NonNullable<typeof e> => !!e).map((e) => ({ label: e.label, points: e.points, of: e.of }));
+  if (t.k === "neck") return t.n.rolls.map((_, i) => neckEnchantRow(t.n, i)).filter((e): e is NonNullable<typeof e> => !!e).map((e) => ({ label: e.label, points: e.points, of: e.of }));
+  return [];
+}
+
+function marketScore(t: Taken): { pts: number; rolls: number } | undefined {
+  if (t.k === "weapon") return { pts: weaponQuality(t.w), rolls: t.w.affixes.length };
+  if (t.k === "armor") return { pts: armorQuality(t.a), rolls: t.a.rolls.length };
+  if (t.k === "ring") return { pts: ringQuality(t.r), rolls: t.r.rolls.length };
+  if (t.k === "neck") return { pts: neckQuality(t.n), rolls: t.n.rolls.length };
+  return undefined;
+}
+
 /** Сетевое представление заявки для конкретного смотрящего. */
 export function marketLotView(l: MarketListing, token: string): MarketLotView {
   const mine = l.sellerToken === token;
@@ -137,6 +155,8 @@ export function marketLotView(l: MarketListing, token: string): MarketLotView {
     expiresAt: l.expiresAt,
     item: itemView(l.item),
     details: marketDetails(l.item),
+    score: marketScore(l.item),
+    affixes: marketAffixRows(l.item),
     mine,
     ...(mine ? { offers: l.offers.map(marketOfferView) } : {}),
   };
