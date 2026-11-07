@@ -722,6 +722,7 @@ export class PcInventory {
     for (const l of lots) {
       const cell = div(`pcinv-cell pcinv-market-lot${this.marketLot === l.id ? " sel" : ""}`);
       cell.append(this.tradeIcon(l.item), div("pcinv-market-price", l.price.toLocaleString("ru-RU")));
+      if (l.item.n > 1) cell.append(div("pcinv-market-count", String(l.item.n)));
       const lotName = this.marketLotName(l);
       const hoverDetails = [...(l.item.n > 1 ? [`Количество: ×${l.item.n}`] : []), ...(l.affixes ?? []).map((a) => a.label), ...(l.details ?? [])];
       this.marketHover(cell, lotName, l.item.tier, hoverDetails, `${l.seller} · ${l.price.toLocaleString("ru-RU")} лома`);
