@@ -1507,7 +1507,7 @@ export function restoreSharp(brokenAt: number): number {
 }
 
 /** Свиток сохранения: цена у трактирщика и шанс с мирового босса. */
-export const SAVE_SCROLL = { costScrap: 70_000, bossChance: 0.08, catBossChance: 0.01 } as const;
+export const SAVE_SCROLL = { costScrap: 50_000, bossChance: 0.08, catBossChance: 0.01 } as const;
 
 /**
  * Прибавка к урону от n точек; +15 даёт +500% (×6).

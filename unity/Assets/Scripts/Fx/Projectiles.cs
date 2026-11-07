@@ -55,6 +55,7 @@ namespace Zep
             public float srvVy;
             public float grav;
             public bool bolt, orient;
+            public float age, missing;
         }
 
         readonly Dictionary<string, Shot> shots = new();
@@ -164,7 +165,7 @@ namespace Zep
             go.transform.position = pos;
             var vel = new Vector3(vx, vy, vz);
             if (orient && vel.sqrMagnitude > 1e-4f) go.transform.rotation = Quaternion.LookRotation(vel);
-            shots[id] = new Shot { tr = go.transform, pos = pos, vel = vel, srvVy = vy, grav = grav, bolt = bolt, orient = orient };
+            shots[id] = new Shot { tr = go.transform, pos = pos, vel = vel, srvVy = vy, grav = grav, bolt = bolt, orient = orient, age = 0, missing = 0 };
             // Звук выстрела, как в вебе: паутина — свой, остальные плевки — плевок; огнешар — спуск тетивы
             // (стрелам звук даёт act:"bow" стрелка, иначе вышел бы двойной).
             if (!bolt) SoundBank.At(pos, kind == 4 ? "spiderWebShot" : "spitterFire", range: 28f);
@@ -187,12 +188,20 @@ namespace Zep
         {
             if (st == null) return;
             float dt = Time.deltaTime;
+            // Снаряды, которых уже нет в состоянии (потерянный OnRemove/сброс патча), не должны
+            // висеть в воздухе. Даём короткий запас на приход патча и жёсткий предел жизни.
+            const float MissingGrace = 0.4f;
+            const float MaxLife = 10f;
+            List<string> dead = null;
             foreach (var kv in shots)
             {
                 var s = kv.Value;
+                s.age += dt;
                 Vector3 server;
+                bool found = false;
                 if (!s.bolt && st.balls.TryGetValue(kv.Key.Substring(1), out var b))
                 {
+                    found = true;
                     server = new Vector3(b.x, b.y, b.z);
                     // Новый патч — скорость сервера как есть; между патчами летим сами с той же гравитацией.
                     if (b.vy != s.srvVy) { s.vel = new Vector3(b.vx, b.vy, b.vz); s.srvVy = b.vy; }
@@ -202,15 +211,33 @@ namespace Zep
                 }
                 else if (s.bolt && st.bolts.TryGetValue(kv.Key.Substring(1), out var p))
                 {
+                    found = true;
                     server = new Vector3(p.x, p.y, p.z);
                     s.vel = new Vector3(p.vx, p.vy, p.vz);
                     s.pos += s.vel * dt;
                     s.pos = Vector3.Lerp(s.pos, server, 1f - Mathf.Exp(-dt * 10f));
                 }
-                else continue;
+                if (!found)
+                {
+                    s.missing += dt;
+                    if (s.missing > MissingGrace)
+                    {
+                        (dead ??= new List<string>()).Add(kv.Key);
+                        continue;
+                    }
+                }
+                else s.missing = 0f;
+                if (s.age > MaxLife || s.pos.y < -20f)
+                {
+                    (dead ??= new List<string>()).Add(kv.Key);
+                    continue;
+                }
                 s.tr.position = s.pos;
                 if (s.orient && s.vel.sqrMagnitude > 1e-4f) s.tr.rotation = Quaternion.LookRotation(s.vel);
             }
+            if (dead != null)
+                foreach (var id in dead)
+                    if (shots.Remove(id, out var s)) Destroy(s.tr.gameObject);
         }
     }
 }
