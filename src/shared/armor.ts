@@ -295,7 +295,7 @@ export function armorStatsText(a: ArmorInstance): string {
   const b = armorStats(a);
   const speed = [
     b.move ? `Бег ${b.move > 0 ? "+" : ""}${Math.round(b.move * 100)}%` : "",
-    b.atk ? `Атака ${b.atk > 0 ? "+" : ""}${Math.round(b.atk * 100)}%` : "",
+    b.atk ? `Скорость атаки ${b.atk > 0 ? "+" : ""}${Math.round(b.atk * 100)}%` : "",
     b.dodge ? `Уворот ${b.dodge > 0 ? "+" : ""}${(b.dodge * 100).toFixed(1)}%` : "",
   ].filter(Boolean).join(" · ");
   return `Броня ${Math.round(b.physDef)} · Маг. сопр. ${Math.round(b.magDef)} · HP +${Math.round(b.hp)} · Реген ${b.regen.toFixed(2)}/с${speed ? ` · ${speed}` : ""}`;
