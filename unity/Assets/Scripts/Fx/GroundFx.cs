@@ -18,7 +18,7 @@ namespace Zep
         public static readonly Color Ice = new(0.55f, 0.85f, 1f);
         public static readonly Color Gold = new(1f, 0.88f, 0.3f);
 
-        enum Kind { Telegraph, Ring, Zone, Strip, Arrow }
+        enum Kind { Telegraph, Ring, RingIn, Zone, Strip, Arrow }
 
         class Fx
         {
@@ -31,12 +31,14 @@ namespace Zep
             public float born, windup, life, r;
             /// Общая прозрачность эффекта (1 — как есть; 0.5 — вдвое прозрачнее).
             public float alpha = 1f;
+            /// Волна идёт с края к центру (магнитное притяжение).
+            public bool inward;
             public Color color;
             public Vector3 vel;
         }
 
         readonly List<Fx> live = new();
-        Mesh disc, annulus, quad, arrow;
+        Mesh disc, annulus, thinAnnulus, quad, arrow;
         MaterialPropertyBlock mpb;
         static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
 
@@ -50,6 +52,7 @@ namespace Zep
             mpb = new MaterialPropertyBlock();
             disc = Ring(0f, 1f, 64);
             annulus = Ring(0.9f, 1f, 64);
+            thinAnnulus = Ring(0.975f, 1f, 64);
             quad = new Mesh { vertices = new[] { new Vector3(-0.5f, 0, 0), new Vector3(0.5f, 0, 0), new Vector3(0.5f, 0, 1), new Vector3(-0.5f, 0, 1) }, triangles = new[] { 0, 2, 1, 0, 3, 2 } };
             quad.RecalculateBounds();
             var a = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -124,6 +127,13 @@ namespace Zep
         {
             var fx = I.New(Kind.Ring, at, r, 0, life, c, I.annulus, null);
             if (fx != null) fx.alpha = Mathf.Clamp01(alpha);
+        }
+
+        /// Тонкая волна, сходящаяся к точке (магнитное притяжение).
+        public static void RingIn(Vector3 at, float r, Color c, float life = 0.32f, float alpha = 0.28f)
+        {
+            var fx = I.New(Kind.RingIn, at, r, 0, life, c, I.thinAnnulus, null);
+            if (fx != null) { fx.alpha = Mathf.Clamp01(alpha); fx.inward = true; }
         }
 
         /// Зона на время (споры, область града стрел, аура лечения): мягко пульсирует.
@@ -234,6 +244,14 @@ namespace Zep
                             float t = age / f.life;
                             // Из точки: стартуем почти с нуля и доходим до РЕАЛЬНОГО радиуса действия волны.
                             Drape(f.outerMesh, f.outerBase, f.at, f.r * (0.05f + 0.95f * (1 - (1 - t) * (1 - t))), 0.08f);
+                            Tint(f.rend, c, (1f - t) * f.alpha);
+                            break;
+                        }
+                    case Kind.RingIn:
+                        {
+                            float t = age / f.life;
+                            // С края к центру: тонкий фронт сходится к цели и гаснет.
+                            Drape(f.outerMesh, f.outerBase, f.at, f.r * (1f - 0.95f * Mathf.Sqrt(t)), 0.08f);
                             Tint(f.rend, c, (1f - t) * f.alpha);
                             break;
                         }

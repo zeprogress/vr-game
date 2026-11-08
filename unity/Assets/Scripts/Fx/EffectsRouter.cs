@@ -255,6 +255,10 @@ namespace Zep
                     SoundBank.At(p, "arrowVolley");
                     break;
                 case "rainTick": SoundBank.At(p, "arrowVolley"); break;
+                case "magnetPull":
+                    // «Магнитное притяжение»: тонкая волна сходится к цели с края радиуса.
+                    GroundFx.RingIn(p, Or(d, 10f), Popups.Reflect, 0.32f, 0.28f);
+                    break;
                 case "ultWarn": Vfx.I.UltMark(p, Or(r, 6f), Or(d, 1f), GroundFx.Gold); break;
                 case "ultHit": GroundFx.RingOut(p, Or(r, 6f), GroundFx.Gold, 0.7f); SoundBank.At(p, "ultWarrior"); break;
                 case "ultHeal": Popups.Burst(p, 6, Popups.CrossGreen); break;
