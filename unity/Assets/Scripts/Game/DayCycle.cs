@@ -135,8 +135,8 @@ namespace Zep
                 Flicker(dunAll);
                 if (!dunFill)
                 {
-                    dunFill = MakePoint("dunFill", new Color(0.5f, 0.62f, 1f), 14f);
-                    dunFill.intensity = 1.1f;
+                    dunFill = MakePoint("dunFill", new Color(0.5f, 0.62f, 1f), 20f);
+                    dunFill.intensity = 2.2f;
                 }
                 dunFill.enabled = true;
                 dunFill.transform.position = camPos + Vector3.up * 1.2f;
@@ -157,8 +157,8 @@ namespace Zep
                 // чтобы зал читался, даже если огни свечей/факелов не создались.
                 if (!catFill)
                 {
-                    catFill = MakePoint("catFill", new Color(1f, 0.68f, 0.38f), 11f);
-                    catFill.intensity = 1.15f;
+                    catFill = MakePoint("catFill", new Color(1f, 0.68f, 0.38f), 18f);
+                    catFill.intensity = 2.4f;
                 }
                 catFill.enabled = true;
                 catFill.transform.position = camPos + Vector3.up * 1.2f;

@@ -34,7 +34,7 @@ namespace Zep
             public bool zone;
         }
 
-        const int Sparks = 96, BoltSeg = 14;
+        const int Sparks = 96, BoltSeg = 26;
         /// Unity-версия ярче веба: цвета в HDR, чтобы bloom давал ореол (по просьбе — «красиво и эффектно», не точь-в-точь).
         const float Glow = 2.4f;
         /// Живой свет от крупных вспышек — освещает землю и героев вокруг (в вебе его не было).
@@ -391,7 +391,7 @@ namespace Zep
             it.mat.SetVector(A, a);
             it.mat.SetVector(B, b);
             it.mat.SetFloat(Width, width);
-            it.mat.SetFloat(Amp, Mathf.Min(1.2f, Vector2.Distance(new Vector2(a.x, a.z), new Vector2(b.x, b.z)) * 0.12f + 0.2f));
+            it.mat.SetFloat(Amp, Mathf.Min(2.4f, Vector2.Distance(new Vector2(a.x, a.z), new Vector2(b.x, b.z)) * 0.2f + 0.35f));
             it.mat.SetFloat(Seed, Random.value * 50);
             it.mat.SetColor(Color_, color * Glow * 1.3f);
             it.mat.SetFloat(Alpha, 1);
@@ -403,12 +403,27 @@ namespace Zep
         public void Lightning(Vector3 a, Vector3 b, float? groundY, float life = 0.35f)
         {
             Bolt(a, b, FxColors.Lightning, life, 0.2f);
-            Flash(b + Vector3.up * 0.8f, FxColors.LightningCore, 14, 30, life);
             Bolt(a, b, FxColors.LightningCore, life * 0.8f, 0.07f);
-            if (groundY.HasValue) Decal(new Vector3(b.x, groundY.Value, b.z), 1.6f, FxColors.Lightning, 0.35f, 0, 1.3f);
-            Burst(b, FxColors.Lightning, count: 6, speed: 0.6f, life: 0.2f, grav: 0, size: 0.9f);
-            Burst(b, FxColors.Lightning, count: 20, speed: 6, life: 0.45f, grav: 8, size: 0.26f);
-            Burst(b, FxColors.LightningCore, count: 8, speed: 3, life: 0.25f, grav: 0, size: 0.4f);
+            // Настоящая ломаная молния: одно-два ответвления от середины.
+            Vector3 mid = (a + b) * 0.5f + new Vector3(Random.Range(-1.2f, 1.2f), Random.Range(-0.5f, 0.5f), Random.Range(-1.2f, 1.2f));
+            for (int i = 0, n = 1 + Random.Range(0, 2); i < n; i++)
+                Bolt(mid, b + new Vector3(Random.Range(-1.5f, 1.5f), Random.Range(-0.5f, 0.5f), Random.Range(-1.5f, 1.5f)), FxColors.Lightning, life * 0.65f, 0.05f);
+            // Вспышка на земле: яркий свет без кольца; от точки удара разбегаются 2–5 молний.
+            if (groundY.HasValue)
+            {
+                var ground = new Vector3(b.x, groundY.Value, b.z);
+                Flash(ground + Vector3.up * 1.1f, FxColors.LightningCore, 20, 55, life);
+                Flash(ground + Vector3.up * 0.2f, FxColors.Lightning, 9, 35, life * 0.8f);
+                for (int i = 0, n = 2 + Random.Range(0, 4); i < n; i++)
+                {
+                    float ang = Random.value * Mathf.PI * 2f;
+                    float len = 1f + Random.value * 2f;
+                    Bolt(ground + Vector3.up * 0.12f, ground + new Vector3(Mathf.Cos(ang) * len, 0.03f, Mathf.Sin(ang) * len), FxColors.Lightning, life * 0.62f, 0.045f);
+                }
+            }
+            Burst(b, FxColors.Lightning, count: 10, speed: 0.8f, life: 0.24f, grav: 0, size: 1.2f);
+            Burst(b, FxColors.Lightning, count: 28, speed: 7, life: 0.5f, grav: 8, size: 0.3f);
+            Burst(b, FxColors.LightningCore, count: 12, speed: 3.5f, life: 0.28f, grav: 0, size: 0.5f);
         }
 
         /// Метка на мобе одна: новая снимает прежние круг и столб на этом мобе.

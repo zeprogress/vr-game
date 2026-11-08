@@ -254,9 +254,12 @@ namespace Zep
                 case "seal":
                 {
                     var cc = v == V_BATTLEMAGE ? ATK : v == 0 ? DEF : v == V_SUPPORT ? HEALC : Other;
-                    vfx.Decal(at, r ?? 5, cc, d ?? 6, 1, 1);
                     if (v == V_BATTLEMAGE) C.StormZone(at, r ?? 5, d ?? 6);
-                    else vfx.Pillar(at, (r ?? 5) * 0.9f, 2.5f, cc, 0.8f);
+                    else
+                    {
+                        vfx.Decal(at, r ?? 5, cc, d ?? 6, 1, 1);
+                        vfx.Pillar(at, (r ?? 5) * 0.9f, 2.5f, cc, 0.8f);
+                    }
                     Emote(id, "cheer");
                     Sample(at, "holy-seal");
                     return true;

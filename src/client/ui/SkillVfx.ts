@@ -67,7 +67,7 @@ precision highp float;
 varying vec2 vUV;
 uniform vec3 uColor;
 uniform float uT;      // прогресс 0..1 (волна) или время, с (зона/прицел)
-uniform float uMode;   // 0 — ударная волна, 1 — зона, 2 — прицел, 3 — волна сектором (ось +x), 4 — волна без трещин по секундам (яд), 5 — волна без трещин по прогрессу жизни (молот), 9 — сходящаяся тонкая волна притяжения
+uniform float uMode;   // 0 — волна, 1 — зона, 2 — прицел, 3 — сектор, 4 — яд, 5 — молот, 9 — притяжение, 10 — вспышка молнии на земле
 uniform float uHalf;   // полуугол сектора, рад (режим 3)
 uniform float uAlpha;
 uniform float uSeed;
@@ -78,7 +78,12 @@ void main() {
   if (r > 1.0) discard;
   float a = atan(p.y, p.x);
   float al = 0.0;
-  if (uMode > 8.5) {
+  if (uMode > 9.5) {
+    // Вспышка молнии на земле: мягкое яркое ядро без кольца и трещин.
+    float glow = pow(1.0 - r, 2.4);
+    float core = exp(-pow(r / 0.18, 2.0));
+    al = glow * 0.7 + core * 1.8;
+  } else if (uMode > 8.5) {
     // «Магнитное притяжение»: тонкий фронт идёт с края к центру, почти без заливки.
     float front = 1.0 - 0.9 * sqrt(uT);
     float band = exp(-pow((r - front) / 0.035, 2.0));
@@ -210,7 +215,7 @@ void main() {
 
 // ---------------------------------------------------------------- bolt
 
-const BOLT_SEG = 14;
+const BOLT_SEG = 26;
 Effect.ShadersStore["fxBoltVertexShader"] = `
 precision highp float;
 attribute vec3 position; // x — доля вдоль (0..1), y — сторона (-1/1)
@@ -487,7 +492,7 @@ export class SkillVfx {
   decal(
     x: number, y: number, z: number, radius: number, color: Color3, life: number,
     // 0 волна · 1 телеграф опасности · 2 прицел · 3 сектор · 4/5 волны · 6 зона лечения · 9 сходящаяся волна
-    mode: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 = 0, alpha = 1, follow: { kind: "hero" | "mob"; id: string; dy: number } | null = null,
+    mode: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 = 0, alpha = 1, follow: { kind: "hero" | "mob"; id: string; dy: number } | null = null,
   ): void {
     const d = this.takeDecalCapped(mode, groundCap(mode), mode === 1);
     d.mesh.rotation.y = 0;
@@ -571,7 +576,7 @@ export class SkillVfx {
     b.a.set(ax, ay, az);
     b.b.set(bx, by, bz);
     b.mat.setFloat("uWidth", width);
-    b.mat.setFloat("uAmp", Math.min(1.2, Math.hypot(bx - ax, bz - az) * 0.12 + 0.2));
+    b.mat.setFloat("uAmp", Math.min(2.4, Math.hypot(bx - ax, bz - az) * 0.2 + 0.35));
     b.mat.setFloat("uSeed", Math.random() * 50);
     b.mat.setColor3("uColor", color);
     b.mat.setFloat("uAlpha", 1);
@@ -586,11 +591,28 @@ export class SkillVfx {
   lightning(ax: number, ay: number, az: number, bx: number, by: number, bz: number, groundY: number | null, life = 0.35): void {
     this.bolt(ax, ay, az, bx, by, bz, LIGHTNING, life, 0.2);
     this.bolt(ax, ay, az, bx, by, bz, LIGHTNING_CORE, life * 0.8, 0.07);
-    if (groundY !== null) this.decal(bx, groundY, bz, 1.6, LIGHTNING, 0.35, 0, 1.3);
-    // Вспышка-шар в самой точке удара — видно и у летающих целей.
-    this.burst(bx, by, bz, LIGHTNING, { count: 6, speed: 0.6, life: 0.2, grav: 0, size: 0.9 });
-    this.burst(bx, by, bz, LIGHTNING, { count: 20, speed: 6, life: 0.45, grav: 8, size: 0.26 });
-    this.burst(bx, by, bz, LIGHTNING_CORE, { count: 8, speed: 3, life: 0.25, grav: 0, size: 0.4 });
+    // Настоящая ломаная молния: 1–2 боковых ответвления от середины.
+    const len = Math.hypot(bx - ax, by - ay, bz - az);
+    const mx = (ax + bx) / 2 + (Math.random() - 0.5) * len * 0.25;
+    const my = (ay + by) / 2 + (Math.random() - 0.5) * len * 0.12;
+    const mz = (az + bz) / 2 + (Math.random() - 0.5) * len * 0.25;
+    for (let i = 0, n = 1 + Math.floor(Math.random() * 2); i < n; i++) {
+      this.bolt(mx, my, mz, bx + (Math.random() - 0.5) * 3, groundY !== null ? groundY + 0.1 : by - 1, bz + (Math.random() - 0.5) * 3, LIGHTNING, life * 0.65, 0.05);
+    }
+    if (groundY !== null) {
+      // Вместо кольца с трещинами — яркая вспышка на земле и 2–5 молний, разбегающихся на 1–3 м.
+      this.decal(bx, groundY, bz, 2.2, LIGHTNING, 0.24, 10, 1.15);
+      this.decal(bx, groundY, bz, 1.1, LIGHTNING_CORE, 0.16, 10, 1.8);
+      for (let i = 0, n = 2 + Math.floor(Math.random() * 4); i < n; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const r = 1 + Math.random() * 2;
+        this.bolt(bx, groundY + 0.12, bz, bx + Math.cos(a) * r, groundY + 0.03, bz + Math.sin(a) * r, LIGHTNING, 0.2, 0.045);
+      }
+    }
+    // Вспышка в точке удара — ярче, чтобы молния читалась в куче эффектов.
+    this.burst(bx, by, bz, LIGHTNING, { count: 10, speed: 0.8, life: 0.24, grav: 0, size: 1.2 });
+    this.burst(bx, by, bz, LIGHTNING, { count: 28, speed: 7, life: 0.5, grav: 8, size: 0.3 });
+    this.burst(bx, by, bz, LIGHTNING_CORE, { count: 12, speed: 3.5, life: 0.28, grav: 0, size: 0.5 });
   }
 
   /** Столб света высотой h, радиус r; follow — держится над героем/мобом. */
@@ -633,7 +655,7 @@ export class SkillVfx {
           d.life = Math.min(d.life, d.age + 0.3);
         }
       }
-      if (d.mode === 0 || d.mode === 3 || d.mode === 5 || d.mode === 9) d.mat.setFloat("uT", d.age / d.life);
+      if (d.mode === 0 || d.mode === 3 || d.mode === 5 || d.mode === 9 || d.mode === 10) d.mat.setFloat("uT", d.age / d.life);
       else {
         d.mat.setFloat("uT", d.age);
         const fade = Math.min(1, d.age / d.fadeIn) * Math.min(1, (d.life - d.age) / 0.4);

@@ -1034,9 +1034,11 @@ export function playClassAct(
     case "seal": {
       // Грозовое поле — атака, Печать стража (воин) — защита, печать поддержки — лечение.
       const cc = v === V_BATTLEMAGE ? ATK : v === 0 ? DEF : v === V_SUPPORT ? HEALC : OTHER;
-      vfx.decal(x, y, z, r ?? 5, cc, d ?? 6, 1, 1);
       if (v === V_BATTLEMAGE) c.fx.stormZone(x, y, z, r ?? 5, d ?? 6);
-      else vfx.pillar(x, y, z, (r ?? 5) * 0.9, 2.5, cc, 0.8);
+      else {
+        vfx.decal(x, y, z, r ?? 5, cc, d ?? 6, 1, 1);
+        vfx.pillar(x, y, z, (r ?? 5) * 0.9, 2.5, cc, 0.8);
+      }
       c.emote(id, "cheer");
       c.sample(at, "holy-seal");
       return true;

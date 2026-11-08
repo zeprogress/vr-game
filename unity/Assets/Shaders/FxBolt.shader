@@ -37,7 +37,7 @@ Shader "Zep/FxBolt"
                 float3 mid = _A.xyz + ab * t;
                 float3 side = normalize(cross(ab, _WorldSpaceCameraPos - mid) + float3(1e-4, 0, 0));
                 float3 up2 = normalize(cross(side, ab) + float3(0, 1e-4, 0));
-                float seg = floor(t * 14.0);
+                float seg = floor(t * 26.0);
                 float tick = floor(_TimeS * 12.0);
                 float env = sin(3.14159 * t);
                 float3 off = (side * (hash(seg + tick * 13.0) - 0.5) + up2 * (hash(seg * 3.0 + tick * 7.0) - 0.5)) * _Amp * env;
