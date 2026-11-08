@@ -64,6 +64,8 @@ namespace Zep
         Light dunFill;
         /// Яркость всех огней катакомб — как CAT_LIGHT в вебе (world/Catacombs.ts), 2026-10-28: ярче по просьбе.
         const float CatBright = 1.4f;
+        /// Пламя подземелья уже создано (не повторяем Flames.Add каждый кадр).
+        bool dunFlamesBuilt;
         float time;
 
         void Awake() => Load();
@@ -120,7 +122,10 @@ namespace Zep
             string r = camPos.y < -120 ? "dun"
                 : camPos.z > 240 ? "cat"
                 : Mathf.Abs(camPos.x - DunOrigin.x) < 220 && Mathf.Abs(camPos.z - DunOrigin.z) < 220 ? "dun" : "world";
-            if (r != region) { region = r; OnRegion(); }
+            // Регион пересобираем каждый кадр: после телепорта камеры огни должны включаться даже,
+            // если список источников ещё не был готов или регион формально не сменился.
+            region = r;
+            OnRegion();
             if (r == "dun")
             {
                 Underground(DunAmbient, DunFog, 8f, 150f);
@@ -319,7 +324,11 @@ namespace Zep
                     l.intensity = full;
                     dunAll.Add((l, warm ? full : -full)); // минус — кристалл, ровный свет
                 }
+            }
+            if (inDun && !dunFlamesBuilt && assets)
+            {
                 BuildFlames();
+                dunFlamesBuilt = true;
             }
             foreach (var (l, _) in dunAll) l.enabled = inDun;
             Flames.SetActive("dun", inDun);
