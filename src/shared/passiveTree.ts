@@ -562,17 +562,18 @@ function build(cls: ClassId): ClassTree {
     n.desc = `${ATTR_SHORT[a]}: ${ATTR_INFO[a]}.`;
   });
 
-  // Боевой маг: в «Контратаке» ровно один узел сразу после +2 ТЕЛ — «Магнитное притяжение».
-  // Остальные «Вампиризм» в этой ветке остаются на месте.
+  // Боевой маг: в конце ветки «Контратака», сразу после +2 ТЕЛ, — ключевой узел
+  // «Магнитное притяжение». Остальные «Вампиризм» в ветке остаются на месте.
   if (cls === "battlemage") {
     const body = nodes.find((n) => n.part === "mixa" && n.kind === "attr" && n.attr === "con");
     if (body) {
-      const n = nodes.find((x) => x.part === "mixa" && x.kind === "small" && x.row === body.row - 1 &&
+      const n = nodes.find((x) => x.part === "mixa" && x.kind === "small" && x.row === body.row + 1 &&
         edges.some((e) => (e.a === x.id && e.b === body.id) || (e.b === x.id && e.a === body.id)));
       if (n) {
+        n.kind = "key";
         n.name = "Магнитное притяжение";
         n.desc = "обычные атаки притягивают мобов в 10 м вокруг цели на 0,5 м к ней";
-        n.smallSp = { special: "magnet", value: 10 };
+        n.keyFx = { special: { magnet: 10 } };
         n.active = true;
       }
     }
