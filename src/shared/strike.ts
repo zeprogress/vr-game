@@ -1,4 +1,5 @@
 import { ARCHER_SKILL_MUL, HAMMER_SKILL, staffMagicTier, type Attr, type AttrsIn, type ClassId } from "./classes2";
+import { treeBonus } from "./passiveTree";
 import { weaponDamage } from "./combat";
 import { fireboltDamage, magicLevelFor } from "./magic";
 import { attrOf, invested } from "./attrs2";
@@ -45,7 +46,8 @@ export function skillStrike(cls: ClassId, level: number, a: StrikeAttrs, hand: S
       return { dmg: fireboltDamage(level, a, 0.7) * staffMagicTier(hand.tier) * hand.roll * 0.5, magic: true };
     case "battlemage":
       // Умения молота: урон от ИНТЕЛЛЕКТА (HAMMER_SKILL.intPer за очко сверх старта), уровень — как у магии.
-      return { dmg: 1.9 * magicLevelFor(level) * (1 + invested(attrOf(a, "int")) * HAMMER_SKILL.intPer) * hand.mult * hand.roll, magic: true };
+      // «Статика» (+magic в дереве) усиливает молнии и волну, поэтому входит в силу всех умений молота.
+      return { dmg: 1.9 * magicLevelFor(level) * (1 + invested(attrOf(a, "int")) * HAMMER_SKILL.intPer) * (1 + treeBonus(a, "magic")) * hand.mult * hand.roll, magic: true };
     case "archer":
       return { dmg: weaponDamage("arrow", level, a, hand.mult * hand.roll) * ARCHER_SKILL_MUL, magic: false };
     default:
