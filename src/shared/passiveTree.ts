@@ -96,6 +96,8 @@ export interface KeySpecial {
   poisonHit?: number;
   shoveChance?: number;
   selfGuard?: number;
+  /** «Магнитное притяжение»: обычные атаки молотом тянут мобов вокруг цели к цели. */
+  magnet?: number;
 }
 
 /** Особые малые узлы → механика (KeySpecial или прибавка ко всем умениям). Число описания: % → доля, м — как есть. */
@@ -108,6 +110,7 @@ const SPECIAL_SMALL: Record<string, { special?: keyof KeySpecial; allSkills?: Sk
   "Заслон": { special: "allyGuard" },
   "Кровопускание": { special: "bleedMul" },
   "Отрава": { special: "poisonHit" },
+  "Магнитное притяжение": { special: "magnet", raw: true },
   "Отталкивание": { special: "shoveChance" },
   "Крепкая стойка": { special: "selfGuard" },
   "Зоркость": { allSkills: "range", raw: true },
@@ -300,7 +303,7 @@ const COUNTER = T("Контратака", ["УДЧ", "ТЕЛ"], ALL, "Возме
  */
 const COUNTER_STORM = T("Контратака", ["УДЧ", "ТЕЛ"], ALL,
   "Ответная буря: удар в ответ бьёт молнией по врагам рядом с атакующим, урон атак −5%",
-  "Разряд: 2% шанса ударить током атакующего", "Вампиризм: +15% к силе вампиризма");
+  "Разряд: 2% шанса ударить током атакующего", "Магнитное притяжение: обычные атаки притягивают мобов в 10 м вокруг цели на 1 м к ней");
 
 interface ClassContent { mixa: string; mixb: string; themes: Record<TreePart, Theme[]> }
 
@@ -528,7 +531,8 @@ function build(cls: ClassId): ClassTree {
     n.kind = e.skill ? "skill" : "small";
     [n.name, n.desc] = split(e.text);
     const f = 1 + Math.floor(n.row / (ROWS / 3)) * 0.5;
-    if (f > 1 && !e.skill) { n.desc = scaleFirst(n.desc, f); n.name += f >= 2 ? " III" : " II"; }
+    const fixedMagnet = e.text.startsWith("Магнитное притяжение");
+    if (f > 1 && !e.skill && !fixedMagnet) { n.desc = scaleFirst(n.desc, f); n.name += f >= 2 ? " III" : " II"; }
     // Бонус в бою: по имени узла, величина — первое число описания (проценты → доли).
     if (e.skill) {
       const skill = SKILL_BY_NAME[cls][n.name];

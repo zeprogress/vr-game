@@ -214,7 +214,7 @@ import { wallSlide } from "../sim/wallSlide";
 import { leashCut } from "../sim/leash";
 import { ATTR2 } from "#shared/attrs2";
 import { DRAW_IN, drawInPlan, drawModeOf, type DrawMode } from "#shared/drawIn";
-import { STEEL_AURA, STEEL_AURA_SELF, steelAuraSelfDamage, steelAuraTick, steelModeOf, type SteelMode, ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, plagueAtk, SMOKE, SOUL_STEAL, skillAttrMul, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, classWeapon, hasClassWeapon,  skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, hammerWaveDamage, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, MARK_FOCUS, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillAttrs, type SkillId, type Weapon2 } from "#shared/classes2";
+import { STEEL_AURA, STEEL_AURA_SELF, steelAuraSelfDamage, steelAuraTick, steelModeOf, type SteelMode, ABYSS, ARROW_STORM, BARRIER_ARROW, BLAST_ARROW, GHOST_ARROW, skillArrowTime, SWARM_ARROW, WEB_ARROW, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, plagueAtk, SMOKE, SOUL_STEAL, skillAttrMul, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, classWeapon, hasClassWeapon,  skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, HAMMER_FIELD, HAMMER_MAGNET, THUNDER_SPIN, CHAIN_HAMMER, CLASSES2, CLASS_IDS, DAGGER, HAMMER, hammerWaveDamage, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, MARK_FOCUS, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillAttrs, type SkillId, type Weapon2 } from "#shared/classes2";
 import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC } from "#shared/ultimates";
 import {
   MAGIC,
@@ -2636,6 +2636,19 @@ export class ZoneRoom extends Room<ZoneState> {
     return { dmg, critM };
   }
 
+  /** «Магнитное притяжение»: мобы в 10 м вокруг цели сдвигаются на 1 м к ней. */
+  private magnetPull(targetId: string, tx: number, tz: number): void {
+    for (const m of this.sim.mobs.values()) {
+      if (m.dead || m.id === targetId) continue;
+      const dx = tx - m.x;
+      const dz = tz - m.z;
+      const d = Math.hypot(dx, dz);
+      if (d <= 0.05 || d > HAMMER_MAGNET.radius) continue;
+      const step = Math.min(HAMMER_MAGNET.pull, d);
+      this.sim.pullMob(m.id, m.x + (dx / d) * step, m.z + (dz / d) * step, 0.12);
+    }
+  }
+
   /**
    * Удар героя по мобу — ОДИН путь для игрока и бота: урон (heroHitRoll) и все последствия:
    * выпад копья, волна молота, сплэш меча, яд/кровь кинжала, вампиризм, звук и вспышки.
@@ -2664,6 +2677,8 @@ export class ZoneRoom extends Room<ZoneState> {
     const tk = rt.treeKey;
     if (tk?.poisonHit && !struck.dead) this.sim.bleedMob(struck.id, struck.pctHpBase * tk.poisonHit * (1 + (tk.bleedMul ?? 0)), 3, heroId, true);
     if (tk?.shoveChance && !struck.dead && Math.random() < tk.shoveChance) this.sim.shoveMob(struck.id, dx, dz, 3);
+    // «Магнитное притяжение» (боевой маг): обычный удар молотом подтягивает мобов вокруг цели на 1 м к ней.
+    if (weapon === "hammer" && tk?.magnet) this.magnetPull(struck.id, sx, sz);
     if (weapon === "dagger") this.afterDaggerHit(heroId, p, rt, struck);
     // Пронзание (ролл лука): стрела насквозь — моб позади цели получает долю урона.
     if (weapon === "arrow" && this.sim.rollPierce(heroId)) this.sim.pierceBehind(struck.id, sx, sz, dx, dz, dmg * BOW.pierceDmg, heroId);
