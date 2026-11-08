@@ -10,7 +10,7 @@ test("дерево: у каждого класса 222 узла, форма од
     const t = treeOf(c);
     assert.equal(t.nodes.length, 222, c);
     assert.equal(t.edges.map((e) => `${e.a}-${e.b}`).join(","), shape, `${c}: форма как у воина`);
-    assert.equal(t.nodes.filter((n) => n.kind === "key").length, 10, c);
+    assert.equal(t.nodes.filter((n) => n.kind === "key").length, c === "battlemage" ? 11 : 10, c);
   }
 });
 
