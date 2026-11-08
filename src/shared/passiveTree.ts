@@ -571,7 +571,7 @@ function build(cls: ClassId): ClassTree {
         edges.some((e) => (e.a === x.id && e.b === body.id) || (e.b === x.id && e.a === body.id)));
       if (n) {
         n.name = "Магнитное притяжение";
-        n.desc = "обычные атаки притягивают мобов в 10 м вокруг цели на 1 м к ней";
+        n.desc = "обычные атаки притягивают мобов в 10 м вокруг цели на 0,5 м к ней";
         n.smallSp = { special: "magnet", value: 10 };
         n.active = true;
       }

@@ -624,7 +624,7 @@ export const STORM_CRUSH = {
 /** Умения молота: урон растёт от интеллекта на intPer за очко сверх старта (у магии — ATTR2.int.magic, 2.6%). */
 export const HAMMER_SKILL = { intPer: 0.06 } as const;
 /** «Магнитное притяжение»: обычный удар молотом тянет мобов в radius м вокруг цели на pull м к ней. */
-export const HAMMER_MAGNET = { radius: 10, pull: 1 } as const;
+export const HAMMER_MAGNET = { radius: 10, pull: 0.5 } as const;
 
 /** «Грозовое поле» молота: круг на duration с радиусом radius; каждые 0.5 с молния бьёт магией ×boltMul и оглушает на stunSec. */
 export const HAMMER_FIELD = { duration: 5, radius: 8, boltMul: 0.1625, stunSec: 0.2 } as const; // 2026-10-15: молния 0.1625 (вдвое слабее, было 0.325), радиус 8 (было 10), длительность 5 с
