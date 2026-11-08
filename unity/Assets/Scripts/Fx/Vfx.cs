@@ -414,10 +414,10 @@ namespace Zep
                 var ground = new Vector3(b.x, groundY.Value, b.z);
                 Flash(ground + Vector3.up * 1.1f, FxColors.LightningCore, 20, 55, life);
                 Flash(ground + Vector3.up * 0.2f, FxColors.Lightning, 9, 35, life * 0.8f);
-                for (int i = 0, n = 2 + Random.Range(0, 4); i < n; i++)
+                for (int i = 0, n = 3 + Random.Range(0, 3); i < n; i++)
                 {
                     float ang = Random.value * Mathf.PI * 2f;
-                    float len = 1f + Random.value * 2f;
+                    float len = 2f + Random.value * 3f;
                     Bolt(ground + Vector3.up * 0.12f, ground + new Vector3(Mathf.Cos(ang) * len, 0.03f, Mathf.Sin(ang) * len), FxColors.Lightning, life * 0.62f, 0.045f);
                 }
             }

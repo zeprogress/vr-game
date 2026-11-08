@@ -131,7 +131,9 @@ namespace Zep
                 Underground(DunAmbient, DunFog, 8f, 150f);
                 SetAmbient(DunAmbient * 1.1f, DunAmbient * 0.8f, new Color(0.02f, 0.025f, 0.04f));
                 CaveFill(true);
-                EnableNear(dunAll, camPos, 110f);
+                // Телепорт камеры не должен оставлять зал без огней: держим источники включёнными
+                // на всей арене (в подземелье их немного), а тени по-прежнему выбирает ShadowNearest.
+                foreach (var (l, _) in dunAll) l.enabled = true;
                 Flicker(dunAll);
                 if (!dunFill)
                 {
@@ -151,7 +153,10 @@ namespace Zep
             if (r == "cat")
             {
                 Underground(new Color(0.095f, 0.09f, 0.085f), Color.black, 30f, 140f);
-                EnableNear(catFlameLights, camPos, 70f);
+                // Свечи/факелы катакомб — все включены: при телепорте камеры часть списка
+                // оказывалась за пределами прежнего радиуса и зал оставался без источников.
+                foreach (var l in catLights) l.enabled = true;
+                foreach (var (l, _) in catFlameLights) l.enabled = true;
                 Flicker(catFlameLights);
                 // Страховка от «чёрных» катакомб: небольшой тёплый свет у камеры,
                 // чтобы зал читался, даже если огни свечей/факелов не создались.

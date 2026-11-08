@@ -603,9 +603,9 @@ export class SkillVfx {
       // Вместо кольца с трещинами — яркая вспышка на земле и 2–5 молний, разбегающихся на 1–3 м.
       this.decal(bx, groundY, bz, 2.2, LIGHTNING, 0.24, 10, 1.15);
       this.decal(bx, groundY, bz, 1.1, LIGHTNING_CORE, 0.16, 10, 1.8);
-      for (let i = 0, n = 2 + Math.floor(Math.random() * 4); i < n; i++) {
+      for (let i = 0, n = 3 + Math.floor(Math.random() * 3); i < n; i++) {
         const a = Math.random() * Math.PI * 2;
-        const r = 1 + Math.random() * 2;
+        const r = 2 + Math.random() * 3;
         this.bolt(bx, groundY + 0.12, bz, bx + Math.cos(a) * r, groundY + 0.03, bz + Math.sin(a) * r, LIGHTNING, 0.2, 0.045);
       }
     }
