@@ -67,7 +67,7 @@ precision highp float;
 varying vec2 vUV;
 uniform vec3 uColor;
 uniform float uT;      // прогресс 0..1 (волна) или время, с (зона/прицел)
-uniform float uMode;   // 0 — ударная волна, 1 — зона, 2 — прицел, 3 — волна сектором (ось +x), 4 — волна без трещин по секундам (яд), 5 — волна без трещин по прогрессу жизни (молот)
+uniform float uMode;   // 0 — ударная волна, 1 — зона, 2 — прицел, 3 — волна сектором (ось +x), 4 — волна без трещин по секундам (яд), 5 — волна без трещин по прогрессу жизни (молот), 9 — сходящаяся тонкая волна притяжения
 uniform float uHalf;   // полуугол сектора, рад (режим 3)
 uniform float uAlpha;
 uniform float uSeed;
@@ -78,7 +78,12 @@ void main() {
   if (r > 1.0) discard;
   float a = atan(p.y, p.x);
   float al = 0.0;
-  if (uMode < 0.5 || uMode > 3.5) {
+  if (uMode > 8.5) {
+    // «Магнитное притяжение»: тонкий фронт идёт с края к центру, почти без заливки.
+    float front = 1.0 - 0.9 * sqrt(uT);
+    float band = exp(-pow((r - front) / 0.035, 2.0));
+    al = band * (1.0 - uT) * 0.6;
+  } else if (uMode < 0.5 || uMode > 3.5) {
     // Ударная волна: яркий фронт, за ним гаснущие радиальные трещины (режим 4 — без трещин).
     float front = 0.12 + 0.88 * sqrt(uT);
     float band = exp(-pow((r - front) / 0.07, 2.0));
@@ -481,8 +486,8 @@ export class SkillVfx {
 
   decal(
     x: number, y: number, z: number, radius: number, color: Color3, life: number,
-    // 0 волна · 1 телеграф опасности · 2 прицел · 3 сектор · 4/5 волны · 6 зона лечения
-    mode: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 = 0, alpha = 1, follow: { kind: "hero" | "mob"; id: string; dy: number } | null = null,
+    // 0 волна · 1 телеграф опасности · 2 прицел · 3 сектор · 4/5 волны · 6 зона лечения · 9 сходящаяся волна
+    mode: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 = 0, alpha = 1, follow: { kind: "hero" | "mob"; id: string; dy: number } | null = null,
   ): void {
     const d = this.takeDecalCapped(mode, groundCap(mode), mode === 1);
     d.mesh.rotation.y = 0;
@@ -628,7 +633,7 @@ export class SkillVfx {
           d.life = Math.min(d.life, d.age + 0.3);
         }
       }
-      if (d.mode === 0 || d.mode === 3 || d.mode === 5) d.mat.setFloat("uT", d.age / d.life);
+      if (d.mode === 0 || d.mode === 3 || d.mode === 5 || d.mode === 9) d.mat.setFloat("uT", d.age / d.life);
       else {
         d.mat.setFloat("uT", d.age);
         const fade = Math.min(1, d.age / d.fadeIn) * Math.min(1, (d.life - d.age) / 0.4);

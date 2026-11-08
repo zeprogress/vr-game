@@ -886,6 +886,11 @@ export function playClassAct(
       c.sample(at, "sword-impact");vfx.decal(x, y, z, r ?? 5, ATK, 0.55, 0, 1);
       vfx.burst(x, y + 0.2, z, ATK, { count: 24, speed: 7, life: 0.55, grav: 14, size: 0.2 });
       return true;
+    case "magnetPull": {
+      // «Магнитное притяжение»: тонкий фронт сходится к цели — обратная волна молота.
+      vfx.decal(x, y, z, d ?? 10, FXC.lightning, 0.32, 9, 0.28);
+      return true;
+    }
     case "hammerWave":
       
       c.sample(at, "hammer-wave");

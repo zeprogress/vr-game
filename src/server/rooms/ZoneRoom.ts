@@ -2637,7 +2637,7 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** «Магнитное притяжение»: мобы в 10 м вокруг цели сдвигаются на 1 м к ней. */
-  private magnetPull(targetId: string, tx: number, tz: number): void {
+  private magnetPull(targetId: string, tx: number, ty: number, tz: number): void {
     for (const m of this.sim.mobs.values()) {
       if (m.dead || m.id === targetId) continue;
       const dx = tx - m.x;
@@ -2647,6 +2647,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const step = Math.min(HAMMER_MAGNET.pull, d);
       this.sim.pullMob(m.id, m.x + (dx / d) * step, m.z + (dz / d) * step, 0.12);
     }
+    this.broadcast(MSG.act, { k: "magnetPull", id: targetId, x: tx, y: ty, z: tz, d: HAMMER_MAGNET.radius } satisfies ActRelay);
   }
 
   /**
@@ -2678,7 +2679,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (tk?.poisonHit && !struck.dead) this.sim.bleedMob(struck.id, struck.pctHpBase * tk.poisonHit * (1 + (tk.bleedMul ?? 0)), 3, heroId, true);
     if (tk?.shoveChance && !struck.dead && Math.random() < tk.shoveChance) this.sim.shoveMob(struck.id, dx, dz, 3);
     // «Магнитное притяжение» (боевой маг): обычный удар молотом подтягивает мобов вокруг цели на 1 м к ней.
-    if (weapon === "hammer" && tk?.magnet) this.magnetPull(struck.id, sx, sz);
+    if (weapon === "hammer" && tk?.magnet) this.magnetPull(struck.id, sx, struck.y, sz);
     if (weapon === "dagger") this.afterDaggerHit(heroId, p, rt, struck);
     // Пронзание (ролл лука): стрела насквозь — моб позади цели получает долю урона.
     if (weapon === "arrow" && this.sim.rollPierce(heroId)) this.sim.pierceBehind(struck.id, sx, sz, dx, dz, dmg * BOW.pierceDmg, heroId);
